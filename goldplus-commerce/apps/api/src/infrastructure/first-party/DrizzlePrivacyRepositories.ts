@@ -170,6 +170,9 @@ async function goldieConversationIds(exec: typeof db, userId: string, plain: { e
   return r.map((x) => String(x.id));
 }
 
+/** An outbox payload as a jsonb object, whether stored as an object or (the drizzle gotcha) as a JSON string. */
+const OUTBOX_OBJECT = sql.raw(`(case when jsonb_typeof(payload) = 'string' and left(payload #>> '{}', 1) = '{' then (payload #>> '{}')::jsonb else payload end)`);
+const OUTBOX_IS_OBJECT = sql.raw(`jsonb_typeof(case when jsonb_typeof(payload) = 'string' and left(payload #>> '{}', 1) = '{' then (payload #>> '{}')::jsonb else payload end) = 'object'`);
 const phoneIn = (col: SQL, digits: string[]) => pgInTextList(sql`regexp_replace(coalesce(${col}, ''), '\\D', '', 'g')`, digits);
 const emailIn = (col: SQL, emails: string[]) => pgInTextList(sql`lower(trim(coalesce(${col}, '')))`, emails);
 const HASH_SCAN_PAGE = 2000;
@@ -277,6 +280,13 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
       select subject, description, status, type, created_at from support_issues where customer_id = ${userId}::uuid order by created_at`));
     // Goldie: every conversation that is theirs, its messages, the Care Desk tasks about it, and what they asked about.
     const goldieIds = await goldieConversationIds(db, userId, plain);
+    const giftCards = rows(await db.execute(sql`
+      select i.kind, i.code_last4, i.status, i.created_at, i.initial_value_ugx, i.recipient_name, i.recipient_phone,
+             coalesce((select sum(l.amount_ugx) from credit_ledger l where l.instrument_id = i.id and not (l.type = 'HOLD' and l.hold_state = 'released')), 0) as balance
+        from credit_instruments i
+       where i.customer_user_id = ${userId}::uuid
+          or ${plain.phoneDigits.length ? phoneIn(sql.raw('i.recipient_phone'), plain.phoneDigits) : sql`false`}
+       order by i.created_at`));
     const goldieConversations = goldieIds.length ? rows(await db.execute(sql`
       select id, channel, started_at, last_message_at, outcome, csat, contact_name, contact_phone, contact_email from assistant_conversations
       where id in (${uuidList(goldieIds)}) order by started_at`)) : [];
@@ -339,6 +349,11 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
           return a ? { source: a.source, medium: a.medium, campaign: a.campaign, landingPage: a.landing_path, referrer: a.referrer, firstVisit: iso(a.first_at), ipAddress: a.client_ip, browser: a.user_agent } : null;
         })(),
       })),
+      // 0196: gift cards and store credit issued to this person (never the code: only a hash is kept).
+      giftCards: giftCards.map((g) => ({
+        kind: g.kind === 'gift_card' ? 'Gift card' : 'Store credit', endingIn: g.code_last4, status: g.status, issuedAt: iso(g.created_at),
+        valueUgx: Number(g.initial_value_ugx), balanceUgx: Math.max(0, Number(g.balance ?? 0)), forName: g.recipient_name ?? null, textedTo: g.recipient_phone ?? null,
+      })),
       goldieChats: goldieConversations.map((c) => ({
         channel: c.channel, startedAt: iso(c.started_at), lastMessageAt: iso(c.last_message_at), outcome: c.outcome, yourRating: c.csat ?? null,
         name: c.contact_name ?? null, phone: c.contact_phone ?? null, email: c.contact_email ?? null,
@@ -367,6 +382,7 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
     const counts: Record<string, number> = {
       addresses: addresses.length, orders: orders.length, quoteRequests: quotes.length, batteryRequests: batteryRequests.length,
       loyaltyEntries: loyalty.length, supportRequests: support.length, messages: messages.length, identityRecords: identity.length,
+      giftCards: giftCards.length,
     };
     return { sections, counts };
   }
@@ -447,9 +463,11 @@ export class DrizzlePersonalDataEraser implements IPersonalDataEraser {
         counts.messageLog = affected(await exec.execute(sql`
           update notification_attempts set recipient = 'removed'
           where related_entity = 'order' and related_entity_id in (${uuidList(orderIds)})`));
+        // Customer messages are stored as a jsonb STRING (drizzle 0.29 + postgres-js), and the object-only form of this
+        // update skipped every one of them: an erased customer's phone and name stayed in their order messages.
         counts.outboxPayloads = affected(await exec.execute(sql`
-          update outbox_events set payload = payload - 'customerPhone' - 'customerEmail' - 'customerName' - 'phone' - 'email'
-          where related_entity = 'order' and related_entity_id in (${uuidList(orderIds)}) and jsonb_typeof(payload) = 'object'`));
+          update outbox_events set payload = ${OUTBOX_OBJECT} - 'customerPhone' - 'customerEmail' - 'customerName' - 'phone' - 'email'
+          where related_entity = 'order' and related_entity_id in (${uuidList(orderIds)}) and ${OUTBOX_IS_OBJECT}`));
       }
 
       // Admin-recorded sales and waiting offline conversions: by order, and by
@@ -542,6 +560,20 @@ export class DrizzlePersonalDataEraser implements IPersonalDataEraser {
           where user_id = ${input.userId}::uuid`));
         counts.sessions = affected(await exec.execute(sql`
           update auth_sessions set revoked_at = coalesce(revoked_at, now()) where user_id = ${input.userId}::uuid`));
+      }
+
+      // 0196: gift cards and store credit issued to this person. The card and its balance stay (a bearer card is money
+      // the shop owes); who it was for, and the phone it was texted to, go.
+      const cardIds = rows(await exec.execute(sql`
+        select id from credit_instruments where customer_user_id = ${input.userId}::uuid
+           or ${plain.phoneDigits.length ? phoneIn(sql.raw('recipient_phone'), plain.phoneDigits) : sql`false`}`)).map((r) => String(r.id));
+      if (cardIds.length) {
+        counts.giftCards = affected(await exec.execute(sql`
+          update credit_instruments set recipient_name = null, recipient_phone = null, customer_user_id = null where id in (${uuidList(cardIds)})`));
+        counts.giftCardMessages = affected(await exec.execute(sql`
+          update outbox_events set payload = ${OUTBOX_OBJECT} - 'customerPhone' - 'customerEmail' - 'customerName'
+          where related_entity = 'credit_instrument' and related_entity_id in (${uuidList(cardIds)}) and ${OUTBOX_IS_OBJECT}`));
+        await exec.execute(sql`update notification_attempts set recipient = 'removed' where related_entity = 'credit_instrument' and related_entity_id in (${uuidList(cardIds)})`);
       }
 
       await exec.execute(sql`update privacy_requests set result = ${JSON.stringify({ counts })}::text::jsonb where id = ${input.requestId}::uuid`);

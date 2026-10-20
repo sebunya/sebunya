@@ -119,4 +119,27 @@ describe('store credit flow (gap #17)', () => {
     expect(a.text).toContain('Gift card or store credit');
     expect(a.links.some((l) => l.url.endsWith('/gift-card'))).toBe(true);
   });
+
+  it('points: a cash partial refund takes its share of the WHOLE order, and an item given back to a card takes its share too', async () => {
+    const { ApplyRefundConsequencesUseCase } = await import('../../apps/api/src/application/use-cases/payments/ApplyRefundConsequencesUseCase');
+    const shares: number[] = [];
+    const loyalty = { execute: async (i: { refundedShareBps: number }) => { shares.push(i.refundedShareBps); } };
+    const repo = { updatePaymentAttemptStatus: async () => undefined, updateOrderPaymentStatusSafely: async () => undefined } as never;
+    const attempt = { id: 'a1', orderId: 'o1', amount: 150_000, orderTrackingId: 't', merchantReference: 'm' };
+    const ctx = { actorType: 'admin' as never, source: 'admin' as never, providerConfirmed: false };
+    // Order 250,000: card 100,000 + Mobile Money 150,000. 50,000 of the Mobile Money comes back = 20% of the order.
+    await new ApplyRefundConsequencesUseCase(repo, {} as never, { getRefundedTotalUgx: async () => 50_000 }, loyalty, undefined, async () => 100_000).execute(attempt, ctx);
+    expect(shares).toEqual([2_000]);
+    // Without a card the share is unchanged from before (a third of the cash).
+    await new ApplyRefundConsequencesUseCase(repo, {} as never, { getRefundedTotalUgx: async () => 50_000 }, loyalty).execute(attempt, ctx);
+    expect(shares[1]).toBe(3_333);
+
+    const back: number[] = [];
+    const m = new ManageCreditUseCases({ returnToCardForOrder: async () => ({ ok: true, instrumentId: 'c', leftUgx: 50_000, orderId: 'o1', orderTotalUgx: 250_000 }) } as any, tools,
+      { execute: async (i) => { back.push(i.refundedShareBps); } });
+    expect(await m.returnToCard('gp-202610-abcd', 25_000, 'staff', 'Charger returned')).toMatchObject({ ok: true });
+    expect(back).toEqual([1_000]);
+    expect(await m.returnToCard('nonsense', 25_000, 'staff', 'Charger returned')).toMatchObject({ ok: false });
+    expect(back).toHaveLength(1);
+  });
 });

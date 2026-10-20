@@ -60,7 +60,12 @@ export class IssueCreditUseCase {
 }
 
 export class ManageCreditUseCases {
-  constructor(private readonly repo: ICreditRepository, private readonly tools: CreditCodeTools) {}
+  constructor(
+    private readonly repo: ICreditRepository,
+    private readonly tools: CreditCodeTools,
+    /** The refund loyalty port (ApplyRefundToLoyaltyUseCase): an item given back to a card takes back its share of the points, as a cash partial refund does. */
+    private readonly refundLoyalty?: { execute(input: { orderId: string; refundedShareBps: number; reason: string }): Promise<void> },
+  ) {}
 
   list(input: { status?: string | null; kind?: CreditKind | null; limit?: number }) { return this.repo.list({ limit: input.limit ?? 100, status: input.status ?? null, kind: input.kind ?? null }); }
   async detail(id: string) {
@@ -103,6 +108,13 @@ export class ManageCreditUseCases {
     const ref = typeof orderNumber === 'string' ? orderNumber.trim().toUpperCase() : '';
     if (!/^GP-[A-Z0-9-]{4,40}$/.test(ref)) return { ok: false as const, message: 'Type the order number (it starts with GP-).' };
     if (note.trim().length < 5) return { ok: false as const, message: 'Say why (for example, which item came back).' };
-    return this.repo.returnToCardForOrder(ref, amountUgx, actorId, note.trim().slice(0, 500));
+    const result = await this.repo.returnToCardForOrder(ref, amountUgx, actorId, note.trim().slice(0, 500));
+    if (result.ok && this.refundLoyalty && result.orderTotalUgx > 0) {
+      // Isolated like the cash path: the money is already back on the card; points can be corrected by hand.
+      await this.refundLoyalty
+        .execute({ orderId: result.orderId, refundedShareBps: Math.floor((amountUgx * 10_000) / result.orderTotalUgx), reason: 'Item given back to the gift card' })
+        .catch(() => undefined);
+    }
+    return result;
   }
 }

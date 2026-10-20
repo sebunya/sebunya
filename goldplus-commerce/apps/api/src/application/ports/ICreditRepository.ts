@@ -48,5 +48,5 @@ export interface ICreditRepository {
   /** On cancel: a held hold is released; a captured one gives back whatever is not yet given back. Returns UGX. */
   releaseOrReturnForOrder(orderId: string, note: string, now: Date): Promise<{ released: number; returned: number }>;
   /** A partial refund (one item returned) of what an order spent from a card, capped at what is not yet given back. */
-  returnToCardForOrder(orderNumber: string, amountUgx: number, actorId: string, note: string): Promise<{ ok: true; instrumentId: string; leftUgx: number } | { ok: false; message: string }>;
+  returnToCardForOrder(orderNumber: string, amountUgx: number, actorId: string, note: string): Promise<{ ok: true; instrumentId: string; leftUgx: number; orderId: string; orderTotalUgx: number } | { ok: false; message: string }>;
 }

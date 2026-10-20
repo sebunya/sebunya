@@ -76,12 +76,14 @@ export class VerifyPesaPalPaymentUseCase {
     refundLoyalty?: RefundLoyaltyPort,
     /** Optional. Closes the fulfilment task of an order a total reversal cancelled. */
     refundFulfilment?: RefundFulfilmentPort,
+    /** 0196: what a gift card paid towards the order (ApplyRefundConsequencesUseCase.storeCreditOf). */
+    storeCreditOf?: (orderId: string) => Promise<number>,
   ) {
     this.paymentRepo = paymentRepo;
     this.pesapalClient = pesapalClient;
     this.orderTransition = orderTransition;
     this.refundLedger = refundLedger;
-    this.refundConsequences = new ApplyRefundConsequencesUseCase(paymentRepo, orderTransition, refundLedger, refundLoyalty, refundFulfilment);
+    this.refundConsequences = new ApplyRefundConsequencesUseCase(paymentRepo, orderTransition, refundLedger, refundLoyalty, refundFulfilment, storeCreditOf);
   }
 
   async execute(input: VerifyPesaPalPaymentInput): Promise<VerifyPesaPalPaymentOutput> {

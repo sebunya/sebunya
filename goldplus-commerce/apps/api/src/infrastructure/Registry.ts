@@ -812,7 +812,10 @@ export class Registry {
   public readonly productRepo = new DrizzleProductRepository();
   /** 0196: store credit and gift cards (gap analysis #17). */
   public readonly creditRepo = new DrizzleCreditRepository();
-  public readonly manageCreditUseCases = new ManageCreditUseCases(this.creditRepo, { hash: creditCodeHash, randomIndexes: creditRandomIndexes });
+  public readonly manageCreditUseCases = new ManageCreditUseCases(this.creditRepo, { hash: creditCodeHash, randomIndexes: creditRandomIndexes }, {
+    // Resolved at call time: the loyalty use cases are constructed further down this class.
+    execute: (input) => new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase).execute(input),
+  });
   /** Save for later (gap analysis #6). */
   public readonly savedProductsUseCases = new SavedProductsUseCases(new DrizzleWishlistRepository(), this.productRepo);
   /** Once-published products that are off sale: the product page's honest 404 (no price, stock or images). */
@@ -2624,6 +2627,7 @@ export class Registry {
     new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase),
     // A total refund cancels the order; its fulfilment task leaves the work queue with it.
     new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
+    async (orderId: string) => (await this.orderRepo.findById(orderId))?.storeCreditAppliedUgx ?? 0,
   );
 
   /**
@@ -2637,6 +2641,7 @@ export class Registry {
     new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase),
     // A total refund cancels the order; its fulfilment task leaves the work queue with it.
     new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
+    async (orderId: string) => (await this.orderRepo.findById(orderId))?.storeCreditAppliedUgx ?? 0,
   );
 
   /**

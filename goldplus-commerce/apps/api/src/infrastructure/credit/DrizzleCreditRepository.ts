@@ -175,11 +175,11 @@ export class DrizzleCreditRepository implements ICreditRepository {
     });
   }
 
-  async returnToCardForOrder(orderNumber: string, amountUgx: number, actorId: string, note: string): Promise<{ ok: true; instrumentId: string; leftUgx: number } | { ok: false; message: string }> {
+  async returnToCardForOrder(orderNumber: string, amountUgx: number, actorId: string, note: string): Promise<{ ok: true; instrumentId: string; leftUgx: number; orderId: string; orderTotalUgx: number } | { ok: false; message: string }> {
     if (!Number.isInteger(amountUgx) || amountUgx <= 0) return { ok: false, message: 'Enter a whole amount above zero.' };
     return db.transaction(async (tx) => {
       const [h] = rowsOf(await tx.execute(sql`
-        select l.instrument_id, o.id as order_id from credit_ledger l join orders o on o.id = l.order_id
+        select l.instrument_id, o.id as order_id, o.total_amount from credit_ledger l join orders o on o.id = l.order_id
          where o.order_number = ${orderNumber} and l.type = 'HOLD' and l.hold_state = 'captured' limit 1`));
       if (!h) return { ok: false as const, message: 'No gift card or store credit was spent on that order (or it was never paid).' };
       await tx.execute(sql`select id from credit_instruments where id = ${h.instrument_id} for update`);
@@ -187,7 +187,7 @@ export class DrizzleCreditRepository implements ICreditRepository {
       if (amountUgx > left) return { ok: false as const, message: `At most ${left.toLocaleString('en-US')} UGX can go back to the card for this order.` };
       await tx.execute(sql`insert into credit_ledger (instrument_id, type, amount_ugx, order_id, actor_id, note)
                            values (${h.instrument_id}, 'RETURN', ${amountUgx}, ${h.order_id}, ${actorId}, ${note})`);
-      return { ok: true as const, instrumentId: String(h.instrument_id), leftUgx: left - amountUgx };
+      return { ok: true as const, instrumentId: String(h.instrument_id), leftUgx: left - amountUgx, orderId: String(h.order_id), orderTotalUgx: Number(h.total_amount) };
     });
   }
 }

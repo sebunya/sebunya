@@ -12,6 +12,8 @@ const suite = URL ? describe : describe.skip;
 
 suite('privacy erasure (real PostgreSQL)', () => {
   let raw: any;
+  let exporter: any;
+  const cardIds: string[] = [];
   let eraser: any;
   const userIds: string[] = [];
   const quoteIds: string[] = [];
@@ -50,10 +52,20 @@ suite('privacy erasure (real PostgreSQL)', () => {
     const repo = await import('../../apps/api/src/infrastructure/first-party/DrizzlePrivacyRepositories');
     const adapters = await import('../../apps/api/src/infrastructure/first-party/FirstPartyAdapters');
     eraser = new repo.DrizzlePersonalDataEraser(new adapters.HmacIdentifierHasher('p'.repeat(40)));
+    exporter = new repo.DrizzlePersonalDataExporter(new adapters.HmacIdentifierHasher('p'.repeat(40)));
   });
 
   afterAll(async () => {
     if (!raw) return;
+    if (cardIds.length) {
+      await raw`delete from outbox_events where related_entity = 'credit_instrument' and related_entity_id = any(${cardIds})`;
+      await raw.begin(async (t: any) => {
+        await t`set local goldplus.credit_maintenance = 'on'`;
+        await t`delete from credit_ledger where instrument_id = any(${cardIds})`;
+        await t`delete from credit_instruments where id = any(${cardIds})`;
+      });
+    }
+    if (userIds.length) await raw`delete from outbox_events where related_entity = 'order' and related_entity_id in (select id from orders where user_id in ${raw(userIds)})`;
     if (userIds.length) {
       await raw`delete from privacy_requests where user_id in ${raw(userIds)}`;
       await raw`delete from auth_sessions where user_id in ${raw(userIds)}`;
@@ -108,5 +120,39 @@ suite('privacy erasure (real PostgreSQL)', () => {
     const [r] = await raw`select id, user_id from privacy_requests where user_id = ${userIds[0]}`;
     const res = await eraser.erase({ userId: r.user_id, kind: 'ANONYMISE_HISTORY', requestId: r.id, actorId: r.user_id, reason: 'again' });
     expect(res.completed).toBe(false);
+  });
+
+  it('gift cards and order messages (stored as jsonb STRINGS) are covered by export and erasure', async () => {
+    const c = await seedCustomer('card');
+    // Written the way CustomerOutboxNotifier writes: a JSON string inside jsonb.
+    await raw`insert into outbox_events (event_type, payload, status, is_processed, idempotency_key, related_entity, related_entity_id)
+              values ('CUSTOMER_ORDER_MESSAGE', ${raw.json(JSON.stringify({ template: 'ORDER_PAYMENT_SUCCESS', customerPhone: c.phone, customerName: 'Jane Customer', orderNumber: 'X' }))},
+                      'processed', true, ${`priv-order-${tag}`}, 'order', ${c.orderId})`;
+    const [card] = await raw`insert into credit_instruments (kind, code_hash, code_last4, status, initial_value_ugx, reason, recipient_name, recipient_phone, issued_by, approved_by, approved_at)
+              values ('gift_card', ${`priv-${tag}`}, 'ZZ99', 'active', 50000, 'Privacy test card', 'Jane Customer', ${`+256${c.phone.slice(1)}`}, ${c.userId}, ${c.userId}, now()) returning id`;
+    cardIds.push(card.id);
+    await raw`insert into credit_ledger (instrument_id, type, amount_ugx) values (${card.id}, 'ISSUE', 50000)`;
+    await raw`insert into outbox_events (event_type, payload, status, is_processed, idempotency_key, related_entity, related_entity_id)
+              values ('CUSTOMER_ORDER_MESSAGE', ${raw.json(JSON.stringify({ template: 'CREDIT_ISSUED', customerPhone: `+256${c.phone.slice(1)}`, customerName: 'Jane Customer' }))},
+                      'processed', true, ${`priv-card-${tag}`}, 'credit_instrument', ${card.id})`;
+
+    const copy = await exporter.collect(c.userId);
+    expect(copy.counts.giftCards).toBe(1);
+    expect(copy.sections.giftCards).toEqual([expect.objectContaining({ kind: 'Gift card', endingIn: 'ZZ99', balanceUgx: 50000, forName: 'Jane Customer' })]);
+    expect(JSON.stringify(copy)).not.toContain('priv-'); // never the code hash
+
+    const res = await eraser.erase({ userId: c.userId, kind: 'ANONYMISE_HISTORY', requestId: c.requestId, actorId: c.userId, reason: 'test' });
+    expect(res.completed).toBe(true);
+    const digits = c.phone.slice(1);
+    const [orderMsg] = await raw`select payload::text as p from outbox_events where idempotency_key = ${`priv-order-${tag}`}`;
+    expect(orderMsg.p).not.toContain(digits);
+    expect(orderMsg.p).not.toContain('Jane Customer');
+    const [cardRow] = await raw`select recipient_name, recipient_phone from credit_instruments where id = ${card.id}`;
+    expect(cardRow).toEqual({ recipient_name: null, recipient_phone: null });
+    const [cardMsg] = await raw`select payload::text as p from outbox_events where idempotency_key = ${`priv-card-${tag}`}`;
+    expect(cardMsg.p).not.toContain(digits);
+    // The card itself and its money stay: a bearer card is still owed.
+    const [bal] = await raw`select coalesce(sum(amount_ugx), 0)::int as b from credit_ledger where instrument_id = ${card.id}`;
+    expect(bal.b).toBe(50000);
   });
 });
