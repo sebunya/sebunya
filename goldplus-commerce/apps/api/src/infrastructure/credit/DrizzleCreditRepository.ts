@@ -88,8 +88,8 @@ export class DrizzleCreditRepository implements ICreditRepository {
        where i.status <> 'void'
          and (i.customer_user_id = ${userId}
               or exists (select 1 from users u where u.id = ${userId} and u.phone_verified_at is not null and u.phone is not null
-                           and length(regexp_replace(u.phone, '\D', '', 'g')) >= 9
-                           and right(regexp_replace(coalesce(i.recipient_phone, ''), '\D', '', 'g'), 9) = right(regexp_replace(u.phone, '\D', '', 'g'), 9)))
+                           and length(regexp_replace(u.phone, '\\D', '', 'g')) >= 9
+                           and right(regexp_replace(coalesce(i.recipient_phone, ''), '\\D', '', 'g'), 9) = right(regexp_replace(u.phone, '\\D', '', 'g'), 9)))
        order by i.created_at desc limit 50`)).map(view);
   }
 

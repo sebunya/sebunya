@@ -210,7 +210,7 @@ describeIf('store credit and gift cards (real PostgreSQL)', () => {
     const [u] = await raw`insert into users (email, phone, password_hash) values (${`u${tag}@e.com`}, ${`+25678${suffix}`}, 'x') returning id`;
     userIds.push(v.id, u.id);
     const byPhone = await repo.issue({ kind: 'gift_card', codeHash: `hp-${tag}`, last4: 'PH01', valueUgx: 20_000, reason: 'Gift', status: 'active',
-      recipientName: 'A', recipientPhone: `0${verifiedPhone.slice(4)}`, customerUserId: null, sourceOrderId: null, issuedBy: staffA, expiresAt: null });
+      recipientName: 'A', recipientPhone: `0${verifiedPhone.slice(4, 7)} ${verifiedPhone.slice(7, 10)}-${verifiedPhone.slice(10)}`, customerUserId: null, sourceOrderId: null, issuedBy: staffA, expiresAt: null });
     const linked = await repo.issue({ kind: 'store_credit', codeHash: `hl-${tag}`, last4: 'LK01', valueUgx: 30_000, reason: 'Refund', status: 'active',
       recipientName: null, recipientPhone: null, customerUserId: u.id, sourceOrderId: null, issuedBy: staffA, expiresAt: null });
     const unverifiedTarget = await repo.issue({ kind: 'gift_card', codeHash: `hu-${tag}`, last4: 'UV01', valueUgx: 10_000, reason: 'Gift', status: 'active',
