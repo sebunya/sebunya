@@ -16,6 +16,8 @@ const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application
 type Notice = { kind: 'success' | 'error'; text: string };
 let notice: Notice | null = null;
 let issued: { code: string; masked: string; status: string; texted: boolean } | null = null;
+// What was typed into "Issue a card" when it was refused: put back, so a mistake is corrected, not retyped.
+let draft: Record<string, string> | null = null;
 const selected = Astro.url.searchParams.get('card');
 // Post/redirect/get: a refresh after an action must never repeat it (a second card, a doubled correction). The
 // outcome, including the one-time code, rides a short-lived httpOnly cookie to the GET that follows and is
@@ -42,7 +44,10 @@ if (Astro.request.method === 'POST') {
       }) });
       const json: any = await res.json().catch(() => null);
       if (res.ok && json?.success) { issued = json.data; notice = { kind: 'success', text: json.data.status === 'pending_approval' ? 'Issued. Above UGX 500,000 it waits for a second person to approve it before it can be spent.' : json.data.texted ? 'Issued. The code is queued to text to the recipient (it usually arrives within a minute; check with them).' : 'Issued.' }; }
-      else notice = { kind: 'error', text: stepUpHint(json, res, 'Not issued.') };
+      else {
+        notice = { kind: 'error', text: stepUpHint(json, res, 'Not issued.') };
+        draft = Object.fromEntries(['kind', 'amountUgx', 'expiresAt', 'reason', 'orderNumber', 'recipientName', 'recipientPhone'].map((k) => [k, String(form.get(k) ?? '').slice(0, 500)]));
+      }
     } else if (intent === 'return') {
       const res = await fetch(`${apiBase}/admin/credit/return`, { method: 'POST', headers, body: JSON.stringify({
         orderNumber: String(form.get('orderNumber') ?? ''), amountUgx: Number(form.get('amountUgx')), note: String(form.get('note') ?? ''),
@@ -51,6 +56,12 @@ if (Astro.request.method === 'POST') {
       notice = res.ok && json?.success
         ? { kind: 'success', text: `Given back to the card. ${formatUgx(json.data.leftUgx)} more could still go back for that order.` }
         : { kind: 'error', text: stepUpHint(json, res, 'Nothing was given back.') };
+    } else if (intent === 'refund-purchase') {
+      // 0199: a gift card bought online: the card is cancelled (if untouched) and Pesapal refunds the buyer.
+      const reference = String(form.get('reference') ?? '');
+      const res = await fetch(`${apiBase}/admin/credit/purchases/${encodeURIComponent(reference)}/refund`, { method: 'POST', headers, body: JSON.stringify({ reason: String(form.get('reason') ?? '') }) });
+      const json: any = await res.json().catch(() => null);
+      notice = res.ok && json?.success ? { kind: 'success', text: json.data.message } : { kind: 'error', text: stepUpHint(json, res, 'Nothing was refunded.') };
     } else if (intent === 'approve' || intent === 'void' || intent === 'adjust') {
       const res = await fetch(`${apiBase}/admin/credit/${encodeURIComponent(id)}/${intent}`, { method: 'POST', headers, body: JSON.stringify({ note: String(form.get('note') ?? ''), amountUgx: Number(form.get('amountUgx')) }) });
       const json: any = await res.json().catch(() => null);
@@ -59,14 +70,14 @@ if (Astro.request.method === 'POST') {
         : { kind: 'error', text: stepUpHint(json, res, 'Not changed.') };
     }
   } catch { notice = { kind: 'error', text: 'The API is unavailable. Nothing was changed.' }; }
-  Astro.cookies.set(FLASH, JSON.stringify({ notice, issued }), flashOptions);
+  Astro.cookies.set(FLASH, JSON.stringify({ notice, issued, draft }), flashOptions);
   return Astro.redirect(`/admin/credit${id && /^[0-9a-f-]{36}$/i.test(id) ? `?card=${id}` : ''}`, 303);
 }
 {
   const raw = Astro.cookies.get(FLASH)?.value;
   if (raw) {
     Astro.cookies.delete(FLASH, { path: '/admin/credit' });
-    try { ({ notice, issued } = JSON.parse(raw)); } catch { /* a malformed flash shows nothing */ }
+    try { ({ notice, issued, draft = null } = JSON.parse(raw)); } catch { /* a malformed flash shows nothing */ }
   }
 }
 Astro.response.headers.set('Cache-Control', 'private, no-store');
@@ -82,6 +93,18 @@ try {
     detail = dj?.success && dj.data?.instrument && Array.isArray(dj.data.ledger) ? dj.data : null;
   }
 } catch { loadFailed = true; }
+// 0199: gift cards customers bought online.
+let purchases: any[] = [];
+try {
+  const pr = await fetch(`${apiBase}/admin/credit/purchases`, { headers });
+  const pj: any = await pr.json().catch(() => null);
+  if (pj?.success && Array.isArray(pj.data)) purchases = pj.data;
+} catch { /* the cards still show */ }
+const PURCHASE: Record<string, string> = {
+  awaiting_payment: 'Waiting for payment', paid: 'Paid, card due', issued: 'Card texted', failed: 'Payment failed', abandoned: 'Not paid',
+  review: 'Check payment', refunded: 'Refunded',
+};
+const d = (k: string) => draft?.[k] ?? '';
 const fmt = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Africa/Kampala', dateStyle: 'medium', timeStyle: 'short' });
 const KIND: Record<string, string> = { gift_card: 'Gift card', store_credit: 'Store credit' };
 const STATUS: Record<string, string> = { active: 'Spendable', pending_approval: 'Waiting for approval', void: 'Cancelled' };
@@ -122,13 +145,13 @@ const prefillReturn = (Astro.url.searchParams.get('return') ?? '').toUpperCase()
     <form method="POST" class="rounded-2xl border bg-white p-5 grid gap-3 md:grid-cols-3">
       <input type="hidden" name="intent" value="issue" />
       <h3 class="md:col-span-3 font-black">Issue a card</h3>
-      <label class="text-xs font-bold">Kind<select name="kind" class="mt-1 w-full border rounded-xl p-2"><option value="gift_card">Gift card (sold or given)</option><option value="store_credit">Store credit (refund, goodwill)</option></select></label>
-      <label class="text-xs font-bold">Amount (UGX)<input name="amountUgx" type="number" min="1000" max="5000000" step="1" required class="mt-1 w-full border rounded-xl p-2" /></label>
-      <label class="text-xs font-bold">Expires (optional)<input name="expiresAt" type="date" class="mt-1 w-full border rounded-xl p-2" /></label>
-      <label class="text-xs font-bold md:col-span-3">Why (kept on the card and in the audit)<input name="reason" required minlength="5" maxlength="500" placeholder="e.g. Sold at the counter, paid MoMo ref 123 / Refund for GP-202610-…" class="mt-1 w-full border rounded-xl p-2" /></label>
-      <label class="text-xs font-bold">For order (optional)<input name="orderNumber" maxlength="40" placeholder="GP-202610-… (store credit as a refund)" class="mt-1 w-full border rounded-xl p-2 uppercase" /></label>
-      <label class="text-xs font-bold">Recipient name (optional)<input name="recipientName" maxlength="120" class="mt-1 w-full border rounded-xl p-2" /></label>
-      <label class="text-xs font-bold">Recipient phone (texted the code)<input name="recipientPhone" inputmode="tel" class="mt-1 w-full border rounded-xl p-2" /></label>
+      <label class="text-xs font-bold">Kind<select name="kind" class="mt-1 w-full border rounded-xl p-2"><option value="gift_card">Gift card (sold or given)</option><option value="store_credit" selected={d('kind') === 'store_credit'}>Store credit (refund, goodwill)</option></select></label>
+      <label class="text-xs font-bold">Amount (UGX)<input name="amountUgx" type="number" min="1000" max="5000000" step="1" required value={d('amountUgx')} class="mt-1 w-full border rounded-xl p-2" /></label>
+      <label class="text-xs font-bold">Expires (optional)<input name="expiresAt" type="date" value={d('expiresAt')} class="mt-1 w-full border rounded-xl p-2" /></label>
+      <label class="text-xs font-bold md:col-span-3">Why (kept on the card and in the audit)<input name="reason" required minlength="5" maxlength="500" value={d('reason')} placeholder="e.g. Sold at the counter, paid MoMo ref 123 / Refund for GP-202610-…" class="mt-1 w-full border rounded-xl p-2" /></label>
+      <label class="text-xs font-bold">For order (optional, a GP- order number only)<input name="orderNumber" maxlength="40" value={d('orderNumber')} placeholder="GP-202610-… (store credit as a refund)" class="mt-1 w-full border rounded-xl p-2 uppercase" /></label>
+      <label class="text-xs font-bold">Recipient name (optional)<input name="recipientName" maxlength="120" value={d('recipientName')} class="mt-1 w-full border rounded-xl p-2" /></label>
+      <label class="text-xs font-bold">Recipient phone (texted the code)<input name="recipientPhone" inputmode="tel" value={d('recipientPhone')} placeholder="0772 123456" class="mt-1 w-full border rounded-xl p-2" /></label>
       <div class="flex items-end"><button class="min-h-11 rounded-full bg-brand-charcoal px-5 text-xs font-black uppercase tracking-widest text-white">Issue</button></div>
       <p class="md:col-span-3 text-xs text-gray-500">With an order number, the credit is linked to that order and the customer's account (they see it under Gift cards), and their name and phone fill in by themselves. Above UGX 500,000 a different person must approve before it can be spent; then hand the code over yourself (it is texted only when spendable at issue).</p>
     </form>
@@ -166,6 +189,30 @@ const prefillReturn = (Astro.url.searchParams.get('return') ?? '').toUpperCase()
         </div>
       </section>
     )}
+
+    <section class="rounded-2xl border bg-white p-5" data-credit-purchases>
+      <h3 class="font-black">Bought online</h3>
+      <p class="mb-3 text-xs text-gray-500">Gift cards customers bought on <a class="underline" href="/gift-card/buy">/gift-card/buy</a>, paid through Pesapal. The card is made and its code texted once Pesapal confirms the money (a scheduled one on its day, from 9am).</p>
+      {purchases.length === 0 ? <p class="text-sm text-gray-600">None yet.</p> : (
+        <div class="overflow-x-auto"><table class="w-full text-sm">
+          <thead><tr class="text-left text-xs uppercase text-gray-500"><th class="py-1">Reference</th><th>Status</th><th class="text-right">Amount</th><th class="pl-4">Bought by</th><th>For</th><th>Paid by</th><th>Date</th><th></th></tr></thead>
+          <tbody>{purchases.map((p) => (
+            <tr class="border-t align-top">
+              <td class="py-1.5 font-mono text-xs">{p.reference}{p.cardLast4 && p.instrumentId ? <a class="block font-sans font-bold underline" href={`/admin/credit?card=${p.instrumentId}`}>card ••••{p.cardLast4}</a> : ''}</td>
+              <td>{PURCHASE[p.status] ?? p.status}{p.status === 'paid' && p.deliverOn ? ` (${p.deliverOn})` : ''}{p.status === 'review' && p.providerStatus ? <span class="block text-xs text-red-700">{p.providerStatus}</span> : ''}</td>
+              <td class="text-right tabular-nums">{formatUgx(p.amountUgx)}</td>
+              <td class="pl-4 text-xs">{p.buyerName}<span class="block text-gray-500">{p.buyerPhone}</span></td>
+              <td class="text-xs">{p.recipientName}<span class="block text-gray-500">{p.sendTo === 'buyer' ? 'code to buyer' : p.recipientPhone}</span></td>
+              <td class="text-xs">{p.paymentMethod ?? ''}<span class="block text-gray-500">{p.confirmationCode ?? ''}</span></td>
+              <td class="text-xs">{fmt(p.createdAt)}</td>
+              <td>{['paid', 'issued', 'review'].includes(p.status) && (
+                <form method="POST" class="flex gap-2"><input type="hidden" name="intent" value="refund-purchase" /><input type="hidden" name="reference" value={p.reference} /><input name="reason" required minlength="5" placeholder="Why" class="w-32 border rounded-xl p-2 text-xs" /><button class="min-h-11 rounded-full border border-red-300 px-3 text-xs font-black uppercase text-red-800">Refund</button></form>
+              )}</td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
+    </section>
 
     <section class="rounded-2xl border bg-white p-5">
       <h3 class="font-black mb-3">Cards</h3>

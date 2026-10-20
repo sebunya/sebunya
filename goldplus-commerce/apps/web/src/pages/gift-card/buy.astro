@@ -1,0 +1,203 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { apiBase } from '../../lib/api';
+import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
+import { readSessionToken } from '../../lib/session';
+import { formatUgx } from '../../lib/money';
+
+/**
+ * Buy a GoldPlus gift card for someone (0199, self-service). Works without JavaScript: the form posts here, the API
+ * opens a Pesapal payment under the purchase's own reference, and the buyer is sent to pay. A mistake comes back
+ * with everything they typed still in place, next to the field that needs fixing.
+ */
+const PRESETS = [20_000, 50_000, 100_000, 200_000];
+const MIN = 10_000;
+const MAX = 500_000;
+const kampalaToday = () => new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10);
+const plusDays = (iso: string, n: number) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const today = kampalaToday();
+
+type Fields = Record<string, string>;
+const v: Fields = {
+  amountPreset: '50000', amountOther: '', recipientName: '', recipientPhone: '', sendTo: 'recipient', when: 'now', deliverOn: '',
+  message: '', fromName: '', buyerName: '', buyerPhone: '', buyerEmail: '',
+};
+// From the balance page or Goldie: /gift-card/buy?amount=100000
+const askedAmount = Number(Astro.url.searchParams.get('amount'));
+if (Number.isInteger(askedAmount) && askedAmount >= MIN && askedAmount <= MAX) {
+  if (PRESETS.includes(askedAmount)) v.amountPreset = String(askedAmount);
+  else { v.amountPreset = 'other'; v.amountOther = String(askedAmount); }
+}
+let errors: Record<string, string> = {};
+let problem = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  for (const k of Object.keys(v)) v[k] = String(form.get(k) ?? '').slice(0, 300);
+  const amountUgx = v.amountPreset === 'other' ? Number(v.amountOther.replace(/[,\s]/g, '')) : Number(v.amountPreset);
+  const token = readSessionToken(Astro.request);
+  try {
+    const res = await fetch(`${apiBase}/commerce/gift-cards/purchase`, {
+      method: 'POST',
+      headers: apiHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, readClientAddress(Astro)),
+      body: JSON.stringify({
+        amountUgx, recipientName: v.recipientName, recipientPhone: v.recipientPhone, sendTo: v.sendTo, message: v.message, fromName: v.fromName,
+        buyerName: v.buyerName, buyerPhone: v.buyerPhone, buyerEmail: v.buyerEmail, deliverOn: v.sendTo === 'recipient' && v.when === 'date' ? v.deliverOn : '',
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const json: any = await res.json().catch(() => null);
+    if (res.ok && json?.success && typeof json.data?.redirectUrl === 'string' && /^https:\/\//.test(json.data.redirectUrl)) {
+      return Astro.redirect(json.data.redirectUrl, 303);
+    }
+    errors = json?.error?.fields ?? {};
+    // The amount field the buyer sees is the "other amount" box when they chose it.
+    if (errors.amountUgx) errors[v.amountPreset === 'other' ? 'amountOther' : 'amountPreset'] = errors.amountUgx;
+    problem = res.status === 429 && json?.error?.code !== 'LIMIT'
+      ? 'Too many tries in a short time. Wait a minute and try again.'
+      : json?.error?.message ?? 'We could not start the payment just now. Nothing was charged. Please try again.';
+  } catch {
+    problem = 'We could not reach our payment service just now. Nothing was charged. Please try again in a minute.';
+  }
+}
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+
+const field = 'mt-1 w-full min-h-11 rounded-lg border px-3 py-2.5 text-base outline-none focus:ring-2 focus:ring-brand-primaryInk';
+const border = (name: string) => (errors[name] ? 'border-red-400 bg-red-50' : 'border-slate-300');
+const label = 'text-sm font-bold text-gray-900';
+---
+<BaseLayout
+  title="Buy a gift card | GoldPlus"
+  description="Send a GoldPlus gift card to anyone in Uganda. Pay with Mobile Money or card; we text them the code, now or on the day you choose."
+>
+  <div class="mx-auto max-w-2xl px-4 py-10 sm:py-14" data-gift-card-buy>
+    <h1 class="text-3xl font-black tracking-tight text-gray-900">Send a GoldPlus gift card</h1>
+    <p class="mt-3 text-base text-slate-600">
+      Pay with Mobile Money or card. We text the code to them, now or on the morning of the day you choose. They spend it on
+      shopgoldplus.com or in our shop on Burton Street, Kampala. The card does not expire.
+    </p>
+
+    {problem && <p role="alert" class="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{problem}</p>}
+
+    <form method="POST" action="/gift-card/buy" class="mt-8 space-y-8" novalidate>
+      <fieldset>
+        <legend class="text-lg font-black text-gray-900">1. How much?</legend>
+        <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {PRESETS.map((a) => (
+            <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 px-2 text-center text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20">
+              <input type="radio" name="amountPreset" value={String(a)} checked={v.amountPreset === String(a)} class="sr-only" />
+              {formatUgx(a)}
+            </label>
+          ))}
+          <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 px-2 text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20">
+            <input type="radio" name="amountPreset" value="other" checked={v.amountPreset === 'other'} class="sr-only" data-other-amount />
+            Other
+          </label>
+        </div>
+        <label class="mt-3 block">
+          <span class={label}>Other amount (UGX)</span>
+          <input name="amountOther" inputmode="numeric" value={v.amountOther} placeholder={`${MIN.toLocaleString('en-US')} to ${MAX.toLocaleString('en-US')}`} class={`${field} ${border('amountOther')}`} aria-invalid={errors.amountOther ? 'true' : undefined} aria-describedby={errors.amountOther ? 'err-amount' : undefined} />
+          <span class="mt-1 block text-xs text-slate-500">Choose "Other" above to use this. Any amount in thousands, from {formatUgx(MIN)} to {formatUgx(MAX)}.</span>
+        </label>
+        {(errors.amountOther || errors.amountPreset) && <p id="err-amount" class="mt-1 text-sm font-semibold text-red-700">{errors.amountOther || errors.amountPreset}</p>}
+      </fieldset>
+
+      <fieldset>
+        <legend class="text-lg font-black text-gray-900">2. Who is it for?</legend>
+        <div class="mt-3 grid gap-4 sm:grid-cols-2">
+          <label class="block">
+            <span class={label}>Their name</span>
+            <input name="recipientName" required autocomplete="off" value={v.recipientName} maxlength="60" class={`${field} ${border('recipientName')}`} aria-invalid={errors.recipientName ? 'true' : undefined} />
+            {errors.recipientName && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.recipientName}</span>}
+          </label>
+          <label class="block">
+            <span class={label}>Their mobile number</span>
+            <input name="recipientPhone" type="tel" inputmode="tel" autocomplete="off" value={v.recipientPhone} placeholder="0772 123456" class={`${field} ${border('recipientPhone')}`} aria-invalid={errors.recipientPhone ? 'true' : undefined} />
+            {errors.recipientPhone && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.recipientPhone}</span>}
+          </label>
+        </div>
+        <div class="mt-4 space-y-2">
+          <label class="flex items-start gap-3 text-sm text-gray-900">
+            <input type="radio" name="sendTo" value="recipient" checked={v.sendTo !== 'buyer'} class="mt-1 h-4 w-4" />
+            <span><strong>Text the code to them</strong> (with your name and message)</span>
+          </label>
+          <label class="flex items-start gap-3 text-sm text-gray-900">
+            <input type="radio" name="sendTo" value="buyer" checked={v.sendTo === 'buyer'} class="mt-1 h-4 w-4" />
+            <span><strong>Text the code to me</strong>, I will give it to them myself (their number is then optional)</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="text-lg font-black text-gray-900">3. Your message and when it arrives</legend>
+        <div class="mt-3 grid gap-4 sm:grid-cols-2">
+          <label class="block">
+            <span class={label}>From (the name they will see)</span>
+            <input name="fromName" autocomplete="name" value={v.fromName} maxlength="40" placeholder="Your name" class={`${field} ${border('fromName')}`} />
+            {errors.fromName && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.fromName}</span>}
+          </label>
+          <label class="block sm:col-span-2">
+            <span class={label}>A short message (optional)</span>
+            <input name="message" value={v.message} maxlength="100" placeholder="Happy birthday! Get yourself something nice." class={`${field} ${border('message')}`} />
+            <span class="mt-1 block text-xs text-slate-500">Up to 100 characters. For their safety, no links or phone numbers.</span>
+            {errors.message && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.message}</span>}
+          </label>
+        </div>
+        <div class="mt-4 space-y-2">
+          <label class="flex items-start gap-3 text-sm text-gray-900">
+            <input type="radio" name="when" value="now" checked={v.when !== 'date'} class="mt-1 h-4 w-4" />
+            <span><strong>Send it as soon as I pay</strong></span>
+          </label>
+          <label class="flex items-start gap-3 text-sm text-gray-900">
+            <input type="radio" name="when" value="date" checked={v.when === 'date'} class="mt-1 h-4 w-4" />
+            <span><strong>Send it on a day I choose</strong> (texted that morning, from 9am)</span>
+          </label>
+          <label class="block pl-7">
+            <span class="sr-only">Day to send it</span>
+            <input type="date" name="deliverOn" value={v.deliverOn} min={today} max={plusDays(today, 90)} class={`${field} max-w-xs ${border('deliverOn')}`} />
+            {errors.deliverOn && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.deliverOn}</span>}
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="text-lg font-black text-gray-900">4. Your details</legend>
+        <p class="mt-1 text-sm text-slate-600">For your receipt, and so we can reach you if anything goes wrong.</p>
+        <div class="mt-3 grid gap-4 sm:grid-cols-2">
+          <label class="block">
+            <span class={label}>Your name</span>
+            <input name="buyerName" required autocomplete="name" value={v.buyerName} maxlength="60" class={`${field} ${border('buyerName')}`} />
+            {errors.buyerName && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.buyerName}</span>}
+          </label>
+          <label class="block">
+            <span class={label}>Your mobile number</span>
+            <input name="buyerPhone" type="tel" inputmode="tel" required autocomplete="tel" value={v.buyerPhone} placeholder="0772 123456" class={`${field} ${border('buyerPhone')}`} />
+            {errors.buyerPhone && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.buyerPhone}</span>}
+          </label>
+          <label class="block sm:col-span-2">
+            <span class={label}>Your email (optional, for an emailed receipt)</span>
+            <input name="buyerEmail" type="email" autocomplete="email" value={v.buyerEmail} class={`${field} ${border('buyerEmail')}`} />
+            {errors.buyerEmail && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.buyerEmail}</span>}
+          </label>
+        </div>
+      </fieldset>
+
+      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+        <p>You pay on Pesapal's secure page with Mobile Money or card. The card is made only once your payment is confirmed. Anyone with the code can spend it, like cash, so share it only with the person it is for.</p>
+      </div>
+
+      <button type="submit" class="inline-flex min-h-12 w-full items-center justify-center rounded-full bg-brand-primary px-6 text-sm font-black uppercase tracking-widest text-brand-black sm:w-auto">Continue to payment</button>
+    </form>
+
+    <p class="mt-10 text-sm text-slate-600">Already have a card? <a href="/gift-card" class="font-bold underline">Check its balance</a>.</p>
+  </div>
+</BaseLayout>
+
+<script>
+  // Typing an amount picks "Other" (without JavaScript the hint under the box says to choose it).
+  const other = document.querySelector<HTMLInputElement>('input[data-other-amount]');
+  document.querySelector<HTMLInputElement>('input[name="amountOther"]')?.addEventListener('input', () => { if (other) other.checked = true; });
+  // Choosing a date picks "on a day I choose".
+  const onDate = document.querySelector<HTMLInputElement>('input[name="when"][value="date"]');
+  document.querySelector<HTMLInputElement>('input[name="deliverOn"]')?.addEventListener('change', () => { if (onDate) onDate.checked = true; });
+</script>

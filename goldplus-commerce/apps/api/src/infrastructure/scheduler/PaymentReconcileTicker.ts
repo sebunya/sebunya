@@ -90,6 +90,14 @@ async function runOnce(): Promise<void> {
   } catch (error) {
     logger.error({ err: error }, '[payment-ops] abandonment failed');
   }
+  try {
+    // 0199: gift cards bought online: payments nobody reported, abandoned pages, and cards due this morning.
+    // Every write is a compare-and-set, so both replicas may run it.
+    const gifts = await registry.giftCardPurchaseUseCases.sweep(new Date());
+    if (gifts.polled > 0 || gifts.abandoned > 0 || gifts.issued > 0) logger.info({ ...gifts }, '[gift-card] sweep complete');
+  } catch (error) {
+    logger.error({ err: error }, '[gift-card] sweep failed');
+  }
   let opsLock: HeldSessionLock | null = null;
   try {
     opsLock = await tryAcquireSessionLock(PAYMENT_OPS_LOCK_ID);

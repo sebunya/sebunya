@@ -1,0 +1,104 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { apiBase } from '../../lib/api';
+import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
+import { formatUgx } from '../../lib/money';
+
+/**
+ * Where a gift card purchase stands (0199). Pesapal returns the buyer here (through the API, which settles first).
+ * Asking the API also asks Pesapal when it has not told us yet, so a refresh shows the truth. Never the code.
+ */
+type Status = {
+  reference: string; status: 'awaiting_payment' | 'paid' | 'issued' | 'failed' | 'review' | 'refunded'; amountUgx: number;
+  recipientFirstName: string; recipientPhoneMasked: string; buyerPhoneMasked: string; sendTo: 'recipient' | 'buyer'; deliverOn: string | null;
+};
+const ref = String(Astro.url.searchParams.get('ref') ?? '').trim().toUpperCase().slice(0, 20);
+const cancelled = Astro.url.searchParams.get('cancelled') === '1';
+let s: Status | null = null;
+let unreachable = false;
+if (/^GC-[0-9A-Z]{10}$/.test(ref)) {
+  try {
+    const res = await fetch(`${apiBase}/commerce/gift-cards/purchase/${encodeURIComponent(ref)}`, {
+      headers: apiHeaders({ Accept: 'application/json' }, readClientAddress(Astro)), signal: AbortSignal.timeout(15_000),
+    });
+    const json: any = await res.json().catch(() => null);
+    if (res.ok && json?.success) s = json.data as Status;
+    else if (res.status !== 404) unreachable = true;
+  } catch {
+    unreachable = true;
+  }
+}
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+const day = (iso: string) => new Date(`${iso}T09:00:00+03:00`).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', weekday: 'long', day: 'numeric', month: 'long' });
+const waiting = s?.status === 'awaiting_payment' && !cancelled;
+---
+<BaseLayout title="Your gift card | GoldPlus" description="Where your GoldPlus gift card purchase stands." robotsMeta="noindex,nofollow">
+  {waiting && <meta slot="head" http-equiv="refresh" content="10" />}
+  <div class="mx-auto max-w-xl px-4 py-10 sm:py-14" data-gift-card-bought data-status={s?.status ?? (unreachable ? 'unreachable' : 'unknown')}>
+    {!s && unreachable && (
+      <>
+        <h1 class="text-3xl font-black tracking-tight text-gray-900">We are checking your payment</h1>
+        <p class="mt-3 text-base text-slate-600">We could not look it up just now. Please do not pay again. Refresh this page in a minute; your reference is {ref}.</p>
+      </>
+    )}
+    {!s && !unreachable && (
+      <>
+        <h1 class="text-3xl font-black tracking-tight text-gray-900">Gift card not found</h1>
+        <p class="mt-3 text-base text-slate-600">Check the link, or <a class="font-bold underline" href="/gift-card/buy">buy a gift card</a>.</p>
+      </>
+    )}
+    {s && s.status === 'awaiting_payment' && cancelled && (
+      <>
+        <h1 class="text-3xl font-black tracking-tight text-gray-900">Payment not finished</h1>
+        <p class="mt-3 text-base text-slate-600">Nothing was charged and no card was made. You can <a class="font-bold underline" href={`/gift-card/buy?amount=${s.amountUgx}`}>start again</a> whenever you are ready.</p>
+      </>
+    )}
+    {waiting && s && (
+      <>
+        <h1 class="text-3xl font-black tracking-tight text-gray-900">Waiting for your payment to clear</h1>
+        <p class="mt-3 text-base text-slate-600">If you approved {formatUgx(s.amountUgx)} on your phone, it usually clears within a minute or two. This page checks again by itself. Please do not pay again.</p>
+        <p class="mt-3 text-sm text-slate-500">Reference {s.reference}</p>
+      </>
+    )}
+    {s && (s.status === 'paid' || s.status === 'issued') && (
+      <>
+        <h1 class="text-3xl font-black tracking-tight text-gray-900">Thank you, it is paid</h1>
+        <div class="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5" role="status">
+          <p class="text-sm font-bold text-gray-900">Gift card for {s.recipientFirstName}</p>
+          <p class="mt-1 text-2xl font-black tabular-nums text-gray-900">{formatUgx(s.amountUgx)}</p>
+          <p class="mt-2 text-sm text-slate-700">
+            {s.sendTo === 'buyer'
+              ? (s.status === 'issued' ? `The code has been texted to you on ${s.recipientPhoneMasked}. Give it to ${s.recipientFirstName} whenever you like.` : `The code is on its way to you on ${s.recipientPhoneMasked}.`)
+              : s.status === 'issued'
+                ? `The code has been texted to ${s.recipientFirstName} on ${s.recipientPhoneMasked}.`
+                : s.deliverOn
+                  ? `The code will be texted to ${s.recipientFirstName} on ${s.recipientPhoneMasked} on ${day(s.deliverOn)}, from 9am.`
+                  : `The code is on its way to ${s.recipientFirstName} on ${s.recipientPhoneMasked}.`}
+          </p>
+          <p class="mt-2 text-sm text-slate-700">{s.sendTo === 'recipient' ? `Your receipt is texted to ${s.buyerPhoneMasked}. ` : ''}Reference {s.reference}.</p>
+        </div>
+        <p class="mt-6 text-sm text-slate-600">If the text does not arrive within a few minutes, call us with your reference and we will help.</p>
+        <a href="/gift-card/buy" class="mt-6 inline-flex min-h-12 items-center rounded-full bg-brand-primary px-6 text-xs font-black uppercase tracking-widest text-brand-black">Send another</a>
+      </>
+    )}
+    {s && s.status === 'failed' && (
+      <>
+        <h1 class="text-3xl font-black tracking-tight text-gray-900">The payment did not go through</h1>
+        <p class="mt-3 text-base text-slate-600">No card was made. If money left your phone or card, it comes back; tell us if it does not (reference {s.reference}).</p>
+        <a href={`/gift-card/buy?amount=${s.amountUgx}`} class="mt-6 inline-flex min-h-12 items-center rounded-full bg-brand-primary px-6 text-xs font-black uppercase tracking-widest text-brand-black">Try again</a>
+      </>
+    )}
+    {s && s.status === 'review' && (
+      <>
+        <h1 class="text-3xl font-black tracking-tight text-gray-900">We are checking your payment</h1>
+        <p class="mt-3 text-base text-slate-600">Something about this payment needs a person to look at it before the card is made. We will call you on {s.buyerPhoneMasked}. Please do not pay again. Reference {s.reference}.</p>
+      </>
+    )}
+    {s && s.status === 'refunded' && (
+      <>
+        <h1 class="text-3xl font-black tracking-tight text-gray-900">Refunded</h1>
+        <p class="mt-3 text-base text-slate-600">The money for this gift card went back to the account you paid from. Reference {s.reference}.</p>
+      </>
+    )}
+  </div>
+</BaseLayout>

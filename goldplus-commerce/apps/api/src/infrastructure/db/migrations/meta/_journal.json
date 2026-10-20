@@ -1387,6 +1387,13 @@
       "when": 1790140000075,
       "tag": "0198_credit_ledger_append_only",
       "breakpoints": true
+    },
+    {
+      "idx": 198,
+      "version": "5",
+      "when": 1790140000076,
+      "tag": "0199_gift_card_purchases",
+      "breakpoints": true
     }
   ]
 }

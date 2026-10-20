@@ -79,6 +79,10 @@ import { DrizzleOrderDeliveredAt } from './commerce/DrizzleOrderDeliveredAt';
 import { CreditExpiryRemindersUseCase, IssueCreditUseCase, ManageCreditUseCases, NotifyCardUsedUseCase } from '../application/use-cases/credit/CreditUseCases';
 import { creditCodeHash, creditRandomIndexes } from './credit/CreditCodeCrypto';
 import { DrizzleCreditRepository } from './credit/DrizzleCreditRepository';
+import { DrizzleGiftCardPurchaseRepository } from './credit/DrizzleGiftCardPurchaseRepository';
+import { GiftCardPurchaseUseCases } from '../application/use-cases/credit/GiftCardPurchaseUseCases';
+import { storefrontOrigin } from './config/storefrontOrigin';
+import { normalizePhone } from '../application/services/validationHelpers';
 import { SettleByStoreCreditUseCase } from '../application/use-cases/payments/SettleByStoreCreditUseCase';
 import { ProductBundlesUseCase } from '../application/use-cases/pricing/ProductBundlesUseCase';
 import { DrizzleReviewReminderCandidates } from './reviews/DrizzleReviewReminderCandidates';
@@ -2807,6 +2811,19 @@ export class Registry {
   };
   public readonly notifyCardUsedUseCase = new NotifyCardUsedUseCase(this.creditRepo, this.creditNoticeSender);
   public readonly creditExpiryRemindersUseCase = new CreditExpiryRemindersUseCase(this.creditRepo, this.creditNoticeSender);
+  /** 0199: customers buy a gift card online for someone else; paid through Pesapal under its own GC- reference. */
+  public readonly giftCardPurchaseUseCases = new GiftCardPurchaseUseCases(
+    new DrizzleGiftCardPurchaseRepository(),
+    this.creditRepo,
+    this.pesapalClient,
+    { hash: creditCodeHash, randomIndexes: creditRandomIndexes, referenceIndexes: creditRandomIndexes, normalizePhone },
+    () => ({
+      ipnId: process.env.PESAPAL_IPN_ID || null,
+      callbackUrl: providerCallbackUrl(),
+      resultPageUrl: `${storefrontOrigin() ?? 'http://localhost:4321'}/gift-card/bought`,
+    }),
+    (event, detail) => logger.info({ event, ...detail }, `[gift-card] ${event}`),
+  );
   /** 0196: an order paid entirely by store credit / a gift card, settled through the same doors as Pesapal. */
   public readonly settleByStoreCreditUseCase = new SettleByStoreCreditUseCase(this.orderRepo, this.orderTransitionService, this.reconcileOrderPaymentUseCase, this.settlePaymentUseCase);
 

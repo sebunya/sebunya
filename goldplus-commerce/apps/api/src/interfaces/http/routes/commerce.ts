@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { isGiftCardPurchaseReference } from '../../../domain/credit/GiftCardPurchase';
 import { z } from 'zod';
 import { Registry } from '../../../infrastructure/Registry';
 import { normalizeCreditCode } from '../../../domain/credit/CreditInstrument';
@@ -337,6 +338,33 @@ routes.post('/credit/check', async (c) => {
   const result = await registry.manageCreditUseCases.check(body?.code);
   if (!result.ok) return c.json({ success: false, error: { code: 'STORE_CREDIT_UNAVAILABLE', message: 'That code is not right. Check each character, or call us.' } }, 404);
   return c.json({ success: true, data: result });
+});
+
+/**
+ * 0199: buy a gift card for someone else. Opens a Pesapal payment under the purchase's own GC- reference and hands
+ * back its page; the card is issued only once Pesapal confirms the money. A signed-in buyer sees it in their account.
+ */
+routes.post('/gift-cards/purchase', async (c) => {
+  await applyOptionalCustomerSession(c);
+  const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+  c.header('Cache-Control', 'no-store');
+  if (!body) return c.json({ success: false, error: { code: 'INVALID', message: 'Fill in the form and try again.' } }, 400);
+  const result = await registry.giftCardPurchaseUseCases.start({
+    amountUgx: body.amountUgx, recipientName: body.recipientName, recipientPhone: body.recipientPhone, sendTo: body.sendTo,
+    message: body.message, fromName: body.fromName, buyerName: body.buyerName, buyerPhone: body.buyerPhone, buyerEmail: body.buyerEmail,
+    deliverOn: body.deliverOn, buyerUserId: ((c as Context).get('userId') as string | undefined) ?? null,
+  });
+  if (result.ok) return c.json({ success: true, data: { reference: result.reference, redirectUrl: result.redirectUrl } });
+  if (result.code === 'INVALID') return c.json({ success: false, error: { code: 'INVALID', message: 'Check the highlighted fields.', fields: result.errors } }, 400);
+  return c.json({ success: false, error: { code: result.code, message: result.message } }, result.code === 'LIMIT' ? 429 : 503);
+});
+
+/** 0199: where a gift card purchase stands (the reference is unguessable; nothing in full is shown, never the code). */
+routes.get('/gift-cards/purchase/:reference', async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const data = await registry.giftCardPurchaseUseCases.publicStatus(c.req.param('reference'));
+  if (!data) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'We could not find that gift card purchase.' } }, 404);
+  return c.json({ success: true, data });
 });
 
 /** Bundles that include a product (gap analysis #9). Public, like the PDP itself; evaluator figures only. */
@@ -1377,6 +1405,11 @@ routes.get('/payments/pesapal/callback', async (c) => {
   const frontendCallbackUrl = process.env.PESAPAL_CALLBACK_URL || 'http://localhost:3000/checkout/pesapal/callback';
   const traceId = c.req.header('x-request-id') ?? crypto.randomUUID();
 
+  // 0199: a gift card purchase (GC- reference) is not an order: settled by its own use case, shown on its own page.
+  if (isGiftCardPurchaseReference(reference)) {
+    await registry.giftCardPurchaseUseCases.settle({ trackingId, reference, source: 'callback' }).catch((err) => console.error('[API_ERROR] gift card settlement failed:', err));
+    return c.redirect(`${new URL(frontendCallbackUrl).origin}/gift-card/bought?ref=${encodeURIComponent(reference)}`);
+  }
   const { kind, code } = await describeSettlement(trackingId, reference, traceId);
   if (!trackingId || !reference) return c.redirect(`${frontendCallbackUrl}?status=unknown_attempt`);
   const ids = `&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}`;
@@ -1410,6 +1443,11 @@ const handleIpn = async (c: any) => {
   }
 
   try {
+    // 0199: a gift card purchase settles through its own use case; the acknowledgement is the same.
+    if (isGiftCardPurchaseReference(reference)) {
+      await registry.giftCardPurchaseUseCases.settle({ trackingId, reference, source: 'ipn' });
+      return c.json({ orderNotificationType: notificationType || 'IPNCHANGE', orderTrackingId: trackingId, orderMerchantReference: reference, status: 200 });
+    }
     // Same single settlement path as the browser callback. An IPN for an
     // unknown or unverifiable payment progresses nothing and is still
     // acknowledged 200, so the provider stops retrying a question we have

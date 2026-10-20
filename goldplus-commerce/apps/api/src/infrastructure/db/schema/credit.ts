@@ -1,4 +1,4 @@
-import { bigint, check, index, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { bigint, check, date, index, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -48,4 +48,41 @@ export const creditLedger = pgTable('credit_ledger', {
   orderIdx: index('credit_ledger_order_idx').on(t.orderId),
   typeChk: check('credit_ledger_type_chk', sql`${t.type} in ('ISSUE','HOLD','RETURN','ADJUST','VOID')`),
   holdChk: check('credit_ledger_hold_chk', sql`(${t.type} = 'HOLD') = (${t.holdState} is not null)`),
+}));
+
+/**
+ * 0199: a gift card a customer buys online for someone else. Paid through Pesapal under its own reference (GC-…),
+ * never as an order; once paid, the card is issued and its code texted in one transaction (on deliver_on, when set).
+ */
+export const giftCardPurchases = pgTable('gift_card_purchases', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  reference: varchar('reference', { length: 20 }).notNull(),
+  amountUgx: bigint('amount_ugx', { mode: 'number' }).notNull(),
+  buyerName: varchar('buyer_name', { length: 120 }).notNull(),
+  buyerPhone: varchar('buyer_phone', { length: 20 }).notNull(),
+  buyerEmail: varchar('buyer_email', { length: 255 }),
+  buyerUserId: uuid('buyer_user_id'),
+  fromName: varchar('from_name', { length: 60 }).notNull(),
+  recipientName: varchar('recipient_name', { length: 120 }).notNull(),
+  recipientPhone: varchar('recipient_phone', { length: 20 }),
+  sendTo: varchar('send_to', { length: 10 }).notNull(), // recipient | buyer
+  message: varchar('message', { length: 160 }),
+  deliverOn: date('deliver_on'),
+  status: varchar('status', { length: 20 }).default('awaiting_payment').notNull(),
+  orderTrackingId: varchar('order_tracking_id', { length: 255 }),
+  redirectUrl: text('redirect_url'),
+  providerStatus: text('provider_status'),
+  confirmationCode: varchar('confirmation_code', { length: 120 }),
+  paymentMethod: varchar('payment_method', { length: 60 }),
+  instrumentId: uuid('instrument_id').references(() => creditInstruments.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+  issuedAt: timestamp('issued_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  referenceUq: uniqueIndex('gift_card_purchases_reference_uq').on(t.reference),
+  statusIdx: index('gift_card_purchases_status_idx').on(t.status, t.createdAt),
+  buyerPhoneIdx: index('gift_card_purchases_buyer_phone_idx').on(t.buyerPhone, t.createdAt),
+  buyerUserIdx: index('gift_card_purchases_buyer_user_idx').on(t.buyerUserId),
+  sendToChk: check('gift_card_purchases_send_to_chk', sql`${t.sendTo} in ('recipient','buyer')`),
 }));

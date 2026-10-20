@@ -25,6 +25,8 @@ export const STATIC_SITEMAP_PATHS: readonly string[] = [
   '/support/issue',
   '/support/fake',
   '/loyalty',
+  // 0199: buy a gift card for someone (the balance check, /gift-card, stays noindex).
+  '/gift-card/buy',
   '/dealers/apply',
   '/quote-request',
   '/bulk',
