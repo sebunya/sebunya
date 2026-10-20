@@ -123,6 +123,21 @@ routes.get('/me', async (c) => {
   return c.json(res);
 });
 
+// ── Gift cards and store credit (0196) ───────────────────────────────────
+// Cards linked to the account or texted to its verified phone. Never the code (only a hash is kept), and never the
+// staff reason, the issuer or the approver.
+routes.get('/credit', async (c) => {
+  const cards = await Registry.getInstance().manageCreditUseCases.forCustomer(c.get('userId') as string);
+  const now = Date.now();
+  const data = cards.map((i) => ({
+    kind: i.kind, last4: i.last4, balanceUgx: i.balanceUgx, heldUgx: i.heldUgx ?? 0, initialValueUgx: i.initialValueUgx,
+    status: i.status === 'active' && i.expiresAt && i.expiresAt.getTime() <= now ? 'expired' : i.status,
+    expiresAt: i.expiresAt ? i.expiresAt.toISOString() : null, issuedAt: i.createdAt.toISOString(),
+  }));
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
 // ── Save for later (gap analysis #6) ─────────────────────────────────────
 routes.get('/saved', async (c) => {
   const data = await Registry.getInstance().savedProductsUseCases.list(c.get('userId') as string);

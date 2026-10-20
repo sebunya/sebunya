@@ -81,7 +81,41 @@ export class DrizzleCreditRepository implements ICreditRepository {
   }
 
   async forCustomer(userId: string): Promise<CreditInstrumentView[]> {
-    return rowsOf(await db.execute(sql`select i.*, ${BALANCE} as balance from credit_instruments i where i.customer_user_id = ${userId} and i.status <> 'void' order by i.created_at desc limit 50`)).map(view);
+    // Linked to the account, or texted to the account's VERIFIED phone (last nine digits): a phone typed but never
+    // proven cannot claim someone else's card.
+    return rowsOf(await db.execute(sql`
+      select i.*, ${BALANCE} as balance, ${HELD} as held from credit_instruments i
+       where i.status <> 'void'
+         and (i.customer_user_id = ${userId}
+              or exists (select 1 from users u where u.id = ${userId} and u.phone_verified_at is not null and u.phone is not null
+                           and length(regexp_replace(u.phone, '\\D', '', 'g')) >= 9
+                           and right(regexp_replace(coalesce(i.recipient_phone, ''), '\\D', '', 'g'), 9) = right(regexp_replace(u.phone, '\\D', '', 'g'), 9)))
+       order by i.created_at desc limit 50`)).map(view);
+  }
+
+  async orderForCredit(orderNumber: string): Promise<{ id: string; userId: string | null; name: string | null; phone: string | null } | null> {
+    const [o] = rowsOf(await db.execute(sql`select id, user_id, customer_name, customer_phone from orders where order_number = ${orderNumber} limit 1`));
+    return o ? { id: String(o.id), userId: o.user_id ? String(o.user_id) : null, name: o.customer_name ?? null, phone: o.customer_phone || null } : null;
+  }
+
+  async cardSpentOnOrder(orderId: string) {
+    const [r] = rowsOf(await db.execute(sql`
+      select i.id, i.kind, i.code_last4, i.recipient_phone, ${BALANCE} as balance, -l.amount_ugx as spent, o.order_number, o.customer_phone
+        from credit_ledger l join credit_instruments i on i.id = l.instrument_id join orders o on o.id = l.order_id
+       where l.order_id = ${orderId} and l.type = 'HOLD' and l.hold_state = 'captured' limit 1`));
+    return r ? { instrumentId: String(r.id), kind: r.kind as CreditKind, last4: String(r.code_last4), recipientPhone: r.recipient_phone ?? null,
+      balanceUgx: Math.max(0, Number(r.balance)), spentUgx: Number(r.spent), orderNumber: String(r.order_number), orderPhone: r.customer_phone ?? null } : null;
+  }
+
+  async expiringSoon(now: Date, within: Date, limit: number) {
+    return rowsOf(await db.execute(sql`
+      select i.id, i.kind, i.code_last4, i.recipient_phone, i.expires_at, ${BALANCE} as balance from credit_instruments i
+       where i.status = 'active' and i.recipient_phone is not null and i.expires_at > ${now} and i.expires_at <= ${within}
+         and ${BALANCE} > 0
+       order by i.expires_at limit ${limit}`)).map((r) => ({
+      instrumentId: String(r.id), kind: r.kind as CreditKind, last4: String(r.code_last4), phone: String(r.recipient_phone),
+      expiresAt: new Date(r.expires_at), balanceUgx: Number(r.balance),
+    }));
   }
 
   async ledger(instrumentId: string): Promise<CreditLedgerRow[]> {

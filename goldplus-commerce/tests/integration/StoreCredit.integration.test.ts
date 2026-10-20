@@ -14,6 +14,7 @@ describeIf('store credit and gift cards (real PostgreSQL)', () => {
   const staffA = '00000000-0000-4000-8000-0000000000a1';
   const staffB = '00000000-0000-4000-8000-0000000000b2';
   const orderIds: string[] = [];
+  const userIds: string[] = [];
   const instrumentIds: string[] = [];
   let n = 0;
 
@@ -54,6 +55,7 @@ describeIf('store credit and gift cards (real PostgreSQL)', () => {
       await t`delete from credit_instruments where id = any(${instrumentIds})`;
     });
     await raw`delete from orders where id = any(${orderIds})`;
+    if (userIds.length) await raw`delete from users where id = any(${userIds})`;
     await raw.end();
   });
 
@@ -199,5 +201,46 @@ describeIf('store credit and gift cards (real PostgreSQL)', () => {
     expect(rows.some((r: any) => r.type === 'ISSUE' && r.amountUgx === 30_000 && r.kind === 'gift_card')).toBe(true);
     expect(rows.some((r: any) => r.type === 'HOLD' && r.holdState === 'captured' && r.amountUgx === -10_000)).toBe(true);
     void card;
+  });
+
+  it('a customer sees cards linked to them or texted to their VERIFIED phone, never by an unverified one', async () => {
+    const suffix = String(Date.now()).slice(-7);
+    const verifiedPhone = `+25677${suffix}`;
+    const [v] = await raw`insert into users (email, phone, password_hash, phone_verified_at) values (${`v${tag}@e.com`}, ${verifiedPhone}, 'x', now()) returning id`;
+    const [u] = await raw`insert into users (email, phone, password_hash) values (${`u${tag}@e.com`}, ${`+25678${suffix}`}, 'x') returning id`;
+    userIds.push(v.id, u.id);
+    const byPhone = await repo.issue({ kind: 'gift_card', codeHash: `hp-${tag}`, last4: 'PH01', valueUgx: 20_000, reason: 'Gift', status: 'active',
+      recipientName: 'A', recipientPhone: `0${verifiedPhone.slice(4, 7)} ${verifiedPhone.slice(7, 10)}-${verifiedPhone.slice(10)}`, customerUserId: null, sourceOrderId: null, issuedBy: staffA, expiresAt: null });
+    const linked = await repo.issue({ kind: 'store_credit', codeHash: `hl-${tag}`, last4: 'LK01', valueUgx: 30_000, reason: 'Refund', status: 'active',
+      recipientName: null, recipientPhone: null, customerUserId: u.id, sourceOrderId: null, issuedBy: staffA, expiresAt: null });
+    const unverifiedTarget = await repo.issue({ kind: 'gift_card', codeHash: `hu-${tag}`, last4: 'UV01', valueUgx: 10_000, reason: 'Gift', status: 'active',
+      recipientName: null, recipientPhone: `+25678${suffix}`, customerUserId: null, sourceOrderId: null, issuedBy: staffA, expiresAt: null });
+    instrumentIds.push(byPhone.id, linked.id, unverifiedTarget.id);
+    expect((await repo.forCustomer(v.id)).map((c: any) => c.last4)).toEqual(['PH01']);
+    expect((await repo.forCustomer(u.id)).map((c: any) => c.last4)).toEqual(['LK01']); // the unverified phone claims nothing
+  });
+
+  it('store credit for an order links the order and its account; the card-used lookup and the expiry window work', async () => {
+    const [cu] = await raw`insert into users (email, password_hash) values (${`o${tag}@e.com`}, 'x') returning id`;
+    userIds.push(cu.id);
+    const o = await order(40_000);
+    await raw`update orders set user_id = ${cu.id} where id = ${o}`;
+    const ref = await orderNumberOf(o);
+    expect(await repo.orderForCredit(ref)).toMatchObject({ id: o, userId: cu.id, phone: '+256700000001' });
+    expect(await repo.orderForCredit('GP-NOPE')).toBeNull();
+
+    const card = await issue(100_000);
+    await raw`update credit_instruments set recipient_phone = '+256772999111' where id = ${card.id}`;
+    await holdOn(card.hash, o, 40_000);
+    await repo.captureForOrder(o, new Date());
+    expect(await repo.cardSpentOnOrder(o)).toMatchObject({ instrumentId: card.id, spentUgx: 40_000, balanceUgx: 60_000, orderNumber: ref, recipientPhone: '+256772999111', orderPhone: '+256700000001' });
+
+    const soon = await issue(5_000);
+    await raw`update credit_instruments set recipient_phone = '+256772999222', expires_at = now() + interval '3 days' where id = ${soon.id}`;
+    const later = await issue(5_000);
+    await raw`update credit_instruments set recipient_phone = '+256772999333', expires_at = now() + interval '30 days' where id = ${later.id}`;
+    const due = await repo.expiringSoon(new Date(), new Date(Date.now() + 7 * 86_400_000), 500);
+    expect(due.some((d: any) => d.instrumentId === soon.id && d.balanceUgx === 5_000)).toBe(true);
+    expect(due.some((d: any) => d.instrumentId === later.id)).toBe(false);
   });
 });

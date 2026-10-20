@@ -38,6 +38,7 @@ if (Astro.request.method === 'POST') {
         kind: form.get('kind'), amountUgx: Number(form.get('amountUgx')), reason: String(form.get('reason') ?? ''),
         recipientName: String(form.get('recipientName') ?? ''), recipientPhone: String(form.get('recipientPhone') ?? ''),
         expiresAt: String(form.get('expiresAt') ?? '') || null,
+        orderNumber: String(form.get('orderNumber') ?? '').trim() || null,
       }) });
       const json: any = await res.json().catch(() => null);
       if (res.ok && json?.success) { issued = json.data; notice = { kind: 'success', text: json.data.status === 'pending_approval' ? 'Issued. Above UGX 500,000 it waits for a second person to approve it before it can be spent.' : json.data.texted ? 'Issued. The code is queued to text to the recipient (it usually arrives within a minute; check with them).' : 'Issued.' }; }
@@ -125,10 +126,11 @@ const prefillReturn = (Astro.url.searchParams.get('return') ?? '').toUpperCase()
       <label class="text-xs font-bold">Amount (UGX)<input name="amountUgx" type="number" min="1000" max="5000000" step="1" required class="mt-1 w-full border rounded-xl p-2" /></label>
       <label class="text-xs font-bold">Expires (optional)<input name="expiresAt" type="date" class="mt-1 w-full border rounded-xl p-2" /></label>
       <label class="text-xs font-bold md:col-span-3">Why (kept on the card and in the audit)<input name="reason" required minlength="5" maxlength="500" placeholder="e.g. Sold at the counter, paid MoMo ref 123 / Refund for GP-202610-…" class="mt-1 w-full border rounded-xl p-2" /></label>
+      <label class="text-xs font-bold">For order (optional)<input name="orderNumber" maxlength="40" placeholder="GP-202610-… (store credit as a refund)" class="mt-1 w-full border rounded-xl p-2 uppercase" /></label>
       <label class="text-xs font-bold">Recipient name (optional)<input name="recipientName" maxlength="120" class="mt-1 w-full border rounded-xl p-2" /></label>
       <label class="text-xs font-bold">Recipient phone (texted the code)<input name="recipientPhone" inputmode="tel" class="mt-1 w-full border rounded-xl p-2" /></label>
       <div class="flex items-end"><button class="min-h-11 rounded-full bg-brand-charcoal px-5 text-xs font-black uppercase tracking-widest text-white">Issue</button></div>
-      <p class="md:col-span-3 text-xs text-gray-500">Above UGX 500,000 a different person must approve before it can be spent; then hand the code over yourself (it is texted only when spendable at issue).</p>
+      <p class="md:col-span-3 text-xs text-gray-500">With an order number, the credit is linked to that order and the customer's account (they see it under Gift cards), and their name and phone fill in by themselves. Above UGX 500,000 a different person must approve before it can be spent; then hand the code over yourself (it is texted only when spendable at issue).</p>
     </form>
 
     <form method="POST" class="rounded-2xl border bg-white p-5 flex flex-wrap items-end gap-3" data-credit-return>

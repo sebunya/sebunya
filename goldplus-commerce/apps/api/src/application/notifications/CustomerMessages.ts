@@ -28,6 +28,8 @@ export type CustomerTemplate =
   | 'ORDER_REVIEW_REMINDER'
   | 'ORDER_PAYMENT_REMINDER'
   | 'CREDIT_ISSUED'
+  | 'CREDIT_USED'
+  | 'CREDIT_EXPIRING'
   | 'ORDER_CANCELLED_BY_SHOP'
   | 'PHONE_VERIFICATION'
   | 'PASSWORD_RESET'
@@ -51,6 +53,10 @@ export interface CustomerMessageData {
   paymentStatus?: string | null;
   /** 0196: what a gift card / store credit paid towards the total; the rest came by Mobile Money or card. */
   storeCreditAppliedUgx?: number | null;
+  /** 0196 CREDIT_USED / CREDIT_EXPIRING: the card's last four, what was spent, what is left and when it ends. Never the code. */
+  creditLast4?: string;
+  spentUgx?: number;
+  balanceUgx?: number;
   /** 0196 CREDIT_ISSUED. */
   creditKind?: 'gift_card' | 'store_credit';
   creditCode?: string;
@@ -241,6 +247,11 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
     case 'ORDER_PAYMENT_REMINDER':
       // Sent once, about an hour after an online order was placed and never paid, never while a payment is clearing.
       return `${SHOP_NAME}: your order${ref} for ${formatUgx(d.totalUgx)} is saved but not paid yet. Pay with Mobile Money or card here: ${track} If you already paid, do not pay again; call ${phone}. We will not remind you again.`;
+    case 'CREDIT_USED':
+      // To the card's holder when someone else's order spent it (a gift): what went, and what is left.
+      return `${SHOP_NAME}: ${formatUgx(d.spentUgx)} from your ${d.creditKind === 'gift_card' ? 'gift card' : 'store credit'} ending ${d.creditLast4} paid for order ${d.orderNumber}. Left on it: ${formatUgx(d.balanceUgx)}. Not you? Call ${phone}.`;
+    case 'CREDIT_EXPIRING':
+      return `${SHOP_NAME}: your ${d.creditKind === 'gift_card' ? 'gift card' : 'store credit'} ending ${d.creditLast4} has ${formatUgx(d.balanceUgx)} left and ends on ${d.expiresAt}. Use it at checkout on shopgoldplus.com or in the shop. Questions? Call ${phone}.`;
     case 'CREDIT_ISSUED':
       // 0196: the code is the money. Said plainly, once, to the number staff typed at issue.
       return `${SHOP_NAME}: you have a ${d.creditKind === 'gift_card' ? 'gift card' : 'store credit'} of ${formatUgx(d.valueUgx)}. Code: ${d.creditCode}. Use it at checkout on shopgoldplus.com or in the shop. Anyone with this code can spend it, so keep it safe. Questions? Call ${phone}.`;
@@ -550,6 +561,10 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
 
 /** Templates that are transactional by nature: about the customer's own order, account or request. */
 export const CUSTOMER_TRANSACTIONAL_TEMPLATES: readonly string[] = Object.freeze([
+  // 0196: about money the customer holds with us (never marketing): its code once, its use, its expiry.
+  'CREDIT_ISSUED',
+  'CREDIT_USED',
+  'CREDIT_EXPIRING',
   'ORDER_RECEIVED_UNPAID',
   'ORDER_PAYMENT_PENDING',
   'ORDER_PAYMENT_SUCCESS',

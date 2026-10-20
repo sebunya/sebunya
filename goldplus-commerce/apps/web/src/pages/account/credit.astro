@@ -1,0 +1,67 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AccountNav from '../../components/AccountNav.astro';
+import { apiBase } from '../../lib/api';
+import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
+import { formatUgx } from '../../lib/money';
+
+/**
+ * The customer's gift cards and store credit (0196): cards linked to the account (store credit for an order) or
+ * texted to its verified phone. Never the code: only a hash is kept, so the code lives in the SMS or on the card.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/login?returnTo=/account/credit', 303);
+
+type Card = { kind: string; last4: string; balanceUgx: number; heldUgx: number; initialValueUgx: number; status: string; expiresAt: string | null; issuedAt: string };
+let cards: Card[] = [];
+let problem = '';
+try {
+  const res = await fetch(`${apiBase}/account/credit`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(6000) });
+  if (res.status === 401) {
+    Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' });
+    return Astro.redirect('/login?returnTo=/account/credit', 303);
+  }
+  const json: any = res.ok ? await res.json().catch(() => null) : null;
+  if (json?.success && Array.isArray(json.data)) cards = json.data;
+  else problem = 'We could not load your gift cards right now.';
+} catch {
+  problem = 'We could not load your gift cards right now.';
+}
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', day: 'numeric', month: 'long', year: 'numeric' });
+const STATUS: Record<string, string> = { active: 'Ready to spend', pending_approval: 'Being approved by GoldPlus', expired: 'Expired' };
+const total = cards.filter((c) => c.status === 'active').reduce((s, c) => s + c.balanceUgx, 0);
+---
+<BaseLayout title="Gift cards | GoldPlus" description="Your GoldPlus gift cards and store credit." robotsMeta="noindex,nofollow">
+  <div class="container mx-auto max-w-4xl px-4 py-10" data-account-credit>
+    <h1 class="text-3xl font-black tracking-tight text-brand-charcoal mb-6">Gift cards and store credit</h1>
+    <AccountNav active="credit" />
+    {problem && <p role="alert" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{problem}</p>}
+    {!problem && cards.length === 0 && (
+      <div class="rounded-2xl border border-slate-200 bg-white p-6">
+        <p class="text-sm text-slate-700">No gift cards or store credit on this account. A card texted to your phone shows here once your phone number is verified. You can check any card's balance on the <a class="font-bold underline" href="/gift-card">Gift card balance</a> page.</p>
+      </div>
+    )}
+    {cards.length > 0 && (
+      <>
+        <p class="mb-4 text-sm text-slate-700">Ready to spend: <strong class="text-brand-charcoal">{formatUgx(total)}</strong>. Type a card's code in the "Gift card or store credit" box at checkout; for your safety the code is only in the message we sent, never shown here.</p>
+        <ul class="space-y-3">
+          {cards.map((c) => (
+            <li class="rounded-2xl border border-slate-200 bg-white p-5">
+              <div class="flex flex-wrap items-baseline justify-between gap-2">
+                <p class="font-black text-brand-charcoal">{c.kind === 'gift_card' ? 'Gift card' : 'Store credit'} ending {c.last4}</p>
+                <p class="text-lg font-black tabular-nums">{formatUgx(c.status === 'expired' ? 0 : c.balanceUgx)}</p>
+              </div>
+              <p class="mt-1 text-sm text-slate-600">
+                {STATUS[c.status] ?? c.status} · started at {formatUgx(c.initialValueUgx)} on {date(c.issuedAt)}{c.expiresAt ? ` · ${c.status === 'expired' ? 'ended' : 'ends'} ${date(c.expiresAt)}` : ''}
+              </p>
+              {c.heldUgx > 0 && (
+                <p class="mt-2 text-sm text-amber-800">{formatUgx(c.heldUgx)} is reserved for an order that has not been paid yet. Pay for that order, or it comes back here if the order is cancelled.</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      </>
+    )}
+  </div>
+</BaseLayout>

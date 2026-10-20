@@ -22,6 +22,7 @@ import { startLighthouseWatchTicker, stopLighthouseWatchTicker } from '../../inf
 import { startProductCostTicker, stopProductCostTicker } from '../../infrastructure/scheduler/ProductCostTicker';
 import { startReviewReminderTicker, stopReviewReminderTicker } from '../../infrastructure/scheduler/ReviewReminderTicker';
 import { startUnpaidOrderReminderTicker, stopUnpaidOrderReminderTicker } from '../../infrastructure/scheduler/UnpaidOrderReminderTicker';
+import { startCreditExpiryReminderTicker, stopCreditExpiryReminderTicker } from '../../infrastructure/scheduler/CreditExpiryReminderTicker';
 import { startAdvertisingTicker, stopAdvertisingTicker } from '../../infrastructure/scheduler/AdvertisingTicker';
 import { startFirstPartyNightlyTicker, stopFirstPartyNightlyTicker } from '../../infrastructure/scheduler/FirstPartyNightlyTicker';
 import { startGoldieCareTicker, stopGoldieCareTicker } from '../../infrastructure/scheduler/GoldieCareTicker';
@@ -63,6 +64,7 @@ const server = serve({
     // The one review reminder per delivered or collected order.
     startReviewReminderTicker();
     startUnpaidOrderReminderTicker();
+    startCreditExpiryReminderTicker();
     // Advertising operations (0154): offline conversions every 5 min; audiences + spend daily. Inert until a capability is LIVE.
     startAdvertisingTicker();
     // First-party data (0155): nightly order→customer linking + segment materialisation.
@@ -126,6 +128,7 @@ async function gracefulShutdown(signal: string) {
     stopProductCostTicker();
     stopReviewReminderTicker();
     stopUnpaidOrderReminderTicker();
+    stopCreditExpiryReminderTicker();
     stopAdvertisingTicker();
     stopFirstPartyNightlyTicker();
     stopGoldieCareTicker();
