@@ -325,6 +325,18 @@ routes.get('/storefront-discount', async (c) => {
  * this reveals nothing a PDP does not. An unknown or unqualified code is a
  * truthful zero with a reason, never an error page.
  */
+/** Bundles that include a product (gap analysis #9). Public, like the PDP itself; evaluator figures only. */
+routes.get('/bundles', async (c) => {
+  const productId = String(c.req.query('productId') ?? '');
+  try {
+    const data = await registry.productBundlesUseCase.forProduct(productId);
+    c.header('Cache-Control', 'public, max-age=60');
+    return c.json({ success: true, data });
+  } catch {
+    return c.json({ success: true, data: [] });
+  }
+});
+
 routes.post('/pricing-preview', async (c) => {
   const body = await c.req.json().catch(() => null);
   const rawItems = Array.isArray(body?.items) ? body.items.slice(0, 50) : [];

@@ -222,6 +222,22 @@ const taxonomyP = settle(getTaxonomy());
 const bizP = settle(getBusinessInfo());
 // Started with the page's other parallel reads, so reviews never add a round trip.
 const productReviewsP = settle(getProductReviews(product!.id));
+// Bundles (gap analysis #9): approved promotions that need this product and others together, priced by the
+// evaluator (what is shown is what checkout charges). Started with the other reads.
+type PdpBundle = { promotionId: string; name: string; productIds: string[]; togetherUgx: number; separatelyUgx: number; savingUgx: number; endsAt: string; products: ProductPublicDto[] };
+const bundlesP: Promise<PdpBundle[]> = (async () => {
+  const res = await fetch(`${apiBase}/commerce/bundles?productId=${encodeURIComponent(product!.id)}`, { signal: AbortSignal.timeout(2500) });
+  const list = res.ok ? (((await res.json()) as ApiResponse<Omit<PdpBundle, 'products'>[]>).data ?? []) : [];
+  if (!Array.isArray(list) || list.length === 0) return [];
+  const ids = [...new Set(list.flatMap((b) => b.productIds))];
+  const pr = await fetch(`${apiBase}/products?ids=${ids.join(',')}&limit=${ids.length}`, { signal: AbortSignal.timeout(2500) });
+  const products = pr.ok ? (((await pr.json()) as ApiResponse<ProductPublicDto[]>).data ?? []) : [];
+  const byId = new Map(products.map((x) => [x.id, x]));
+  // Only a bundle whose every product is listed right now.
+  return list
+    .map((b) => ({ ...b, products: b.productIds.map((id) => byId.get(id)).filter((x): x is ProductPublicDto => Boolean(x)) }))
+    .filter((b) => b.products.length === b.productIds.length);
+})().catch(() => []);
 // "Save for later" (gap analysis #6): whether this signed-in shopper already saved it. Signed-in only, started
 // with the other reads so it adds no round trip.
 const pdpSessionToken = readSessionToken(Astro.request);
@@ -280,6 +296,7 @@ const hasValidSku = product.sku && product.sku !== 'Needs Business Confirmation'
 const verifiedAttributes = product.attributeValues.filter((v) => v.isVerified && v.name !== 'Badge' && v.name !== 'CardShortDescription');
 
 const pdpSaved: boolean = await pdpSavedP;
+const pdpBundles: PdpBundle[] = await bundlesP;
 const productSubcategory = getProductSubcategory(product, await taxonomyP);
 // "Compare with similar" (gap #11): same subcategory, nearest price, from the candidates already fetched for the rail.
 const comparePeers: ProductPublicDto[] = await fallbackCandidatesP
@@ -759,6 +776,53 @@ if (product) {
             {pdpSaved && <a href="/account/saved" class="ml-3 text-sm text-slate-600 underline">See saved</a>}
           </form>
 
+          {pdpBundles.map((b) => (
+            <section class="mb-6 rounded-2xl border border-brand-primary/60 bg-lime-50/60 p-4" aria-label={`Buy together: ${b.name}`} data-bundle>
+              <p class="text-sm font-black text-gray-900">Buy together and save {formatUgx(b.savingUgx)}</p>
+              <ul class="mt-2 space-y-1 text-sm text-slate-800">
+                {b.products.map((bp) => (
+                  <li class="flex items-center justify-between gap-2">
+                    {bp.id === product.id ? <span class="font-semibold">{bp.name} <span class="text-xs font-normal text-slate-500">(this item)</span></span> : <a href={`/products/${bp.slug}`} class="font-semibold underline">{bp.name}</a>}
+                  </li>
+                ))}
+              </ul>
+              <p class="mt-2 text-sm"><strong class="text-gray-900">{formatUgx(b.togetherUgx)}</strong> together <span class="text-slate-500 line-through">{formatUgx(b.separatelyUgx)}</span></p>
+              <p class="text-xs text-slate-500">The saving applies in your basket when all {b.products.length} are in it. Offer ends {new Date(b.endsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Africa/Kampala' })}.</p>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <button type="button" class="min-h-11 rounded-full bg-brand-charcoal px-5 text-xs font-black uppercase tracking-widest text-white" data-bundle-add={JSON.stringify(b.products.map((bp) => ({ productId: bp.id, slug: bp.slug, name: bp.name, categoryName: bp.categoryName ?? '', priceUgx: bp.retailPriceUgx ?? 0 })))} hidden>Add all {b.products.length} to cart</button>
+                {b.products.filter((bp) => bp.id !== product.id).map((bp) => (
+                  <form method="POST" action="/cart" data-bundle-fallback>
+                    <input type="hidden" name="action" value="add" />
+                    <input type="hidden" name="productId" value={bp.id} />
+                    <input type="hidden" name="slug" value={bp.slug} />
+                    <input type="hidden" name="name" value={bp.name} />
+                    <input type="hidden" name="categoryName" value={bp.categoryName ?? ''} />
+                    <input type="hidden" name="priceUgx" value={bp.retailPriceUgx ?? 0} />
+                    <button type="submit" class="min-h-11 rounded-full border border-slate-400 px-4 text-xs font-bold text-slate-800">Add {bp.name.replace(/^GoldPlus\s+/i, '')}</button>
+                  </form>
+                ))}
+              </div>
+            </section>
+          ))}
+          {pdpBundles.length > 0 && (
+            <script>
+              // "Add all": the same /cart add, once per product, then the basket. Without JavaScript the per-product
+              // buttons remain (the add-to-cart button above adds this item).
+              document.querySelectorAll<HTMLButtonElement>('[data-bundle-add]').forEach((btn) => {
+                btn.hidden = false;
+                btn.closest('[data-bundle]')?.querySelectorAll<HTMLElement>('[data-bundle-fallback]').forEach((f) => { f.hidden = true; });
+                btn.addEventListener('click', async () => {
+                  btn.disabled = true;
+                  const items = JSON.parse(btn.dataset.bundleAdd ?? '[]') as Array<Record<string, string | number>>;
+                  for (const item of items) {
+                    const body = new URLSearchParams({ action: 'add', ...Object.fromEntries(Object.entries(item).map(([k, v]) => [k, String(v)])) });
+                    await fetch('/cart', { method: 'POST', body, credentials: 'same-origin' }).catch(() => null);
+                  }
+                  location.href = '/cart';
+                });
+              });
+            </script>
+          )}
           {!canBuy && (
             <p class="-mt-3 mb-6 text-sm text-slate-600">
               {/* An out-of-stock product used to end at a greyed button and nothing else — the strongest-intent visitor on the site, with nowhere to go. It sits directly under the disabled button, not below the delivery quote. */}
