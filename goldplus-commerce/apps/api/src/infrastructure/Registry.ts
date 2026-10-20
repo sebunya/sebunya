@@ -75,6 +75,7 @@ import { GetSalesFunnelUseCase } from '../application/use-cases/analytics/GetSal
 import { DrizzleSalesFunnelReader } from './db/repositories/DrizzleSalesFunnelReader';
 import { RequestReturnUseCase } from '../application/use-cases/commerce/RequestReturnUseCase';
 import { DrizzleOrderDeliveredAt } from './commerce/DrizzleOrderDeliveredAt';
+import { ProductBundlesUseCase } from '../application/use-cases/pricing/ProductBundlesUseCase';
 import { DrizzleReviewReminderCandidates } from './reviews/DrizzleReviewReminderCandidates';
 import { SendUnpaidOrderRemindersUseCase } from '../application/use-cases/commerce/SendUnpaidOrderRemindersUseCase';
 import { DrizzleUnpaidOrderReminderCandidates } from './commerce/DrizzleUnpaidOrderReminderCandidates';
@@ -1248,6 +1249,11 @@ export class Registry {
     this.pricingCapacityRepo,
     this.couponRepo,
   );
+  /** Bundles on the product page (gap analysis #9): approved PRODUCT_INCLUDED promotions, priced by the evaluator. */
+  public readonly productBundlesUseCase = new ProductBundlesUseCase(this.pricingRepo, async (items) => {
+    const q = await this.evaluateCartPricingUseCase.execute({ items, couponCode: null, persist: false });
+    return { goodsUgx: q.finalTotalUgx - q.shippingUgx - q.taxUgx };
+  });
   public readonly managePromotionCapacityUseCase = new ManagePromotionCapacityUseCase(this.pricingCapacityRepo);
   public readonly redeemCouponUseCase = new RedeemCouponUseCase(this.couponRepo);
   public readonly firstOrderEligibilityUseCase = new FirstOrderEligibilityUseCase(this.couponRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
