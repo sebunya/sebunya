@@ -292,3 +292,140 @@ export function pickComparisonPeers(
     .sort((a, b) => (own === null ? 0 : Math.abs(price(a)! - own) - Math.abs(price(b)! - own)) || a.name.localeCompare(b.name))
     .slice(0, limit);
 }
+
+// ── Filters (gap analysis #5, 2026-10-20) ─────────────────────────────────────
+// Contextual, like the big shops: a filter appears only when it splits the products on screen. Built from
+// VERIFIED specifications only (attributeValues with isVerified) and from price; never from guessed data. Brand is
+// not a filter (every product is GoldPlus) and neither is stock while everything listed is in stock.
+
+/** The specifications worth filtering by: short, comparable values. Long prose fields (Protection, Features) are not. */
+export const FILTER_ATTRIBUTES = ['Capacity', 'Output power', 'Connector', 'Length', 'Fast charging', 'Colour', 'Type'] as const;
+
+export const PRICE_BANDS = [
+  { key: 'under-20k', label: 'Under UGX 20,000', min: 0, max: 19_999 },
+  { key: '20k-50k', label: 'UGX 20,000 – 50,000', min: 20_000, max: 50_000 },
+  { key: '50k-100k', label: 'UGX 50,001 – 100,000', min: 50_001, max: 100_000 },
+  { key: 'over-100k', label: 'Over UGX 100,000', min: 100_001, max: Number.MAX_SAFE_INTEGER },
+] as const;
+
+export interface ShopFacetSelection {
+  price: string[];
+  /** Attribute name -> chosen values (any of them; different attributes must all hold). */
+  specs: Record<string, string[]>;
+}
+export interface ShopFacetOption { value: string; label: string; count: number; selected: boolean }
+export interface ShopFacet { key: string; label: string; options: ShopFacetOption[] }
+
+export const EMPTY_FACETS: ShopFacetSelection = { price: [], specs: {} };
+
+function specValues(product: ProductPublicDto, attribute: string): string[] {
+  return (product.attributeValues ?? [])
+    .filter((a) => a.isVerified && a.name === attribute && String(a.value).trim())
+    .map((a) => `${String(a.value).trim()}${a.unit ? ` ${a.unit}` : ''}`.slice(0, 60));
+}
+
+function priceBandOf(product: ProductPublicDto): string | null {
+  const p = product.retailPriceUgx;
+  if (typeof p !== 'number' || p <= 0) return null;
+  return PRICE_BANDS.find((b) => p >= b.min && p <= b.max)?.key ?? null;
+}
+
+function matchesFacets(product: ProductPublicDto, sel: ShopFacetSelection, skip?: string): boolean {
+  if (skip !== 'price' && sel.price.length && !sel.price.includes(priceBandOf(product) ?? '')) return false;
+  for (const [attr, values] of Object.entries(sel.specs)) {
+    if (attr === skip || values.length === 0) continue;
+    const own = specValues(product, attr);
+    if (!values.some((v) => own.includes(v))) return false;
+  }
+  return true;
+}
+
+export function applyShopFacets(products: ProductPublicDto[], sel: ShopFacetSelection): ProductPublicDto[] {
+  return products.filter((p) => matchesFacets(p, sel));
+}
+
+/** "20000 mAh" before "10000 mAh"? No: numbers ascending, then words. */
+function compareValues(a: string, b: string): number {
+  const na = Number.parseFloat(a); const nb = Number.parseFloat(b);
+  if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+  return a.localeCompare(b);
+}
+
+/**
+ * The filters for these products. Each option's count is what choosing it would show, given every OTHER filter
+ * already chosen (so a count never promises products that the other choices hide).
+ */
+export function buildShopFacets(products: ProductPublicDto[], sel: ShopFacetSelection): ShopFacet[] {
+  const facets: ShopFacet[] = [];
+  const priced = products.filter((p) => matchesFacets(p, sel, 'price'));
+  const bandCounts = new Map<string, number>();
+  for (const p of priced) { const b = priceBandOf(p); if (b) bandCounts.set(b, (bandCounts.get(b) ?? 0) + 1); }
+  if (bandCounts.size >= 2 || sel.price.length) {
+    facets.push({
+      key: 'price',
+      label: 'Price',
+      options: PRICE_BANDS.filter((b) => bandCounts.has(b.key) || sel.price.includes(b.key))
+        .map((b) => ({ value: b.key, label: b.label, count: bandCounts.get(b.key) ?? 0, selected: sel.price.includes(b.key) })),
+    });
+  }
+  for (const attr of FILTER_ATTRIBUTES) {
+    const base = products.filter((p) => matchesFacets(p, sel, attr));
+    const counts = new Map<string, number>();
+    let covered = 0;
+    for (const p of base) {
+      const vals = [...new Set(specValues(p, attr))];
+      if (vals.length) covered += 1;
+      for (const v of vals) counts.set(v, (counts.get(v) ?? 0) + 1);
+    }
+    const chosen = sel.specs[attr] ?? [];
+    // Worth showing: at least two values, on at least a third of what is on screen, and not a wall of options.
+    // (5 of 11 power banks have a checked capacity; hiding that filter would hide the one shoppers want most.)
+    const useful = counts.size >= 2 && covered * 3 >= base.length && counts.size <= 10;
+    if (!useful && chosen.length === 0) continue;
+    facets.push({
+      key: attr,
+      label: attr,
+      options: [...new Set([...counts.keys(), ...chosen])].sort(compareValues)
+        .map((v) => ({ value: v, label: v, count: counts.get(v) ?? 0, selected: chosen.includes(v) })),
+    });
+  }
+  return facets;
+}
+
+/** URL form: ?price=under-20k&price=20k-50k&spec=Capacity:20000%20mAh. Unknown keys and junk are dropped. */
+export function parseShopFacets(params: URLSearchParams): ShopFacetSelection {
+  const bands = new Set<string>(PRICE_BANDS.map((b) => b.key));
+  const price = params.getAll('price').filter((v) => bands.has(v)).slice(0, PRICE_BANDS.length);
+  const specs: Record<string, string[]> = {};
+  for (const raw of params.getAll('spec').slice(0, 20)) {
+    const i = raw.indexOf(':');
+    if (i < 1) continue;
+    const attr = raw.slice(0, i);
+    const value = raw.slice(i + 1).trim().slice(0, 60);
+    if (!(FILTER_ATTRIBUTES as readonly string[]).includes(attr) || !value) continue;
+    const list = (specs[attr] ??= []);
+    if (!list.includes(value)) list.push(value);
+  }
+  return { price, specs };
+}
+
+export function writeShopFacets(params: URLSearchParams, sel: ShopFacetSelection): void {
+  for (const p of sel.price) params.append('price', p);
+  for (const [attr, values] of Object.entries(sel.specs)) for (const v of values) params.append('spec', `${attr}:${v}`);
+}
+
+/** The selection with one option switched on or off. */
+export function toggleShopFacet(sel: ShopFacetSelection, key: string, value: string): ShopFacetSelection {
+  if (key === 'price') {
+    return { ...sel, price: sel.price.includes(value) ? sel.price.filter((v) => v !== value) : [...sel.price, value] };
+  }
+  const cur = sel.specs[key] ?? [];
+  const next = cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value];
+  const specs = { ...sel.specs, [key]: next };
+  if (next.length === 0) delete specs[key];
+  return { ...sel, specs };
+}
+
+export function hasShopFacets(sel: ShopFacetSelection): boolean {
+  return sel.price.length > 0 || Object.values(sel.specs).some((v) => v.length > 0);
+}

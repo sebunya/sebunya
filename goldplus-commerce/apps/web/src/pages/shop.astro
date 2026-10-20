@@ -10,6 +10,14 @@ import {
   categoryNameForSlug,
   dedupeProductsById,
   searchDiscoveryProducts,
+  applyShopFacets,
+  buildShopFacets,
+  parseShopFacets,
+  writeShopFacets,
+  toggleShopFacet,
+  hasShopFacets,
+  PRICE_BANDS,
+  type ShopFacetSelection,
   getProductSubcategory,
   isApprovedDiscoveryProduct,
   normalizeCategoryParam,
@@ -36,6 +44,8 @@ const search = normalizeSearchParam(Astro.url.searchParams.get('search') ?? Astr
 const category = normalizeCategoryParam(Astro.url.searchParams.get('category'), taxonomy);
 const subcategory = normalizeSubcategoryParam(Astro.url.searchParams.get('subcategory'), category, taxonomy);
 const sort = normalizeSortParam(Astro.url.searchParams.get('sort'));
+// Gap analysis #5: price and verified-specification filters, contextual to what is on screen.
+const facetSelection = parseShopFacets(Astro.url.searchParams);
 // Pagination. The grid used to render the WHOLE catalogue on one page — fine
 // at eight products, a 777 KB page of 192 cards at the real catalogue.
 const PAGE_SIZE = 24;
@@ -52,7 +62,7 @@ if (category) crawlParams.category = category;
 if (subcategory) crawlParams.subcategory = subcategory;
 if (sort && sort !== 'default') crawlParams.sort = sort;
 if (requestedPage > 1) crawlParams.page = String(requestedPage);
-const { robotsMeta, canonicalUrl } = shopCrawlDirective({
+const { robotsMeta: shelfRobotsMeta, canonicalUrl } = shopCrawlDirective({
   params: crawlParams,
   // Search results never have unique editorial copy; a category page has it
   // only when the operator wrote a description in the taxonomy.
@@ -60,15 +70,20 @@ const { robotsMeta, canonicalUrl } = shopCrawlDirective({
   // One canonical host, not whichever host this request arrived on.
   origin: SITE_ORIGIN,
 });
+// A filtered view is never its own indexable page: the canonical (built without the filters) is the shelf.
+const robotsMeta = hasShopFacets(facetSelection) ? 'noindex,follow' : shelfRobotsMeta;
 
-function shopUrl(overrides: Partial<{ search: string; category: string; subcategory: string; sort: string; page: number }> = {}) {
+function shopUrl(overrides: Partial<{ search: string; category: string; subcategory: string; sort: string; page: number; facets: ShopFacetSelection }> = {}) {
   // Changing any filter returns to page 1; only an explicit page keeps one.
-  const state = { search, category, subcategory, sort, page: 1, ...overrides };
+  // A new shelf or search starts with no spec filters: they belong to what was on screen.
+  const shelfChanged = 'search' in overrides || 'category' in overrides || 'subcategory' in overrides;
+  const state = { search, category, subcategory, sort, facets: shelfChanged ? { price: [], specs: {} } : facetSelection, page: 1, ...overrides };
   const params = new URLSearchParams();
   if (state.search) params.set('search', normalizeSearchParam(state.search));
   if (state.category) params.set('category', state.category);
   if (state.subcategory) params.set('subcategory', state.subcategory);
   if (state.sort && state.sort !== 'default') params.set('sort', state.sort);
+  writeShopFacets(params, state.facets);
   if (state.page && state.page > 1) params.set('page', String(state.page));
   // The shopper's choice of the standard order survives paging.
   if (Astro.url.searchParams.get('order') === 'standard') params.set('order', 'standard');
@@ -138,8 +153,11 @@ if (personalOrderEligible && leadParam !== null) {
     // The standard order is always a fine answer.
   }
 }
-const standardLead = sortDiscoveryProducts(filteredProducts, sort, taxonomy)[0]?.categoryName;
-const products = sortDiscoveryProducts(filteredProducts, sort, taxonomy, preferredCategories);
+const facetedProducts = applyShopFacets(filteredProducts, facetSelection);
+const shopFacets = buildShopFacets(filteredProducts, facetSelection);
+const facetsChosen = hasShopFacets(facetSelection);
+const standardLead = sortDiscoveryProducts(facetedProducts, sort, taxonomy)[0]?.categoryName;
+const products = sortDiscoveryProducts(facetedProducts, sort, taxonomy, preferredCategories);
 // Said plainly, and only when it actually changed what is on top.
 const personalLead = preferredCategories.length > 0 && products[0] && products[0].categoryName !== standardLead ? products[0].categoryName : '';
 if (personalLead) Astro.response.headers.set('Cache-Control', 'private, no-store');
@@ -185,7 +203,7 @@ if (search && !cataloguePartial && isLikelyHuman(Astro.request.headers.get('user
     signal: AbortSignal.timeout(500),
   }).catch(() => {});
 }
-const hasFilters = Boolean(search || category || subcategory || sort !== 'default');
+const hasFilters = Boolean(search || category || subcategory || sort !== 'default' || facetsChosen);
 const categoryLabel = categoryNameForSlug(category, taxonomy);
 const subcategoryLabel = subcategoryNameForSlug(subcategory, taxonomy);
 
@@ -241,8 +259,10 @@ const activeFilters = [
   category ? { label: categoryLabel, href: shopUrl({ category: '', subcategory: '' }) } : null,
   subcategory ? { label: subcategoryLabel, href: shopUrl({ subcategory: '' }) } : null,
   sort !== 'default' ? { label: 'Custom sort', href: shopUrl({ sort: 'default' }) } : null,
+  ...facetSelection.price.map((b) => ({ label: PRICE_BANDS.find((x) => x.key === b)?.label ?? b, href: shopUrl({ facets: toggleShopFacet(facetSelection, 'price', b) }) })),
+  ...Object.entries(facetSelection.specs).flatMap(([attr, values]) => values.map((v) => ({ label: `${attr}: ${v}`, href: shopUrl({ facets: toggleShopFacet(facetSelection, attr, v) }) }))),
 ].filter((item): item is { label: string; href: string } => Boolean(item));
-const onlyCategoryFilter = Boolean(category) && !search && !subcategory && sort === 'default';
+const onlyCategoryFilter = Boolean(category) && !search && !subcategory && sort === 'default' && !facetsChosen;
 
 // The same campaign the cards render, so the ItemList offer says what the card says.
 const shopDiscount = await getStorefrontDiscount();
@@ -360,6 +380,34 @@ const shopBreadcrumb = breadcrumbJsonLd([
       </p>
     )}
 
+    {shopFacets.length > 0 && (
+      <details class="mt-5 rounded-xl border border-slate-200 bg-white" open={facetsChosen} data-shop-filters>
+        <summary class="flex min-h-11 cursor-pointer items-center justify-between px-4 text-sm font-bold text-slate-900">
+          <span>Filter by price and specification{facetsChosen ? ` (${facetSelection.price.length + Object.values(facetSelection.specs).flat().length} chosen)` : ''}</span>
+          <span aria-hidden="true" class="text-slate-500">▾</span>
+        </summary>
+        <div class="grid gap-4 border-t border-slate-100 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3">
+          {shopFacets.map((facet) => (
+            <fieldset>
+              <legend class="mb-2 text-xs font-black uppercase tracking-wide text-slate-600">{facet.label}</legend>
+              <div class="flex flex-wrap gap-2">
+                {facet.options.map((o) => (
+                  <a
+                    href={shopUrl({ facets: toggleShopFacet(facetSelection, facet.key, o.value) })}
+                    aria-pressed={o.selected ? 'true' : 'false'}
+                    role="button"
+                    aria-label={`${facet.label}: ${o.label}, ${o.count} product${o.count === 1 ? '' : 's'}${o.selected ? ', chosen' : ''}`}
+                    class={`inline-flex min-h-11 items-center gap-1 rounded-lg border px-3 text-sm ${o.selected ? 'border-slate-950 bg-slate-950 font-bold text-white' : o.count === 0 ? 'border-slate-200 bg-slate-50 text-slate-400' : 'border-slate-300 bg-white text-slate-700'}`}
+                  >{o.selected && <span aria-hidden="true">✓</span>}{o.label}<span class={o.selected ? 'text-white/70' : 'text-slate-500'}>({o.count})</span></a>
+                ))}
+              </div>
+            </fieldset>
+          ))}
+        </div>
+        <p class="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">Only specifications our staff have checked. Choosing two values of one filter shows either.</p>
+      </details>
+    )}
+
     <div class="mt-5 flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
       <p aria-live="polite" class="text-sm font-semibold text-slate-700">{catalogueNotice ? 'Products could not be loaded' : `${products.length} matching product${products.length === 1 ? '' : 's'}${totalPages > 1 ? ` · showing ${pageStart}–${pageEnd}` : ''}`}</p>
       {products.length > 1 && (
@@ -386,6 +434,7 @@ const shopBreadcrumb = breadcrumbJsonLd([
         <p class="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-slate-600">
           {search ? <>No products matched “{search}”. </> : null}
           {subcategoryLabel || categoryLabel ? <>The selected {subcategoryLabel || categoryLabel} filter has no matching products. </> : null}
+          {facetsChosen && filteredProducts.length > 0 ? <>The filters you chose leave nothing here. <a href={shopUrl({ facets: { price: [], specs: {} } })} class="font-bold underline">Remove the filters</a> to see all {filteredProducts.length}. </> : null}
           Try another search or browse the categories.
           {search && <> For a battery, check the spelling or try the code printed on your old one.</>}
         </p>
