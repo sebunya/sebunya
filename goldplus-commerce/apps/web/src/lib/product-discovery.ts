@@ -403,7 +403,8 @@ export function parseShopFacets(params: URLSearchParams): ShopFacetSelection {
     const attr = raw.slice(0, i);
     const value = raw.slice(i + 1).trim().slice(0, 60);
     if (!(FILTER_ATTRIBUTES as readonly string[]).includes(attr) || !value) continue;
-    (specs[attr] ??= []).includes(value) || specs[attr].push(value);
+    const list = (specs[attr] ??= []);
+    if (!list.includes(value)) list.push(value);
   }
   return { price, specs };
 }
