@@ -70,6 +70,8 @@ import { SubmitReviewUseCase } from '../application/use-cases/reviews/SubmitRevi
 import { GetOrderReviewEligibilityUseCase, GetProductReviewsUseCase, SubmitOrderReviewUseCase } from '../application/use-cases/reviews/OrderReviewUseCases';
 import { SendReviewRemindersUseCase } from '../application/use-cases/reviews/SendReviewRemindersUseCase';
 import { DrizzleReviewReminderCandidates } from './reviews/DrizzleReviewReminderCandidates';
+import { SendUnpaidOrderRemindersUseCase } from '../application/use-cases/commerce/SendUnpaidOrderRemindersUseCase';
+import { DrizzleUnpaidOrderReminderCandidates } from './commerce/DrizzleUnpaidOrderReminderCandidates';
 import { DrizzleCreatorRepository } from './db/repositories/DrizzleCreatorRepository';
 import { DrizzleFlashSaleRepository } from './db/repositories/DrizzleFlashSaleRepository';
 import { DrizzleSeoRepository } from './db/repositories/DrizzleSeoRepository';
@@ -2223,6 +2225,12 @@ export class Registry {
         idempotencyKey: direction === 'up' ? `tier:${userId}:${tierCode}` : `tier-down:${userId}:${tierCode}:${new Date().toISOString().slice(0, 10)}`,
         data: { tierCode, tierName, direction },
       }),
+  );
+  /** The one payment reminder for an online order placed and never paid (gap analysis #2). */
+  public readonly sendUnpaidOrderRemindersUseCase = new SendUnpaidOrderRemindersUseCase(
+    new DrizzleUnpaidOrderReminderCandidates(),
+    (orderId) => this.enqueueCustomerOrderMessage(orderId, 'ORDER_PAYMENT_REMINDER'),
+    () => (process.env.ORDER_PAYMENT_REMINDERS || '').trim().toLowerCase() !== 'off',
   );
   /** The one review reminder per order, a few days after delivery or collection. */
   public readonly sendReviewRemindersUseCase = new SendReviewRemindersUseCase(

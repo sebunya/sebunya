@@ -26,6 +26,7 @@ export type CustomerTemplate =
   | 'ORDER_FULFILLMENT_COMPLETED'
   | 'ORDER_COLLECTED'
   | 'ORDER_REVIEW_REMINDER'
+  | 'ORDER_PAYMENT_REMINDER'
   | 'ORDER_CANCELLED_BY_SHOP'
   | 'PHONE_VERIFICATION'
   | 'PASSWORD_RESET'
@@ -186,6 +187,9 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
     case 'ORDER_COLLECTED':
       // A counter collection: "delivered" would not be true, the review ask is the same.
       return `${SHOP_NAME}: order${ref} is complete. Thank you for shopping with us. How was it? Rate it in a minute: ${reviewOrderUrl(d.orderNumber)} If anything is wrong, call ${phone}.`;
+    case 'ORDER_PAYMENT_REMINDER':
+      // Sent once, about an hour after an online order was placed and never paid, never while a payment is clearing.
+      return `${SHOP_NAME}: your order${ref} for ${formatUgx(d.totalUgx)} is saved but not paid yet. Pay with Mobile Money or card here: ${track} If you already paid, do not pay again; call ${phone}. We will not remind you again.`;
     case 'ORDER_REVIEW_REMINDER':
       // Sent once, a few days after delivery or collection, only when nothing on the order is rated.
       return `${SHOP_NAME}: how is what you bought on order${ref}? A rating helps the next shopper choose: ${reviewOrderUrl(d.orderNumber)} We will not ask again. If anything is wrong, call ${phone}.`;
@@ -340,6 +344,15 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         cta: { label: 'Rate what you bought', url: reviewOrderUrl(d.orderNumber) },
         tone: 'success',
       };
+    case 'ORDER_PAYMENT_REMINDER':
+      return {
+        subject: `Your ${SHOP_NAME} order${ref} is saved but not paid`,
+        preheader: 'Pay with Mobile Money or card when you are ready. This is the only reminder.',
+        headline: 'Your order is waiting for payment',
+        body: `You placed order${ref} for ${total}, and it has not been paid yet, so we have not started preparing it. You can pay with Mobile Money or card from the link below, using the phone number or email from your order. If you already paid and it has not cleared, please do not pay again: call ${phone} and we will check. This is the only reminder we send.`,
+        cta: { label: 'Pay for this order', url: track },
+        tone: 'wait',
+      };
     case 'ORDER_REVIEW_REMINDER':
       return {
         subject: `How is what you bought on order${ref}?`,
@@ -493,6 +506,7 @@ export const CUSTOMER_TRANSACTIONAL_TEMPLATES: readonly string[] = Object.freeze
   'ORDER_FULFILLMENT_COMPLETED',
   'ORDER_COLLECTED',
   'ORDER_REVIEW_REMINDER',
+  'ORDER_PAYMENT_REMINDER',
   'ORDER_CANCELLED_BY_SHOP',
   'PHONE_VERIFICATION',
   'PASSWORD_RESET',
