@@ -47,8 +47,12 @@ describeIf('store credit and gift cards (real PostgreSQL)', () => {
 
   afterAll(async () => {
     if (!raw) return;
-    await raw`delete from credit_ledger where instrument_id = any(${instrumentIds})`;
-    await raw`delete from credit_instruments where id = any(${instrumentIds})`;
+    // 0198 makes the ledger append-only; test clean-up uses the deliberate maintenance switch.
+    await raw.begin(async (t: any) => {
+      await t`set local goldplus.credit_maintenance = 'on'`;
+      await t`delete from credit_ledger where instrument_id = any(${instrumentIds})`;
+      await t`delete from credit_instruments where id = any(${instrumentIds})`;
+    });
     await raw`delete from orders where id = any(${orderIds})`;
     await raw.end();
   });
@@ -74,7 +78,9 @@ describeIf('store credit and gift cards (real PostgreSQL)', () => {
 
     const paid = await order(40_000);
     await holdOn(card.hash, paid, 40_000);
+    expect((await repo.findById(card.id)).heldUgx).toBe(40_000); // reserved, not spent
     expect(await repo.captureForOrder(paid, new Date())).toBe(40_000);
+    expect((await repo.findById(card.id)).heldUgx).toBe(0);
     expect(await repo.captureForOrder(paid, new Date())).toBe(0); // idempotent
     expect(await balance(card.id)).toBe(60_000);
     expect(await repo.releaseOrReturnForOrder(paid, 'Refunded', new Date())).toEqual({ released: 0, returned: 40_000 });
@@ -119,5 +125,79 @@ describeIf('store credit and gift cards (real PostgreSQL)', () => {
     await expect(holdOn(card.hash, o, 3_000)).rejects.toThrow();
     const ledger = await repo.ledger(card.id);
     expect(ledger.map((l: any) => l.type).sort()).toEqual(['ADJUST', 'HOLD', 'ISSUE']);
+  });
+
+  const orderNumberOf = async (id: string) => (await raw`select order_number from orders where id = ${id}`)[0].order_number as string;
+
+  it('an item returned gives part back; cancelling later gives back only the rest; nothing goes back twice', async () => {
+    const card = await issue(100_000);
+    const o = await order(60_000);
+    await holdOn(card.hash, o, 60_000);
+    await repo.captureForOrder(o, new Date());
+    expect(await balance(card.id)).toBe(40_000);
+    const ref = await orderNumberOf(o);
+    expect(await repo.returnToCardForOrder(ref, 70_000, staffA, 'Too much')).toMatchObject({ ok: false });
+    expect(await repo.returnToCardForOrder(ref, 15_000, staffA, 'Charger returned')).toMatchObject({ ok: true, leftUgx: 45_000 });
+    expect(await balance(card.id)).toBe(55_000);
+    expect(await repo.releaseOrReturnForOrder(o, 'Order cancelled', new Date())).toEqual({ released: 0, returned: 45_000 });
+    expect(await repo.releaseOrReturnForOrder(o, 'Order cancelled', new Date())).toEqual({ released: 0, returned: 0 });
+    expect(await repo.returnToCardForOrder(ref, 1, staffA, 'Again?')).toMatchObject({ ok: false });
+    expect(await balance(card.id)).toBe(100_000);
+  });
+
+  it('a total lowered after the card was applied is not taken from the card', async () => {
+    const card = await issue(100_000);
+    const o = await order(50_000);
+    await holdOn(card.hash, o, 50_000);
+    await raw`update orders set total_amount = 42_000 where id = ${o}`; // delivery fee corrected down
+    expect(await repo.captureForOrder(o, new Date())).toBe(42_000);
+    expect(await balance(card.id)).toBe(58_000);
+    expect(Number((await raw`select store_credit_applied_ugx from orders where id = ${o}`)[0].store_credit_applied_ugx)).toBe(42_000);
+  });
+
+  it('the database refuses to rewrite or delete card money', async () => {
+    const card = await issue(10_000);
+    await expect(raw`update credit_ledger set amount_ugx = 999999 where instrument_id = ${card.id}`).rejects.toThrow(/append-only/);
+    await expect(raw`delete from credit_ledger where instrument_id = ${card.id}`).rejects.toThrow(/append-only/);
+    await expect(raw`update credit_instruments set initial_value_ugx = 999999 where id = ${card.id}`).rejects.toThrow(/fixed at issue/);
+    await expect(raw`delete from credit_instruments where id = ${card.id}`).rejects.toThrow(/cancel the card instead/);
+    const o = await order(5_000);
+    await holdOn(card.hash, o, 5_000);
+    await repo.captureForOrder(o, new Date());
+    await expect(raw`update credit_ledger set hold_state = 'held' where order_id = ${o}`).rejects.toThrow(/held to captured or released/);
+    expect(await balance(card.id)).toBe(5_000);
+  });
+
+  it('card money given back on a paid order is a refund to the ad platforms (refund_confirmed, once each)', async () => {
+    const card = await issue(100_000);
+    const o = await order(60_000);
+    await holdOn(card.hash, o, 60_000);
+    await repo.captureForOrder(o, new Date());
+    const ref = await orderNumberOf(o);
+    await repo.returnToCardForOrder(ref, 15_000, staffA, 'Charger returned');
+    await repo.releaseOrReturnForOrder(o, 'Order cancelled', new Date());
+    await repo.releaseOrReturnForOrder(o, 'Order cancelled', new Date()); // nothing more to give back, nothing more recorded
+    const events = await raw`select (payload->>'amountUGX')::int as amount, payload->>'orderNumber' as order_number, payload->>'reason' as reason
+                               from measurement.business_event where event_name = 'refund_confirmed' and aggregate_id = ${o} order by occurred_at`;
+    expect(events.map((e: any) => e.amount).sort((a: number, b: number) => a - b)).toEqual([15_000, 45_000]);
+    expect(events.every((e: any) => e.order_number === ref && /gift card/i.test(e.reason))).toBe(true);
+    const routed = await raw`select count(*)::int as n from measurement.event_routing r join measurement.business_event e on e.event_id = r.event_id
+                               where e.event_name = 'refund_confirmed' and e.aggregate_id = ${o}`;
+    expect(routed[0].n).toBe(2);
+    const ledger = await raw`select sum(amount_ugx)::int as s from measurement.commercial_entry where order_ref = ${o} and component = 'REFUND' and source_system = 'credit_ledger'`;
+    expect(ledger[0].s).toBe(-60_000);
+  });
+
+  it('the accountant export lists every movement of the period, oldest first', async () => {
+    const card = await issue(30_000);
+    const o = await order(10_000);
+    await holdOn(card.hash, o, 10_000);
+    await repo.captureForOrder(o, new Date());
+    const rows = await repo.ledgerBetween(new Date(Date.now() - 60_000), new Date(Date.now() + 60_000), 50_000);
+    const times = rows.map((r: any) => r.createdAt.getTime());
+    expect([...times].sort((a, b) => a - b)).toEqual(times);
+    expect(rows.some((r: any) => r.type === 'ISSUE' && r.amountUgx === 30_000 && r.kind === 'gift_card')).toBe(true);
+    expect(rows.some((r: any) => r.type === 'HOLD' && r.holdState === 'captured' && r.amountUgx === -10_000)).toBe(true);
+    void card;
   });
 });

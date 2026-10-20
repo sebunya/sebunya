@@ -40,8 +40,16 @@ if (Astro.request.method === 'POST') {
         expiresAt: String(form.get('expiresAt') ?? '') || null,
       }) });
       const json: any = await res.json().catch(() => null);
-      if (res.ok && json?.success) { issued = json.data; notice = { kind: 'success', text: json.data.status === 'pending_approval' ? 'Issued. Above UGX 500,000 it waits for a second person to approve it before it can be spent.' : json.data.texted ? 'Issued and texted to the recipient.' : 'Issued.' }; }
+      if (res.ok && json?.success) { issued = json.data; notice = { kind: 'success', text: json.data.status === 'pending_approval' ? 'Issued. Above UGX 500,000 it waits for a second person to approve it before it can be spent.' : json.data.texted ? 'Issued. The code is queued to text to the recipient (it usually arrives within a minute; check with them).' : 'Issued.' }; }
       else notice = { kind: 'error', text: stepUpHint(json, res, 'Not issued.') };
+    } else if (intent === 'return') {
+      const res = await fetch(`${apiBase}/admin/credit/return`, { method: 'POST', headers, body: JSON.stringify({
+        orderNumber: String(form.get('orderNumber') ?? ''), amountUgx: Number(form.get('amountUgx')), note: String(form.get('note') ?? ''),
+      }) });
+      const json: any = await res.json().catch(() => null);
+      notice = res.ok && json?.success
+        ? { kind: 'success', text: `Given back to the card. ${formatUgx(json.data.leftUgx)} more could still go back for that order.` }
+        : { kind: 'error', text: stepUpHint(json, res, 'Nothing was given back.') };
     } else if (intent === 'approve' || intent === 'void' || intent === 'adjust') {
       const res = await fetch(`${apiBase}/admin/credit/${encodeURIComponent(id)}/${intent}`, { method: 'POST', headers, body: JSON.stringify({ note: String(form.get('note') ?? ''), amountUgx: Number(form.get('amountUgx')) }) });
       const json: any = await res.json().catch(() => null);
@@ -77,7 +85,13 @@ const fmt = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: '
 const KIND: Record<string, string> = { gift_card: 'Gift card', store_credit: 'Store credit' };
 const STATUS: Record<string, string> = { active: 'Spendable', pending_approval: 'Waiting for approval', void: 'Cancelled' };
 const ENTRY: Record<string, string> = { ISSUE: 'Issued', HOLD: 'Order', RETURN: 'Given back', ADJUST: 'Correction', VOID: 'Cancelled' };
-const outstanding = cards.filter((c) => c.status === 'active').reduce((s, c) => s + c.balanceUgx, 0);
+// An expired card can no longer be spent, so it is shown as expired and is not money the shop still owes in goods.
+const isExpired = (c: any) => Boolean(c.expiresAt) && new Date(c.expiresAt).getTime() <= Date.now();
+const statusLabel = (c: any) => (c.status === 'active' && isExpired(c) ? 'Expired' : STATUS[c.status]);
+const outstanding = cards.filter((c) => c.status === 'active' && !isExpired(c)).reduce((s, c) => s + c.balanceUgx, 0);
+// Held by unpaid orders: not spendable now, but still owed (it comes back if the order is cancelled).
+const reserved = cards.filter((c) => c.status !== 'void').reduce((s, c) => s + (c.heldUgx ?? 0), 0);
+const prefillReturn = (Astro.url.searchParams.get('return') ?? '').toUpperCase().slice(0, 40);
 ---
 <AdminLayout title="Gift cards and store credit" description="Issue, approve and cancel gift cards and store credit; every movement on each card.">
   <div class="container mx-auto max-w-6xl px-6 lg:px-8 space-y-6" data-credit-admin>
@@ -93,9 +107,15 @@ const outstanding = cards.filter((c) => c.status === 'active').reduce((s, c) => 
     <div class="flex flex-wrap items-end justify-between gap-3">
       <div>
         <h2 class="text-2xl font-black">Gift cards and store credit</h2>
-        <p class="text-sm text-gray-500">Spendable now across all cards: <strong>{formatUgx(outstanding)}</strong> (money the shop owes in goods).</p>
+        <p class="text-sm text-gray-500">Spendable now across all cards: <strong>{formatUgx(outstanding)}</strong>. Reserved by unpaid orders: <strong>{formatUgx(reserved)}</strong>. Together, what the shop still owes in goods: <strong>{formatUgx(outstanding + reserved)}</strong>.</p>
       </div>
     </div>
+    <form method="GET" action="/admin/credit/ledger.csv" class="flex flex-wrap items-end gap-3 text-xs" data-credit-export>
+      <label class="font-bold">From<input name="from" type="date" required class="mt-1 block border rounded-xl p-2" /></label>
+      <label class="font-bold">To<input name="to" type="date" required class="mt-1 block border rounded-xl p-2" /></label>
+      <button class="min-h-11 rounded-full border px-4 font-black uppercase">Download movements (CSV)</button>
+      <span class="text-gray-500">For the accountant: every issue, spend, give-back, correction and cancellation in the period.</span>
+    </form>
     {loadFailed && <p class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Cards could not be loaded. You may lack payments.read.</p>}
 
     <form method="POST" class="rounded-2xl border bg-white p-5 grid gap-3 md:grid-cols-3">
@@ -111,9 +131,19 @@ const outstanding = cards.filter((c) => c.status === 'active').reduce((s, c) => 
       <p class="md:col-span-3 text-xs text-gray-500">Above UGX 500,000 a different person must approve before it can be spent; then hand the code over yourself (it is texted only when spendable at issue).</p>
     </form>
 
+    <form method="POST" class="rounded-2xl border bg-white p-5 flex flex-wrap items-end gap-3" data-credit-return>
+      <input type="hidden" name="intent" value="return" />
+      <h3 class="w-full font-black">Give back to a card (an item returned)</h3>
+      <label class="text-xs font-bold">Order number<input name="orderNumber" required value={prefillReturn} placeholder="GP-202610-…" class="mt-1 block w-48 border rounded-xl p-2 uppercase" /></label>
+      <label class="text-xs font-bold">Amount (UGX)<input name="amountUgx" type="number" min="1" step="1" required class="mt-1 block w-36 border rounded-xl p-2" /></label>
+      <label class="text-xs font-bold grow">Why<input name="note" required minlength="5" maxlength="500" placeholder="e.g. GP-C11 charger returned unused" class="mt-1 block w-full border rounded-xl p-2" /></label>
+      <button class="min-h-11 rounded-full border px-4 text-xs font-black uppercase">Give back</button>
+      <p class="w-full text-xs text-gray-500">Only what the card paid for that order, less anything already given back. Money paid by Mobile Money or card is refunded from Payments instead. Cancelling the whole order gives back the rest by itself.</p>
+    </form>
+
     {detail && (
       <section class="rounded-2xl border bg-white p-5 space-y-3" data-credit-detail>
-        <h3 class="font-black">{KIND[detail.instrument.kind]} ••••{detail.instrument.last4} · {STATUS[detail.instrument.status]} · balance {formatUgx(detail.instrument.balanceUgx)}</h3>
+        <h3 class="font-black">{KIND[detail.instrument.kind]} ••••{detail.instrument.last4} · {statusLabel(detail.instrument)} · balance {formatUgx(detail.instrument.balanceUgx)}</h3>
         <p class="text-sm text-gray-600">Issued {fmt(detail.instrument.createdAt)} for {formatUgx(detail.instrument.initialValueUgx)}: {detail.instrument.reason}{detail.instrument.recipientName ? ` · to ${detail.instrument.recipientName}` : ''}</p>
         <table class="w-full text-sm">
           <thead><tr class="text-left text-xs uppercase text-gray-500"><th class="py-1">When</th><th>What</th><th>Order</th><th class="text-right">Amount</th><th class="pl-4">Note</th></tr></thead>
@@ -141,7 +171,7 @@ const outstanding = cards.filter((c) => c.status === 'active').reduce((s, c) => 
         <table class="w-full text-sm">
           <thead><tr class="text-left text-xs uppercase text-gray-500"><th class="py-1">Card</th><th>Status</th><th class="text-right">Issued</th><th class="text-right">Balance</th><th class="pl-4">For</th><th>Date</th></tr></thead>
           <tbody>{cards.map((card) => (
-            <tr class="border-t"><td class="py-1.5"><a class="font-bold underline" href={`/admin/credit?card=${card.id}`}>{KIND[card.kind]} ••••{card.last4}</a></td><td>{STATUS[card.status]}</td><td class="text-right tabular-nums">{formatUgx(card.initialValueUgx)}</td><td class="text-right tabular-nums font-bold">{formatUgx(card.balanceUgx)}</td><td class="pl-4 text-xs">{card.recipientName ?? ''}</td><td class="text-xs">{fmt(card.createdAt)}</td></tr>
+            <tr class="border-t"><td class="py-1.5"><a class="font-bold underline" href={`/admin/credit?card=${card.id}`}>{KIND[card.kind]} ••••{card.last4}</a></td><td>{statusLabel(card)}</td><td class="text-right tabular-nums">{formatUgx(card.initialValueUgx)}</td><td class="text-right tabular-nums font-bold">{formatUgx(card.balanceUgx)}</td><td class="pl-4 text-xs">{card.recipientName ?? ''}</td><td class="text-xs">{fmt(card.createdAt)}</td></tr>
           ))}</tbody>
         </table>
       )}

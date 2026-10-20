@@ -181,6 +181,7 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
         { label: 'Get support', href: '/support' },
         { label: 'Report an issue', href: '/support/issue' },
         { label: 'Report a counterfeit', href: '/support/fake' },
+        { label: 'Gift card balance', href: '/gift-card' },
         { label: 'Your preferences', href: '/preferences' },
       ] },
     ],

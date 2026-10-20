@@ -43,6 +43,7 @@ const WANTS_PERSON = /\b((talk|speak|chat) (to|with) (a |an |the |your |some )?(
 /** Asking for help in general (an order, a payment, a fault each have their own route above): never a product search. */
 const WANTS_HELP = /\b(support|help|assist(ance)?|complain(t|ts|ing)?|problem|issue|query|inquiry|enquiry|disappointed|unhappy)\b/;
 /** Phrases that say "I am shopping" on their own, with no product named. */
+const GIFT_CARD = /\b(gift ?cards?|gift ?vouchers?|store ?credit|gift ?certificates?)\b/;
 const SHOPPING = /\b(do you (have|sell|stock)|have you got|got any|how much|price|cost|cheapest|in stock|available)\b/;
 const INTERPRETIVE = /\b(choos(e|ing)|pick|advice|advise|suggest|under|below|less than|\d+\s?k\b|which|best|better|compatible|compatibility|fast.?charg(e|er|ing)?|right for|work(s)? with|fit(s)? my|difference|vs\.?|versus|compare|recommend|suitable|good for|laptop|how (do|does|can|long)|why|explain|should i)\b/i;
 
@@ -62,6 +63,8 @@ export function classify(raw: string): Classification {
   if (/\b(my )?(loyalty|reward points|my points|points balance|how many points|my tier|tier|friends ?(&|and) ?family (points|rewards))\b/.test(t) && !/\b(charging|power) points?\b/.test(t)) return { intent: 'LOYALTY', deterministic: true, query: '' };
   if (/\b(track|tracking|status of|where is|where's|wheres)\b[^.?]*\border\b|\border (status|number|ref|reference)\b|\bmy order\b|\bdelivered yet\b|\b(show|check|find|see|open|look up)\b[^.?]*\border\b/.test(t)
     || /\b(i )?(ordered|bought|paid for)\b[^.?]*\b(where|when|not (yet )?(come|arrived|received|delivered)|still waiting)\b|\bmy (package|parcel|delivery)\b/.test(t)) return { intent: 'ORDER', deterministic: true, query: '' };
+  // 0196: gift cards and store credit are a way to pay; answered from what the shop actually does, never a product search.
+  if (GIFT_CARD.test(t)) return { intent: 'PAYMENT', deterministic: true, query: 'gift card' };
   if (/\b(pay|payment|paid|paying|mobile money|momo|mtn|airtel|pesapal|visa|mastercard|(credit|debit|bank) ?card|card payment|(pay|paying|paid) (by|with|using) (a |my )?card|cash on delivery|refund me|my refund|refund (status|arrive|arrived|when)|pin|otp)\b/.test(t) && !/\b(refund policy|return)\b/.test(t)) return { intent: 'PAYMENT', deterministic: true, query: '' };
   if (/\b(bulk|wholesale|quotation|quote|for (my|the|our) (office|school|shop|company|business))\b/.test(t) || /\b(\d{2,}|fifty|hundred) (power ?banks|chargers|cables|units|pieces|pcs)\b/.test(t)) {
     // Items AND numbers named: the model searches the shelf, confirms the list and files the quote. Otherwise ask.
@@ -162,6 +165,14 @@ export async function answerDeterministically(c: Classification, ci?: CareInput)
       return { intent: c.intent, text, products: [], links: [link('Delivery in Kampala and Wakiso', '/delivery/kampala-wakiso'), wa] };
     }
     case 'PAYMENT': {
+      if (c.query === 'gift card') {
+        return {
+          intent: c.intent,
+          text: 'Yes. A GoldPlus gift card or store credit has a code that starts with GPGC or GPSC. Type it in the "Gift card or store credit" box at checkout: it pays first, and you pay any rest with Mobile Money or card. You can check what is on a card on the Gift card balance page. To buy a gift card, ask the team on WhatsApp or at the shop. Keep the code private: anyone with it can spend it.',
+          products: [],
+          links: [link('Gift card balance', '/gift-card'), wa],
+        };
+      }
       const copy = (await getStorefrontCopy()).payment;
       const text = `You pay online when you order. ${copy.pesapal.label}: ${copy.pesapal.description} One thing to know: we never ask for your PIN or OTP in this chat, and I cannot confirm a payment from here. If money left your phone and the order still says pending, send us the order reference on WhatsApp and a person will sort it out.`;
       return { intent: c.intent, text, products: [], links: [link('Payment questions', '/faq'), wa] };

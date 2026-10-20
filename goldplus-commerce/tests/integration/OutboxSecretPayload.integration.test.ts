@@ -82,4 +82,58 @@ suite('outbox events that carry a verification code (real PostgreSQL)', () => {
     expect(JSON.stringify(await payloadOf(failed))).not.toContain('GPGC-7K2Q');
     expect(await repo.replayDeadLettered(failed)).toBe(false);
   });
+
+  it('a gift card message written the way the real notifier writes it (a jsonb STRING) is scrubbed too', async () => {
+    // drizzle 0.29 + postgres-js store `.values({ payload })` as a JSON string; the first scrub matched only objects,
+    // so in production the code would have stayed. This row is written by the real CustomerOutboxNotifier.
+    const { CustomerOutboxNotifier } = await import('../../apps/api/src/infrastructure/notifications/CustomerOutboxNotifier');
+    const key = `${tag}-notifier`;
+    await new CustomerOutboxNotifier().enqueue({
+      eventType: 'CUSTOMER_ORDER_MESSAGE', template: 'CREDIT_ISSUED', customerPhone: '+256772000000', customerEmail: null,
+      data: { template: 'CREDIT_ISSUED', creditKind: 'gift_card', creditCode: 'GPGC-9Z9Z-ABCD-EF12', valueUgx: 50_000 },
+      idempotencyKey: key, relatedEntity: 'credit_instrument', relatedEntityId: null,
+    });
+    const [row] = await raw`select id, jsonb_typeof(payload) as t from outbox_events where idempotency_key = ${key}`;
+    ids.push(row.id);
+    expect(row.t).toBe('string'); // the shape production actually has
+    expect(JSON.stringify(await payloadOf(row.id))).toContain('GPGC-9Z9Z');
+    await raw`update outbox_events set worker_id = ${WORKER}, status = 'processing', lease_expires_at = now() + interval '5 minutes' where id = ${row.id}`;
+    expect(await repo.markProcessed(row.id)).toBe(true);
+    expect(JSON.stringify(await payloadOf(row.id))).not.toContain('GPGC-9Z9Z');
+
+    const key2 = `${tag}-notifier-2`;
+    await new CustomerOutboxNotifier().enqueue({
+      eventType: 'CUSTOMER_ORDER_MESSAGE', template: 'CREDIT_ISSUED', customerPhone: '+256772000000', customerEmail: null,
+      data: { template: 'CREDIT_ISSUED', creditKind: 'gift_card', creditCode: 'GPGC-8Y8Y-ABCD-EF12', valueUgx: 50_000 },
+      idempotencyKey: key2, relatedEntity: 'credit_instrument', relatedEntityId: null,
+    });
+    const [row2] = await raw`select id from outbox_events where idempotency_key = ${key2}`;
+    ids.push(row2.id);
+    await raw`update outbox_events set worker_id = ${WORKER}, status = 'processing', lease_expires_at = now() + interval '5 minutes' where id = ${row2.id}`;
+    expect(await repo.markDeadLettered(row2.id, 'Not retryable: test')).toBe(true);
+    expect(JSON.stringify(await payloadOf(row2.id))).not.toContain('GPGC-8Y8Y');
+    expect(await repo.replayDeadLettered(row2.id)).toBe(false);
+  });
+
+  it('a plain (non-JSON) string payload is finished untouched rather than breaking the update', async () => {
+    const [r] = await raw`insert into outbox_events (event_type, payload, status, is_processed, idempotency_key, worker_id, lease_expires_at)
+      values ('CUSTOMER_ORDER_MESSAGE', ${raw.json('just text')}, 'processing', false, ${`${tag}-plain`}, ${WORKER}, now() + interval '5 minutes') returning id`;
+    ids.push(r.id);
+    expect(await repo.markProcessed(r.id)).toBe(true);
+    expect(await payloadOf(r.id)).toBe('just text');
+  });
+
+  it('a verification code written by the real OTP sender (a jsonb STRING) can be finished and is scrubbed', async () => {
+    // Before payloadObject(), `payload - 'code'` on the string the real sender stores raised "cannot delete from
+    // scalar": the event could never be marked sent or dead-lettered, kept its code, and resurfaced every retry.
+    const { OutboxOtpSender } = await import('../../apps/api/src/infrastructure/loyalty/LoyaltyIdentityInfrastructure');
+    const phone = `+2567${Date.now().toString().slice(-8)}`;
+    await new OutboxOtpSender().send(phone, '731904');
+    const [row] = await raw`select id, jsonb_typeof(payload) as t from outbox_events where event_type = 'PHONE_VERIFICATION_REQUESTED' and payload::text like ${'%' + phone + '%'}`;
+    ids.push(row.id);
+    expect(row.t).toBe('string');
+    await raw`update outbox_events set worker_id = ${WORKER}, status = 'processing', lease_expires_at = now() + interval '5 minutes' where id = ${row.id}`;
+    expect(await repo.markProcessed(row.id)).toBe(true);
+    expect(JSON.stringify(await payloadOf(row.id))).not.toContain('731904');
+  });
 });

@@ -136,7 +136,9 @@ for migration in apps/api/src/infrastructure/db/migrations/[0-9][0-9][0-9][0-9]_
   # Only migrations ABOVE the baseline: the baseline already contains the rest,
   # and replaying the historical chain aborts at 0018.
   [[ "$number" > "$BASELINE_CEILING" ]] || continue
-  psql -v ON_ERROR_STOP=1 -q "$PG_URL" -f "$migration" >/dev/null \
+  # One transaction per file, as the real migrator runs them: 0194 builds an ON COMMIT DROP temp table that
+  # vanished between statements under plain psql, so the harness could not start from 0194 on.
+  psql -1 -v ON_ERROR_STOP=1 -q "$PG_URL" -f "$migration" >/dev/null \
     || die "migration failed: $(basename "$migration")"
   printf 'applied %s\n' "$(basename "$migration")"
 done
@@ -236,6 +238,7 @@ env \
   E2E_WEB_BASE="http://127.0.0.1:${WEB_PORT}" \
   E2E_API_BASE="http://127.0.0.1:${API_PORT}" \
   E2E_STUB_BASE="http://127.0.0.1:${STUB_PORT}" \
+  IDENTITY_HASH_PEPPER="$E2E_PEPPER" \
   npx tsx scripts/qa/checkout-e2e-proofs.ts
 PROOF_CODE=$?
 set -e
@@ -247,4 +250,9 @@ if [[ $PROOF_CODE -ne 0 ]]; then
   tail -40 "$LOG_DIR/web.log" || true
 fi
 
+# E2E_HOLD_OPEN=<seconds>: keep the stack up after the proofs, to click through it in a real browser.
+if [[ -n "${E2E_HOLD_OPEN:-}" ]]; then
+  say "Holding the stack open for ${E2E_HOLD_OPEN}s: storefront http://127.0.0.1:${WEB_PORT}"
+  sleep "$E2E_HOLD_OPEN"
+fi
 exit "$PROOF_CODE"

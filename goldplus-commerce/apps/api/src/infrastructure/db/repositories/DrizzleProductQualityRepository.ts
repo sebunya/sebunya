@@ -1,8 +1,11 @@
 import { sql } from 'drizzle-orm';
+import { pgJsonObject } from '../PgParams';
 import { db } from '../client';
 import { IProductQualityRepository } from '../../../application/ports/IProductQualityRepository';
 import { ProductQualityInput } from '../../../domain/products/ProductQuality';
 
+/** Stored as a jsonb string by the plain drizzle writer; read through pgJsonObject (see PgParams). */
+const SPECS = pgJsonObject(sql.raw('p.specifications'));
 export class DrizzleProductQualityRepository implements IProductQualityRepository {
   async scanProducts(limit: number): Promise<ProductQualityInput[]> {
     const rows = (await db.execute(sql`
@@ -16,8 +19,8 @@ export class DrizzleProductQualityRepository implements IProductQualityRepositor
              p.category_name,
              p.model_number,
              p.warranty_period,
-             (case when jsonb_typeof(p.specifications) = 'object'
-                   then (select count(*)::int from jsonb_object_keys(p.specifications))
+             (case when jsonb_typeof(${SPECS}) = 'object'
+                   then (select count(*)::int from jsonb_object_keys(${SPECS}))
                    else 0 end) as specifications_count
       from products p
       order by p.created_at desc nulls last

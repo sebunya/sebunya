@@ -314,7 +314,7 @@ export function customerMessageFor(result: CheckoutCallResult): {
       // approval, or nothing left). Removing it lets the order go through for the full amount.
       return {
         status: 'error',
-        message: 'That gift card or store credit cannot be used. Check the code, or remove it to pay the full amount with Mobile Money or card. Nothing has been charged.',
+        message: 'That gift card or store credit cannot be used. Check the code, or see what is on it on the Gift card balance page (shopgoldplus.com/gift-card), or remove it to pay the full amount with Mobile Money or card. Nothing has been charged.',
       };
     case 'CHECKOUT_IN_PROGRESS':
       return {

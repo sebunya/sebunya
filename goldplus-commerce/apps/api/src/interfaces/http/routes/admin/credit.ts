@@ -24,6 +24,22 @@ routes.get('/', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
   return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
 });
 
+// Registered before '/:id' so 'ledger' is never read as a card id.
+routes.get('/ledger', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
+  // Dates are Kampala days: from 00:00 EAT on `from` to 00:00 EAT the day after `to`.
+  const day = (v: string | undefined, plusDays = 0) => {
+    if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+    const d = new Date(`${v}T00:00:00+03:00`);
+    return Number.isNaN(d.getTime()) ? null : new Date(d.getTime() + plusDays * 86_400_000);
+  };
+  const from = day(c.req.query('from'));
+  const to = day(c.req.query('to'), 1);
+  const data = from && to ? await Registry.getInstance().manageCreditUseCases.ledgerBetween(from, to) : null;
+  if (!data) return c.json({ success: false, error: { code: 'BAD_PERIOD', message: 'Choose a from and to date, at most about a year apart.' } } satisfies ApiResponse<never>, 400);
+  c.header('Cache-Control', 'no-store');
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
 routes.get('/:id', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
   const id = c.req.param('id') ?? '';
   const data = UUID.test(id) ? await Registry.getInstance().manageCreditUseCases.detail(id) : null;
@@ -35,7 +51,12 @@ routes.post('/', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), requireStepU
   const body = await c.req.json().catch(() => null);
   const kind = body?.kind === 'gift_card' ? 'gift_card' : body?.kind === 'store_credit' ? 'store_credit' : null;
   if (!kind) return c.json({ success: false, error: { code: 'BAD_KIND', message: 'Choose gift card or store credit.' } } satisfies ApiResponse<never>, 400);
-  const expires = typeof body?.expiresAt === 'string' && body.expiresAt ? new Date(body.expiresAt) : null;
+  // A date from the form means "valid through that day" in Kampala, not midnight UTC (03:00 EAT that morning).
+  const rawExpiry = typeof body?.expiresAt === 'string' ? body.expiresAt.trim() : '';
+  const expires = rawExpiry ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(rawExpiry) ? `${rawExpiry}T23:59:59+03:00` : rawExpiry) : null;
+  if (expires && !Number.isNaN(expires.getTime()) && expires.getTime() <= Date.now()) {
+    return c.json({ success: false, error: { code: 'BAD_EXPIRY', message: 'The expiry date is in the past.' } } satisfies ApiResponse<never>, 400);
+  }
   const result = await Registry.getInstance().issueCreditUseCase.execute({
     kind, amountUgx: Number(body?.amountUgx), reason: String(body?.reason ?? ''), recipientName: body?.recipientName ?? null,
     recipientPhone: body?.recipientPhone ?? null, actorId: actor(c), expiresAt: expires && !Number.isNaN(expires.getTime()) ? expires : null,
@@ -44,6 +65,15 @@ routes.post('/', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), requireStepU
   // The code is in this response ONCE (it is stored only as a hash); never in the audit row.
   await audit(actor(c), 'CREDIT_ISSUED', result.id, { kind, amountUgx: Number(body?.amountUgx), status: result.status, masked: result.masked, texted: result.texted });
   c.header('Cache-Control', 'no-store');
+  return c.json({ success: true, data: result });
+});
+
+routes.post('/return', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), requireStepUp('payment_refund'), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const amount = Number(body?.amountUgx);
+  const result = await Registry.getInstance().manageCreditUseCases.returnToCard(body?.orderNumber, amount, actor(c), String(body?.note ?? ''));
+  if (!result.ok) return c.json({ success: false, error: { code: 'NOT_RETURNED', message: result.message } } satisfies ApiResponse<never>, 400);
+  await audit(actor(c), 'CREDIT_RETURNED', result.instrumentId, { orderNumber: String(body?.orderNumber ?? '').toUpperCase(), amountUgx: amount, note: String(body?.note ?? '').slice(0, 200) });
   return c.json({ success: true, data: result });
 });
 

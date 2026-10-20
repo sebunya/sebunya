@@ -1,6 +1,9 @@
 import { and, desc, eq, isNull, isNotNull, sql } from 'drizzle-orm';
+import { pgJsonObject } from '../PgParams';
 import { db } from '../client';
 import { deliveryQuoteCapture } from '../schema/delivery';
+/** Stored as a jsonb string by the plain drizzle writer; read through pgJsonObject (see PgParams). */
+const NEW_STATE = pgJsonObject(sql.raw('a.new_state'));
 import {
   DeliveryCaptureRow,
   IDeliveryCaptureRepository,
@@ -153,8 +156,8 @@ export class DrizzleDeliveryCaptureRepository implements IDeliveryCaptureReposit
     return (await db.execute(sql`
       select a.entity_id as fulfilment_task_id,
              a.created_at,
-             a.new_state->>'outcome'          as attempted_outcome,
-             a.new_state->>'orderTransition'  as order_transition,
+             ${NEW_STATE}->>'outcome'          as attempted_outcome,
+             ${NEW_STATE}->>'orderTransition'  as order_transition,
              t.order_id,
              o.order_number,
              o.status                         as order_status_now,
@@ -163,7 +166,7 @@ export class DrizzleDeliveryCaptureRepository implements IDeliveryCaptureReposit
       left join fulfilment_tasks t on t.id = a.entity_id
       left join orders o on o.id = t.order_id
       where a.action = 'FULFILMENT_DELIVERY_RECORDED'
-        and a.new_state->>'orderTransition' = 'skipped'
+        and ${NEW_STATE}->>'orderTransition' = 'skipped'
       order by a.created_at desc
       limit ${limit}`)) as unknown as Array<Record<string, unknown>>;
   }

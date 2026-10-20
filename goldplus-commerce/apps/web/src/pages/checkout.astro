@@ -1668,7 +1668,18 @@ const checkoutSavingLabel = basketSavingLabel(
           const res = await fetch(`${API_BASE}/commerce/credit/check`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }), signal: AbortSignal.timeout(5000) });
           const json = await res.json().catch(() => null);
           if (json?.success && json.data?.usable) {
-            creditMsg.textContent = `${json.data.kind === 'gift_card' ? 'Gift card' : 'Store credit'} ${json.data.masked}: ${ugx(json.data.balanceUgx)} available. It is applied when you place the order.`;
+            // What it means for THIS order, from the total on screen (the order itself is the authority on placing).
+            const shown = Number((document.getElementById('grand-total-value')?.textContent ?? '').replace(/[^0-9]/g, ''));
+            const label = `${json.data.kind === 'gift_card' ? 'Gift card' : 'Store credit'} ${json.data.masked}: ${ugx(json.data.balanceUgx)} available.`;
+            if (shown > 0) {
+              const pays = Math.min(shown, json.data.balanceUgx);
+              const rest = shown - pays;
+              creditMsg.textContent = rest > 0
+                ? `${label} On this order it pays ${ugx(pays)}; you pay ${ugx(rest)} with Mobile Money or card. Applied when you place the order.`
+                : `${label} It covers this order in full; nothing to pay by Mobile Money or card. Applied when you place the order.`;
+            } else {
+              creditMsg.textContent = `${label} It is applied when you place the order.`;
+            }
             creditMsg.className = 'text-[11px] font-semibold text-green-700';
           } else {
             creditMsg.textContent = json?.data?.reason ?? 'That code is not right. Check each character, or remove it to pay the full amount.';

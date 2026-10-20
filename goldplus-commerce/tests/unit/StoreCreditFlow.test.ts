@@ -63,6 +63,8 @@ describe('store credit flow (gap #17)', () => {
     expect(await m({}).check(code)).toMatchObject({ ok: true, usable: true, balanceUgx: 40_000, reason: null });
     expect(await m({ status: 'void' }).check(code)).toMatchObject({ ok: true, usable: false, balanceUgx: 0 });
     expect(await m({ balanceUgx: 0 }).check(code)).toMatchObject({ usable: false, reason: 'This card has no balance left.' });
+    // Held by an unpaid order is not "no balance": the holder is told where the money is and how to free it.
+    expect(await m({ balanceUgx: 0, heldUgx: 30_000 }).check(code)).toMatchObject({ usable: false, reason: expect.stringContaining('UGX 30,000 on this card is reserved for an order that has not been paid yet') });
     expect(await m({}).check('nonsense')).toEqual({ ok: false });
     expect(JSON.stringify(await m({ recipientName: 'Amina' }).check(code))).not.toContain('Amina');
   });
@@ -89,5 +91,108 @@ describe('store credit flow (gap #17)', () => {
     const route = read('apps/api/src/interfaces/http/routes/commerce.ts');
     expect(route).toContain('storeCreditCodeHash = creditCodeHash(parsedCode.code);');
     expect(route).toMatch(/if \(!parsedCode\) \{\s*return c\.json\(\{ success: false, error: \{ code: 'STORE_CREDIT_UNAVAILABLE'/);
+  });
+
+  it('a rider never collects what a gift card already paid', async () => {
+    const { riderCollectionAmount } = await import('../../apps/api/src/domain/delivery/DeliveryVariance');
+    expect(riderCollectionAmount({ paymentStatus: 'unpaid', totalUgx: 116_500, storeCreditAppliedUgx: 50_000 })).toEqual({ collect: 66_500, label: 'COLLECT ON DELIVERY: UGX 66,500' });
+    expect(riderCollectionAmount({ paymentStatus: 'unpaid', totalUgx: 116_500 }).collect).toBe(116_500);
+  });
+
+  it('payment messages name the gift card split, and say nothing new when there is none', async () => {
+    const { smsText, emailCopy } = await import('../../apps/api/src/application/notifications/CustomerMessages');
+    const base = { orderNumber: 'GP-1', totalUgx: 116_500 };
+    expect(smsText('ORDER_PAYMENT_SUCCESS', { ...base, storeCreditAppliedUgx: 50_000 } as never)).toContain('(gift card or store credit UGX 50,000 + Mobile Money or card UGX 66,500)');
+    expect(smsText('ORDER_PAYMENT_SUCCESS', { ...base, storeCreditAppliedUgx: 116_500 } as never)).toContain('(paid in full with your gift card or store credit)');
+    expect(smsText('ORDER_PAYMENT_SUCCESS', base as never)).not.toContain('gift card');
+    expect(emailCopy('ORDER_PAYMENT_SUCCESS', { ...base, storeCreditAppliedUgx: 50_000 } as never)?.body).toContain('Mobile Money or card UGX 66,500');
+  });
+
+  it('Goldie answers gift card questions from what the shop does, and leaves promo-code questions alone', async () => {
+    const { classify, answerDeterministically } = await import('../../apps/web/src/lib/assistantRouter');
+    for (const q of ['Do you sell gift cards?', 'can i pay with a gift card', 'I have store credit, how do I use it', 'gift voucher for my brother']) {
+      expect(classify(q), q).toMatchObject({ intent: 'PAYMENT', deterministic: true, query: 'gift card' });
+    }
+    expect(classify('do you have a voucher code').query).not.toBe('gift card');
+    expect(classify('can I pay with mobile money').query).not.toBe('gift card');
+    const a = await answerDeterministically(classify('Do you sell gift cards?'));
+    expect(a.text).toContain('Gift card or store credit');
+    expect(a.links.some((l) => l.url.endsWith('/gift-card'))).toBe(true);
+  });
+
+  it('points: a cash partial refund takes its share of the WHOLE order, and an item given back to a card takes its share too', async () => {
+    const { ApplyRefundConsequencesUseCase } = await import('../../apps/api/src/application/use-cases/payments/ApplyRefundConsequencesUseCase');
+    const shares: number[] = [];
+    const loyalty = { execute: async (i: { refundedShareBps: number }) => { shares.push(i.refundedShareBps); } };
+    const repo = { updatePaymentAttemptStatus: async () => undefined, updateOrderPaymentStatusSafely: async () => undefined } as never;
+    const attempt = { id: 'a1', orderId: 'o1', amount: 150_000, orderTrackingId: 't', merchantReference: 'm' };
+    const ctx = { actorType: 'admin' as never, source: 'admin' as never, providerConfirmed: false };
+    // Order 250,000: card 100,000 + Mobile Money 150,000. 50,000 of the Mobile Money comes back = 20% of the order.
+    await new ApplyRefundConsequencesUseCase(repo, {} as never, { getRefundedTotalUgx: async () => 50_000 }, loyalty, undefined, async () => 100_000).execute(attempt, ctx);
+    expect(shares).toEqual([2_000]);
+    // Without a card the share is unchanged from before (a third of the cash).
+    await new ApplyRefundConsequencesUseCase(repo, {} as never, { getRefundedTotalUgx: async () => 50_000 }, loyalty).execute(attempt, ctx);
+    expect(shares[1]).toBe(3_333);
+
+    const back: number[] = [];
+    const m = new ManageCreditUseCases({ returnToCardForOrder: async () => ({ ok: true, instrumentId: 'c', leftUgx: 50_000, orderId: 'o1', orderTotalUgx: 250_000 }) } as any, tools,
+      { execute: async (i) => { back.push(i.refundedShareBps); } });
+    expect(await m.returnToCard('gp-202610-abcd', 25_000, 'staff', 'Charger returned')).toMatchObject({ ok: true });
+    expect(back).toEqual([1_000]);
+    expect(await m.returnToCard('nonsense', 25_000, 'staff', 'Charger returned')).toMatchObject({ ok: false });
+    expect(back).toHaveLength(1);
+  });
+
+  it('a cancelled order says where the card money went, and who refunds the rest', async () => {
+    const { smsText, emailCopy } = await import('../../apps/api/src/application/notifications/CustomerMessages');
+    const base = { orderNumber: 'GP-1', totalUgx: 116_500 };
+    const partPaid = smsText('ORDER_CANCELLED_BY_SHOP', { ...base, storeCreditAppliedUgx: 50_000, paymentStatus: 'paid' } as never)!;
+    expect(partPaid).toContain('The UGX 50,000 your gift card or store credit paid is back on the card already.');
+    expect(partPaid).toContain('If you paid the other UGX 66,500 by Mobile Money or card, our team arranges that refund.');
+    const fullCard = smsText('ORDER_CANCELLED_BY_SHOP', { ...base, storeCreditAppliedUgx: 116_500, paymentStatus: 'paid' } as never)!;
+    expect(fullCard).toContain('Nothing else was paid, so there is nothing more to refund.');
+    expect(fullCard).not.toContain('our team arranges');
+    const unpaid = smsText('ORDER_CANCELLED_BY_SHOP', { ...base, storeCreditAppliedUgx: 50_000, paymentStatus: 'unpaid' } as never)!;
+    expect(unpaid).toContain('reserved on your gift card or store credit is free to use again');
+    expect(smsText('ORDER_CANCELLED_BY_SHOP', base as never)).toContain('If you paid for it, our team arranges the refund.');
+    expect(emailCopy('ORDER_CANCELLED_BY_SHOP', { ...base, storeCreditAppliedUgx: 50_000, paymentStatus: 'paid' } as never)?.body).toContain('our team arranges that refund and will contact you');
+    const { cancelRefundUpdate } = await import('../../apps/api/src/application/notifications/CustomerMessages');
+    expect(cancelRefundUpdate({ ...base, storeCreditAppliedUgx: 116_500, paymentStatus: 'paid' } as never)).toBe('The UGX 116,500 your gift card or store credit paid is back on the card already. Nothing else was paid, so there is nothing more to refund.');
+    expect(cancelRefundUpdate(base as never)).toBeNull(); // the designed email keeps its own line
+    const { renderEmailTemplate, customerEmailData } = await import('../../apps/api/src/infrastructure/notifications/email/emailTemplateData');
+    const html = renderEmailTemplate('ORDER_CANCELLED_BY_SHOP', customerEmailData('ORDER_CANCELLED_BY_SHOP', {
+      customerName: 'Amina', orderNumber: 'GP-1', createdAt: new Date().toISOString(), totalUgx: 116_500, deliveryFeeUgx: 0, deliveryLocation: 'Kampala',
+      paymentStatus: 'paid', orderUrl: 'https://shopgoldplus.com/track-order', items: [], refundUpdate: cancelRefundUpdate({ ...base, storeCreditAppliedUgx: 50_000, paymentStatus: 'paid' } as never),
+    } as never)).html;
+    expect(html).toContain('is back on the card already');
+    expect(html).not.toContain('If any money was taken');
+  });
+
+  it('the accountant export: labelled movements, released holds as 0, and no cell a spreadsheet would run', async () => {
+    const realFetch = globalThis.fetch;
+    let asked = '';
+    globalThis.fetch = (async (u: string) => {
+      asked = String(u);
+      return new Response(JSON.stringify({ success: true, data: [
+        { type: 'ISSUE', amountUgx: 50_000, holdState: null, orderNumber: null, note: '=HYPERLINK("http://evil")', createdAt: '2026-10-20T07:00:00Z', kind: 'gift_card', last4: 'AB12' },
+        { type: 'HOLD', amountUgx: -20_000, holdState: 'captured', orderNumber: 'GP-1', note: 'Checkout', createdAt: '2026-10-20T08:00:00Z', kind: 'gift_card', last4: 'AB12' },
+        { type: 'HOLD', amountUgx: -5_000, holdState: 'released', orderNumber: 'GP-2', note: 'Checkout, "abandoned"', createdAt: '2026-10-20T09:00:00Z', kind: 'gift_card', last4: 'AB12' },
+      ] }), { status: 200 });
+    }) as never;
+    try {
+      const { GET } = await import('../../apps/web/src/pages/admin/credit/ledger.csv');
+      const unauth = await GET({ request: new Request('http://x/admin/credit/ledger.csv'), url: new URL('http://x/admin/credit/ledger.csv') } as never);
+      expect(unauth.status).toBe(401);
+      const res = await GET({ request: new Request('http://x/', { headers: { cookie: 'goldplus_session=t' } }), url: new URL('http://x/admin/credit/ledger.csv?from=2026-10-01&to=2026-10-31') } as never);
+      expect(asked).toContain('/admin/credit/ledger?from=2026-10-01&to=2026-10-31');
+      expect(res.headers.get('content-type')).toContain('text/csv');
+      const rows = (await res.text()).trim().split('\r\n');
+      expect(rows[0]).toBe('Date (Kampala),Card,Movement,Amount (UGX),Order,Note');
+      expect(rows[1]).toContain(`Gift card ****AB12,Issued,50000,,"'=HYPERLINK(""http://evil"")"`);
+      expect(rows[2]).toContain('Spent on an order,-20000,GP-1,Checkout');
+      expect(rows[3]).toContain(`Reserved then released,0,GP-2,"Checkout, ""abandoned"""`);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   });
 });

@@ -73,6 +73,11 @@ export class ApplyRefundConsequencesUseCase {
     private readonly refundLoyalty?: RefundLoyaltyPort,
     /** Optional so hermetic suites construct unchanged; production wires it. */
     private readonly refundFulfilment?: RefundFulfilmentPort,
+    /**
+     * 0196: what a gift card / store credit paid towards the order. Points are earned on the whole order, so a cash
+     * partial refund takes back its share of the WHOLE order, not of the cash part alone (which over-clawed).
+     */
+    private readonly storeCreditOf?: (orderId: string) => Promise<number>,
   ) {}
 
   /**
@@ -146,7 +151,8 @@ export class ApplyRefundConsequencesUseCase {
       if (attempt.amount > 0) {
         // The order never moves on a partial refund, so the lifecycle
         // subscriber never sees it: claw back the refunded share here.
-        await this.applyRefundToLoyalty(attempt.orderId, Math.floor((refundedUgx * 10_000) / attempt.amount), 'Partial refund');
+        const credit = this.storeCreditOf ? await this.storeCreditOf(attempt.orderId).catch(() => 0) : 0;
+        await this.applyRefundToLoyalty(attempt.orderId, Math.floor((refundedUgx * 10_000) / (attempt.amount + Math.max(0, credit))), 'Partial refund');
       }
       return { reading, refundedUgx };
     }

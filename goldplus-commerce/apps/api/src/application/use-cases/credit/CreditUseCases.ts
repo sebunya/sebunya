@@ -1,3 +1,4 @@
+import { formatUgx } from '../../notifications/CustomerMessages';
 import type { CreditInstrumentView, ICreditRepository } from '../../ports/ICreditRepository';
 import { checkIssue, maskCreditCode, newCreditCode, normalizeCreditCode, type CreditKind } from '../../../domain/credit/CreditInstrument';
 import { isValidUgandanPhone, normalizePhone } from '../../services/validationHelpers';
@@ -59,7 +60,12 @@ export class IssueCreditUseCase {
 }
 
 export class ManageCreditUseCases {
-  constructor(private readonly repo: ICreditRepository, private readonly tools: CreditCodeTools) {}
+  constructor(
+    private readonly repo: ICreditRepository,
+    private readonly tools: CreditCodeTools,
+    /** The refund loyalty port (ApplyRefundToLoyaltyUseCase): an item given back to a card takes back its share of the points, as a cash partial refund does. */
+    private readonly refundLoyalty?: { execute(input: { orderId: string; refundedShareBps: number; reason: string }): Promise<void> },
+  ) {}
 
   list(input: { status?: string | null; kind?: CreditKind | null; limit?: number }) { return this.repo.list({ limit: input.limit ?? 100, status: input.status ?? null, kind: input.kind ?? null }); }
   async detail(id: string) {
@@ -88,9 +94,33 @@ export class ManageCreditUseCases {
     const i = await this.repo.findByCodeHash(this.tools.hash(parsed.code));
     if (!i) return { ok: false };
     const expired = i.expiresAt !== null && i.expiresAt <= new Date();
-    const reason = i.status === 'void' ? 'This card was cancelled.' : i.status === 'pending_approval' ? 'This card is waiting for a second approval at GoldPlus.' : expired ? 'This card has expired.' : i.balanceUgx <= 0 ? 'This card has no balance left.' : null;
+    const reason = i.status === 'void' ? 'This card was cancelled.' : i.status === 'pending_approval' ? 'This card is waiting for a second approval at GoldPlus.' : expired ? 'This card has expired.' : i.balanceUgx <= 0 && (i.heldUgx ?? 0) > 0
+        // Not spent: an order that has not been paid yet is holding it. Said plainly, so the holder does not think it is gone.
+        ? `${formatUgx(i.heldUgx ?? 0)} on this card is reserved for an order that has not been paid yet. Pay for that order, or call us to cancel it and free the card.`
+        : i.balanceUgx <= 0 ? 'This card has no balance left.' : null;
     return { ok: true, kind: i.kind, masked: maskCreditCode(parsed.code), balanceUgx: i.status === 'void' || expired ? 0 : i.balanceUgx, usable: reason === null, reason };
   }
 
   forCustomer(userId: string): Promise<CreditInstrumentView[]> { return this.repo.forCustomer(userId); }
+
+  /** The accountant's view: every movement in [from, to), at most 50,000 rows. */
+  ledgerBetween(from: Date, to: Date) {
+    if (!(from < to) || to.getTime() - from.getTime() > 400 * 86_400_000) return Promise.resolve(null);
+    return this.repo.ledgerBetween(from, to, 50_000);
+  }
+
+  /** Give back to the card part of what an order spent from it (an item returned). Never more than it spent. */
+  async returnToCard(orderNumber: unknown, amountUgx: number, actorId: string, note: string) {
+    const ref = typeof orderNumber === 'string' ? orderNumber.trim().toUpperCase() : '';
+    if (!/^GP-[A-Z0-9-]{4,40}$/.test(ref)) return { ok: false as const, message: 'Type the order number (it starts with GP-).' };
+    if (note.trim().length < 5) return { ok: false as const, message: 'Say why (for example, which item came back).' };
+    const result = await this.repo.returnToCardForOrder(ref, amountUgx, actorId, note.trim().slice(0, 500));
+    if (result.ok && this.refundLoyalty && result.orderTotalUgx > 0) {
+      // Isolated like the cash path: the money is already back on the card; points can be corrected by hand.
+      await this.refundLoyalty
+        .execute({ orderId: result.orderId, refundedShareBps: Math.floor((amountUgx * 10_000) / result.orderTotalUgx), reason: 'Item given back to the gift card' })
+        .catch(() => undefined);
+    }
+    return result;
+  }
 }

@@ -140,7 +140,10 @@ export function decideVariance(input: VarianceInput): VarianceDecision {
 export function riderCollectionAmount(order: {
   paymentStatus: string;
   totalUgx: number;
+  /** 0196: what a gift card / store credit already paid; never collected twice. */
+  storeCreditAppliedUgx?: number;
 }): { collect: number; label: string } {
   if (order.paymentStatus === 'paid') return { collect: 0, label: 'PAID — collect nothing' };
-  return { collect: order.totalUgx, label: `COLLECT ON DELIVERY: UGX ${order.totalUgx.toLocaleString('en-UG')}` };
+  const collect = Math.max(0, order.totalUgx - Math.max(0, order.storeCreditAppliedUgx ?? 0));
+  return { collect, label: `COLLECT ON DELIVERY: UGX ${collect.toLocaleString('en-UG')}` };
 }

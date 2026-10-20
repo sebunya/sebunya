@@ -1,4 +1,5 @@
 import { ReholdStockOnLatePaymentUseCase } from '../application/use-cases/payments/ReholdStockOnLatePaymentUseCase';
+import { cancelRefundUpdate } from '../application/notifications/CustomerMessages';
 import './logging/appLoggerBinding';
 import { PERMISSIONS as SHARED_PERMISSIONS, toEatParts, DEFAULT_BUSINESS_INFO } from '@goldplus/shared';
 import { MeasurementOperationsUseCases } from '../application/use-cases/measurement/MeasurementOperationsUseCases';
@@ -812,7 +813,10 @@ export class Registry {
   public readonly productRepo = new DrizzleProductRepository();
   /** 0196: store credit and gift cards (gap analysis #17). */
   public readonly creditRepo = new DrizzleCreditRepository();
-  public readonly manageCreditUseCases = new ManageCreditUseCases(this.creditRepo, { hash: creditCodeHash, randomIndexes: creditRandomIndexes });
+  public readonly manageCreditUseCases = new ManageCreditUseCases(this.creditRepo, { hash: creditCodeHash, randomIndexes: creditRandomIndexes }, {
+    // Resolved at call time: the loyalty use cases are constructed further down this class.
+    execute: (input) => new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase).execute(input),
+  });
   /** Save for later (gap analysis #6). */
   public readonly savedProductsUseCases = new SavedProductsUseCases(new DrizzleWishlistRepository(), this.productRepo);
   /** Once-published products that are off sale: the product page's honest 404 (no price, stock or images). */
@@ -2624,6 +2628,7 @@ export class Registry {
     new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase),
     // A total refund cancels the order; its fulfilment task leaves the work queue with it.
     new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
+    async (orderId: string) => (await this.orderRepo.findById(orderId))?.storeCreditAppliedUgx ?? 0,
   );
 
   /**
@@ -2637,6 +2642,7 @@ export class Registry {
     new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase),
     // A total refund cancels the order; its fulfilment task leaves the work queue with it.
     new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
+    async (orderId: string) => (await this.orderRepo.findById(orderId))?.storeCreditAppliedUgx ?? 0,
   );
 
   /**
@@ -3482,6 +3488,16 @@ export class Registry {
         customerName: order.customerName,
         orderNumber: order.orderNumber,
         totalUgx: order.totalUgx,
+        // 0196: the gift card / store credit part, so payment messages and the receipt name the split.
+        ...(order.storeCreditAppliedUgx > 0 ? {
+          storeCreditAppliedUgx: order.storeCreditAppliedUgx,
+          ...(template === 'ORDER_CANCELLED_BY_SHOP' ? {
+            refundUpdate: cancelRefundUpdate({ totalUgx: order.totalUgx, storeCreditAppliedUgx: order.storeCreditAppliedUgx, paymentStatus: order.paymentStatus }),
+          } : {}),
+          paymentMethod: order.amountDueUgx > 0
+            ? `Gift card or store credit ${order.storeCreditAppliedUgx.toLocaleString('en-US')} + Mobile Money or card ${order.amountDueUgx.toLocaleString('en-US')} (UGX)`
+            : 'Gift card or store credit',
+        } : {}),
         // What the reviewed email templates need to render a real receipt:
         // the lines, the money and where it is going. Without these the
         // adapter cannot fill the design and falls back to the older body.

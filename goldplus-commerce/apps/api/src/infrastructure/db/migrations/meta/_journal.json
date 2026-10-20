@@ -1373,6 +1373,20 @@
       "when": 1790140000073,
       "tag": "0196_store_credit_gift_cards",
       "breakpoints": true
+    },
+    {
+      "idx": 196,
+      "version": "5",
+      "when": 1790140000074,
+      "tag": "0197_scrub_sent_credit_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "5",
+      "when": 1790140000075,
+      "tag": "0198_credit_ledger_append_only",
+      "breakpoints": true
     }
   ]
 }

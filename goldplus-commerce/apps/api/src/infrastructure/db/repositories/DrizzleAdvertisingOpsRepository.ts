@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../client';
-import { pgInTextList, pgJsonb } from '../PgParams';
+import { pgInTextList, pgJsonb, pgJsonObject } from '../PgParams';
 import type {
   AdCapability, AdCapabilityRepository, AdCapabilityRow, AudienceListRepository, AudienceRunRecord, AudienceSourcePort,
   JobClaimPort, OfflineContext, OfflineConversionRepository, OfflineConversionRow, OfflineSaleRecord, PendingAudienceRun,
@@ -271,9 +271,10 @@ export class DrizzleSpendFactRepository implements SpendFactRepository {
   }
 
   async googleAdSales(from: string, to: string) {
-    return rowsOf(await db.execute(sql`select o.id, o.subtotal_amount, a.click_ids->>'gad_campaignid' as campaign_id, a.click_ids->>'gp_net' as network
+    const clicks = pgJsonObject(sql.raw('a.click_ids'));
+    return rowsOf(await db.execute(sql`select o.id, o.subtotal_amount, ${clicks}->>'gad_campaignid' as campaign_id, ${clicks}->>'gp_net' as network
       from orders o join order_attribution a on a.order_id = o.id
-      where (a.click_ids ? 'gclid' or a.click_ids ? 'gbraid' or a.click_ids ? 'wbraid')
+      where (${clicks} ? 'gclid' or ${clicks} ? 'gbraid' or ${clicks} ? 'wbraid')
         and (o.status in ('delivered', 'completed') or (o.payment_status = 'paid' and o.status not in ('cancelled', 'failed')))
         and o.created_at >= ${from}::date and o.created_at < ${to}::date + 1
       order by o.created_at limit 20000`)).map((r) => ({

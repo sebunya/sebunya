@@ -96,6 +96,48 @@ jobs:
       - name: Integration tests (real PostgreSQL + Redis)
         run: pnpm test:integration
 
+  # The real checkout path, end to end: a cookie-carrying client -> Astro SSR -> the API -> PostgreSQL + Redis ->
+  # a local PesaPal stub (no external call, no real money). It silently stopped passing after the Astro 6 upgrade
+  # (no Origin header) and migration 0194 (temp table outside a transaction) because nothing ran it; now CI does.
+  # Covers duplicate-order safety, payment ownership, and gift card / store credit tender (0196).
+  checkout-e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+        ports: [ '5432:5432' ]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: [ '6379:6379' ]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      E2E_PG_PORT: '5432'
+      E2E_REDIS_PORT: '6379'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4, pinned 2026-10-07
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4, pinned 2026-10-07
+        with:
+          version: 9.1.4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4, pinned 2026-10-07
+        with:
+          node-version: 22
+          cache: 'pnpm'
+          cache-dependency-path: goldplus-commerce/pnpm-lock.yaml
+      - run: pnpm install
+      - run: sudo apt-get install -y --no-install-recommends redis-tools postgresql-client
+      - name: End-to-end checkout proofs
+        run: bash scripts/qa/checkout-e2e-harness.sh
+      - name: Logs on failure
+        if: failure()
+        run: tail -60 /tmp/goldplus-e2e/api.log; tail -40 /tmp/goldplus-e2e/web.log
+
   security-audit:
     runs-on: ubuntu-latest
     steps:

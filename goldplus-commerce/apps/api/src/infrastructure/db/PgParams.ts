@@ -72,6 +72,18 @@ export function pgJsonb(value: unknown): SQL {
   return sql`${JSON.stringify(value ?? null)}::text::jsonb`;
 }
 
+/**
+ * READ a jsonb column as a jsonb OBJECT whichever way it was stored. A column written through drizzle's plain
+ * `jsonb()` with `.values({ col: obj })` lands as a jsonb STRING (drizzle 0.29 + postgres-js double-encodes), and
+ * `col->>'key'` on a string is NULL: the report reads blank and nothing fails. Measured 2026-10-20: audit_logs
+ * .new_state, products.specifications, order_attribution.click_ids and outbox_events.payload are strings.
+ * Use this for every `->>`, `->`, `?` or jsonb_typeof on such a column (tests/unit/JsonbStringReads guards it).
+ * A string that is not a JSON object stays as it is (never a cast error that would fail the query).
+ */
+export function pgJsonObject(column: SQL): SQL {
+  return sql`(case when jsonb_typeof(${column}) = 'string' and left(${column} #>> '{}', 1) = '{' then (${column} #>> '{}')::jsonb else ${column} end)`;
+}
+
 /** A json (not jsonb) value, for the rare column that needs key order kept. */
 export function pgJson(value: unknown): SQL {
   return sql`${JSON.stringify(value ?? null)}::text::json`;
