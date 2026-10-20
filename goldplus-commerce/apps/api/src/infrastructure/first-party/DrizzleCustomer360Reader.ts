@@ -1,4 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
+import { pgJsonObject } from '../db/PgParams';
 import { db } from '../db/client';
 import type { Customer360Order, Customer360Records } from '../../domain/first-party/Customer360';
 import type { DeviceEvidence, TraitOrderLine } from '../../domain/first-party/CustomerTraits';
@@ -6,6 +7,8 @@ import { normaliseEmail, normalisePhoneE164, ORDER_KEY_PREFIX, VISITOR_FP_PREFIX
 import type { ICustomer360Reader, IIdentifierHasher } from '../../application/ports/first-party/FirstPartyPorts';
 import { analysisExclusionsEnabled } from './AnalysisExclusion';
 
+/** Stored as a jsonb string by the plain drizzle writer; read through pgJsonObject (see PgParams). */
+const SPECS = pgJsonObject(sql.raw('p.specifications'));
 const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const uuidList = (ids: string[]): SQL => sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `);
@@ -85,7 +88,7 @@ export class DrizzleCustomer360Reader implements ICustomer360Reader {
     const lineRows = oids.length ? rows(await db.execute(sql`
       select oi.order_id, oi.product_id, oi.quantity, coalesce(nullif(oi.final_line_total, 0), oi.unit_price * oi.quantity) as line_total,
              p.category_id, coalesce(c.name, p.category_name) as category_name,
-             nullif(trim(coalesce(p.specifications->>'brand', p.specifications->>'Brand', '')), '') as brand,
+             nullif(trim(coalesce(${SPECS}->>'brand', ${SPECS}->>'Brand', '')), '') as brand,
              exists (select 1 from battery_profiles bp where bp.product_id = oi.product_id) as is_battery
       from order_items oi join products p on p.id = oi.product_id left join categories c on c.id = p.category_id
       where oi.order_id in (${uuidList(oids)})`)) : [];

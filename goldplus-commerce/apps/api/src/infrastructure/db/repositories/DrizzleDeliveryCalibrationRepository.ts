@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { pgJsonObject } from '../PgParams';
 import { db } from '../client';
 import {
   CalibrationProposal,
@@ -51,7 +52,7 @@ export class DrizzleDeliveryCalibrationRepository implements ICalibrationReposit
         (select count(*) from orders where status = 'delivered')::int as delivered_orders,
         (select count(*) from delivery_quote_capture where actual_rider_cost_ugx is not null)::int as rider_costs,
         (select count(*) from audit_logs where action = 'FULFILMENT_DELIVERY_RECORDED'
-           and new_state->>'orderTransition' = 'skipped')::int as skipped_mirrors`)) as unknown as Array<{
+           and ${pgJsonObject(sql.raw('new_state'))}->>'orderTransition' = 'skipped')::int as skipped_mirrors`)) as unknown as Array<{
       observations: number;
       delivered_orders: number;
       rider_costs: number;

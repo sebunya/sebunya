@@ -171,6 +171,7 @@ async function goldieConversationIds(exec: typeof db, userId: string, plain: { e
 }
 
 /** An outbox payload as a jsonb object, whether stored as an object or (the drizzle gotcha) as a JSON string. */
+const OUTBOX_OBJECT_TEXT = `(case when jsonb_typeof(payload) = 'string' and left(payload #>> '{}', 1) = '{' then (payload #>> '{}')::jsonb else payload end)`;
 const OUTBOX_OBJECT = sql.raw(`(case when jsonb_typeof(payload) = 'string' and left(payload #>> '{}', 1) = '{' then (payload #>> '{}')::jsonb else payload end)`);
 const OUTBOX_IS_OBJECT = sql.raw(`jsonb_typeof(case when jsonb_typeof(payload) = 'string' and left(payload #>> '{}', 1) = '{' then (payload #>> '{}')::jsonb else payload end) = 'object'`);
 const phoneIn = (col: SQL, digits: string[]) => pgInTextList(sql`regexp_replace(coalesce(${col}, ''), '\\D', '', 'g')`, digits);
@@ -535,8 +536,8 @@ export class DrizzlePersonalDataEraser implements IPersonalDataEraser {
             or ${plain.emails.length ? pgInTextList(sql`lower(trim(coalesce(${jsonField('metadata', 'email')}, '')))`, plain.emails) : sql`false`})`));
       counts.goldieEmails = affected(await exec.execute(sql`
         update outbox_events set payload = '{}'::jsonb
-        where event_type in ('GOLDIE_TRANSCRIPT', 'GOLDIE_HANDOVER', 'CARE_REPLY_EMAIL') and jsonb_typeof(payload) = 'object'
-          and (${byEmail("payload->>'recipient'")} or ${byEmail("payload->>'replyTo'")})`));
+        where event_type in ('GOLDIE_TRANSCRIPT', 'GOLDIE_HANDOVER', 'CARE_REPLY_EMAIL') and ${OUTBOX_IS_OBJECT}
+          and (${byEmail(`${OUTBOX_OBJECT_TEXT}->>'recipient'`)} or ${byEmail(`${OUTBOX_OBJECT_TEXT}->>'replyTo'`)})`));
       // WhatsApp messages sent to them, kept a week for the SMS fallback (they hold the message's wording).
       counts.whatsappSent = plain.phoneDigits.length ? affected(await exec.execute(sql`
         delete from whatsapp_sent_messages where ${phoneIn(sql.raw('recipient'), plain.phoneDigits)}`)) : 0;

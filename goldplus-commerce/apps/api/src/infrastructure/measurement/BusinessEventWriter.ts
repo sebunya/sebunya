@@ -165,3 +165,23 @@ export async function recordRefundSettled(tx: Tx, refundId: string, occurredAt: 
     values (${randomUUID()}::uuid, ${ENV()}, ${String(r.order_id)}, 'payment_refunds', ${`refund:${r.id}`}, 'REFUND', ${-Number(r.amount_ugx)}, ${occurredAt.toISOString()}::timestamptz, ${ECONOMIC_POLICY_VERSION}, ${res.eventId}::uuid)
     on conflict (environment, source_system, source_entry_key) do nothing`);
 }
+
+/**
+ * 0196: money a PAID order spent from a gift card / store credit, given back to the card (an item returned, or the
+ * order cancelled after payment). It is a refund like a Pesapal one, so it is recorded the same way: one
+ * refund_confirmed event per card RETURN (GA4 refund, Google Ads restated value) and a negative REFUND ledger entry.
+ * Without it the ad platforms kept counting revenue the shop gave back. The RETURN's own id is the refund id.
+ */
+export async function recordCardReturn(tx: Tx, ledgerEntryId: string, occurredAt: Date): Promise<void> {
+  const r = rows(await tx.execute(sql`select l.id, l.order_id, l.amount_ugx, l.note, o.order_number
+    from credit_ledger l join orders o on o.id = l.order_id where l.id = ${ledgerEntryId}::uuid and l.type = 'RETURN' and l.amount_ugx > 0`))[0];
+  if (!r) return;
+  const res = await appendBusinessEvent(tx, { eventName: 'refund_confirmed', orderId: String(r.order_id), refundId: String(r.id), sourceTransitionId: `credit_return:${r.id}`,
+    data: { orderId: String(r.order_id), orderNumber: String(r.order_number), refundId: String(r.id), currency: 'UGX', amountUGX: str(r.amount_ugx),
+      reason: `Given back to a gift card / store credit${r.note ? `: ${String(r.note)}` : ''}`.slice(0, 500) },
+    occurredAt });
+  if (!res.inserted) return;
+  await tx.execute(sql`insert into measurement.commercial_entry (entry_id, environment, order_ref, source_system, source_entry_key, component, amount_ugx, occurred_at, economic_policy_version, event_id)
+    values (${randomUUID()}::uuid, ${ENV()}, ${String(r.order_id)}, 'credit_ledger', ${`credit_return:${r.id}`}, 'REFUND', ${-Number(r.amount_ugx)}, ${occurredAt.toISOString()}::timestamptz, ${ECONOMIC_POLICY_VERSION}, ${res.eventId}::uuid)
+    on conflict (environment, source_system, source_entry_key) do nothing`);
+}

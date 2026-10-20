@@ -167,4 +167,24 @@ describeIf('store credit and gift cards (real PostgreSQL)', () => {
     await expect(raw`update credit_ledger set hold_state = 'held' where order_id = ${o}`).rejects.toThrow(/held to captured or released/);
     expect(await balance(card.id)).toBe(5_000);
   });
+
+  it('card money given back on a paid order is a refund to the ad platforms (refund_confirmed, once each)', async () => {
+    const card = await issue(100_000);
+    const o = await order(60_000);
+    await holdOn(card.hash, o, 60_000);
+    await repo.captureForOrder(o, new Date());
+    const ref = await orderNumberOf(o);
+    await repo.returnToCardForOrder(ref, 15_000, staffA, 'Charger returned');
+    await repo.releaseOrReturnForOrder(o, 'Order cancelled', new Date());
+    await repo.releaseOrReturnForOrder(o, 'Order cancelled', new Date()); // nothing more to give back, nothing more recorded
+    const events = await raw`select (payload->>'amountUGX')::int as amount, payload->>'orderNumber' as order_number, payload->>'reason' as reason
+                               from measurement.business_event where event_name = 'refund_confirmed' and aggregate_id = ${o} order by occurred_at`;
+    expect(events.map((e: any) => e.amount).sort((a: number, b: number) => a - b)).toEqual([15_000, 45_000]);
+    expect(events.every((e: any) => e.order_number === ref && /gift card/i.test(e.reason))).toBe(true);
+    const routed = await raw`select count(*)::int as n from measurement.event_routing r join measurement.business_event e on e.event_id = r.event_id
+                               where e.event_name = 'refund_confirmed' and e.aggregate_id = ${o}`;
+    expect(routed[0].n).toBe(2);
+    const ledger = await raw`select sum(amount_ugx)::int as s from measurement.commercial_entry where order_ref = ${o} and component = 'REFUND' and source_system = 'credit_ledger'`;
+    expect(ledger[0].s).toBe(-60_000);
+  });
 });

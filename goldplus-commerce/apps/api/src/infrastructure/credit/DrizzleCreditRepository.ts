@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client';
+import { guardedMeasurementWrite, recordCardReturn } from '../measurement/BusinessEventWriter';
 import type { CreditInstrumentView, CreditLedgerRow, ICreditRepository } from '../../application/ports/ICreditRepository';
 import type { CreditKind } from '../../domain/credit/CreditInstrument';
 
@@ -166,8 +167,10 @@ export class DrizzleCreditRepository implements ICreditRepository {
           // back already: after a partial return (one item), only the rest. Running twice gives back nothing more.
           const left = await this.spentNotReturned(tx, orderId, String(h.instrument_id));
           if (left > 0) {
-            await tx.execute(sql`insert into credit_ledger (instrument_id, type, amount_ugx, order_id, note) values (${h.instrument_id}, 'RETURN', ${left}, ${orderId}, ${note})`);
+            const [ret] = rowsOf(await tx.execute(sql`insert into credit_ledger (instrument_id, type, amount_ugx, order_id, note) values (${h.instrument_id}, 'RETURN', ${left}, ${orderId}, ${note}) returning id`));
             returned += left;
+            // A paid order's card money going back is a refund to the ad platforms too (guarded: never blocks the money).
+            await guardedMeasurementWrite(tx as never, orderId, 'credit_return', (sp) => recordCardReturn(sp, String(ret.id), now));
           }
         }
       }
@@ -185,8 +188,9 @@ export class DrizzleCreditRepository implements ICreditRepository {
       await tx.execute(sql`select id from credit_instruments where id = ${h.instrument_id} for update`);
       const left = await this.spentNotReturned(tx, String(h.order_id), String(h.instrument_id));
       if (amountUgx > left) return { ok: false as const, message: `At most ${left.toLocaleString('en-US')} UGX can go back to the card for this order.` };
-      await tx.execute(sql`insert into credit_ledger (instrument_id, type, amount_ugx, order_id, actor_id, note)
-                           values (${h.instrument_id}, 'RETURN', ${amountUgx}, ${h.order_id}, ${actorId}, ${note})`);
+      const [ret] = rowsOf(await tx.execute(sql`insert into credit_ledger (instrument_id, type, amount_ugx, order_id, actor_id, note)
+                           values (${h.instrument_id}, 'RETURN', ${amountUgx}, ${h.order_id}, ${actorId}, ${note}) returning id`));
+      await guardedMeasurementWrite(tx as never, String(h.order_id), 'credit_return', (sp) => recordCardReturn(sp, String(ret.id), new Date()));
       return { ok: true as const, instrumentId: String(h.instrument_id), leftUgx: left - amountUgx, orderId: String(h.order_id), orderTotalUgx: Number(h.total_amount) };
     });
   }
