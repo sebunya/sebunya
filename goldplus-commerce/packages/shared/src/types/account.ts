@@ -61,6 +61,22 @@ export interface OrderItemDto {
   productSlug: string | null;
   unitPriceUgx: number;
   quantity: number;
+  /** What the line was called when it was bought (the receipt shows this, not today's name). */
+  nameAtPurchase?: string;
+  sku?: string | null;
+  /** The line's charged total after any discount. */
+  lineTotalUgx?: number;
+}
+
+/** The figures a receipt needs (gap analysis #7). */
+export interface OrderReceiptDto {
+  customerName: string;
+  subtotalUgx: number;
+  deliveryFeeUgx: number;
+  discountUgx: number;
+  deliveryArea: string;
+  /** When the payment cleared, if it was paid online; null otherwise. */
+  paidAt: string | null;
 }
 
 export interface OrderDetailDto {
@@ -78,6 +94,7 @@ export interface OrderDetailDto {
     email: string | null;
     phone: string | null;
   };
+  receipt?: OrderReceiptDto;
 }
 
 export interface AddressDto {

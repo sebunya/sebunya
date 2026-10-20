@@ -298,6 +298,9 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       ? await db.query.products.findMany({ where: (p, { inArray }) => inArray(p.id, productIds) })
       : [];
     const productById = new Map(productRows.map((p) => [p.id, p]));
+    const paidRows = await db.execute(sql`select max(paid_at) as "paidAt" from payments where order_id = ${row.id} and paid_at is not null`);
+    const paidAtRaw = (Array.isArray(paidRows) ? paidRows : ((paidRows as { rows?: unknown[] }).rows ?? []))[0] as { paidAt?: Date | string | null } | undefined;
+    const paidAt = paidAtRaw?.paidAt ? new Date(paidAtRaw.paidAt).toISOString() : null;
 
     return {
       id: row.id,
@@ -315,11 +318,22 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
           productSlug: product?.slug ?? null,
           unitPriceUgx: i.unitPrice,
           quantity: i.quantity,
+          nameAtPurchase: i.productName ?? product?.name ?? undefined,
+          sku: i.sku ?? null,
+          lineTotalUgx: i.finalLineTotal > 0 ? i.finalLineTotal : i.unitPrice * i.quantity,
         };
       }),
       customer: {
         email: row.customerEmail ?? null,
         phone: row.customerPhone ?? null,
+      },
+      receipt: {
+        customerName: row.customerName,
+        subtotalUgx: row.subtotalAmount,
+        deliveryFeeUgx: row.deliveryFee ?? 0,
+        discountUgx: (row as any).pricingDiscountTotal ?? 0,
+        deliveryArea: row.deliveryArea,
+        paidAt,
       },
     };
   }

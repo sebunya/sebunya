@@ -236,6 +236,7 @@ const helpHref = order
 
                 <div class="mt-6 flex flex-col sm:flex-row gap-3">
                   <a href={helpHref} class="inline-flex items-center justify-center rounded-full bg-brand-charcoal px-6 py-3 text-sm font-bold text-white hover:bg-black">Ask about this order</a>
+                  {order.paymentStatus === 'paid' && <a href={`/account/receipts/${order.id}`} class="inline-flex items-center justify-center rounded-full border border-brand-borderGrey px-6 py-3 text-sm font-bold text-brand-charcoal hover:bg-brand-softGrey" data-receipt-link>Receipt</a>}
                   <a href="/account/orders" class="inline-flex items-center justify-center rounded-full border border-brand-borderGrey px-6 py-3 text-sm font-bold text-brand-charcoal hover:bg-brand-softGrey">All my orders</a>
                 </div>
 
