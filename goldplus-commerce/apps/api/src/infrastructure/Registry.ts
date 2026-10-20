@@ -24,6 +24,8 @@ import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRe
 import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository';
 import { DrizzleOrderAttributionRepository } from './db/repositories/DrizzleOrderAttributionRepository';
 import { DrizzleProductRepository } from './db/repositories/DrizzleProductRepository';
+import { SavedProductsUseCases } from '../application/use-cases/account/SavedProductsUseCases';
+import { DrizzleWishlistRepository } from './db/repositories/DrizzleWishlistRepository';
 import { DrizzleBlogRepository } from './db/repositories/DrizzleBlogRepository';
 import { DrizzleDeviceRepository } from './db/repositories/DrizzleDeviceRepository';
 import { DrizzleBatteryCatalogueRepository } from './db/repositories/DrizzleBatteryCatalogueRepository';
@@ -801,6 +803,8 @@ export class Registry {
   public readonly orderRepo = new DrizzleOrderRepository();
   public readonly orderAttributionRepo = new DrizzleOrderAttributionRepository();
   public readonly productRepo = new DrizzleProductRepository();
+  /** Save for later (gap analysis #6). */
+  public readonly savedProductsUseCases = new SavedProductsUseCases(new DrizzleWishlistRepository(), this.productRepo);
   /** Once-published products that are off sale: the product page's honest 404 (no price, stock or images). */
   public readonly unlistedProductReader = new DrizzleUnlistedProductReader();
   public readonly blogRepo = new DrizzleBlogRepository();
