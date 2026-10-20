@@ -1,6 +1,7 @@
 import type { IReviewRepository, PublicReview } from '../../ports/IReviewRepository';
 import { REVIEWABLE_ORDER_STATUSES, type RatingAggregate } from '../../../domain/reviews/ReviewDomain';
 import { hashCustomerPhoneIdentity } from '../../../domain/pricing/CustomerIdentity';
+import { createHash } from 'node:crypto';
 import type { SubmitReviewUseCase } from './SubmitReviewUseCase';
 
 /**
@@ -72,5 +73,22 @@ export class GetProductReviewsUseCase {
   async execute(productId: string, limit = 10): Promise<ProductReviews> {
     const [aggregate, list] = await Promise.all([this.reviews.getAggregate(productId), this.reviews.listPublished(productId, limit)]);
     return { aggregate: aggregate && aggregate.count > 0 ? aggregate : null, reviews: list };
+  }
+}
+
+/**
+ * "Was this helpful?" (gap analysis #10). The voter is the visitor's own signed visit token, hashed with the
+ * identity pepper so the table holds no reusable identifier. One vote per visitor per review; voting again changes
+ * it. A visitor who clears cookies can vote again: the count is a guide for readers, not a ballot, and the public
+ * endpoint is rate limited.
+ */
+export class VoteOnReviewUseCase {
+  constructor(private readonly reviews: IReviewRepository, private readonly pepper: string) {}
+
+  async execute(input: { reviewId: string; voterKey: string; vote: string }): Promise<'recorded' | 'not_found' | 'invalid'> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.reviewId) || !input.voterKey || input.voterKey.length > 512) return 'invalid';
+    if (input.vote !== 'helpful' && input.vote !== 'not_helpful') return 'invalid';
+    const voterIdentityHash = createHash('sha256').update(`review-vote|${this.pepper}|${input.voterKey}`).digest('hex');
+    return this.reviews.recordVote({ reviewId: input.reviewId, voterIdentityHash, vote: input.vote });
   }
 }

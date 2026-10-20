@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../client';
-import { reviews, productRatingAggregate } from '../schema/reviews';
+import { reviews, productRatingAggregate, reviewVotes } from '../schema/reviews';
 import { orders, orderItems } from '../schema/commerce';
 import { products } from '../schema/products';
 import { IReviewRepository, InsertReviewInput, PublicReview, ReviewStatus } from '../../../application/ports/IReviewRepository';
@@ -135,11 +135,23 @@ export class DrizzleReviewRepository implements IReviewRepository {
   }
 
   async listPublished(productId: string, limit: number): Promise<PublicReview[]> {
-    return db
-      .select({ id: reviews.id, rating: reviews.rating, title: reviews.title, body: reviews.body, isVerifiedPurchase: reviews.isVerifiedPurchase, createdAt: reviews.createdAt })
+    const helpful = sql<number>`(select count(*)::int from review_votes v where v.review_id = ${reviews.id} and v.vote = 'helpful')`;
+    const rows = await db
+      .select({ id: reviews.id, rating: reviews.rating, title: reviews.title, body: reviews.body, isVerifiedPurchase: reviews.isVerifiedPurchase, createdAt: reviews.createdAt, helpfulCount: helpful })
       .from(reviews)
       .where(and(eq(reviews.productId, productId), eq(reviews.status, 'published')))
-      .orderBy(desc(reviews.createdAt))
+      .orderBy(desc(helpful), desc(reviews.createdAt))
       .limit(Math.max(1, Math.min(limit, 50)));
+    return rows.map((r) => ({ ...r, helpfulCount: Number(r.helpfulCount ?? 0) }));
+  }
+
+  async recordVote(input: { reviewId: string; voterIdentityHash: string; vote: 'helpful' | 'not_helpful' }): Promise<'recorded' | 'not_found'> {
+    const [published] = await db.select({ id: reviews.id }).from(reviews).where(and(eq(reviews.id, input.reviewId), eq(reviews.status, 'published'))).limit(1);
+    if (!published) return 'not_found';
+    await db
+      .insert(reviewVotes)
+      .values({ reviewId: input.reviewId, voterIdentityHash: input.voterIdentityHash, vote: input.vote })
+      .onConflictDoUpdate({ target: [reviewVotes.reviewId, reviewVotes.voterIdentityHash], set: { vote: input.vote, createdAt: new Date() } });
+    return 'recorded';
   }
 }

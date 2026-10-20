@@ -22,6 +22,8 @@ export interface PublicReview {
   body: string | null;
   isVerifiedPurchase: boolean;
   createdAt: Date;
+  /** Shoppers who marked it helpful (gap analysis #10). */
+  helpfulCount: number;
 }
 
 export interface IReviewRepository {
@@ -39,6 +41,8 @@ export interface IReviewRepository {
   findOrderLineId(orderNumber: string, productId: string): Promise<string | null>;
   /** Which of these products this identity has already reviewed (any status). */
   reviewedProductIds(customerIdentityHash: string, productIds: string[]): Promise<Set<string>>;
-  /** Published reviews for a product, newest first. */
+  /** Published reviews for a product, most helpful first, then newest. */
   listPublished(productId: string, limit: number): Promise<PublicReview[]>;
+  /** One vote per voter per review (a second vote replaces the first); only on a published review. */
+  recordVote(input: { reviewId: string; voterIdentityHash: string; vote: 'helpful' | 'not_helpful' }): Promise<'recorded' | 'not_found'>;
 }

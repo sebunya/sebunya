@@ -7,7 +7,7 @@ import { apiBase } from './api';
  * one review is published. Any failure is "no reviews", never an error on the
  * product page.
  */
-export interface PublicReview { id: string; rating: number; title: string | null; body: string | null; verified: boolean; createdAt: string }
+export interface PublicReview { id: string; rating: number; title: string | null; body: string | null; verified: boolean; createdAt: string; helpfulCount?: number }
 export interface ProductReviews { aggregate: { count: number; average: number; distribution: Record<string, number> } | null; reviews: PublicReview[] }
 
 const EMPTY: ProductReviews = { aggregate: null, reviews: [] };
