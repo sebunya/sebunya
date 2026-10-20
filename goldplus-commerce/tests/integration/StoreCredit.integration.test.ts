@@ -74,7 +74,9 @@ describeIf('store credit and gift cards (real PostgreSQL)', () => {
 
     const paid = await order(40_000);
     await holdOn(card.hash, paid, 40_000);
+    expect((await repo.findById(card.id)).heldUgx).toBe(40_000); // reserved, not spent
     expect(await repo.captureForOrder(paid, new Date())).toBe(40_000);
+    expect((await repo.findById(card.id)).heldUgx).toBe(0);
     expect(await repo.captureForOrder(paid, new Date())).toBe(0); // idempotent
     expect(await balance(card.id)).toBe(60_000);
     expect(await repo.releaseOrReturnForOrder(paid, 'Refunded', new Date())).toEqual({ released: 0, returned: 40_000 });

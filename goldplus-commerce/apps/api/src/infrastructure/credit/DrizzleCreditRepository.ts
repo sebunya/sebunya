@@ -7,11 +7,13 @@ const rowsOf = (r: unknown) => (Array.isArray(r) ? r : ((r as { rows?: unknown[]
 
 /** The balance of an instrument: every ledger row except released holds (CreditInstrument.availableBalance, in SQL). */
 const BALANCE = sql.raw(`coalesce((select sum(l.amount_ugx) from credit_ledger l where l.instrument_id = i.id and not (l.type = 'HOLD' and l.hold_state = 'released')), 0)`);
+/** What unpaid orders hold right now (positive UGX). */
+const HELD = sql.raw(`coalesce((select -sum(l.amount_ugx) from credit_ledger l where l.instrument_id = i.id and l.type = 'HOLD' and l.hold_state = 'held'), 0)`);
 
 function view(r: Record<string, any>): CreditInstrumentView {
   return {
     id: r.id, kind: r.kind as CreditKind, last4: r.code_last4, status: r.status, initialValueUgx: Number(r.initial_value_ugx),
-    balanceUgx: Math.max(0, Number(r.balance ?? 0)), reason: r.reason, recipientName: r.recipient_name ?? null, recipientPhone: r.recipient_phone ?? null,
+    balanceUgx: Math.max(0, Number(r.balance ?? 0)), heldUgx: Math.max(0, Number(r.held ?? 0)), reason: r.reason, recipientName: r.recipient_name ?? null, recipientPhone: r.recipient_phone ?? null,
     customerUserId: r.customer_user_id ?? null, issuedBy: r.issued_by, approvedBy: r.approved_by ?? null,
     createdAt: new Date(r.created_at), expiresAt: r.expires_at ? new Date(r.expires_at) : null,
   };
@@ -61,7 +63,7 @@ export class DrizzleCreditRepository implements ICreditRepository {
   }
 
   private async one(where: ReturnType<typeof sql>): Promise<CreditInstrumentView | null> {
-    const [r] = rowsOf(await db.execute(sql`select i.*, ${BALANCE} as balance from credit_instruments i where ${where} limit 1`));
+    const [r] = rowsOf(await db.execute(sql`select i.*, ${BALANCE} as balance, ${HELD} as held from credit_instruments i where ${where} limit 1`));
     return r ? view(r) : null;
   }
 

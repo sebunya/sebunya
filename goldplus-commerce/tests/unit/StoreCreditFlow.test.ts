@@ -63,6 +63,8 @@ describe('store credit flow (gap #17)', () => {
     expect(await m({}).check(code)).toMatchObject({ ok: true, usable: true, balanceUgx: 40_000, reason: null });
     expect(await m({ status: 'void' }).check(code)).toMatchObject({ ok: true, usable: false, balanceUgx: 0 });
     expect(await m({ balanceUgx: 0 }).check(code)).toMatchObject({ usable: false, reason: 'This card has no balance left.' });
+    // Held by an unpaid order is not "no balance": the holder is told where the money is and how to free it.
+    expect(await m({ balanceUgx: 0, heldUgx: 30_000 }).check(code)).toMatchObject({ usable: false, reason: expect.stringContaining('UGX 30,000 on this card is reserved for an order that has not been paid yet') });
     expect(await m({}).check('nonsense')).toEqual({ ok: false });
     expect(JSON.stringify(await m({ recipientName: 'Amina' }).check(code))).not.toContain('Amina');
   });
@@ -104,5 +106,17 @@ describe('store credit flow (gap #17)', () => {
     expect(smsText('ORDER_PAYMENT_SUCCESS', { ...base, storeCreditAppliedUgx: 116_500 } as never)).toContain('(paid in full with your gift card or store credit)');
     expect(smsText('ORDER_PAYMENT_SUCCESS', base as never)).not.toContain('gift card');
     expect(emailCopy('ORDER_PAYMENT_SUCCESS', { ...base, storeCreditAppliedUgx: 50_000 } as never)?.body).toContain('Mobile Money or card UGX 66,500');
+  });
+
+  it('Goldie answers gift card questions from what the shop does, and leaves promo-code questions alone', async () => {
+    const { classify, answerDeterministically } = await import('../../apps/web/src/lib/assistantRouter');
+    for (const q of ['Do you sell gift cards?', 'can i pay with a gift card', 'I have store credit, how do I use it', 'gift voucher for my brother']) {
+      expect(classify(q), q).toMatchObject({ intent: 'PAYMENT', deterministic: true, query: 'gift card' });
+    }
+    expect(classify('do you have a voucher code').query).not.toBe('gift card');
+    expect(classify('can I pay with mobile money').query).not.toBe('gift card');
+    const a = await answerDeterministically(classify('Do you sell gift cards?'));
+    expect(a.text).toContain('Gift card or store credit');
+    expect(a.links.some((l) => l.url.endsWith('/gift-card'))).toBe(true);
   });
 });

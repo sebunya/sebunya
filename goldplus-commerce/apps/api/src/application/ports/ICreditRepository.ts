@@ -7,6 +7,8 @@ export interface CreditInstrumentView {
   status: 'pending_approval' | 'active' | 'void';
   initialValueUgx: number;
   balanceUgx: number;
+  /** Reserved by orders that are not paid yet (held, not spent): it comes back if that order is cancelled. */
+  heldUgx?: number;
   reason: string;
   recipientName: string | null;
   recipientPhone: string | null;

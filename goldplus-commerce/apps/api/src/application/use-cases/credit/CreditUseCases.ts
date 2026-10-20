@@ -1,3 +1,4 @@
+import { formatUgx } from '../../notifications/CustomerMessages';
 import type { CreditInstrumentView, ICreditRepository } from '../../ports/ICreditRepository';
 import { checkIssue, maskCreditCode, newCreditCode, normalizeCreditCode, type CreditKind } from '../../../domain/credit/CreditInstrument';
 import { isValidUgandanPhone, normalizePhone } from '../../services/validationHelpers';
@@ -88,7 +89,10 @@ export class ManageCreditUseCases {
     const i = await this.repo.findByCodeHash(this.tools.hash(parsed.code));
     if (!i) return { ok: false };
     const expired = i.expiresAt !== null && i.expiresAt <= new Date();
-    const reason = i.status === 'void' ? 'This card was cancelled.' : i.status === 'pending_approval' ? 'This card is waiting for a second approval at GoldPlus.' : expired ? 'This card has expired.' : i.balanceUgx <= 0 ? 'This card has no balance left.' : null;
+    const reason = i.status === 'void' ? 'This card was cancelled.' : i.status === 'pending_approval' ? 'This card is waiting for a second approval at GoldPlus.' : expired ? 'This card has expired.' : i.balanceUgx <= 0 && (i.heldUgx ?? 0) > 0
+        // Not spent: an order that has not been paid yet is holding it. Said plainly, so the holder does not think it is gone.
+        ? `${formatUgx(i.heldUgx ?? 0)} on this card is reserved for an order that has not been paid yet. Pay for that order, or call us to cancel it and free the card.`
+        : i.balanceUgx <= 0 ? 'This card has no balance left.' : null;
     return { ok: true, kind: i.kind, masked: maskCreditCode(parsed.code), balanceUgx: i.status === 'void' || expired ? 0 : i.balanceUgx, usable: reason === null, reason };
   }
 
