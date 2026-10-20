@@ -427,7 +427,7 @@ if (order && !previewData.emailHtml) {
 }
 
 if (order && !previewData.whatsappText) {
-  let fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nWe have received your order! Placed status is currently *Awaiting Payment*.\n\nTotal Amount: *${formatter.format(order.totalUgx || 0)}*\n\nTo complete your checkout securely, please review your Mobile Money window or use our tracking URL: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
+  let fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nWe have received your order! Placed status is currently *Awaiting Payment*.\n\nTotal Amount: *${formatter.format(order.totalUgx || 0)}*${Number(order.storeCreditAppliedUgx ?? 0) > 0 ? `\nPaid by gift card: *${formatter.format(Number(order.storeCreditAppliedUgx))}*\nTo pay: *${formatter.format(Math.max(0, Number(order.totalUgx || 0) - Number(order.storeCreditAppliedUgx)))}*` : ''}\n\nTo complete your checkout securely, please review your Mobile Money window or use our tracking URL: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
   
   if (previewData.template === 'ORDER_PAYMENT_PENDING') {
     fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nYour Mobile Money checkout has been initiated and is *Pending verification*.\n\nOnce verified, our team will prepare your GoldPlus order.\n\nTrack status live: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
@@ -598,7 +598,8 @@ const customerHref = order?.userId ? `/admin/customers/${encodeURIComponent(orde
               `Items: ${(order.items || []).reduce((n: number, i: any) => n + (Number(i.quantity) || 0), 0)}`,
               order.paymentStatus === 'paid'
                 ? 'Payment: PAID — collect nothing'
-                : `COLLECT ON DELIVERY: UGX ${Number(order.totalUgx ?? order.totalAmount ?? 0).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}`,
+                // 0196: a gift card / store credit already paid part of it; the rider collects only the rest.
+                : `COLLECT ON DELIVERY: UGX ${Math.max(0, Number(order.totalUgx ?? order.totalAmount ?? 0) - Number(order.storeCreditAppliedUgx ?? 0)).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}${Number(order.storeCreditAppliedUgx ?? 0) > 0 ? ` (gift card already paid UGX ${Number(order.storeCreditAppliedUgx).toLocaleString('en-UG')})` : ''}`,
             ].filter(Boolean).join('\n')}</pre>
             <p class="text-[10px] text-gray-500 mt-2 print:hidden">The copy button places this block on the clipboard, formatted for WhatsApp.</p>
           </div>
@@ -653,6 +654,18 @@ const customerHref = order?.userId ? `/admin/customers/${encodeURIComponent(orde
                   <span>Total Amount</span>
                   <span>{formatter.format(order.totalUgx)}</span>
                 </div>
+                {Number(order.storeCreditAppliedUgx ?? 0) > 0 && (
+                  <>
+                    <div class="flex justify-between text-gray-600" data-admin-store-credit>
+                      <span>Gift card or store credit</span>
+                      <span class="font-bold">−{formatter.format(Number(order.storeCreditAppliedUgx))}</span>
+                    </div>
+                    <div class="flex justify-between font-black text-sm text-brand-dark">
+                      <span>{order.paymentStatus === 'paid' ? 'Paid by Mobile Money or card' : 'Still to pay'}</span>
+                      <span>{formatter.format(Math.max(0, Number(order.totalUgx) - Number(order.storeCreditAppliedUgx)))}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

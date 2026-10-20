@@ -35,7 +35,12 @@ routes.post('/', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), requireStepU
   const body = await c.req.json().catch(() => null);
   const kind = body?.kind === 'gift_card' ? 'gift_card' : body?.kind === 'store_credit' ? 'store_credit' : null;
   if (!kind) return c.json({ success: false, error: { code: 'BAD_KIND', message: 'Choose gift card or store credit.' } } satisfies ApiResponse<never>, 400);
-  const expires = typeof body?.expiresAt === 'string' && body.expiresAt ? new Date(body.expiresAt) : null;
+  // A date from the form means "valid through that day" in Kampala, not midnight UTC (03:00 EAT that morning).
+  const rawExpiry = typeof body?.expiresAt === 'string' ? body.expiresAt.trim() : '';
+  const expires = rawExpiry ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(rawExpiry) ? `${rawExpiry}T23:59:59+03:00` : rawExpiry) : null;
+  if (expires && !Number.isNaN(expires.getTime()) && expires.getTime() <= Date.now()) {
+    return c.json({ success: false, error: { code: 'BAD_EXPIRY', message: 'The expiry date is in the past.' } } satisfies ApiResponse<never>, 400);
+  }
   const result = await Registry.getInstance().issueCreditUseCase.execute({
     kind, amountUgx: Number(body?.amountUgx), reason: String(body?.reason ?? ''), recipientName: body?.recipientName ?? null,
     recipientPhone: body?.recipientPhone ?? null, actorId: actor(c), expiresAt: expires && !Number.isNaN(expires.getTime()) ? expires : null,

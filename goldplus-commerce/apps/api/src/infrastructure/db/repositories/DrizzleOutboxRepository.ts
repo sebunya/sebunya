@@ -16,17 +16,23 @@ import { DEAD_LETTER_STATE, DEAD_LETTER_STATES } from '../../../domain/outbox/Te
  * replayed (the code has expired, and the message would go out without it).
  */
 export const SECRET_PAYLOAD_EVENT_TYPES: readonly string[] = ['PHONE_VERIFICATION_REQUESTED'];
+/**
+ * The payload as a jsonb OBJECT. drizzle 0.29 + postgres-js store a jsonb value written through `.values({ payload })`
+ * as a JSON STRING (the repo-wide gotcha; see PgParams), which is how CustomerOutboxNotifier writes. `?` and `-` on
+ * such a string match nothing (and `-` on a scalar errors), so every secret check reads through this.
+ */
+const payloadObject = () => sql`(case when jsonb_typeof(${outboxEvents.payload}) = 'string' and left(${outboxEvents.payload} #>> '{}', 1) = '{' then (${outboxEvents.payload} #>> '{}')::jsonb else ${outboxEvents.payload} end)`;
 const scrubbedPayload = () => sql`case when ${outboxEvents.eventType} in (${sql.join(SECRET_PAYLOAD_EVENT_TYPES.map((t) => sql`${t}`), sql`, `)})
-  then (${outboxEvents.payload} - 'code') || jsonb_build_object('message', 'Verification code (removed once handled).')
-  when ${outboxEvents.payload} ? 'creditCode'
-  then (${outboxEvents.payload} - 'creditCode') || jsonb_build_object('message', 'Gift card / store credit code (removed once handled).', 'creditCodeRemoved', true)
+  then (${payloadObject()} - 'code') || jsonb_build_object('message', 'Verification code (removed once handled).')
+  when ${payloadObject()} ? 'creditCode'
+  then (${payloadObject()} - 'creditCode') || jsonb_build_object('message', 'Gift card / store credit code (removed once handled).', 'creditCodeRemoved', true)
   else ${outboxEvents.payload} end`;
 /**
  * 0196: a gift card / store credit code is a bearer secret that rides a shared event type (CUSTOMER_ORDER_MESSAGE),
  * so it is recognised by its key, not its type. Never replayed: after the scrub the message has no code, and a card
  * whose SMS failed is re-sent by staff (cancel the rest and issue a new card).
  */
-const notSecretPayload = () => and(notInArray(outboxEvents.eventType, [...SECRET_PAYLOAD_EVENT_TYPES]), sql`not (${outboxEvents.payload} ?| array['creditCode', 'creditCodeRemoved'])`);
+const notSecretPayload = () => and(notInArray(outboxEvents.eventType, [...SECRET_PAYLOAD_EVENT_TYPES]), sql`not (${payloadObject()} ?| array['creditCode', 'creditCodeRemoved'])`);
 
 /**
  * The read-compatible state list as a literal IN-list.

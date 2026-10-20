@@ -90,4 +90,19 @@ describe('store credit flow (gap #17)', () => {
     expect(route).toContain('storeCreditCodeHash = creditCodeHash(parsedCode.code);');
     expect(route).toMatch(/if \(!parsedCode\) \{\s*return c\.json\(\{ success: false, error: \{ code: 'STORE_CREDIT_UNAVAILABLE'/);
   });
+
+  it('a rider never collects what a gift card already paid', async () => {
+    const { riderCollectionAmount } = await import('../../apps/api/src/domain/delivery/DeliveryVariance');
+    expect(riderCollectionAmount({ paymentStatus: 'unpaid', totalUgx: 116_500, storeCreditAppliedUgx: 50_000 })).toEqual({ collect: 66_500, label: 'COLLECT ON DELIVERY: UGX 66,500' });
+    expect(riderCollectionAmount({ paymentStatus: 'unpaid', totalUgx: 116_500 }).collect).toBe(116_500);
+  });
+
+  it('payment messages name the gift card split, and say nothing new when there is none', async () => {
+    const { smsText, emailCopy } = await import('../../apps/api/src/application/notifications/CustomerMessages');
+    const base = { orderNumber: 'GP-1', totalUgx: 116_500 };
+    expect(smsText('ORDER_PAYMENT_SUCCESS', { ...base, storeCreditAppliedUgx: 50_000 } as never)).toContain('(gift card or store credit UGX 50,000 + Mobile Money or card UGX 66,500)');
+    expect(smsText('ORDER_PAYMENT_SUCCESS', { ...base, storeCreditAppliedUgx: 116_500 } as never)).toContain('(paid in full with your gift card or store credit)');
+    expect(smsText('ORDER_PAYMENT_SUCCESS', base as never)).not.toContain('gift card');
+    expect(emailCopy('ORDER_PAYMENT_SUCCESS', { ...base, storeCreditAppliedUgx: 50_000 } as never)?.body).toContain('Mobile Money or card UGX 66,500');
+  });
 });

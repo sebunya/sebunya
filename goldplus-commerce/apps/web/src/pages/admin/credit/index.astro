@@ -40,7 +40,7 @@ if (Astro.request.method === 'POST') {
         expiresAt: String(form.get('expiresAt') ?? '') || null,
       }) });
       const json: any = await res.json().catch(() => null);
-      if (res.ok && json?.success) { issued = json.data; notice = { kind: 'success', text: json.data.status === 'pending_approval' ? 'Issued. Above UGX 500,000 it waits for a second person to approve it before it can be spent.' : json.data.texted ? 'Issued and texted to the recipient.' : 'Issued.' }; }
+      if (res.ok && json?.success) { issued = json.data; notice = { kind: 'success', text: json.data.status === 'pending_approval' ? 'Issued. Above UGX 500,000 it waits for a second person to approve it before it can be spent.' : json.data.texted ? 'Issued. The code is queued to text to the recipient (it usually arrives within a minute; check with them).' : 'Issued.' }; }
       else notice = { kind: 'error', text: stepUpHint(json, res, 'Not issued.') };
     } else if (intent === 'approve' || intent === 'void' || intent === 'adjust') {
       const res = await fetch(`${apiBase}/admin/credit/${encodeURIComponent(id)}/${intent}`, { method: 'POST', headers, body: JSON.stringify({ note: String(form.get('note') ?? ''), amountUgx: Number(form.get('amountUgx')) }) });

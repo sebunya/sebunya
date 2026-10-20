@@ -18,6 +18,10 @@ import { db, client } from '../../apps/api/src/infrastructure/db/client';
 import { orders, checkoutIdempotency, checkoutSideEffects } from '../../apps/api/src/infrastructure/db/schema/commerce';
 import { outboxEvents } from '../../apps/api/src/infrastructure/db/schema/system';
 import { products } from '../../apps/api/src/infrastructure/db/schema/products';
+import { sql } from 'drizzle-orm';
+import { DrizzleCreditRepository } from '../../apps/api/src/infrastructure/credit/DrizzleCreditRepository';
+import { creditCodeHash, creditRandomIndexes } from '../../apps/api/src/infrastructure/credit/CreditCodeCrypto';
+import { newCreditCode } from '../../apps/api/src/domain/credit/CreditInstrument';
 
 const WEB = process.env.E2E_WEB_BASE || 'http://127.0.0.1:4321';
 const STUB = process.env.E2E_STUB_BASE || 'http://127.0.0.1:4599';
@@ -118,6 +122,9 @@ async function postForm(
       'content-type': 'application/x-www-form-urlencoded',
       accept: 'text/html',
       'sec-fetch-site': 'same-origin',
+      // A browser always sends Origin on a form POST. Astro 6 refuses one without a matching Origin (403), so a
+      // client that omits it is not browser-shaped and every submission below failed for that reason alone.
+      origin: WEB,
       ...headerOverrides,
     },
     body,
@@ -207,11 +214,12 @@ async function main(): Promise<void> {
   // -- 2. A cross-site POST is refused before anything is created ------------
   console.log('\n--- 2. a cross-site POST creates nothing');
   const beforeCrossSite = (await db.select({ id: orders.id }).from(orders)).length;
-  const crossSite = await postForm(jar, '/checkout', payFields, { 'sec-fetch-site': 'cross-site' });
+  const crossSite = await postForm(jar, '/checkout', payFields, { 'sec-fetch-site': 'cross-site', origin: 'https://attacker.example' });
   const afterCrossSite = (await db.select({ id: orders.id }).from(orders)).length;
-  check('the request is answered, not crashed', crossSite.status, 200);
+  // Since Astro 6 the framework's own origin check refuses it before the page runs (stronger than the page's
+  // own guard, which still answers a same-origin request whose fetch metadata says cross-site).
+  check('the request is refused by the origin check', crossSite.status, 403);
   check('no order was created', afterCrossSite, beforeCrossSite);
-  check('the customer is told it could not be verified', /could not be verified/i.test(crossSite.body), true);
   check('it is not a redirect to the payment provider', crossSite.location, null);
 
   // -- 3. A genuine submission places one order and reaches the provider ----
@@ -311,7 +319,8 @@ async function main(): Promise<void> {
   await get(retryJar, '/checkout');
   const offline = { ...CUSTOMER, phone: '+256700000456', paymentMethod: 'offline' };
   const firstOffline = await postForm(retryJar, '/checkout', offline);
-  check('the first offline submission is accepted', firstOffline.status, 200);
+  // Owner decision 2026-10-16: always online, so this is accepted by handing off to pay (303), not a page.
+  check('the first submission is accepted', firstOffline.status === 200 || firstOffline.status === 303, true);
 
   const afterFirst = await db.select({ id: orders.id }).from(orders).where(eq(orders.customerPhone, offline.phone));
   check('one order exists after the first submission', afterFirst.length, 1);
@@ -422,11 +431,96 @@ async function main(): Promise<void> {
     .where(eq(products.id, product.id));
   note(`reserved units after the burst: ${burstStock.reserved}`);
 
+  await giftCardProofs(product);
+
   console.log(
     failures === 0
       ? `\nALL ${checks} END-TO-END CHECKS PASSED`
       : `\n${failures} of ${checks} END-TO-END CHECKS FAILED`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Gift cards and store credit (0196): the same real path, with a card on the form
+// ---------------------------------------------------------------------------
+
+const rowsOf = (r: unknown) => (Array.isArray(r) ? r : ((r as { rows?: unknown[] }).rows ?? [])) as Array<Record<string, any>>;
+
+async function issueCard(valueUgx: number): Promise<{ id: string; code: string }> {
+  const code = newCreditCode('gift_card', creditRandomIndexes());
+  const { id } = await new DrizzleCreditRepository().issue({
+    kind: 'gift_card', codeHash: creditCodeHash(code), last4: code.slice(-4), valueUgx, reason: 'Harness card',
+    status: 'active', recipientName: null, recipientPhone: null, customerUserId: null, sourceOrderId: null,
+    issuedBy: '00000000-0000-4000-8000-00000000e2e0', expiresAt: null,
+  });
+  return { id, code };
+}
+
+async function cardState(id: string): Promise<{ balance: number; holds: string[] }> {
+  const [b] = rowsOf(await db.execute(sql`select coalesce(sum(amount_ugx) filter (where not (type = 'HOLD' and hold_state = 'released')), 0)::int as balance from credit_ledger where instrument_id = ${id}`));
+  const holds = rowsOf(await db.execute(sql`select hold_state from credit_ledger where instrument_id = ${id} and type = 'HOLD' order by created_at`)).map((r) => String(r.hold_state));
+  return { balance: Number(b.balance), holds };
+}
+
+async function giftCardProofs(product: { id: string; priceUgx: number }): Promise<void> {
+  // -- 12. Part paid by a gift card: Pesapal is asked only for the rest -------
+  console.log('\n--- 12. a gift card pays part; Pesapal is asked only for the rest, and payment captures the card');
+  await resetStub();
+  const part = await issueCard(100_000);
+  const partJar = browserWithCart(product);
+  await get(partJar, '/checkout');
+  const partPhone = '+256700000901';
+  const partSubmit = await postForm(partJar, '/checkout', { ...payFields, phone: partPhone, storeCreditCode: part.code.toLowerCase().replace(/-/g, ' ') });
+  if (partSubmit.status !== 303) note(`unexpected status ${partSubmit.status}; body excerpt: ${excerptError(partSubmit.body)}`);
+  check('the customer is sent to pay', partSubmit.status, 303);
+  const [partOrder] = await db.select().from(orders).where(eq(orders.customerPhone, partPhone));
+  check('the order records the gift card part', Number(partOrder?.storeCreditAppliedUgx), 100_000);
+  const partSubs = await stubSubmissions() as Array<{ merchantReference: string; orderTrackingId: string; amount?: number }>;
+  check('Pesapal was asked for the total less the card', Number(partSubs[0]?.amount), Number(partOrder?.totalAmount) - 100_000);
+  check('the card holds the money while the customer pays', await cardState(part.id), { balance: 0, holds: ['held'] });
+
+  await fetch(`${STUB}/__stub/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderTrackingId: partSubs[0]?.orderTrackingId, status: 'COMPLETED' }) });
+  const ipn = await fetch(`${process.env.E2E_API_BASE}/commerce/payments/pesapal/ipn?OrderTrackingId=${encodeURIComponent(partSubs[0]?.orderTrackingId ?? '')}&OrderMerchantReference=${encodeURIComponent(partSubs[0]?.merchantReference ?? '')}&OrderNotificationType=IPNCHANGE`);
+  check('the provider notification is accepted', ipn.status, 200);
+  const [paidPart] = await db.select().from(orders).where(eq(orders.id, partOrder.id));
+  check('the order is paid', paidPart.paymentStatus, 'paid');
+  check('the card hold is captured on payment', (await cardState(part.id)).holds, ['captured']);
+  const mismatch = rowsOf(await db.execute(sql`select 1 from outbox_events where related_entity_id = ${partOrder.id} and payload::text ilike '%amount%mismatch%'`));
+  check('paying the rest is not flagged as an underpayment', mismatch.length, 0);
+  // The notifier stores payloads as a jsonb STRING (repo-wide drizzle gotcha), so the text is read through it.
+  const paidSms = rowsOf(await db.execute(sql`select coalesce(payload->>'message', (payload #>> '{}')::jsonb->>'message') as m from outbox_events where related_entity_id = ${partOrder.id} and template = 'ORDER_PAYMENT_SUCCESS'`));
+  check('the payment message names the split', /gift card or store credit UGX 100,000 \+ Mobile Money or card/.test(String(paidSms[0]?.m ?? '')), true);
+
+  // -- 13. Paid in full by a gift card: no Pesapal at all ---------------------
+  console.log('\n--- 13. a gift card that covers everything confirms the order with no payment page');
+  await resetStub();
+  const full = await issueCard(1_000_000);
+  const fullJar = browserWithCart(product);
+  await get(fullJar, '/checkout');
+  const fullPhone = '+256700000902';
+  const fullSubmit = await postForm(fullJar, '/checkout', { ...payFields, phone: fullPhone, storeCreditCode: full.code });
+  check('the customer is sent to the order receipt, not to a payment page', (fullSubmit.location ?? '').startsWith('/checkout/confirmed'), true);
+  const receipt = fullSubmit.location ? await get(fullJar, fullSubmit.location) : { status: 0, body: '' };
+  check('the receipt opens', receipt.status, 200);
+  check('it says the order is paid in full by the card', /paid in full with your gift card or store credit/i.test(receipt.body), true);
+  check('Pesapal was never contacted', (await stubSubmissions()).length, 0);
+  const [fullOrder] = await db.select().from(orders).where(eq(orders.customerPhone, fullPhone));
+  check('the order is paid', fullOrder?.paymentStatus, 'paid');
+  check('the card is charged exactly the order total', (await cardState(full.id)).balance, 1_000_000 - Number(fullOrder?.totalAmount));
+  check('and the hold is captured', (await cardState(full.id)).holds, ['captured']);
+
+  // -- 14. A wrong code: nothing ordered, nothing charged ----------------------
+  console.log('\n--- 14. a wrong code orders nothing and charges nothing');
+  await resetStub();
+  const badJar = browserWithCart(product);
+  await get(badJar, '/checkout');
+  const badPhone = '+256700000903';
+  const bad = await postForm(badJar, '/checkout', { ...payFields, phone: badPhone, storeCreditCode: 'GPGC-AAAA-BBBB-CCCC' });
+  check('the customer gets the page back, not a payment redirect', bad.status, 200);
+  check('they are told the card cannot be used and nothing was charged', /gift card or store credit cannot be used[\s\S]{0,200}Nothing has been charged/i.test(bad.body), true);
+  check('no order exists', (await db.select({ id: orders.id }).from(orders).where(eq(orders.customerPhone, badPhone))).length, 0);
+  check('Pesapal was never contacted', (await stubSubmissions()).length, 0);
+  check('the code is kept on the form to correct', bad.body.includes('GPGC-AAAA-BBBB-CCCC'), true);
 }
 
 /**

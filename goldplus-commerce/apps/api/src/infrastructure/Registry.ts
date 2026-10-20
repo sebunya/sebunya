@@ -3482,6 +3482,13 @@ export class Registry {
         customerName: order.customerName,
         orderNumber: order.orderNumber,
         totalUgx: order.totalUgx,
+        // 0196: the gift card / store credit part, so payment messages and the receipt name the split.
+        ...(order.storeCreditAppliedUgx > 0 ? {
+          storeCreditAppliedUgx: order.storeCreditAppliedUgx,
+          paymentMethod: order.amountDueUgx > 0
+            ? `Gift card or store credit ${order.storeCreditAppliedUgx.toLocaleString('en-US')} + Mobile Money or card ${order.amountDueUgx.toLocaleString('en-US')} (UGX)`
+            : 'Gift card or store credit',
+        } : {}),
         // What the reviewed email templates need to render a real receipt:
         // the lines, the money and where it is going. Without these the
         // adapter cannot fill the design and falls back to the older body.
