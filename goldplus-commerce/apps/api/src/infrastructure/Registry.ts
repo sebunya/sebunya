@@ -69,6 +69,8 @@ import { DrizzleReviewRepository } from './db/repositories/DrizzleReviewReposito
 import { SubmitReviewUseCase } from '../application/use-cases/reviews/SubmitReviewUseCase';
 import { GetOrderReviewEligibilityUseCase, GetProductReviewsUseCase, SubmitOrderReviewUseCase } from '../application/use-cases/reviews/OrderReviewUseCases';
 import { SendReviewRemindersUseCase } from '../application/use-cases/reviews/SendReviewRemindersUseCase';
+import { GetSalesFunnelUseCase } from '../application/use-cases/analytics/GetSalesFunnelUseCase';
+import { DrizzleSalesFunnelReader } from './db/repositories/DrizzleSalesFunnelReader';
 import { DrizzleReviewReminderCandidates } from './reviews/DrizzleReviewReminderCandidates';
 import { SendUnpaidOrderRemindersUseCase } from '../application/use-cases/commerce/SendUnpaidOrderRemindersUseCase';
 import { DrizzleUnpaidOrderReminderCandidates } from './commerce/DrizzleUnpaidOrderReminderCandidates';
@@ -1612,6 +1614,8 @@ export class Registry {
   );
   public readonly exportAnalyticsUseCase = new ExportAnalyticsUseCase(this.getAnalyticsOverviewUseCase);
   public readonly getPaymentIntelligenceUseCase = new GetPaymentIntelligenceUseCase(this.analyticsReadRepo);
+  /** Gap analysis #3: product page to paid order, with the money that stopped at each step. */
+  public readonly getSalesFunnelUseCase = new GetSalesFunnelUseCase(new DrizzleSalesFunnelReader());
   public readonly getAnalyticsBreakdownUseCase = new GetAnalyticsBreakdownUseCase(this.analyticsReadRepo);
   public readonly getAnalyticsExceptionDrilldownUseCase = new GetAnalyticsExceptionDrilldownUseCase(this.analyticsReadRepo);
 
