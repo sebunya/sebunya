@@ -52,6 +52,7 @@ export const NON_INDEXABLE_PREFIXES: readonly string[] = [
   '/reset-password',
   '/logout',
   '/compare',
+  '/charger-finder',
   '/track-order',
 ];
 
