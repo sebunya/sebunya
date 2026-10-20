@@ -75,7 +75,10 @@ try {
                   {offersOnlinePayment(o) ? (
                     <a href={`/orders/${o.id}#pay`} class="inline-flex items-center rounded-full bg-brand-charcoal px-3 py-1.5 text-xs font-bold text-white hover:bg-black whitespace-nowrap">Pay for this order</a>
                   ) : (
-                    <a href={`/orders/${o.id}`} class="text-xs font-bold text-brand-mutedGrey hover:text-brand-charcoal whitespace-nowrap">Details &rarr;</a>
+                    <>
+                      {['delivered', 'completed'].includes(o.status) && <a href={`/orders/${o.id}#items`} class="text-xs font-bold text-brand-charcoal underline whitespace-nowrap">Buy again</a>}
+                      <a href={`/orders/${o.id}`} class="text-xs font-bold text-brand-mutedGrey hover:text-brand-charcoal whitespace-nowrap">Details &rarr;</a>
+                    </>
                   )}
                 </div>
               </li>
