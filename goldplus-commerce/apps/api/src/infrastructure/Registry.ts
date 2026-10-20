@@ -24,6 +24,8 @@ import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRe
 import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository';
 import { DrizzleOrderAttributionRepository } from './db/repositories/DrizzleOrderAttributionRepository';
 import { DrizzleProductRepository } from './db/repositories/DrizzleProductRepository';
+import { SavedProductsUseCases } from '../application/use-cases/account/SavedProductsUseCases';
+import { DrizzleWishlistRepository } from './db/repositories/DrizzleWishlistRepository';
 import { DrizzleBlogRepository } from './db/repositories/DrizzleBlogRepository';
 import { DrizzleDeviceRepository } from './db/repositories/DrizzleDeviceRepository';
 import { DrizzleBatteryCatalogueRepository } from './db/repositories/DrizzleBatteryCatalogueRepository';
@@ -71,8 +73,6 @@ import { GetOrderReviewEligibilityUseCase, GetProductReviewsUseCase, SubmitOrder
 import { SendReviewRemindersUseCase } from '../application/use-cases/reviews/SendReviewRemindersUseCase';
 import { GetSalesFunnelUseCase } from '../application/use-cases/analytics/GetSalesFunnelUseCase';
 import { DrizzleSalesFunnelReader } from './db/repositories/DrizzleSalesFunnelReader';
-import { SavedProductsUseCases } from '../application/use-cases/account/SavedProductsUseCases';
-import { DrizzleWishlistRepository } from './db/repositories/DrizzleWishlistRepository';
 import { DrizzleReviewReminderCandidates } from './reviews/DrizzleReviewReminderCandidates';
 import { SendUnpaidOrderRemindersUseCase } from '../application/use-cases/commerce/SendUnpaidOrderRemindersUseCase';
 import { DrizzleUnpaidOrderReminderCandidates } from './commerce/DrizzleUnpaidOrderReminderCandidates';
