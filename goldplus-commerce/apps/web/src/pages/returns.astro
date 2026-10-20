@@ -1,9 +1,9 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
-import { policyBySlug, POLICY_STATUS_LABEL } from '../../lib/legal-policies';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { policyBySlug, POLICY_STATUS_LABEL } from '../lib/legal-policies';
 const policy = policyBySlug('returns')!;
-import CmsPolicyDocument from '../../components/CmsPolicyDocument.astro';
-import { fetchPublishedPolicy } from '../../lib/legalCms';
+import CmsPolicyDocument from '../components/CmsPolicyDocument.astro';
+import { fetchPublishedPolicy } from '../lib/legalCms';
 // Wave 2C: a PUBLISHED CMS version replaces the wording below; until one
 // exists this page is the authoritative published policy.
 const cms = await fetchPublishedPolicy('returns');
