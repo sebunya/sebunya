@@ -40,6 +40,46 @@ routes.get('/ledger', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c)
   return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
 });
 
+// 0199: gift cards customers bought online (registered before '/:id').
+routes.get('/purchases', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
+  const rows = await Registry.getInstance().giftCardPurchaseUseCases.recent(100);
+  const data = rows.map((p) => ({ ...p, createdAt: p.createdAt.toISOString(), paidAt: p.paidAt?.toISOString() ?? null, issuedAt: p.issuedAt?.toISOString() ?? null, redirectUrl: undefined }));
+  c.header('Cache-Control', 'no-store');
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
+/** Send the card to a different number: before issue the number changes; after, an untouched card gets a new code. */
+routes.post('/purchases/:reference/redirect', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), requireStepUp('payment_refund'), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const user = c.get('user') as { id: string };
+  const reference = c.req.param('reference') ?? '';
+  const result = await Registry.getInstance().giftCardPurchaseUseCases.redirect(reference, String(body?.phone ?? ''), user.id, String(body?.reason ?? ''));
+  if (result.purchaseId) {
+    await Registry.getInstance().createAuditLogUseCase.execute({
+      actorId: user.id, action: result.ok ? 'GIFT_CARD_PURCHASE_REDIRECTED' : 'GIFT_CARD_PURCHASE_REDIRECT_REFUSED', entity: 'gift_card_purchase',
+      entityId: result.purchaseId, newState: { reference, message: result.message.slice(0, 300) },
+    }).catch(() => undefined);
+  }
+  if (!result.ok) return c.json({ success: false, error: { code: 'NOT_REDIRECTED', message: result.message } } satisfies ApiResponse<never>, 400);
+  return c.json({ success: true, data: result });
+});
+
+/** The buyer's money goes back through Pesapal; the card (if issued and untouched) is cancelled first. */
+routes.post('/purchases/:reference/refund', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), requireStepUp('payment_refund'), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const user = c.get('user') as { id: string; email?: string | null };
+  const reference = c.req.param('reference') ?? '';
+  const result = await Registry.getInstance().giftCardPurchaseUseCases.refund(reference, { id: user.id, username: user.email ?? user.id }, String(body?.reason ?? ''));
+  if (result.purchaseId) {
+    await Registry.getInstance().createAuditLogUseCase.execute({
+      actorId: user.id, action: result.ok ? 'GIFT_CARD_PURCHASE_REFUNDED' : 'GIFT_CARD_PURCHASE_REFUND_REFUSED', entity: 'gift_card_purchase',
+      entityId: result.purchaseId, newState: { reference, message: result.message.slice(0, 300) },
+    }).catch(() => undefined);
+  }
+  if (!result.ok) return c.json({ success: false, error: { code: 'NOT_REFUNDED', message: result.message } } satisfies ApiResponse<never>, 400);
+  return c.json({ success: true, data: result });
+});
+
 routes.get('/:id', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
   const id = c.req.param('id') ?? '';
   const data = UUID.test(id) ? await Registry.getInstance().manageCreditUseCases.detail(id) : null;

@@ -168,9 +168,9 @@ export async function answerDeterministically(c: Classification, ci?: CareInput)
       if (c.query === 'gift card') {
         return {
           intent: c.intent,
-          text: 'Yes. A GoldPlus gift card or store credit has a code that starts with GPGC or GPSC. Type it in the "Gift card or store credit" box at checkout: it pays first, and you pay any rest with Mobile Money or card. You can check what is on a card on the Gift card balance page. To buy a gift card, ask the team on WhatsApp or at the shop. Keep the code private: anyone with it can spend it.',
+          text: 'Yes. A GoldPlus gift card or store credit has a code that starts with GPGC or GPSC. Type it in the "Gift card or store credit" box at checkout: it pays first, and you pay any rest with Mobile Money or card. You can check what is on a card on the Gift card balance page. To give one, buy it on the Send a gift card page: pay with Mobile Money or card, and we text the code to them, now or on a day you choose. Keep the code private: anyone with it can spend it.',
           products: [],
-          links: [link('Gift card balance', '/gift-card'), wa],
+          links: [link('Send a gift card', '/gift-card/buy'), link('Gift card balance', '/gift-card'), wa],
         };
       }
       const copy = (await getStorefrontCopy()).payment;

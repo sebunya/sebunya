@@ -1,0 +1,299 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { apiBase } from '../../lib/api';
+import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
+import { readSessionToken } from '../../lib/session';
+import { formatUgx } from '../../lib/money';
+import GiftCardFace from '../../components/GiftCardFace.astro';
+import { GIFT_CARD_THEMES, giftCardTheme } from '../../lib/giftCardThemes';
+
+/**
+ * Buy a GoldPlus gift card for someone (0199, self-service). Works without JavaScript: the form posts here, the API
+ * opens a Pesapal payment under the purchase's own reference, and the buyer is sent to pay. A mistake comes back
+ * with everything they typed still in place, next to the field that needs fixing.
+ */
+const PRESETS = [20_000, 50_000, 100_000, 200_000];
+const MIN = 10_000;
+const MAX = 500_000;
+const kampalaToday = () => new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10);
+const plusDays = (iso: string, n: number) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const today = kampalaToday();
+
+type Fields = Record<string, string>;
+const v: Fields = {
+  amountPreset: '50000', amountOther: '', theme: 'gold', recipientName: '', recipientPhone: '', sendTo: 'recipient', when: 'now', deliverOn: '',
+  message: '', fromName: '', buyerName: '', buyerPhone: '', buyerEmail: '',
+};
+// A theme from a link (/gift-card/buy?theme=birthday), when it is one we draw.
+if (GIFT_CARD_THEMES.some((t) => t.key === Astro.url.searchParams.get('theme'))) v.theme = String(Astro.url.searchParams.get('theme'));
+// From the balance page or Goldie: /gift-card/buy?amount=100000
+const askedAmount = Number(Astro.url.searchParams.get('amount'));
+if (Number.isInteger(askedAmount) && askedAmount >= MIN && askedAmount <= MAX) {
+  if (PRESETS.includes(askedAmount)) v.amountPreset = String(askedAmount);
+  else { v.amountPreset = 'other'; v.amountOther = String(askedAmount); }
+}
+let errors: Record<string, string> = {};
+let problem = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  for (const k of Object.keys(v)) v[k] = String(form.get(k) ?? '').slice(0, 300);
+  const amountUgx = v.amountPreset === 'other' ? Number(v.amountOther.replace(/[,\s]/g, '')) : Number(v.amountPreset);
+  const token = readSessionToken(Astro.request);
+  try {
+    const res = await fetch(`${apiBase}/commerce/gift-cards/purchase`, {
+      method: 'POST',
+      headers: apiHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, readClientAddress(Astro)),
+      body: JSON.stringify({
+        amountUgx, theme: giftCardTheme(v.theme).key, recipientName: v.recipientName, recipientPhone: v.recipientPhone, sendTo: v.sendTo, message: v.message, fromName: v.fromName,
+        buyerName: v.buyerName, buyerPhone: v.buyerPhone, buyerEmail: v.buyerEmail, deliverOn: v.sendTo === 'recipient' && v.when === 'date' ? v.deliverOn : '',
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const json: any = await res.json().catch(() => null);
+    // Only a real payment page: https (Pesapal), or a local test stub on this machine.
+    if (res.ok && json?.success && typeof json.data?.redirectUrl === 'string' && /^(https:\/\/|http:\/\/(127\.0\.0\.1|localhost)[:/])/.test(json.data.redirectUrl)) {
+      return Astro.redirect(json.data.redirectUrl, 303);
+    }
+    errors = json?.error?.fields ?? {};
+    // The amount field the buyer sees is the "other amount" box when they chose it.
+    if (errors.amountUgx) errors[v.amountPreset === 'other' ? 'amountOther' : 'amountPreset'] = errors.amountUgx;
+    problem = res.status === 429 && json?.error?.code !== 'LIMIT'
+      ? 'Too many tries in a short time. Wait a minute and try again.'
+      : json?.error?.message ?? 'We could not start the payment just now. Nothing was charged. Please try again.';
+  } catch {
+    problem = 'We could not reach our payment service just now. Nothing was charged. Please try again in a minute.';
+  }
+}
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+
+const field = 'mt-1 w-full min-h-11 rounded-lg border px-3 py-2.5 text-base outline-none focus:ring-2 focus:ring-brand-primaryInk';
+const border = (name: string) => (errors[name] ? 'border-red-400 bg-red-50' : 'border-slate-300');
+const label = 'text-sm font-bold text-gray-900';
+// What the preview shows first: what was typed, else the chosen amount.
+const previewAmount = (() => {
+  const n = v.amountPreset === 'other' ? Number(v.amountOther.replace(/[,\s]/g, '')) : Number(v.amountPreset);
+  return Number.isFinite(n) && n > 0 ? n : 50_000;
+})();
+---
+<BaseLayout
+  title="Buy a gift card | GoldPlus"
+  description="Send a GoldPlus gift card to anyone in Uganda. Pay with Mobile Money or card; we text them the code, now or on the day you choose."
+>
+  <div class="mx-auto max-w-6xl px-4 py-10 sm:py-14" data-gift-card-buy>
+    <div class="max-w-2xl">
+      <h1 class="text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Send a GoldPlus gift card</h1>
+      <p class="mt-3 text-base text-slate-600">
+        Design it, pay with Mobile Money or card, and we text them a link to open it, now or on the morning of the day you
+        choose. They scratch the card to reveal the code and spend it on shopgoldplus.com or in our shop on Burton Street,
+        Kampala. It does not expire.
+      </p>
+    </div>
+
+    {problem && <p role="alert" class="mt-6 max-w-2xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{problem}</p>}
+
+    <div class="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-12">
+    <aside class="lg:order-first">
+      <div class="lg:sticky lg:top-28">
+        <p class="mb-3 text-xs font-black uppercase tracking-widest text-slate-500">Their card</p>
+        <div class="mx-auto max-w-md" data-gc-preview>
+          <GiftCardFace theme={v.theme} amountUgx={previewAmount} toName={v.recipientName} fromName={v.fromName || v.buyerName} message={v.message} masked="GPGC-••••-••••-••••" />
+        </div>
+        <p class="mx-auto mt-3 max-w-md text-xs text-slate-500">They open it from the text we send and scratch the corner to reveal the code. The text carries the code too, for a phone without internet.</p>
+      </div>
+    </aside>
+
+    <form method="POST" action="/gift-card/buy" class="space-y-8" novalidate>
+      <fieldset>
+        <legend class="text-lg font-black text-gray-900">How much?</legend>
+        <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {PRESETS.map((a) => (
+            <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 px-2 text-center text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-sky-500">
+              <input type="radio" name="amountPreset" value={String(a)} checked={v.amountPreset === String(a)} class="sr-only" />
+              {formatUgx(a)}
+            </label>
+          ))}
+          <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 px-2 text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-sky-500">
+            <input type="radio" name="amountPreset" value="other" checked={v.amountPreset === 'other'} class="sr-only" data-other-amount />
+            Other
+          </label>
+        </div>
+        <label class="mt-3 block">
+          <span class={label}>Other amount (UGX)</span>
+          <input name="amountOther" inputmode="numeric" value={v.amountOther} placeholder={`${MIN.toLocaleString('en-US')} to ${MAX.toLocaleString('en-US')}`} class={`${field} ${border('amountOther')}`} aria-invalid={errors.amountOther ? 'true' : undefined} aria-describedby={errors.amountOther ? 'err-amount' : undefined} />
+          <span class="mt-1 block text-xs text-slate-500">Choose "Other" above to use this. Any amount in thousands, from {formatUgx(MIN)} to {formatUgx(MAX)}.</span>
+        </label>
+        {(errors.amountOther || errors.amountPreset) && <p id="err-amount" class="mt-1 text-sm font-semibold text-red-700">{errors.amountOther || errors.amountPreset}</p>}
+      </fieldset>
+
+      <fieldset>
+        <legend class="text-lg font-black text-gray-900">Choose a design</legend>
+        <div class="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-6 lg:grid-cols-3 xl:grid-cols-6">
+          {GIFT_CARD_THEMES.map((t) => (
+            <label class="group cursor-pointer text-center">
+              <input type="radio" name="theme" value={t.key} checked={v.theme === t.key} class="peer sr-only" data-gc-theme-input />
+              <span class="block aspect-[1.586/1] rounded-xl ring-offset-2 transition peer-checked:ring-4 peer-checked:ring-brand-primaryInk peer-focus-visible:ring-4 peer-focus-visible:ring-sky-500" style={`background:${t.background}`} aria-hidden="true"></span>
+              <span class="mt-1.5 block text-xs font-bold text-gray-900">{t.label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="text-lg font-black text-gray-900">Who is it for?</legend>
+        <div class="mt-3 grid gap-4 sm:grid-cols-2">
+          <label class="block">
+            <span class={label}>Their name</span>
+            <input name="recipientName" required autocomplete="off" value={v.recipientName} maxlength="60" class={`${field} ${border('recipientName')}`} aria-invalid={errors.recipientName ? 'true' : undefined} />
+            {errors.recipientName && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.recipientName}</span>}
+          </label>
+          <label class="block">
+            <span class={label}>Their mobile number</span>
+            <input name="recipientPhone" type="tel" inputmode="tel" autocomplete="off" value={v.recipientPhone} placeholder="0772 123456" class={`${field} ${border('recipientPhone')}`} aria-invalid={errors.recipientPhone ? 'true' : undefined} />
+            {errors.recipientPhone && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.recipientPhone}</span>}
+          </label>
+        </div>
+        <div class="mt-4 space-y-2">
+          <label class="flex items-start gap-3 text-sm text-gray-900">
+            <input type="radio" name="sendTo" value="recipient" checked={v.sendTo !== 'buyer'} class="mt-1 h-4 w-4" />
+            <span><strong>Text the code to them</strong> (with your name and message)</span>
+          </label>
+          <label class="flex items-start gap-3 text-sm text-gray-900">
+            <input type="radio" name="sendTo" value="buyer" checked={v.sendTo === 'buyer'} class="mt-1 h-4 w-4" />
+            <span><strong>Text the code to me</strong>, I will give it to them myself (their number is then optional)</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="text-lg font-black text-gray-900">Your message and when it arrives</legend>
+        <div class="mt-3 grid gap-4 sm:grid-cols-2">
+          <label class="block">
+            <span class={label}>From (the name they will see)</span>
+            <input name="fromName" autocomplete="name" value={v.fromName} maxlength="40" placeholder="Your name" class={`${field} ${border('fromName')}`} />
+            {errors.fromName && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.fromName}</span>}
+          </label>
+          <label class="block sm:col-span-2">
+            <span class={label}>A short message (optional)</span>
+            <textarea name="message" rows="2" maxlength="100" placeholder="Happy birthday! Get yourself something nice." class={`${field} resize-none ${border('message')}`} aria-describedby="message-help">{v.message}</textarea>
+            <span id="message-help" class="mt-1 flex justify-between gap-3 text-xs text-slate-500"><span>For their safety, no links or phone numbers.</span><span data-gc-count aria-live="polite">{v.message.length}/100</span></span>
+            {errors.message && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.message}</span>}
+          </label>
+        </div>
+        <div class="mt-4 space-y-2">
+          <label class="flex items-start gap-3 text-sm text-gray-900">
+            <input type="radio" name="when" value="now" checked={v.when !== 'date'} class="mt-1 h-4 w-4" />
+            <span><strong>Send it as soon as I pay</strong></span>
+          </label>
+          <label class="flex items-start gap-3 text-sm text-gray-900">
+            <input type="radio" name="when" value="date" checked={v.when === 'date'} class="mt-1 h-4 w-4" />
+            <span><strong>Send it on a day I choose</strong> (texted that morning, from 9am)</span>
+          </label>
+          <label class="block pl-7">
+            <span class="sr-only">Day to send it</span>
+            <input type="date" name="deliverOn" value={v.deliverOn} min={today} max={plusDays(today, 90)} class={`${field} max-w-xs ${border('deliverOn')}`} />
+            {errors.deliverOn && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.deliverOn}</span>}
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="text-lg font-black text-gray-900">Your details</legend>
+        <p class="mt-1 text-sm text-slate-600">For your receipt, and so we can reach you if anything goes wrong.</p>
+        <div class="mt-3 grid gap-4 sm:grid-cols-2">
+          <label class="block">
+            <span class={label}>Your name</span>
+            <input name="buyerName" required autocomplete="name" value={v.buyerName} maxlength="60" class={`${field} ${border('buyerName')}`} />
+            {errors.buyerName && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.buyerName}</span>}
+          </label>
+          <label class="block">
+            <span class={label}>Your mobile number</span>
+            <input name="buyerPhone" type="tel" inputmode="tel" required autocomplete="tel" value={v.buyerPhone} placeholder="0772 123456" class={`${field} ${border('buyerPhone')}`} />
+            {errors.buyerPhone && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.buyerPhone}</span>}
+          </label>
+          <label class="block sm:col-span-2">
+            <span class={label}>Your email (optional, for an emailed receipt)</span>
+            <input name="buyerEmail" type="email" autocomplete="email" value={v.buyerEmail} class={`${field} ${border('buyerEmail')}`} />
+            {errors.buyerEmail && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.buyerEmail}</span>}
+          </label>
+        </div>
+      </fieldset>
+
+      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+        <p>You pay on Pesapal's secure page with Mobile Money or card. The card is made only once your payment is confirmed. Anyone with the code can spend it, like cash, so share it only with the person it is for.</p>
+      </div>
+
+      <p class="rounded-xl border border-brand-primaryInk/30 bg-brand-primary/10 px-4 py-3 text-sm font-semibold text-gray-900" data-gc-summary aria-live="polite" hidden></p>
+      <button type="submit" class="inline-flex min-h-12 w-full items-center justify-center rounded-full bg-brand-primary px-6 text-sm font-black uppercase tracking-widest text-brand-black sm:w-auto">Continue to payment</button>
+    </form>
+    </div>
+
+    <p class="mt-10 text-sm text-slate-600">Already have a card? <a href="/gift-card" class="font-bold underline">Check its balance</a>.</p>
+  </div>
+</BaseLayout>
+
+<script>
+  import { GIFT_CARD_THEMES } from '../../lib/giftCardThemes';
+
+  // The preview is the card: every change on the form redraws it (without JavaScript it shows what was posted).
+  const form = document.querySelector<HTMLFormElement>('[data-gift-card-buy] form');
+  const face = document.querySelector<HTMLElement>('[data-gc-preview] [data-gc-face]');
+  const ugx = (n: number) => `UGX ${n.toLocaleString('en-US')}`;
+  const val = (name: string) => (form?.elements.namedItem(name) as HTMLInputElement | null)?.value?.trim() ?? '';
+  const checked = (name: string) => form?.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`)?.value ?? '';
+  function redraw() {
+    if (!form || !face) return;
+    const preset = checked('amountPreset');
+    const amount = preset === 'other' ? Number(val('amountOther').replace(/[,\s]/g, '')) : Number(preset);
+    const t = GIFT_CARD_THEMES.find((x) => x.key === checked('theme')) ?? GIFT_CARD_THEMES[0];
+    const light = t.ink === 'light';
+    face.style.background = t.background;
+    face.dataset.theme = t.key;
+    face.classList.toggle('text-white', light);
+    face.classList.toggle('text-gray-900', !light);
+    const set = (sel: string, text: string) => { const el = face.querySelector<HTMLElement>(sel); if (el) el.textContent = text; };
+    set('[data-gc-headline]', t.headline);
+    set('[data-gc-amount]', Number.isFinite(amount) && amount > 0 ? ugx(amount) : 'UGX …');
+    set('[data-gc-to]', val('recipientName') || 'Someone special');
+    set('[data-gc-from]', val('fromName') || val('buyerName') || 'You');
+    const message = val('message');
+    const m = face.querySelector<HTMLElement>('[data-gc-message]');
+    if (m) { m.textContent = message ? `“${message}”` : ''; m.classList.toggle('hidden', !message); }
+    const pill = face.querySelector<HTMLElement>('[data-gc-amount-pill]');
+    if (pill) { pill.style.background = t.accent; pill.style.color = t.accentInk; }
+    const logo = face.querySelector<HTMLElement>('[data-gc-logo]');
+    if (logo) logo.style.filter = light ? 'brightness(0) invert(1)' : '';
+    face.querySelectorAll<HTMLElement>('p').forEach((p) => {
+      // The small labels follow the ink: swap the two muted tones.
+      if (light) { p.classList.replace('text-gray-900/70', 'text-white/75'); p.classList.replace('text-gray-900/65', 'text-white/70'); p.classList.replace('text-gray-900/85', 'text-white/90'); p.classList.replace('text-gray-900/75', 'text-white/80'); }
+      else { p.classList.replace('text-white/75', 'text-gray-900/70'); p.classList.replace('text-white/70', 'text-gray-900/65'); p.classList.replace('text-white/90', 'text-gray-900/85'); p.classList.replace('text-white/80', 'text-gray-900/75'); }
+    });
+    face.setAttribute('aria-label', `GoldPlus gift card for ${val('recipientName') || 'someone special'}${Number.isFinite(amount) && amount > 0 ? `, ${ugx(amount)}` : ''}`);
+    const count = document.querySelector<HTMLElement>('[data-gc-count]');
+    if (count) count.textContent = `${message.length}/100`;
+    // Said back before paying: who gets texted, at which number, and when. A typo caught here costs nothing.
+    const summary = document.querySelector<HTMLElement>('[data-gc-summary]');
+    if (summary) {
+      const toBuyer = checked('sendTo') === 'buyer';
+      const phone = toBuyer ? val('buyerPhone') : val('recipientPhone');
+      const name = val('recipientName');
+      const date = checked('when') === 'date' && !toBuyer ? val('deliverOn') : '';
+      const when = date ? `on ${new Date(`${date}T09:00:00+03:00`).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', weekday: 'long', day: 'numeric', month: 'long' })} from 9am` : 'as soon as you pay';
+      const ok = Number.isFinite(amount) && amount > 0 && name && phone.replace(/\D/g, '').length >= 9;
+      summary.hidden = !ok;
+      if (ok) summary.textContent = toBuyer
+        ? `We will text the card for ${name} (${ugx(amount)}) to you on ${phone}, ${when}, to give them yourself.`
+        : `We will text ${name} on ${phone} a ${ugx(amount)} gift card ${when}. Check the number: a wrong one sends the card to a stranger.`;
+    }
+  }
+  form?.addEventListener('input', redraw);
+  form?.addEventListener('change', redraw);
+  redraw();
+
+  // Typing an amount picks "Other" (without JavaScript the hint under the box says to choose it).
+  const other = document.querySelector<HTMLInputElement>('input[data-other-amount]');
+  document.querySelector<HTMLInputElement>('input[name="amountOther"]')?.addEventListener('input', () => { if (other) other.checked = true; redraw(); });
+  // Choosing a date picks "on a day I choose".
+  const onDate = document.querySelector<HTMLInputElement>('input[name="when"][value="date"]');
+  document.querySelector<HTMLInputElement>('input[name="deliverOn"]')?.addEventListener('change', () => { if (onDate) onDate.checked = true; });
+</script>

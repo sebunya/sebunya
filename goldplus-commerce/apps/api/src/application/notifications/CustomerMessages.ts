@@ -30,6 +30,8 @@ export type CustomerTemplate =
   | 'CREDIT_ISSUED'
   | 'CREDIT_USED'
   | 'CREDIT_EXPIRING'
+  | 'GIFT_CARD_RECEIVED'
+  | 'GIFT_CARD_PAID'
   | 'ORDER_CANCELLED_BY_SHOP'
   | 'PHONE_VERIFICATION'
   | 'PASSWORD_RESET'
@@ -60,6 +62,15 @@ export interface CustomerMessageData {
   /** 0196 CREDIT_ISSUED. */
   creditKind?: 'gift_card' | 'store_credit';
   creditCode?: string;
+  /** 0199 gift cards bought online: who it is from, their few words, who it is for, and where the code went. */
+  fromName?: string | null;
+  giftMessage?: string | null;
+  recipientName?: string | null;
+  recipientPhoneMasked?: string | null;
+  /** True when the code goes to the buyer to hand over themselves. */
+  toBuyer?: boolean;
+  /** "Friday 14 November": the day a scheduled card is texted. */
+  deliverOnWords?: string | null;
   code?: string | null;
   resetUrl?: string | null;
   expiresInMinutes?: number | null;
@@ -115,6 +126,16 @@ export function trackOrderUrl(orderNumber: string | null | undefined): string {
 export function reviewOrderUrl(orderNumber: string | null | undefined): string {
   const base = `${publicBaseUrl()}/review`;
   return orderNumber ? `${base}?reference=${encodeURIComponent(orderNumber)}` : base;
+}
+
+/** The page where a gift card is opened and scratched; the code travels in the #fragment, never to a server. */
+export function giftCardOpenUrl(code: string | null | undefined): string {
+  return `${publicBaseUrl()}/gift-card/open${code ? `#${code}` : ''}`;
+}
+
+/** Where a buyer follows their gift card purchase (the GC- reference is unguessable and shows nothing in full). */
+export function giftCardStatusUrl(reference: string | null | undefined): string {
+  return `${publicBaseUrl()}/gift-card/bought${reference ? `?ref=${encodeURIComponent(reference)}` : ''}`;
 }
 
 export function formatUgx(amount: number | null | undefined): string {
@@ -255,6 +276,19 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
     case 'CREDIT_ISSUED':
       // 0196: the code is the money. Said plainly, once, to the number staff typed at issue.
       return `${SHOP_NAME}: you have a ${d.creditKind === 'gift_card' ? 'gift card' : 'store credit'} of ${formatUgx(d.valueUgx)}. Code: ${d.creditCode}. Use it at checkout on shopgoldplus.com or in the shop. Anyone with this code can spend it, so keep it safe. Questions? Call ${phone}.`;
+    case 'GIFT_CARD_RECEIVED':
+      // 0199: a gift card bought online. The code is the money, said once, to whoever holds the card.
+      // The link opens the card (scratch to reveal); the code is in the text too, for a phone without internet.
+      // The code rides the link's #fragment, which a browser never sends to any server.
+      if (d.toBuyer) {
+        return `${SHOP_NAME}: your gift card of ${formatUgx(d.valueUgx)} for ${d.recipientName} is ready. Send them this link to open it: ${giftCardOpenUrl(d.creditCode)} Code: ${d.creditCode}. Anyone with the code can spend it, so share it only with them.`;
+      }
+      return `${SHOP_NAME}: ${d.fromName} sent you a gift card of ${formatUgx(d.valueUgx)}${d.giftMessage ? `: "${d.giftMessage}"` : '.'} Open it: ${giftCardOpenUrl(d.creditCode)} Code: ${d.creditCode}. Spend it on shopgoldplus.com or in our shop. Keep it safe: anyone with the code can spend it.`;
+    case 'GIFT_CARD_PAID':
+      // 0199: to the buyer when the code goes to someone else. Never the code.
+      return d.deliverOnWords
+        ? `${SHOP_NAME}: payment received, thank you. Your gift card of ${formatUgx(d.valueUgx)} for ${d.recipientName} will be texted to ${d.recipientPhoneMasked} on ${d.deliverOnWords} morning. Follow it: ${giftCardStatusUrl(d.reference)} Questions? Call ${phone}.`
+        : `${SHOP_NAME}: payment received, thank you. Your gift card of ${formatUgx(d.valueUgx)} for ${d.recipientName} is being texted to ${d.recipientPhoneMasked} now. Follow it: ${giftCardStatusUrl(d.reference)} If it does not arrive, call ${phone}.`;
     case 'ORDER_REVIEW_REMINDER':
       // Sent once, a few days after delivery or collection, only when nothing on the order is rated.
       return `${SHOP_NAME}: how is what you bought on order${ref}? A rating helps the next shopper choose: ${reviewOrderUrl(d.orderNumber)} We will not ask again. If anything is wrong, call ${phone}.`;
@@ -407,6 +441,15 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         headline: 'Order complete',
         body: `Your order${ref} is complete. Thank you for shopping with ${SHOP_NAME}. If you have a minute, rate what you bought; it helps the next shopper choose. If anything is wrong with it, call ${phone} and we will sort it out with you.`,
         cta: { label: 'Rate what you bought', url: reviewOrderUrl(d.orderNumber) },
+        tone: 'success',
+      };
+    case 'GIFT_CARD_PAID':
+      return {
+        subject: `Your ${SHOP_NAME} gift card for ${d.recipientName} is paid`,
+        preheader: d.deliverOnWords ? `It will be texted to them on ${d.deliverOnWords}.` : 'Its code is being texted to them now.',
+        headline: 'Gift card paid',
+        body: `Thank you. We have your payment of ${formatUgx(d.valueUgx)} for a gift card for ${d.recipientName}. ${d.deliverOnWords ? `Its code will be texted to ${d.recipientPhoneMasked} on ${d.deliverOnWords} morning.` : `Its code is being texted to ${d.recipientPhoneMasked} now.`} Your reference is ${d.reference}. If they do not receive it, call ${phone} and we will help.`,
+        cta: { label: 'Follow your gift card', url: giftCardStatusUrl(d.reference) },
         tone: 'success',
       };
     case 'ORDER_PAYMENT_REMINDER':
@@ -565,6 +608,9 @@ export const CUSTOMER_TRANSACTIONAL_TEMPLATES: readonly string[] = Object.freeze
   'CREDIT_ISSUED',
   'CREDIT_USED',
   'CREDIT_EXPIRING',
+  // 0199: a gift card bought online: its code to whoever holds it, and the buyer's receipt.
+  'GIFT_CARD_RECEIVED',
+  'GIFT_CARD_PAID',
   'ORDER_RECEIVED_UNPAID',
   'ORDER_PAYMENT_PENDING',
   'ORDER_PAYMENT_SUCCESS',

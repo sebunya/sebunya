@@ -1,0 +1,208 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import GiftCardFace from '../../components/GiftCardFace.astro';
+import { apiBase } from '../../lib/api';
+import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
+import { formatUgx } from '../../lib/money';
+
+/**
+ * Open a gift card (0199): the page the recipient's text links to, shopgoldplus.com/gift-card/open#GPGC-…
+ *
+ * The code travels in the #fragment, which a browser never sends anywhere. A small script posts it here (in the
+ * body, never the address: no server or proxy log holds it), and the page answers with the card the buyer designed
+ * and a scratch panel over the code. Without JavaScript, or from a code read off a phone, the same form is typed in.
+ */
+type Opened = {
+  kind: 'gift_card' | 'store_credit'; masked: string; balanceUgx: number; usable: boolean; reason: string | null; code: string | null;
+  face: { theme: string; fromName: string; toName: string; message: string | null } | null;
+};
+let opened: Opened | null = null;
+let problem = '';
+let typed = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  typed = String(form.get('code') ?? '').trim().slice(0, 40);
+  try {
+    const res = await fetch(`${apiBase}/commerce/gift-cards/open`, {
+      method: 'POST',
+      headers: apiHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }, readClientAddress(Astro)),
+      body: JSON.stringify({ code: typed }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const json: any = await res.json().catch(() => null);
+    if (res.ok && json?.success) opened = json.data as Opened;
+    else if (res.status === 429) problem = 'Too many tries in a short time. Wait a minute and try again.';
+    else problem = 'That code is not right. Check each character (it starts with GPGC or GPSC), or call us.';
+  } catch {
+    problem = 'We could not open the card just now. Please try again in a minute.';
+  }
+}
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+// No address of this page ever goes to another site. NOT 'no-referrer': with it the browser sends `Origin: null` on
+// this page's own form, and the storefront's cross-site guard refuses it (seen in a real browser, 2026-10-21).
+Astro.response.headers.set('Referrer-Policy', 'same-origin');
+const kindWord = opened?.kind === 'store_credit' ? 'store credit' : 'gift card';
+---
+<BaseLayout title="A GoldPlus gift card for you" description="Someone sent you a GoldPlus gift card. Open it, scratch to reveal your code, and spend it on shopgoldplus.com or in our shop in Kampala." robotsMeta="noindex,nofollow">
+  <div class="mx-auto max-w-xl px-4 py-10 sm:py-14" data-gift-card-open data-state={opened ? (opened.usable ? 'ready' : 'unusable') : problem ? 'problem' : 'form'}>
+    {!opened && (
+      <>
+        <h1 class="text-3xl font-black tracking-tight text-gray-900" data-open-heading>Open your gift card</h1>
+        <p class="mt-3 text-base text-slate-600" data-opening hidden>Opening your gift card…</p>
+        {problem && <p role="alert" class="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{problem}</p>}
+        <form method="POST" action="/gift-card/open" class="mt-6 space-y-4" data-open-form>
+          <label class="block"><span class="text-sm font-bold text-gray-900">Your code (from the text we sent)</span>
+            <input name="code" required value={typed} autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="GPGC-XXXX-XXXX-XXXX" class="mt-1 w-full min-h-11 rounded-lg border border-slate-300 px-3 py-2.5 text-base font-bold uppercase tracking-wider outline-none focus:ring-2 focus:ring-brand-primaryInk" />
+          </label>
+          <button type="submit" class="inline-flex min-h-12 items-center rounded-full bg-brand-primary px-6 text-xs font-black uppercase tracking-widest text-brand-black">Open my card</button>
+        </form>
+      </>
+    )}
+
+    {opened && (
+      <>
+        <h1 class="text-2xl font-black tracking-tight text-gray-900 sm:text-3xl">
+          {opened.face ? `${opened.face.fromName} sent you a gift` : `Your GoldPlus ${kindWord}`}
+        </h1>
+        <div class="mt-6">
+          <GiftCardFace theme={opened.face?.theme} amountUgx={opened.balanceUgx} toName={opened.face?.toName} fromName={opened.face?.fromName ?? 'GoldPlus'} message={opened.face?.message} masked={opened.usable ? null : opened.masked} />
+        </div>
+
+        {opened.usable && opened.code && (
+          <section class="mt-6" aria-labelledby="scratch-title" data-scratch>
+            <h2 id="scratch-title" class="text-sm font-black uppercase tracking-widest text-slate-600">Your code</h2>
+            <div class="relative mt-2 h-24 overflow-hidden rounded-2xl border-2 border-dashed border-slate-300 bg-white sm:h-28">
+              <p class="absolute inset-0 flex items-center justify-center font-mono text-xl font-black tracking-[0.12em] text-gray-900 sm:text-2xl" data-scratch-code aria-hidden="true">{opened.code}</p>
+              <canvas class="absolute inset-0 h-full w-full cursor-grab touch-none rounded-2xl" data-scratch-canvas aria-hidden="true"></canvas>
+            </div>
+            <p class="mt-2 text-sm text-slate-600" data-scratch-hint>Scratch the silver panel with your finger or mouse to reveal your code.</p>
+            <p class="sr-only" aria-live="polite" data-scratch-live></p>
+            <div class="mt-4 flex flex-wrap gap-3">
+              <button type="button" class="inline-flex min-h-11 items-center rounded-full border-2 border-slate-300 px-4 text-xs font-black uppercase tracking-wider text-gray-900" data-scratch-reveal>Reveal without scratching</button>
+              <button type="button" class="hidden min-h-11 items-center rounded-full border-2 border-brand-primary px-4 text-xs font-black uppercase tracking-wider text-gray-900" data-copy-code>Copy code</button>
+              <a href="/shop" class="hidden min-h-11 items-center rounded-full bg-brand-primary px-5 text-xs font-black uppercase tracking-widest text-brand-black" data-shop-with>Shop with it</a>
+            </div>
+            <noscript><p class="mt-3 font-mono text-lg font-black tracking-wider">{opened.code}</p></noscript>
+          </section>
+        )}
+
+        <div class={`mt-6 rounded-2xl border p-4 text-sm ${opened.usable ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`} role="status">
+          {opened.usable
+            ? <p><strong>{formatUgx(opened.balanceUgx)}</strong> ready to spend. Type the code in the "Gift card or store credit" box at checkout, or show it in our shop on Burton Street, Kampala. Anyone with the code can spend it, so keep it to yourself.</p>
+            : <p>{opened.reason ?? 'This card cannot be used.'} Balance: <strong>{formatUgx(opened.balanceUgx)}</strong>.</p>}
+        </div>
+        <p class="mt-6 text-sm text-slate-600">Want to send one too? <a class="font-bold underline" href="/gift-card/buy">Send a gift card</a>.</p>
+        <form method="POST" action="/gift-card/open" hidden data-open-again><input type="hidden" name="code" /></form>
+        <p class="sr-only" data-opening hidden>Opening the other gift card…</p>
+      </>
+    )}
+  </div>
+</BaseLayout>
+
+<script>
+  // 1. Arrived from the text: the code is in the #fragment. Take it out of the address bar, then post it.
+  //    Also on a hash change: a second card link tapped while this page is open changes only the #fragment, and a
+  //    browser does not reload for that.
+  const openFromLink = () => {
+    const form = document.querySelector<HTMLFormElement>('[data-open-form]') ?? document.querySelector<HTMLFormElement>('[data-open-again]');
+    let fromLink = '';
+    try { fromLink = decodeURIComponent(location.hash.slice(1)).trim(); } catch { return; }
+    if (!form || !/^GP[GS]C[-\s]?[0-9A-Z]{4}[-\s]?[0-9A-Z]{4}[-\s]?[0-9A-Z]{4}$/i.test(fromLink)) return;
+    history.replaceState(null, '', location.pathname);
+    const input = form.querySelector<HTMLInputElement>('input[name="code"]');
+    if (input) input.value = fromLink;
+    document.querySelector<HTMLElement>('[data-opening]')?.removeAttribute('hidden');
+    form.hidden = true;
+    form.submit();
+  };
+  openFromLink();
+  window.addEventListener('hashchange', openFromLink);
+
+  // 2. The scratch panel.
+  const panel = document.querySelector<HTMLElement>('[data-scratch]');
+  const canvas = panel?.querySelector<HTMLCanvasElement>('[data-scratch-canvas]');
+  const code = panel?.querySelector<HTMLElement>('[data-scratch-code]')?.textContent?.trim() ?? '';
+  if (panel && canvas && code) {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    let revealed = false;
+    let drawing = false;
+    let moves = 0;
+    let last: { x: number; y: number } | null = null;
+    const paint = () => {
+      const r = canvas.getBoundingClientRect();
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.round(r.width * dpr);
+      canvas.height = Math.round(r.height * dpr);
+      if (!ctx) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const g = ctx.createLinearGradient(0, 0, r.width, r.height);
+      g.addColorStop(0, '#9ca3af'); g.addColorStop(0.35, '#e5e7eb'); g.addColorStop(0.55, '#c0c4ca'); g.addColorStop(1, '#8b9099');
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, r.width, r.height);
+      // a fine sparkle so it reads as foil
+      ctx.fillStyle = 'rgba(255,255,255,.35)';
+      for (let i = 0; i < 140; i++) ctx.fillRect(Math.random() * r.width, Math.random() * r.height, 1.2, 1.2);
+      ctx.fillStyle = '#374151';
+      ctx.font = '800 15px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('SCRATCH HERE', r.width / 2, r.height / 2 - 9);
+      ctx.font = '600 12px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText('to reveal your code', r.width / 2, r.height / 2 + 11);
+    };
+    const reveal = () => {
+      if (revealed) return;
+      revealed = true;
+      canvas.style.transition = 'opacity .45s ease';
+      canvas.style.opacity = '0';
+      setTimeout(() => canvas.remove(), 500);
+      panel.querySelector('[data-scratch-code]')?.removeAttribute('aria-hidden');
+      panel.querySelector('[data-scratch-reveal]')?.classList.add('hidden');
+      panel.querySelector('[data-scratch-hint]')?.classList.add('hidden');
+      for (const sel of ['[data-copy-code]', '[data-shop-with]']) { const el = panel.querySelector(sel); el?.classList.remove('hidden'); el?.classList.add('inline-flex'); }
+      const live = panel.querySelector('[data-scratch-live]');
+      if (live) live.textContent = `Your code is ${code.split('').join(' ')}`;
+    };
+    const cleared = () => {
+      if (!ctx) return 0;
+      const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      let clear = 0;
+      let seen = 0;
+      for (let i = 3; i < data.length; i += 4 * 16) { seen++; if (data[i] < 40) clear++; }
+      return seen ? clear / seen : 0;
+    };
+    const scratchAt = (e: PointerEvent) => {
+      if (!ctx || revealed) return;
+      const r = canvas.getBoundingClientRect();
+      const p = { x: e.clientX - r.left, y: e.clientY - r.top };
+      // A stroke from the last point, not a dot: a quick finger on a slow phone sends few move events.
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 44;
+      ctx.beginPath();
+      ctx.moveTo((last ?? p).x, (last ?? p).y);
+      ctx.lineTo(p.x + 0.01, p.y);
+      ctx.stroke();
+      last = p;
+      if (++moves % 8 === 0 && cleared() > 0.45) reveal();
+    };
+    paint();
+    window.addEventListener('resize', () => { if (!revealed) paint(); });
+    canvas.addEventListener('pointerdown', (e) => { drawing = true; last = null; canvas.setPointerCapture(e.pointerId); scratchAt(e); });
+    canvas.addEventListener('pointermove', (e) => { if (drawing) scratchAt(e); });
+    const stop = () => { drawing = false; last = null; if (!revealed && cleared() > 0.45) reveal(); };
+    canvas.addEventListener('pointerup', stop);
+    canvas.addEventListener('pointercancel', stop);
+    panel.querySelector('[data-scratch-reveal]')?.addEventListener('click', reveal);
+    panel.querySelector('[data-copy-code]')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget as HTMLButtonElement;
+      try { await navigator.clipboard.writeText(code); btn.textContent = 'Copied'; } catch { btn.textContent = code; }
+    });
+    // "Shop with it": checkout fills the gift card box from this tab (sessionStorage dies with the tab).
+    panel.querySelector('[data-shop-with]')?.addEventListener('click', () => {
+      try { sessionStorage.setItem('gp_gift_code', code); } catch { /* the code is on screen to type */ }
+    });
+  }
+</script>

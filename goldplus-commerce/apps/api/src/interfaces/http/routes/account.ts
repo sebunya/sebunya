@@ -138,6 +138,18 @@ routes.get('/credit', async (c) => {
   return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
 });
 
+/** 0199: gift cards this customer bought online for others (signed in when buying). Never the code. */
+routes.get('/gift-cards/sent', async (c) => {
+  const rows = await Registry.getInstance().giftCardPurchaseUseCases.forBuyer(c.get('userId') as string);
+  const data = rows.map((p) => ({
+    reference: p.reference, amountUgx: p.amountUgx, recipientName: p.recipientName, sendTo: p.sendTo, status: p.status,
+    deliverOn: p.deliverOn, paidAt: p.paidAt ? p.paidAt.toISOString() : null, issuedAt: p.issuedAt ? p.issuedAt.toISOString() : null,
+    cardLast4: p.cardLast4,
+  }));
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
 // ── Save for later (gap analysis #6) ─────────────────────────────────────
 routes.get('/saved', async (c) => {
   const data = await Registry.getInstance().savedProductsUseCases.list(c.get('userId') as string);

@@ -90,6 +90,9 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   // 0196: a card spent by someone else's order, and the one reminder before a card with money left expires.
   'CREDIT_USED',
   'CREDIT_EXPIRING',
+  // 0199: a gift card the customer bought: its code to the person it is for, and the buyer's receipt.
+  'GIFT_CARD_RECEIVED',
+  'GIFT_CARD_PAID',
   // The one reminder that an online order the customer placed is still unpaid.
   'ORDER_PAYMENT_REMINDER',
   'SUPPORT_REQUEST_RECEIVED',

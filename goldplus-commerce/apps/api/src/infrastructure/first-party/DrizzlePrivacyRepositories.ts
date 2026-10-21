@@ -288,6 +288,16 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
        where i.customer_user_id = ${userId}::uuid
           or ${plain.phoneDigits.length ? phoneIn(sql.raw('i.recipient_phone'), plain.phoneDigits) : sql`false`}
        order by i.created_at`));
+    // 0199: gift cards bought online, by them or for them (never the code; the buyer's own details only to the buyer).
+    const giftPurchases = rows(await db.execute(sql`
+      select reference, amount_ugx, status, created_at, paid_at, issued_at, deliver_on, send_to, from_name, message, recipient_name, recipient_phone,
+             buyer_name, buyer_phone, buyer_email, payment_method,
+             (buyer_user_id = ${userId}::uuid or ${plain.phoneDigits.length ? phoneIn(sql.raw('buyer_phone'), plain.phoneDigits) : sql`false`}) as as_buyer
+        from gift_card_purchases
+       where buyer_user_id = ${userId}::uuid
+          or ${plain.phoneDigits.length ? phoneIn(sql.raw('buyer_phone'), plain.phoneDigits) : sql`false`}
+          or ${plain.phoneDigits.length ? phoneIn(sql.raw('recipient_phone'), plain.phoneDigits) : sql`false`}
+       order by created_at`));
     const goldieConversations = goldieIds.length ? rows(await db.execute(sql`
       select id, channel, started_at, last_message_at, outcome, csat, contact_name, contact_phone, contact_email from assistant_conversations
       where id in (${uuidList(goldieIds)}) order by started_at`)) : [];
@@ -355,6 +365,12 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
         kind: g.kind === 'gift_card' ? 'Gift card' : 'Store credit', endingIn: g.code_last4, status: g.status, issuedAt: iso(g.created_at),
         valueUgx: Number(g.initial_value_ugx), balanceUgx: Math.max(0, Number(g.balance ?? 0)), forName: g.recipient_name ?? null, textedTo: g.recipient_phone ?? null,
       })),
+      giftCardsBoughtOnline: giftPurchases.map((g) => ({
+        reference: g.reference, amountUgx: Number(g.amount_ugx), status: g.status, createdAt: iso(g.created_at), paidAt: iso(g.paid_at), cardTextedAt: iso(g.issued_at),
+        sendOn: g.deliver_on ? String(g.deliver_on instanceof Date ? g.deliver_on.toISOString().slice(0, 10) : g.deliver_on).slice(0, 10) : null,
+        from: g.from_name, message: g.message, forName: g.recipient_name, forPhone: g.recipient_phone || null,
+        ...(g.as_buyer ? { you: 'bought it', yourName: g.buyer_name, yourPhone: g.buyer_phone, yourEmail: g.buyer_email ?? null, paidWith: g.payment_method ?? null } : { you: 'received it' }),
+      })),
       goldieChats: goldieConversations.map((c) => ({
         channel: c.channel, startedAt: iso(c.started_at), lastMessageAt: iso(c.last_message_at), outcome: c.outcome, yourRating: c.csat ?? null,
         name: c.contact_name ?? null, phone: c.contact_phone ?? null, email: c.contact_email ?? null,
@@ -383,7 +399,7 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
     const counts: Record<string, number> = {
       addresses: addresses.length, orders: orders.length, quoteRequests: quotes.length, batteryRequests: batteryRequests.length,
       loyaltyEntries: loyalty.length, supportRequests: support.length, messages: messages.length, identityRecords: identity.length,
-      giftCards: giftCards.length,
+      giftCards: giftCards.length, giftCardsBoughtOnline: giftPurchases.length,
     };
     return { sections, counts };
   }
@@ -575,6 +591,35 @@ export class DrizzlePersonalDataEraser implements IPersonalDataEraser {
           update outbox_events set payload = ${OUTBOX_OBJECT} - 'customerPhone' - 'customerEmail' - 'customerName'
           where related_entity = 'credit_instrument' and related_entity_id in (${uuidList(cardIds)}) and ${OUTBOX_IS_OBJECT}`));
         await exec.execute(sql`update notification_attempts set recipient = 'removed' where related_entity = 'credit_instrument' and related_entity_id in (${uuidList(cardIds)})`);
+      }
+
+      // 0199: gift cards bought online. The purchase stays (it is a payment the accounts need, with Pesapal's
+      // confirmation); who bought it, who it was for and the words between them go.
+      if (plain.phoneDigits.length || input.userId) {
+        const asBuyer = rows(await exec.execute(sql`
+          select id from gift_card_purchases where buyer_user_id = ${input.userId}::uuid
+             or ${plain.phoneDigits.length ? phoneIn(sql.raw('buyer_phone'), plain.phoneDigits) : sql`false`}`)).map((r) => String(r.id));
+        const asRecipient = plain.phoneDigits.length ? rows(await exec.execute(sql`
+          select id from gift_card_purchases where ${phoneIn(sql.raw('recipient_phone'), plain.phoneDigits)}`)).map((r) => String(r.id)) : [];
+        counts.giftCardPurchases = 0;
+        if (asBuyer.length) {
+          counts.giftCardPurchases += affected(await exec.execute(sql`
+            update gift_card_purchases set buyer_name = ${REMOVED_TEXT}, buyer_phone = '', buyer_email = null, buyer_user_id = null,
+              from_name = ${REMOVED_TEXT}, message = null, updated_at = now() where id in (${uuidList(asBuyer)})`));
+        }
+        if (asRecipient.length) {
+          // '' not null: a "texted to them" purchase must keep a value (gift_card_purchases_recipient_phone_chk).
+          counts.giftCardPurchases += affected(await exec.execute(sql`
+            update gift_card_purchases set recipient_name = ${REMOVED_TEXT}, recipient_phone = '', message = null, updated_at = now()
+             where id in (${uuidList(asRecipient)})`));
+        }
+        const purchaseIds = [...new Set([...asBuyer, ...asRecipient])];
+        if (purchaseIds.length) {
+          await exec.execute(sql`
+            update outbox_events set payload = ${OUTBOX_OBJECT} - 'customerPhone' - 'customerEmail' - 'customerName' - 'recipientName'
+             where related_entity = 'gift_card_purchase' and related_entity_id in (${uuidList(purchaseIds)}) and ${OUTBOX_IS_OBJECT}`);
+          await exec.execute(sql`update notification_attempts set recipient = 'removed' where related_entity = 'gift_card_purchase' and related_entity_id in (${uuidList(purchaseIds)})`);
+        }
       }
 
       await exec.execute(sql`update privacy_requests set result = ${JSON.stringify({ counts })}::text::jsonb where id = ${input.requestId}::uuid`);

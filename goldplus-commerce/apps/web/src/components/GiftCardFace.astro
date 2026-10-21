@@ -1,0 +1,59 @@
+---
+import { giftCardTheme } from '../lib/giftCardThemes';
+import { formatUgx } from '../lib/money';
+
+/**
+ * A GoldPlus gift card as the person it is for sees it (0199): the theme the buyer chose, who it is for and from,
+ * their few words, the value, and a code area. The buy page updates the same markup live (data-gc-* hooks), so the
+ * preview IS the card. The code area is a slot: the open page puts the scratch panel there.
+ */
+interface Props {
+  theme?: string | null;
+  amountUgx: number;
+  toName?: string | null;
+  fromName?: string | null;
+  message?: string | null;
+  /** Shown bottom right when there is no slot: "GPGC-••••-••••-NB8B", or nothing. */
+  masked?: string | null;
+  class?: string;
+}
+const { theme: themeKey, amountUgx, toName, fromName, message, masked, class: extra = '' } = Astro.props;
+const t = giftCardTheme(themeKey);
+const light = t.ink === 'light';
+---
+<div
+  class={`gc-face relative isolate flex aspect-[1.586/1] w-full flex-col rounded-[22px] p-5 shadow-[0_20px_45px_-18px_rgba(0,0,0,.55)] sm:p-6 ${light ? 'text-white' : 'text-gray-900'} ${extra}`}
+  style={`background:${t.background};`}
+  data-gc-face
+  data-theme={t.key}
+  role="img"
+  aria-label={`GoldPlus gift card${toName ? ` for ${toName}` : ''}, ${formatUgx(amountUgx)}${fromName ? `, from ${fromName}` : ''}`}
+>
+  <div class="flex items-start justify-between gap-3">
+    <div class="min-w-0">
+      <img src="/goldplus-logo-header-desktop-150x43.svg" alt="" width="96" height="28" class="h-6 w-auto sm:h-7" style={light ? 'filter:brightness(0) invert(1)' : ''} data-gc-logo />
+      <p class={`mt-1 text-[11px] font-black uppercase tracking-[0.18em] ${light ? 'text-white/75' : 'text-gray-900/70'}`} data-gc-headline>{t.headline}</p>
+    </div>
+    <p class="shrink-0 rounded-full px-3 py-1.5 text-sm font-black tabular-nums sm:text-base" style={`background:${t.accent};color:${t.accentInk}`} data-gc-amount-pill>
+      <span data-gc-amount>{formatUgx(amountUgx)}</span>
+    </p>
+  </div>
+
+  <div class="mt-3 sm:mt-5">
+    <p class={`text-[11px] font-bold uppercase tracking-widest ${light ? 'text-white/70' : 'text-gray-900/65'}`}>For</p>
+    <p class="truncate text-2xl font-black leading-tight tracking-tight sm:text-3xl" data-gc-to>{toName || 'Someone special'}</p>
+    <p class={`mt-1.5 text-sm italic leading-snug sm:text-[15px] ${light ? 'text-white/90' : 'text-gray-900/85'} ${message ? '' : 'hidden'}`} data-gc-message>{message ? `“${message}”` : ''}</p>
+  </div>
+
+  {/* In the flow, not pinned: with overflow visible, aspect-ratio is only a minimum, so a long message makes the
+       card taller instead of running under "From" (seen at phone width). */}
+  <div class="mt-auto flex items-end justify-between gap-3 pt-3">
+    <div class="min-w-0">
+      <p class={`text-[11px] font-bold uppercase tracking-widest ${light ? 'text-white/70' : 'text-gray-900/65'}`}>From</p>
+      <p class="truncate text-base font-black" data-gc-from>{fromName || 'You'}</p>
+    </div>
+    <div class="shrink-0">
+      <slot>{masked && <p class={`font-mono text-xs font-bold tracking-wider ${light ? 'text-white/80' : 'text-gray-900/75'}`}>{masked}</p>}</slot>
+    </div>
+  </div>
+</div>

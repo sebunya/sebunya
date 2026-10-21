@@ -304,9 +304,9 @@ export class DefaultNotificationRouter implements INotificationRouter {
         const template = eventType === 'CUSTOMER_ORDER_MESSAGE' && typeof payload.template === 'string'
           ? payload.template
           : eventType;
-        // 0196: a gift card / store credit SMS rides this type but belongs to the card, not to an order.
+        // 0196/0199: a gift card / store credit SMS rides this type but belongs to the card (or its purchase), not to an order.
         const entity = eventType === 'CUSTOMER_ORDER_MESSAGE'
-          ? (relatedEntity === 'credit_instrument' ? 'credit_instrument' : 'order')
+          ? (relatedEntity === 'credit_instrument' || relatedEntity === 'gift_card_purchase' ? relatedEntity : 'order')
           : relatedEntity || 'customer_request';
         const dryRun = payload.dryRunOnly === true;
         if (customerPhone) {
