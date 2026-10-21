@@ -57,6 +57,8 @@ test('two fingers pinch to zoom the photo (touch screens)', async ({ page, brows
   await page.locator('[data-photo-add] input[type=file]').setInputFiles(PHOTO);
   await expect(page.locator('[data-photo-crop]')).toBeVisible();
   await expect(page.locator('[data-photo-zoom]')).toHaveValue('1');
+  // Touches land where the screen is: bring the frame into view first (on a phone it can be below the fold).
+  await page.locator('[data-photo-frame]').scrollIntoViewIfNeeded();
   const box = (await page.locator('[data-photo-frame]').boundingBox())!;
   const cx = box.x + box.width / 2;
   const cy = box.y + box.height / 2;
