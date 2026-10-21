@@ -200,6 +200,30 @@ jobs:
           # Lab tooling with its own npm lockfile, never built into an image.
           skip-dirs: goldplus-commerce/performance-audit,goldplus-commerce/compatibility-audit
 
+  # The production API image (Alpine, musl) is built nowhere else before deploy. Gift card photos (0201) use
+  # sharp, a native module: prove the compiled processor loads it and turns a camera JPEG into a 1080 px square
+  # inside that exact image, so a missing binary is caught here rather than on the first customer's photo.
+  api-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4, pinned 2026-10-07
+      - name: Build the production API image
+        run: docker build -f Dockerfile.api -t goldplus-api:ci .
+      - name: Gift card photos work inside it
+        run: |
+          docker run --rm --entrypoint node goldplus-api:ci -e "
+            const { SharpGiftCardPhotoProcessor } = require('./apps/api/dist/infrastructure/credit/SharpGiftCardPhotoProcessor.js');
+            const sharp = require('sharp');
+            sharp({ create: { width: 1600, height: 1200, channels: 3, background: '#96CC06' } })
+              .jpeg().withExif({ IFD0: { Make: 'CiCam' } }).toBuffer()
+              .then((b) => new SharpGiftCardPhotoProcessor().process(b))
+              .then((o) => {
+                if (o.width !== 1080 || o.height !== 1080 || o.image.includes(Buffer.from('CiCam'))) throw new Error('unexpected output');
+                console.log('sharp works in the API image:', o.image.length, 'bytes');
+              })
+              .catch((e) => { console.error(e); process.exit(1); });
+          "
+
   # The browser suite needs a running shop. Until 2026-10-07 this job started
   # nothing, so all ~370 tests failed with "connection refused" and the job
   # was ignored. Now: real Postgres + Redis, migrated and seeded, the API (tsx,

@@ -79,12 +79,24 @@ export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepos
     const [r] = rowsOf(await db.execute(sql`insert into gift_card_photos (image, width, height) values (${image}, ${width}, ${height}) returning id`));
     return String(r.id);
   }
-  async photoImage(id: string): Promise<Buffer | null> {
-    const [r] = rowsOf(await db.execute(sql`select image from gift_card_photos where id = ${id}`));
+  async photoImage(id: string, unclaimedAfter: Date): Promise<Buffer | null> {
+    const [r] = rowsOf(await db.execute(sql`
+      select image from gift_card_photos where id = ${id} and (attached_at is not null or created_at > ${unclaimedAfter})`));
     return r?.image ? Buffer.from(r.image) : null;
   }
-  async deleteStalePhotos(olderThan: Date): Promise<number> {
-    return rowsOf(await db.execute(sql`delete from gift_card_photos where attached_at is null and created_at < ${olderThan} returning id`)).length;
+  async photosSince(since: Date): Promise<number> {
+    const [r] = rowsOf(await db.execute(sql`select count(*)::int as n from gift_card_photos where created_at > ${since}`));
+    return Number(r?.n ?? 0);
+  }
+  async deleteStalePhotos(unclaimedBefore: Date, endedBefore: Date): Promise<number> {
+    const unclaimed = rowsOf(await db.execute(sql`delete from gift_card_photos where attached_at is null and created_at < ${unclaimedBefore} returning id`)).length;
+    // photo_id is ON DELETE SET NULL: the purchase keeps everything else.
+    const ended = rowsOf(await db.execute(sql`
+      delete from gift_card_photos where id in (
+        select photo_id from gift_card_purchases
+         where photo_id is not null and status in ('abandoned', 'failed', 'refunded') and updated_at < ${endedBefore})
+      returning id`)).length;
+    return unclaimed + ended;
   }
   async removePhoto(purchaseId: string): Promise<boolean> {
     return db.transaction(async (tx) => {

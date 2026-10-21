@@ -4,6 +4,7 @@ import { apiBase } from '../../lib/api';
 import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
 import { formatUgx } from '../../lib/money';
 import GiftCardFace from '../../components/GiftCardFace.astro';
+import { giftCardPhotoUrl } from '../../lib/giftCardPhoto';
 
 /**
  * Where a gift card purchase stands (0199). Pesapal returns the buyer here (through the API, which settles first).
@@ -15,7 +16,6 @@ type Status = {
   textStatus: 'sent' | 'sending' | 'failed' | 'not_sent' | null;
   photoId?: string | null;
 };
-const PHOTO_ID = /^[0-9a-f-]{36}$/i;
 const ref = String(Astro.url.searchParams.get('ref') ?? '').trim().toUpperCase().slice(0, 20);
 const cancelled = Astro.url.searchParams.get('cancelled') === '1';
 let s: Status | null = null;
@@ -40,7 +40,7 @@ if (/^GC-[0-9A-Z]{10}$/.test(ref)) {
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 const day = (iso: string) => new Date(`${iso}T09:00:00+03:00`).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', weekday: 'long', day: 'numeric', month: 'long' });
 const waiting = s?.status === 'awaiting_payment' && !cancelled;
-const photoUrl = s?.photoId && PHOTO_ID.test(s.photoId) ? `/gift-card/photo/${s.photoId}` : null;
+const photoUrl = giftCardPhotoUrl(s?.photoId);
 ---
 <BaseLayout title="Your gift card | GoldPlus" description="Where your GoldPlus gift card purchase stands." robotsMeta="noindex,nofollow">
   {waiting && <meta slot="head" http-equiv="refresh" content="10" />}

@@ -1,4 +1,5 @@
 import { BRAND, giftCardTheme, logoUrl } from './giftCardThemes';
+import { giftCardPhotoUrl } from './giftCardPhoto';
 
 /**
  * "Share your gift" (2026-10-21): a picture of the gift for the recipient to post, drawn from scratch on a canvas.
@@ -38,7 +39,8 @@ export function shareContent(source: { occasion: string; recipientName?: string 
   if (choose.message && message) out.message = message.slice(0, 200);
   if (choose.amount && Number.isFinite(source.originalUgx) && (source.originalUgx ?? 0) > 0) out.originalUgx = Math.round(source.originalUgx!);
   // Only the shop's own photo address (a same-site picture keeps the canvas exportable; nothing else is fetched).
-  if (choose.photo && source.photoUrl && /^\/gift-card\/photo\/[0-9a-f-]{36}$/i.test(source.photoUrl)) out.photoUrl = source.photoUrl;
+  const photo = source.photoUrl?.startsWith('/gift-card/photo/') ? giftCardPhotoUrl(source.photoUrl.slice('/gift-card/photo/'.length)) : null;
+  if (choose.photo && photo) out.photoUrl = photo;
   return out;
 }
 
@@ -194,7 +196,9 @@ export async function drawShareImage(canvas: HTMLCanvasElement, content: ShareCo
       const s = Math.min(picture.naturalWidth, picture.naturalHeight);
       ctx.save();
       ctx.beginPath();
-      ctx.roundRect(x, y, side, side, side * 0.035);
+      // roundRect is recent (Chrome 99, Safari 16); an older phone gets square corners rather than no picture.
+      if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, side, side, side * 0.035);
+      else ctx.rect(x, y, side, side);
       ctx.clip();
       ctx.drawImage(picture, (picture.naturalWidth - s) / 2, (picture.naturalHeight - s) / 2, s, s, x, y, side, side);
       ctx.restore();

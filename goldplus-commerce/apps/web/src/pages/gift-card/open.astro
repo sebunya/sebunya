@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import GiftCardFace from '../../components/GiftCardFace.astro';
+import { giftCardPhotoUrl } from '../../lib/giftCardPhoto';
 import { apiBase } from '../../lib/api';
 import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
 import { formatUgx } from '../../lib/money';
@@ -42,7 +43,7 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
 // No address of this page ever goes to another site. NOT 'no-referrer': with it the browser sends `Origin: null` on
 // this page's own form, and the storefront's cross-site guard refuses it (seen in a real browser, 2026-10-21).
 Astro.response.headers.set('Referrer-Policy', 'same-origin');
-const photoUrl = opened?.face?.photoId && /^[0-9a-f-]{36}$/i.test(opened.face.photoId) ? `/gift-card/photo/${opened.face.photoId}` : null;
+const photoUrl = giftCardPhotoUrl(opened?.face?.photoId);
 const kindWord = opened?.kind === 'store_credit' ? 'store credit' : 'gift card';
 // What "Share your gift" may use: an explicit list of permitted fields, built here and nothing more. The code, the
 // balance, the private link and anything about payment never enter it (the share script reads only this).

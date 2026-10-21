@@ -184,7 +184,7 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(2048, 7), Buffer.from([0xff, 0xd9])]);
     const id = await repo.savePhoto(jpeg, 1080, 1080);
     photoIds.push(id);
-    expect(Buffer.compare(await repo.photoImage(id), jpeg)).toBe(0); // bytea round trip, byte for byte
+    expect(Buffer.compare(await repo.photoImage(id, new Date(Date.now() - 2 * 86_400_000)), jpeg)).toBe(0); // bytea round trip, byte for byte
     const p = await create({ photoId: id });
     expect(p.photoId).toBe(id);
     // A second purchase cannot take the same photo, and is not written at all (one transaction).
@@ -195,18 +195,36 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     const stray = await repo.savePhoto(jpeg, 1080, 1080);
     photoIds.push(stray);
     await raw`update gift_card_photos set created_at = now() - interval '4 days' where id = any(${[id, stray]})`;
-    await repo.deleteStalePhotos(new Date(Date.now() - 3 * 86_400_000));
-    expect(await repo.photoImage(stray)).toBeNull();
-    expect(await repo.photoImage(id)).not.toBeNull();
+    await repo.deleteStalePhotos(new Date(Date.now() - 3 * 86_400_000), new Date(Date.now() - 30 * 86_400_000));
+    expect(await repo.photoImage(stray, new Date(0))).toBeNull();
+    expect(await repo.photoImage(id, new Date(Date.now() - 2 * 86_400_000))).not.toBeNull();
     // A photo older than two days cannot be claimed (the form asks for it again).
     const old = await repo.savePhoto(jpeg, 1080, 1080);
     photoIds.push(old);
     await raw`update gift_card_photos set created_at = now() - interval '3 days' where id = ${old}`;
     await expect(create({ photoId: old })).rejects.toThrow('PHOTO_UNAVAILABLE');
+    // The link stops serving an unclaimed upload once it can no longer be claimed.
+    const unclaimed = await repo.savePhoto(jpeg, 1080, 1080);
+    photoIds.push(unclaimed);
+    await raw`update gift_card_photos set created_at = now() - interval '50 hours' where id = ${unclaimed}`;
+    expect(await repo.photoImage(unclaimed, new Date(Date.now() - 48 * 3_600_000))).toBeNull();
+    // A purchase that ended unpaid more than 30 days ago loses its photo; the purchase itself stays.
+    const endedPhoto = await repo.savePhoto(jpeg, 1080, 1080);
+    photoIds.push(endedPhoto);
+    const ended = await create({ photoId: endedPhoto });
+    await raw`update gift_card_purchases set status = 'abandoned', updated_at = now() - interval '31 days' where id = ${ended.id}`;
+    expect(await repo.deleteStalePhotos(new Date(0), new Date(Date.now() - 30 * 86_400_000))).toBeGreaterThanOrEqual(1);
+    expect((await repo.byReference(ended.reference)).photoId).toBeNull();
+    expect((await raw`select count(*)::int as n from gift_card_photos where id = ${endedPhoto}`)[0].n).toBe(0);
+    // The daily ceiling counts every upload in the window, claimed or not.
+    const since = new Date(Date.now() - 3_600_000);
+    const counted = await repo.photosSince(since);
+    photoIds.push(await repo.savePhoto(jpeg, 1080, 1080));
+    expect(await repo.photosSince(since)).toBe(counted + 1);
     // Staff remove it: gone from the card and from the table.
     expect(await repo.removePhoto(p.id)).toBe(true);
     expect((await repo.byReference(p.reference)).photoId).toBeNull();
-    expect(await repo.photoImage(id)).toBeNull();
+    expect(await repo.photoImage(id, new Date(Date.now() - 2 * 86_400_000))).toBeNull();
     expect(await repo.removePhoto(p.id)).toBe(false);
   });
 

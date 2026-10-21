@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { apiBase } from '../../../lib/api';
 import { readBytesCapped } from '../../../lib/boundedBody';
+import { apiHeaders, readClientAddress } from '../../../lib/forwardClient';
 
 /**
  * 0201: same-origin relay for the buyer's gift card photo. The phone has already cropped it to a square of at most
@@ -9,17 +10,17 @@ import { readBytesCapped } from '../../../lib/boundedBody';
 const MAX_BYTES = 6 * 1024 * 1024;
 const json = (body: unknown, status: number) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async (context) => {
+  const { request } = context;
   if (!/^image\//.test(request.headers.get('content-type') ?? '')) return json({ success: false, error: { code: 'NOT_A_PHOTO', message: 'Choose a photo.' } }, 415);
   const read = await readBytesCapped(request, MAX_BYTES);
   if (!read.ok) return json({ success: false, error: { code: 'TOO_LARGE', message: 'Choose a photo smaller than 6 MB.' } }, 413);
   try {
     const upstream = await fetch(`${apiBase}/commerce/gift-cards/photos`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        ...(request.headers.get('x-forwarded-for') ? { 'x-forwarded-for': request.headers.get('x-forwarded-for') as string } : {}),
-      },
+      // Attributed to the visitor, as every storefront relay is: the API's per-visitor upload budget then applies
+      // to them, not to the storefront as a whole.
+      headers: apiHeaders({ 'Content-Type': 'application/octet-stream' }, readClientAddress(context)),
       body: read.bytes as unknown as BodyInit,
       signal: AbortSignal.timeout(20_000),
     });

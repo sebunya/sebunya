@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   GIFT_CARD_MESSAGE_MAX, checkGiftCardPurchase, giftCardPurchaseReference, isGiftCardPurchaseReference, kampalaToday, maskPhone, scheduledSendDue, unsafeGiftText,
 } from '../../apps/api/src/domain/credit/GiftCardPurchase';
-import { GiftCardPurchaseUseCases, ONLINE_GIFT_CARD_ISSUER_ID } from '../../apps/api/src/application/use-cases/credit/GiftCardPurchaseUseCases';
+import { GIFT_CARD_PHOTOS_PER_DAY, GiftCardPurchaseUseCases, ONLINE_GIFT_CARD_ISSUER_ID } from '../../apps/api/src/application/use-cases/credit/GiftCardPurchaseUseCases';
 import type { GiftCardPurchaseRecord } from '../../apps/api/src/application/ports/IGiftCardPurchaseRepository';
 import { smsText, emailCopy, CUSTOMER_TRANSACTIONAL_TEMPLATES } from '../../apps/api/src/application/notifications/CustomerMessages';
 import { classifyPublicEndpoint } from '../../apps/api/src/domain/security/PublicEndpointPolicy';
@@ -138,7 +138,9 @@ describe('gift card messages (0199)', () => {
 // ── The use cases, against an in-memory repository and a scripted Pesapal ──────────────────────────────
 function harness(opts: { ipnId?: string | null; buyerActivity?: { started: number; paidUgx: number } } = {}) {
   let paidToday = 0;
-  const photos = new Map<string, { image: Buffer; attached: boolean }>();
+  const photos = new Map<string, { image: Buffer; attached: boolean; at: Date }>();
+  let photoClock = () => NOW;
+  let extraPhotosToday = 0;
   const rows = new Map<string, GiftCardPurchaseRecord>();
   const outbox: Array<{ template: string; phone: string; data: Record<string, unknown>; key: string }> = [];
   const cards: Array<{ id: string; code?: string; purchaseId: string; issuedBy: string; reason: string; recipientPhone: string | null; status: string; balance: number; held: number; initial: number; ledger: any[] }> = [];
@@ -184,9 +186,15 @@ function harness(opts: { ipnId?: string | null; buyerActivity?: { started: numbe
     },
     faceByCodeHash: async (hash: string) => { const c = cards.find((x) => `h:${x.code}` === hash); const p = c ? rows.get(c.purchaseId) : null; return p ? { theme: p.theme, fromName: p.fromName, toName: p.recipientName, message: p.message, originalUgx: p.amountUgx, photoId: p.photoId ?? null } : null; },
     recent: async () => [],
-    savePhoto: async (image: Buffer) => { const id = `0000000${photos.size + 1}-0000-4000-8000-000000000000`.slice(-36); photos.set(id, { image, attached: false }); return id; },
-    photoImage: async (id: string) => photos.get(id)?.image ?? null,
-    deleteStalePhotos: async () => { let n = 0; for (const [id, ph] of photos) if (!ph.attached) { photos.delete(id); n++; } return n; },
+    savePhoto: async (image: Buffer) => { const id = `${String(photos.size + 1).padStart(8, '0')}-0000-4000-8000-000000000000`; photos.set(id, { image, attached: false, at: photoClock() }); return id; },
+    photoImage: async (id: string, unclaimedAfter: Date) => { const ph = photos.get(id); return ph && (ph.attached || ph.at > unclaimedAfter) ? ph.image : null; },
+    photosSince: async (since: Date) => [...photos.values()].filter((ph) => ph.at > since).length + extraPhotosToday,
+    deleteStalePhotos: async (unclaimedBefore: Date, endedBefore: Date) => {
+      let n = 0;
+      for (const [id, ph] of photos) if (!ph.attached && ph.at < unclaimedBefore) { photos.delete(id); n++; }
+      for (const p of rows.values()) if (p.photoId && ['abandoned', 'failed', 'refunded'].includes(p.status) && (p as any).endedAt < endedBefore) { photos.delete(p.photoId); p.photoId = null; n++; }
+      return n;
+    },
     removePhoto: async (purchaseId: string) => { const p = rows.get(purchaseId); if (!p?.photoId) return false; photos.delete(p.photoId); p.photoId = null; return true; },
     markRefunded: async (id: string, _n: string, o?: any) => { const p = rows.get(id)!; if (!['paid', 'issued', 'review'].includes(p.status) || (o?.unissuedOnly && p.instrumentId)) return false; p.status = 'refunded'; return true; },
   };
@@ -205,10 +213,16 @@ function harness(opts: { ipnId?: string | null; buyerActivity?: { started: numbe
     hash: (c: string) => `h:${c}`, randomIndexes: () => Array.from({ length: 11 }, () => (idx++) % 32), referenceIndexes: () => Array.from({ length: 10 }, () => (idx++) % 32),
     normalizePhone: (p: string) => `+256${p.replace(/\D/g, '').slice(-9)}`,
   }, () => ({ ipnId: opts.ipnId === undefined ? 'ipn-1' : opts.ipnId, callbackUrl: 'https://api/cb', resultPageUrl: 'https://shop/gift-card/bought', dailyShopCapUgx: 1_000_000 }), undefined, {
-    process: async (b: Buffer) => { if (b.toString() === 'not a photo') throw new Error('PHOTO_NOT_AN_IMAGE'); if (b.toString() === 'tiny') throw new Error('PHOTO_TOO_SMALL'); return { image: Buffer.from(`jpeg:${b}`), width: 1080, height: 1080 }; },
+    process: async (b: Buffer) => {
+      const s = b.toString();
+      if (s === 'not a photo') throw new Error('PHOTO_NOT_AN_IMAGE');
+      if (s === 'tiny') throw new Error('PHOTO_TOO_SMALL');
+      if (s === 'no sharp') throw new Error('PHOTO_PROCESSOR_UNAVAILABLE');
+      return { image: Buffer.from(`jpeg:${b}`), width: 1080, height: 1080 };
+    },
   });
   const paidStatus = (ref: string, amount = 50_000) => ({ order_tracking_id: `T-${ref}`, merchant_reference: ref, amount, currency: 'UGX', status_code: 1, payment_status_description: 'Completed', confirmation_code: 'MTN123', payment_method: 'MTN' });
-  return { uc, rows, outbox, cards, photos, pesapalCalls, setStatus: (s: any) => { pesapalStatus = s; }, paidStatus, byRef, setPaidToday: (n: number) => { paidToday = n; } };
+  return { uc, rows, outbox, cards, photos, setPhotoClock: (f: () => Date) => { photoClock = f; }, setExtraPhotosToday: (n: number) => { extraPhotosToday = n; }, pesapalCalls, setStatus: (s: any) => { pesapalStatus = s; }, paidStatus, byRef, setPaidToday: (n: number) => { paidToday = n; } };
 }
 
 describe('buying a gift card online (0199)', () => {
@@ -444,7 +458,9 @@ describe('a photo on the card (0201)', () => {
 
   it('refuses what is not a photo or too small to print, and a made-up id; the card works without one', async () => {
     const h = harness();
-    expect(await h.uc.uploadPhoto(Buffer.from('not a photo'))).toMatchObject({ ok: false, message: expect.stringContaining('JPEG, PNG or HEIC') });
+    expect(await h.uc.uploadPhoto(Buffer.from('not a photo'))).toMatchObject({ ok: false, message: expect.stringContaining('JPEG or PNG') });
+    // The image library failing to load only turns photos off; the card still sells.
+    expect(await h.uc.uploadPhoto(Buffer.from('no sharp'))).toMatchObject({ ok: false, message: expect.stringContaining('The card works without one') });
     expect(await h.uc.uploadPhoto(Buffer.from('tiny'))).toMatchObject({ ok: false, message: expect.stringContaining('too small') });
     expect(await h.uc.uploadPhoto(Buffer.alloc(0))).toMatchObject({ ok: false });
     expect(checkGiftCardPurchase(form({ photoId: '../etc/passwd' }), NOW)).toMatchObject({ ok: false, errors: { photo: expect.any(String) } });
@@ -460,7 +476,9 @@ describe('a photo on the card (0201)', () => {
     if (!kept.ok || !stray.ok) throw new Error('upload');
     const r = await h.uc.start(form({ photoId: kept.photoId }), NOW);
     if (!r.ok) throw new Error('start');
-    await h.uc.sweep(NOW);
+    await h.uc.sweep(new Date(NOW.getTime() + 2 * 86_400_000));
+    expect(h.photos.has(stray.photoId)).toBe(true); // still within its three days
+    await h.uc.sweep(new Date(NOW.getTime() + 4 * 86_400_000));
     expect(h.photos.has(stray.photoId)).toBe(false);
     expect(h.photos.has(kept.photoId)).toBe(true);
     expect(await h.uc.removePhoto(r.reference)).toMatchObject({ ok: true });
@@ -471,5 +489,39 @@ describe('a photo on the card (0201)', () => {
 
   it('an upload is a human form on the abuse budget, not the global one', () => {
     expect(classifyPublicEndpoint('POST', '/commerce/gift-cards/photos')).toBe('issue-report');
+  });
+
+  it('the shop takes at most 400 photos a day (the upload needs no account); above that the card sells without one', async () => {
+    const h = harness();
+    h.setExtraPhotosToday(GIFT_CARD_PHOTOS_PER_DAY - 1);
+    expect((await h.uc.uploadPhoto(Buffer.from('a'), NOW)).ok).toBe(true);
+    expect(await h.uc.uploadPhoto(Buffer.from('b'), NOW)).toMatchObject({ ok: false, message: expect.stringContaining('The card works without one') });
+  });
+
+  it('an unclaimed upload stops showing when it can no longer be put on a card (two days), so a kept draft notices', async () => {
+    const h = harness();
+    h.setPhotoClock(() => new Date(NOW.getTime() - 2 * 86_400_000 - 60_000));
+    const old = await h.uc.uploadPhoto(Buffer.from('old'));
+    h.setPhotoClock(() => NOW);
+    const fresh = await h.uc.uploadPhoto(Buffer.from('fresh'));
+    if (!old.ok || !fresh.ok) throw new Error('upload');
+    expect(await h.uc.photoImage(old.photoId, NOW)).toBeNull();
+    expect(await h.uc.photoImage(fresh.photoId, NOW)).not.toBeNull();
+    expect(await h.uc.photoImage('------------------------------------', NOW)).toBeNull(); // 36 characters, not a uuid
+  });
+
+  it('the photo of a purchase that ended unpaid goes 30 days after it ended; a paid card keeps its photo', async () => {
+    const h = harness();
+    const a = await h.uc.uploadPhoto(Buffer.from('a'));
+    const b = await h.uc.uploadPhoto(Buffer.from('b'));
+    if (!a.ok || !b.ok) throw new Error('upload');
+    const r1 = await h.uc.start(form({ photoId: a.photoId }), NOW);
+    const r2 = await h.uc.start(form({ photoId: b.photoId, buyerPhone: '0701 999888' }), NOW);
+    if (!r1.ok || !r2.ok) throw new Error('start');
+    Object.assign(h.byRef(r1.reference)!, { status: 'abandoned', endedAt: new Date(NOW.getTime() - 31 * 86_400_000) });
+    await h.uc.sweep(NOW);
+    expect(h.byRef(r1.reference)!.photoId).toBeNull();
+    expect(h.photos.has(a.photoId)).toBe(false);
+    expect(h.byRef(r2.reference)!.photoId).toBe(b.photoId);
   });
 });

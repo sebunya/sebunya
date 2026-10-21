@@ -565,7 +565,7 @@ async function giftCardPurchaseProofs(): Promise<void> {
   check('on an ordinary day (21 October): the everyday six', firstSix(plainDay.body), ['gold', 'birthday', 'thanks', 'celebrate', 'love', 'anniversary']);
   check('every one of the 14 occasions is selectable on both days', [allOccasions(xmasDay.body).length, allOccasions(plainDay.body).length, new Set(allOccasions(xmasDay.body)).size], [14, 14, 14]);
   const outOfSeason = await get(new Jar(), '/gift-card/buy?theme=valentine&on=2026-10-21');
-  check('a chosen out-of-season occasion is shown beside the six, marked "Your choice", and still selected', /data-occasion="valentine"[^>]*>\s*<input[^>]*value="valentine" checked[\s\S]{0,4000}?Your choice<\/span>\s*<span[^>]*>Valentine/.test(outOfSeason.body.split('data-occasions-more')[0]), true);
+  check('a chosen out-of-season occasion is shown beside the six, marked "Your choice", and still selected', /data-occasion="valentine"[^>]*>\s*<input[^>]*value="valentine" checked[\s\S]{0,4000}?>Valentine[^<]*<\/span>[\s\S]{0,400}?Your choice<\/span>/.test(outOfSeason.body.split('data-occasions-more')[0]), true);
   const wrong = await postForm(jar, '/gift-card/buy', { ...giftForm, message: 'Send 50,000 to 0772 123 456 now' });
   check('the page comes back (no payment redirect)', wrong.status, 200);
   check('it says why, next to the message', /cannot carry links, web addresses or phone numbers/.test(wrong.body), true);
@@ -648,7 +648,7 @@ async function giftCardPurchaseProofs(): Promise<void> {
   // -- 19. A photo on the card (0201) -------------------------------------------------
   console.log('\n--- 19. a photo on the card: re-encoded without its metadata, claimed once, shown to them and the buyer');
   await resetStub();
-  const sharp = createRequire(new URL('../../apps/api/package.json', import.meta.url))('sharp') as typeof import('sharp');
+  const sharp = createRequire(new URL('../../apps/api/package.json', import.meta.url))('sharp') as (typeof import('sharp'))['default'];
   const camera = await sharp({ create: { width: 1600, height: 1200, channels: 3, background: { r: 150, g: 204, b: 6 } } })
     .jpeg().withExif({ IFD0: { ImageDescription: 'harness-secret-location', Make: 'HarnessCam' } }).toBuffer();
   check('the test photo carries metadata to strip', camera.includes(Buffer.from('harness-secret-location')), true);

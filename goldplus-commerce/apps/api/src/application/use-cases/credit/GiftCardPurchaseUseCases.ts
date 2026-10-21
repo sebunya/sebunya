@@ -62,8 +62,18 @@ export interface GiftCardPublicStatus {
 
 /** 0201: what a phone may send as a gift card photo (it crops to a 1080 px square first; this is the ceiling). */
 export const GIFT_CARD_PHOTO_MAX_BYTES = 6 * 1024 * 1024;
-/** An uploaded photo no purchase claims is deleted after this long. */
+/** An uploaded photo can be put on a purchase for this long (the same window the database claim allows)… */
+const PHOTO_CLAIM_MS = 2 * 86_400_000;
+/** …and is deleted a day later if nothing claimed it. */
 const UNCLAIMED_PHOTO_MS = 3 * 86_400_000;
+/** The photo of a purchase that ended unpaid or refunded is deleted this long after it ended (late payments land well inside it). */
+const ENDED_PURCHASE_PHOTO_MS = 30 * 86_400_000;
+/**
+ * Photos accepted across the whole shop in 24 hours. The upload needs no account, so without a ceiling one script could
+ * fill the server's disk; real gift cards with photos are a handful a day, and above this the card still sells without one.
+ */
+export const GIFT_CARD_PHOTOS_PER_DAY = 400;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const PART_SPENT = 'Part of this card has been spent or is reserved by an order, so the payment cannot be refunded in full here. Settle it with the buyer and refund the rest from the Pesapal dashboard.';
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? '';
@@ -86,9 +96,14 @@ export class GiftCardPurchaseUseCases {
    * 0201: the buyer's optional photo. Re-encoded (a square JPEG without metadata, so no location leaves the phone)
    * and kept until a purchase claims it; unclaimed photos are deleted by the sweep after three days.
    */
-  async uploadPhoto(bytes: Buffer): Promise<{ ok: true; photoId: string } | { ok: false; message: string }> {
-    if (!this.photos) return { ok: false, message: 'Photos are not available right now. The card works without one.' };
+  async uploadPhoto(bytes: Buffer, now = new Date()): Promise<{ ok: true; photoId: string } | { ok: false; message: string }> {
+    const unavailable = 'Photos are not available right now. The card works without one.';
+    if (!this.photos) return { ok: false, message: unavailable };
     if (bytes.length === 0 || bytes.length > GIFT_CARD_PHOTO_MAX_BYTES) return { ok: false, message: 'Choose a photo smaller than 6 MB.' };
+    if ((await this.repo.photosSince(new Date(now.getTime() - 86_400_000))) >= GIFT_CARD_PHOTOS_PER_DAY) {
+      this.log('gift_card_photo_daily_cap_reached', { cap: GIFT_CARD_PHOTOS_PER_DAY });
+      return { ok: false, message: unavailable };
+    }
     try {
       const p = await this.photos.process(bytes);
       return { ok: true, photoId: await this.repo.savePhoto(p.image, p.width, p.height) };
@@ -96,11 +111,14 @@ export class GiftCardPurchaseUseCases {
       const m = String((err as Error)?.message ?? err);
       if (m === 'PHOTO_TOO_SMALL') return { ok: false, message: 'That photo is too small to print on a card. Choose a bigger one.' };
       this.log('gift_card_photo_refused', { error: m.slice(0, 120) });
-      return { ok: false, message: 'That file is not a photo we can use. Choose a JPEG, PNG or HEIC photo.' };
+      if (m === 'PHOTO_PROCESSOR_UNAVAILABLE') return { ok: false, message: unavailable };
+      if (m === 'PHOTO_TOO_DETAILED') return { ok: false, message: 'That photo has too much detail to store. Try another one.' };
+      return { ok: false, message: 'That file is not a photo we can use. Choose a JPEG or PNG photo.' };
     }
   }
-  photoImage(photoId: string) {
-    return /^[0-9a-f-]{36}$/i.test(photoId) ? this.repo.photoImage(photoId.toLowerCase()) : Promise.resolve(null);
+  /** A photo's bytes for the card that holds it. An unclaimed upload stops showing when it can no longer be used. */
+  photoImage(photoId: string, now = new Date()) {
+    return UUID.test(photoId) ? this.repo.photoImage(photoId.toLowerCase(), new Date(now.getTime() - PHOTO_CLAIM_MS)) : Promise.resolve(null);
   }
   /** Staff: take a photo off a card (it is deleted; the card stays as it was otherwise). */
   async removePhoto(reference: string): Promise<{ ok: boolean; message: string; purchaseId?: string }> {
@@ -260,7 +278,7 @@ export class GiftCardPurchaseUseCases {
     for (const p of await this.repo.paidNotIssued(100)) {
       if (await this.deliverIfDue(p, now).catch((err) => { this.log('gift_card_issue_failed', { reference: p.reference, error: String(err) }); return false; })) issued += 1;
     }
-    await this.repo.deleteStalePhotos(new Date(now.getTime() - UNCLAIMED_PHOTO_MS)).catch((err) => this.log('gift_card_photo_sweep_failed', { error: String(err) }));
+    await this.repo.deleteStalePhotos(new Date(now.getTime() - UNCLAIMED_PHOTO_MS), new Date(now.getTime() - ENDED_PURCHASE_PHOTO_MS)).catch((err) => this.log('gift_card_photo_sweep_failed', { error: String(err) }));
     return { polled, abandoned, issued };
   }
 

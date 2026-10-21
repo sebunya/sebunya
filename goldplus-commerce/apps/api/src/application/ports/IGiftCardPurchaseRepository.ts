@@ -75,10 +75,15 @@ export interface IGiftCardPurchaseRepository {
   byReference(reference: string): Promise<GiftCardPurchaseRecord | null>;
   /** 0201: a processed photo, kept until a purchase claims it (or three days pass). */
   savePhoto(image: Buffer, width: number, height: number): Promise<string>;
-  /** The photo's JPEG bytes, or null (unknown, or removed). */
-  photoImage(id: string): Promise<Buffer | null>;
-  /** Photos no purchase claimed, older than `olderThan`. */
-  deleteStalePhotos(olderThan: Date): Promise<number>;
+  /** The photo's JPEG bytes, or null: unknown, removed, or an unclaimed upload older than `unclaimedAfter`. */
+  photoImage(id: string, unclaimedAfter: Date): Promise<Buffer | null>;
+  /** Photos uploaded since `since`, claimed or not (the shop-wide daily ceiling). */
+  photosSince(since: Date): Promise<number>;
+  /**
+   * Photos no purchase claimed, uploaded before `unclaimedBefore`; and photos of purchases that ended unpaid or
+   * refunded before `endedBefore` (their card never exists or no longer counts, so its picture is not kept).
+   */
+  deleteStalePhotos(unclaimedBefore: Date, endedBefore: Date): Promise<number>;
   /** Staff: take the photo off a purchase (and delete it). */
   removePhoto(purchaseId: string): Promise<boolean>;
   byTrackingId(trackingId: string): Promise<GiftCardPurchaseRecord | null>;
