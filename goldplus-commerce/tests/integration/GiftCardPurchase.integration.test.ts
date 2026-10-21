@@ -89,7 +89,7 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     await expect(raw`update gift_card_purchases set instrument_id = null where id = ${p.id}`).rejects.toThrow(/gift_card_purchases_issued_chk/);
     // The open page finds the card's face by its code's hash.
     expect(await repo.faceByCodeHash(`h-${tag}-${winners[0] === a ? `GPGC-AAAA-BBBB-${tag.slice(0, 4)}` : `GPGC-CCCC-DDDD-${tag.slice(0, 4)}`}`))
-      .toEqual({ theme: 'birthday', fromName: 'Rob', toName: 'Sarah N', message: 'Happy birthday!' });
+      .toEqual({ theme: 'birthday', fromName: 'Rob', toName: 'Sarah N', message: 'Happy birthday!', originalUgx: 50000 });
     expect(await repo.faceByCodeHash('no-such-hash')).toBeNull();
   });
 
