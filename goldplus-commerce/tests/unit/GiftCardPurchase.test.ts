@@ -134,7 +134,7 @@ function harness(opts: { ipnId?: string | null; buyerActivity?: { started: numbe
   const byRef = (r: string) => [...rows.values()].find((p) => p.reference === r) ?? null;
   const copy = (p: GiftCardPurchaseRecord | null) => (p ? { ...p } : null);
   const repo = {
-    create: async (i: any) => { const p: GiftCardPurchaseRecord = { ...i, id: `p${++seq}`, status: 'awaiting_payment', orderTrackingId: null, redirectUrl: null, providerStatus: null, confirmationCode: null, paymentMethod: null, instrumentId: null, cardLast4: null, createdAt: new Date(NOW), paidAt: null, issuedAt: null }; rows.set(p.id, p); return { ...p }; },
+    create: async (i: any) => { const p: GiftCardPurchaseRecord = { ...i, id: `p${++seq}`, textStatus: null, status: 'awaiting_payment', orderTrackingId: null, redirectUrl: null, providerStatus: null, confirmationCode: null, paymentMethod: null, instrumentId: null, cardLast4: null, createdAt: new Date(NOW), paidAt: null, issuedAt: null }; rows.set(p.id, p); return { ...p }; },
     byReference: async (r: string) => copy(byRef(r)),
     byTrackingId: async (t: string) => copy([...rows.values()].find((p) => p.orderTrackingId === t) ?? null),
     recordStarted: async (id: string, t: string, u: string) => { const p = rows.get(id)!; if (!p.orderTrackingId) Object.assign(p, { orderTrackingId: t, redirectUrl: u }); },
@@ -154,6 +154,20 @@ function harness(opts: { ipnId?: string | null; buyerActivity?: { started: numbe
     awaitingWithTransaction: async (older: Date, newer: Date) => [...rows.values()].filter((p) => p.status === 'awaiting_payment' && p.orderTrackingId && p.createdAt <= older && p.createdAt >= newer).map((p) => ({ ...p })),
     awaitingStale: async (older: Date) => [...rows.values()].filter((p) => p.status === 'awaiting_payment' && p.createdAt < older).map((p) => ({ ...p })),
     forBuyer: async () => [],
+    redirect: async (i: any) => {
+      const p = rows.get(i.purchaseId)!;
+      if (p.sendTo !== 'recipient') return { result: 'not_redirectable' };
+      if (p.status === 'paid' && !p.instrumentId) { p.recipientPhone = i.recipientPhone; return { result: 'updated', instrumentId: null }; }
+      const old = cards.find((c) => c.id === p.instrumentId);
+      if (p.status !== 'issued' || !old) return { result: 'not_redirectable' };
+      if (old.status !== 'active' || old.balance !== old.initial || old.held > 0) return { result: 'touched' };
+      old.status = 'void'; old.balance = 0;
+      const id = `c${cards.length + 1}`;
+      cards.push({ id, code: i.newCard.message.data.creditCode, purchaseId: p.id, issuedBy: i.newCard.issuedBy, reason: i.newCard.reason, recipientPhone: i.recipientPhone, status: 'active', balance: p.amountUgx, held: 0, initial: p.amountUgx, ledger: [] });
+      Object.assign(p, { instrumentId: id, recipientPhone: i.recipientPhone });
+      outbox.push({ template: i.newCard.message.template, phone: i.newCard.message.phone, data: i.newCard.message.data, key: i.newCard.message.idempotencyKey });
+      return { result: 'reissued', instrumentId: id };
+    },
     faceByCodeHash: async (hash: string) => { const c = cards.find((x) => `h:${x.code}` === hash); const p = c ? rows.get(c.purchaseId) : null; return p ? { theme: p.theme, fromName: p.fromName, toName: p.recipientName, message: p.message } : null; },
     recent: async () => [],
     markRefunded: async (id: string, _n: string, o?: any) => { const p = rows.get(id)!; if (!['paid', 'issued', 'review'].includes(p.status) || (o?.unissuedOnly && p.instrumentId)) return false; p.status = 'refunded'; return true; },
@@ -268,7 +282,7 @@ describe('buying a gift card online (0199)', () => {
     if (!r.ok) throw new Error('start');
     h.setStatus(h.paidStatus(r.reference));
     const s = await h.uc.publicStatus(r.reference, NOW);
-    expect(s).toEqual({ reference: r.reference, status: 'issued', amountUgx: 50_000, recipientFirstName: 'Sarah', theme: 'gold', fromName: 'Rob', message: 'Happy birthday!', recipientPhoneMasked: '07•• ••• 222', buyerPhoneMasked: '07•• ••• 444', sendTo: 'recipient', deliverOn: null });
+    expect(s).toEqual({ reference: r.reference, status: 'issued', amountUgx: 50_000, recipientFirstName: 'Sarah', theme: 'gold', fromName: 'Rob', message: 'Happy birthday!', recipientPhoneMasked: '07•• ••• 222', buyerPhoneMasked: '07•• ••• 444', sendTo: 'recipient', deliverOn: null, textStatus: null });
     expect(await h.uc.publicStatus('GP-202610-ABC', NOW)).toBeNull();
   });
 
@@ -281,6 +295,46 @@ describe('buying a gift card online (0199)', () => {
     const code = String(h.outbox.find((m) => m.template === 'GIFT_CARD_RECEIVED')!.data.creditCode);
     expect(await h.uc.faceForCode(code)).toEqual({ theme: 'love', fromName: 'Rob', toName: 'Sarah Nakato', message: 'Happy birthday!' });
     expect(await h.uc.faceForCode('GPGC-0000-0000-0000')).toBeNull();
+  });
+
+  it('a wrong number: an untouched card gets a NEW code at the corrected number and the old one dies', async () => {
+    const h = harness();
+    const r = await h.uc.start(form(), NOW);
+    if (!r.ok) throw new Error('start');
+    h.setStatus(h.paidStatus(r.reference));
+    await h.uc.settle({ trackingId: `T-${r.reference}`, reference: r.reference, source: 'ipn' }, NOW);
+    const firstCode = String(h.outbox.find((m) => m.template === 'GIFT_CARD_RECEIVED')!.data.creditCode);
+    expect((await h.uc.redirect(r.reference, '0772 999888', 'staff', 'x')).ok).toBe(false); // needs a reason
+    expect((await h.uc.redirect(r.reference, '12345', 'staff', 'Buyer typo')).ok).toBe(false); // needs a real number
+    const moved = await h.uc.redirect(r.reference, '0772 999888', 'staff', 'Buyer typed the number wrong');
+    expect(moved.ok).toBe(true);
+    expect(h.cards.map((c) => c.status)).toEqual(['void', 'active']);
+    const last = h.outbox.at(-1)!;
+    expect([last.template, last.phone]).toEqual(['GIFT_CARD_RECEIVED', '+256772999888']);
+    expect(last.data.creditCode).not.toBe(firstCode);
+    expect(last.key).not.toBe(`gift-card-received:${h.byRef(r.reference)!.id}`); // its own message, never swallowed as a duplicate
+    // Spent from: refused, nothing changes.
+    h.cards[1].balance = 10_000;
+    expect((await h.uc.redirect(r.reference, '0772 777666', 'staff', 'Buyer typo again')).ok).toBe(false);
+    expect(h.cards).toHaveLength(2);
+  });
+
+  it('a wrong number before a scheduled card goes out: only the number changes', async () => {
+    const h = harness();
+    const r = await h.uc.start(form({ deliverOn: '2026-11-14' }), NOW);
+    if (!r.ok) throw new Error('start');
+    h.setStatus(h.paidStatus(r.reference));
+    await h.uc.settle({ trackingId: `T-${r.reference}`, reference: r.reference, source: 'ipn' }, NOW);
+    expect((await h.uc.redirect(r.reference, '0772 999888', 'staff', 'Buyer typo')).ok).toBe(true);
+    await h.uc.sweep(new Date('2026-11-14T07:00:00Z'));
+    expect(h.outbox.at(-1)!.phone).toBe('+256772999888');
+    expect(h.cards).toHaveLength(1);
+  });
+
+  it('the buyer’s receipt links to where they follow the card, and stays two SMS parts', () => {
+    const paid = smsText('GIFT_CARD_PAID', { valueUgx: 500_000, recipientName: 'Christabel', recipientPhoneMasked: '07xx xxx 222', reference: 'GC-012345678Z', deliverOnWords: 'Wednesday 30 September' } as never)!;
+    expect(paid).toContain('/gift-card/bought?ref=GC-012345678Z');
+    expect(paid.length).toBeLessThanOrEqual(306);
   });
 
   it('refund: an untouched card is cancelled first, then Pesapal refunds; a spent card is refused', async () => {

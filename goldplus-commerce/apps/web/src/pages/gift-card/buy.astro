@@ -223,6 +223,7 @@ const previewAmount = (() => {
         <p>You pay on Pesapal's secure page with Mobile Money or card. The card is made only once your payment is confirmed. Anyone with the code can spend it, like cash, so share it only with the person it is for.</p>
       </div>
 
+      <p class="rounded-xl border border-brand-primaryInk/30 bg-brand-primary/10 px-4 py-3 text-sm font-semibold text-gray-900" data-gc-summary aria-live="polite" hidden></p>
       <button type="submit" class="inline-flex min-h-12 w-full items-center justify-center rounded-full bg-brand-primary px-6 text-sm font-black uppercase tracking-widest text-brand-black sm:w-auto">Continue to payment</button>
     </form>
     </div>
@@ -270,6 +271,20 @@ const previewAmount = (() => {
     face.setAttribute('aria-label', `GoldPlus gift card for ${val('recipientName') || 'someone special'}${Number.isFinite(amount) && amount > 0 ? `, ${ugx(amount)}` : ''}`);
     const count = document.querySelector<HTMLElement>('[data-gc-count]');
     if (count) count.textContent = `${message.length}/100`;
+    // Said back before paying: who gets texted, at which number, and when. A typo caught here costs nothing.
+    const summary = document.querySelector<HTMLElement>('[data-gc-summary]');
+    if (summary) {
+      const toBuyer = checked('sendTo') === 'buyer';
+      const phone = toBuyer ? val('buyerPhone') : val('recipientPhone');
+      const name = val('recipientName');
+      const date = checked('when') === 'date' && !toBuyer ? val('deliverOn') : '';
+      const when = date ? `on ${new Date(`${date}T09:00:00+03:00`).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', weekday: 'long', day: 'numeric', month: 'long' })} from 9am` : 'as soon as you pay';
+      const ok = Number.isFinite(amount) && amount > 0 && name && phone.replace(/\D/g, '').length >= 9;
+      summary.hidden = !ok;
+      if (ok) summary.textContent = toBuyer
+        ? `We will text the card for ${name} (${ugx(amount)}) to you on ${phone}, ${when}, to give them yourself.`
+        : `We will text ${name} on ${phone} a ${ugx(amount)} gift card ${when}. Check the number: a wrong one sends the card to a stranger.`;
+    }
   }
   form?.addEventListener('input', redraw);
   form?.addEventListener('change', redraw);

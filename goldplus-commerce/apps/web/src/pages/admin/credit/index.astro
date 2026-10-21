@@ -56,6 +56,12 @@ if (Astro.request.method === 'POST') {
       notice = res.ok && json?.success
         ? { kind: 'success', text: `Given back to the card. ${formatUgx(json.data.leftUgx)} more could still go back for that order.` }
         : { kind: 'error', text: stepUpHint(json, res, 'Nothing was given back.') };
+    } else if (intent === 'redirect-purchase') {
+      // 0199: the code goes to a corrected number (an untouched card gets a new code; the old one stops working).
+      const reference = String(form.get('reference') ?? '');
+      const res = await fetch(`${apiBase}/admin/credit/purchases/${encodeURIComponent(reference)}/redirect`, { method: 'POST', headers, body: JSON.stringify({ phone: String(form.get('phone') ?? ''), reason: String(form.get('reason') ?? '') }) });
+      const json: any = await res.json().catch(() => null);
+      notice = res.ok && json?.success ? { kind: 'success', text: json.data.message } : { kind: 'error', text: stepUpHint(json, res, 'Nothing was changed.') };
     } else if (intent === 'refund-purchase') {
       // 0199: a gift card bought online: the card is cancelled (if untouched) and Pesapal refunds the buyer.
       const reference = String(form.get('reference') ?? '');
@@ -105,6 +111,7 @@ const PURCHASE: Record<string, string> = {
   review: 'Check payment', refunded: 'Refunded',
 };
 const d = (k: string) => draft?.[k] ?? '';
+const TEXT: Record<string, string> = { sent: 'Text sent', sending: 'Text sending', failed: 'TEXT FAILED', not_sent: 'Text not sent (live sending off)' };
 const fmt = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Africa/Kampala', dateStyle: 'medium', timeStyle: 'short' });
 const KIND: Record<string, string> = { gift_card: 'Gift card', store_credit: 'Store credit' };
 const STATUS: Record<string, string> = { active: 'Spendable', pending_approval: 'Waiting for approval', void: 'Cancelled' };
@@ -199,15 +206,20 @@ const prefillReturn = (Astro.url.searchParams.get('return') ?? '').toUpperCase()
           <tbody>{purchases.map((p) => (
             <tr class="border-t align-top">
               <td class="py-1.5 font-mono text-xs">{p.reference}{p.cardLast4 && p.instrumentId ? <a class="block font-sans font-bold underline" href={`/admin/credit?card=${p.instrumentId}`}>card ••••{p.cardLast4}</a> : ''}</td>
-              <td>{PURCHASE[p.status] ?? p.status}{p.status === 'paid' && p.deliverOn ? ` (${p.deliverOn})` : ''}{p.status === 'review' && p.providerStatus ? <span class="block text-xs text-red-700">{p.providerStatus}</span> : ''}</td>
+              <td>{PURCHASE[p.status] ?? p.status}{p.status === 'paid' && p.deliverOn ? ` (${p.deliverOn})` : ''}{p.status === 'review' && p.providerStatus ? <span class="block text-xs text-red-700">{p.providerStatus}</span> : ''}{p.status === 'issued' && p.textStatus ? <span class={`block text-xs ${p.textStatus === 'failed' ? 'font-black text-red-700' : 'text-gray-500'}`}>{TEXT[p.textStatus]}</span> : ''}</td>
               <td class="text-right tabular-nums">{formatUgx(p.amountUgx)}</td>
               <td class="pl-4 text-xs">{p.buyerName}<span class="block text-gray-500">{p.buyerPhone}</span></td>
               <td class="text-xs">{p.recipientName}<span class="block text-gray-500">{p.sendTo === 'buyer' ? 'code to buyer' : p.recipientPhone}</span></td>
               <td class="text-xs">{p.paymentMethod ?? ''}<span class="block text-gray-500">{p.confirmationCode ?? ''}</span></td>
               <td class="text-xs">{fmt(p.createdAt)}</td>
-              <td>{['paid', 'issued', 'review'].includes(p.status) && (
-                <form method="POST" class="flex gap-2"><input type="hidden" name="intent" value="refund-purchase" /><input type="hidden" name="reference" value={p.reference} /><input name="reason" required minlength="5" placeholder="Why" class="w-32 border rounded-xl p-2 text-xs" /><button class="min-h-11 rounded-full border border-red-300 px-3 text-xs font-black uppercase text-red-800">Refund</button></form>
-              )}</td>
+              <td class="space-y-2">
+                {p.sendTo === 'recipient' && ['paid', 'issued'].includes(p.status) && (
+                  <form method="POST" class="flex flex-wrap gap-2" data-redirect-purchase><input type="hidden" name="intent" value="redirect-purchase" /><input type="hidden" name="reference" value={p.reference} /><input name="phone" required inputmode="tel" placeholder="Correct number" class="w-32 border rounded-xl p-2 text-xs" /><input name="reason" required minlength="5" placeholder="Why" class="w-28 border rounded-xl p-2 text-xs" /><button class="min-h-11 rounded-full border px-3 text-xs font-black uppercase" title="An unspent card gets a new code at the new number; the old code stops working">Send to new number</button></form>
+                )}
+                {['paid', 'issued', 'review'].includes(p.status) && (
+                  <form method="POST" class="flex gap-2"><input type="hidden" name="intent" value="refund-purchase" /><input type="hidden" name="reference" value={p.reference} /><input name="reason" required minlength="5" placeholder="Why" class="w-32 border rounded-xl p-2 text-xs" /><button class="min-h-11 rounded-full border border-red-300 px-3 text-xs font-black uppercase text-red-800">Refund</button></form>
+                )}
+              </td>
             </tr>
           ))}</tbody>
         </table></div>

@@ -595,7 +595,7 @@ async function giftCardPurchaseProofs(): Promise<void> {
     note('the code was already sent and scrubbed from the outbox; the open page is proved by the unit suite');
   }
   const page = await get(jar, `/gift-card/bought?ref=${encodeURIComponent(ref)}`);
-  check('the buyer’s page says it is paid and texted, with the number masked', /Thank you, it is paid[\s\S]*Sarah has been texted, on 07•• ••• 912, a link to open the card/.test(page.body), true);
+  check('the buyer’s page says it is paid and where the text stands (no sender runs here: queued), number masked', /Thank you, it is paid[\s\S]*(Sarah has been texted, on 07•• ••• 912, a link to open the card|being texted to Sarah on 07•• ••• 912)/.test(page.body), true);
   const ipn = await fetch(`${process.env.E2E_API_BASE}/commerce/payments/pesapal/ipn?OrderTrackingId=${encodeURIComponent(subs[0]?.orderTrackingId ?? '')}&OrderMerchantReference=${encodeURIComponent(ref)}&OrderNotificationType=IPNCHANGE`);
   check('the IPN that follows is acknowledged', ipn.status, 200);
   check('and makes no second card', rowsOf(await db.execute(sql`select 1 from credit_instruments where reason like ${`%${ref}%`}`)).length, 1);

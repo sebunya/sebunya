@@ -33,6 +33,11 @@ export interface GiftCardPurchaseRecord {
   instrumentId: string | null;
   /** The issued card's last four, when issued. */
   cardLast4: string | null;
+  /**
+   * Did the text carrying the code reach a phone? sent: a provider accepted it; sending: queued or retrying;
+   * failed: given up; not_sent: handled with live sending switched off; null: no card yet.
+   */
+  textStatus: 'sent' | 'sending' | 'failed' | 'not_sent' | null;
   createdAt: Date;
   paidAt: Date | null;
   issuedAt: Date | null;
@@ -51,7 +56,7 @@ export interface GiftCardOutboxMessage {
 }
 
 export interface IGiftCardPurchaseRepository {
-  create(input: Omit<GiftCardPurchaseRecord, 'id' | 'status' | 'orderTrackingId' | 'redirectUrl' | 'providerStatus' | 'confirmationCode' | 'paymentMethod' | 'instrumentId' | 'cardLast4' | 'createdAt' | 'paidAt' | 'issuedAt'>): Promise<GiftCardPurchaseRecord>;
+  create(input: Omit<GiftCardPurchaseRecord, 'id' | 'status' | 'orderTrackingId' | 'redirectUrl' | 'providerStatus' | 'confirmationCode' | 'paymentMethod' | 'instrumentId' | 'cardLast4' | 'textStatus' | 'createdAt' | 'paidAt' | 'issuedAt'>): Promise<GiftCardPurchaseRecord>;
   byReference(reference: string): Promise<GiftCardPurchaseRecord | null>;
   byTrackingId(trackingId: string): Promise<GiftCardPurchaseRecord | null>;
   /** The provider transaction opened for this purchase (once; a second call changes nothing). */
@@ -87,6 +92,16 @@ export interface IGiftCardPurchaseRepository {
   /** The face of the card bought online whose code hashes to this, or null (a staff-issued card has none). */
   faceByCodeHash(codeHash: string): Promise<GiftCardFace | null>;
   recent(limit: number): Promise<GiftCardPurchaseRecord[]>;
+  /**
+   * Staff: the code goes to a different number (a typo is the commonest gift card call). One transaction under the
+   * purchase's row lock. Not issued yet: only the number changes. Issued and untouched: the old card is cancelled in
+   * full, a new one (new code) is issued for the same value, and its text is written. Anything spent, reserved or
+   * changed on the old card: 'touched', nothing written.
+   */
+  redirect(input: {
+    purchaseId: string; recipientPhone: string; actorId: string; now: Date; note: string;
+    newCard: { codeHash: string; last4: string; reason: string; issuedBy: string; message: GiftCardOutboxMessage };
+  }): Promise<{ result: 'updated' | 'reissued'; instrumentId: string | null } | { result: 'touched' | 'not_redirectable' }>;
   /**
    * Staff: the money goes back to the buyer. Paid/issued/review -> refunded. `unissuedOnly`: only while no card
    * exists (closes a scheduled purchase before its card can be issued).

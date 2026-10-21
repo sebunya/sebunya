@@ -12,6 +12,7 @@ import GiftCardFace from '../../components/GiftCardFace.astro';
 type Status = {
   reference: string; status: 'awaiting_payment' | 'paid' | 'issued' | 'failed' | 'review' | 'refunded'; amountUgx: number;
   recipientFirstName: string; theme: string; fromName: string; message: string | null; recipientPhoneMasked: string; buyerPhoneMasked: string; sendTo: 'recipient' | 'buyer'; deliverOn: string | null;
+  textStatus: 'sent' | 'sending' | 'failed' | 'not_sent' | null;
 };
 const ref = String(Astro.url.searchParams.get('ref') ?? '').trim().toUpperCase().slice(0, 20);
 const cancelled = Astro.url.searchParams.get('cancelled') === '1';
@@ -71,6 +72,10 @@ const waiting = s?.status === 'awaiting_payment' && !cancelled;
           <p class="mt-2 text-sm text-slate-700">
             {s.sendTo === 'buyer'
               ? (s.status === 'issued' ? `We texted you, on ${s.recipientPhoneMasked}, a link to the card and its code. Forward the link to ${s.recipientFirstName} (WhatsApp works) or give them the code yourself.` : `The link and code are on their way to you on ${s.recipientPhoneMasked}.`)
+              : s.status === 'issued' && s.textStatus === 'failed'
+                ? `We could not deliver the text to ${s.recipientPhoneMasked}. Nothing is lost: call us with your reference and we will send the card to the right number (the old code stops working).`
+              : s.status === 'issued' && s.textStatus === 'sending'
+                ? `The card is being texted to ${s.recipientFirstName} on ${s.recipientPhoneMasked}; it usually arrives within a minute.`
               : s.status === 'issued'
                 ? `${s.recipientFirstName} has been texted, on ${s.recipientPhoneMasked}, a link to open the card and scratch it to reveal the code.`
                 : s.deliverOn
@@ -79,7 +84,7 @@ const waiting = s?.status === 'awaiting_payment' && !cancelled;
           </p>
           <p class="mt-2 text-sm text-slate-700">{s.sendTo === 'recipient' ? `Your receipt is texted to ${s.buyerPhoneMasked}. ` : ''}Reference {s.reference}.</p>
         </div>
-        <p class="mt-6 text-sm text-slate-600">If the text does not arrive within a few minutes, call us with your reference and we will help.</p>
+        <p class="mt-6 text-sm text-slate-600">Wrong number, or no text after a few minutes? Call us with your reference. If nobody has spent from the card, we send it to the right number with a new code, and the old one stops working.</p>
         <a href="/gift-card/buy" class="mt-6 inline-flex min-h-12 items-center rounded-full bg-brand-primary px-6 text-xs font-black uppercase tracking-widest text-brand-black">Send another</a>
       </>
     )}

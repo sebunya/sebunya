@@ -43,7 +43,7 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
 Astro.response.headers.set('Referrer-Policy', 'same-origin');
 const kindWord = opened?.kind === 'store_credit' ? 'store credit' : 'gift card';
 ---
-<BaseLayout title="Your gift card | GoldPlus" description="Open your GoldPlus gift card." robotsMeta="noindex,nofollow">
+<BaseLayout title="A GoldPlus gift card for you" description="Someone sent you a GoldPlus gift card. Open it, scratch to reveal your code, and spend it on shopgoldplus.com or in our shop in Kampala." robotsMeta="noindex,nofollow">
   <div class="mx-auto max-w-xl px-4 py-10 sm:py-14" data-gift-card-open data-state={opened ? (opened.usable ? 'ready' : 'unusable') : problem ? 'problem' : 'form'}>
     {!opened && (
       <>

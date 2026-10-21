@@ -19,11 +19,28 @@ function record(r: Record<string, any>): GiftCardPurchaseRecord {
     recipientPhone: r.recipient_phone ?? null, sendTo: r.send_to, message: r.message ?? null, theme: r.theme ?? 'gold', deliverOn: isoDate(r.deliver_on),
     status: r.status, orderTrackingId: r.order_tracking_id ?? null, redirectUrl: r.redirect_url ?? null, providerStatus: r.provider_status ?? null,
     confirmationCode: r.confirmation_code ?? null, paymentMethod: r.payment_method ?? null, instrumentId: r.instrument_id ?? null,
-    cardLast4: r.card_last4 ?? null, createdAt: new Date(r.created_at), paidAt: at(r.paid_at), issuedAt: at(r.issued_at),
+    cardLast4: r.card_last4 ?? null, textStatus: textStatus(r), createdAt: new Date(r.created_at), paidAt: at(r.paid_at), issuedAt: at(r.issued_at),
   };
 }
 
-const SELECT = sql.raw(`select p.*, i.code_last4 as card_last4 from gift_card_purchases p left join credit_instruments i on i.id = p.instrument_id`);
+function textStatus(r: Record<string, any>): GiftCardPurchaseRecord['textStatus'] {
+  if (!r.instrument_id) return null;
+  if (r.text_sent) return 'sent';
+  const outbox = String(r.text_outbox ?? '');
+  if (outbox === 'pending' || outbox === 'processing' || outbox === '') return 'sending';
+  if (outbox.startsWith('dead_letter') || r.text_failed) return 'failed';
+  return 'not_sent';
+}
+
+// The text for the CURRENT card (a redirected card has its own message, related to its own instrument).
+const SELECT = sql.raw(`select p.*, i.code_last4 as card_last4,
+       exists (select 1 from notification_attempts a where a.related_entity = 'credit_instrument' and a.related_entity_id = p.instrument_id
+                  and a.template = 'GIFT_CARD_RECEIVED' and a.status = 'SENT') as text_sent,
+       exists (select 1 from notification_attempts a where a.related_entity = 'credit_instrument' and a.related_entity_id = p.instrument_id
+                  and a.template = 'GIFT_CARD_RECEIVED' and a.status = 'FAILED') as text_failed,
+       (select o.status from outbox_events o where o.related_entity = 'credit_instrument' and o.related_entity_id = p.instrument_id
+           and o.template = 'GIFT_CARD_RECEIVED' order by o.created_at desc limit 1) as text_outbox
+  from gift_card_purchases p left join credit_instruments i on i.id = p.instrument_id`);
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -115,6 +132,45 @@ export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepos
                            where id = ${input.purchaseId}`);
       for (const m of input.messages) await enqueueInTx(tx, m, m.relatedEntityId ?? instrumentId);
       return { instrumentId };
+    });
+  }
+
+  async redirect(input: Parameters<IGiftCardPurchaseRepository['redirect']>[0]): ReturnType<IGiftCardPurchaseRepository['redirect']> {
+    return db.transaction(async (tx) => {
+      const [p] = rowsOf(await tx.execute(sql`
+        select id, status, instrument_id, send_to from gift_card_purchases where id = ${input.purchaseId} for update`));
+      if (!p || p.send_to !== 'recipient') return { result: 'not_redirectable' as const };
+      if (p.status === 'paid' && !p.instrument_id) {
+        await tx.execute(sql`update gift_card_purchases set recipient_phone = ${input.recipientPhone}, updated_at = now() where id = ${p.id}`);
+        return { result: 'updated' as const, instrumentId: null };
+      }
+      if (p.status !== 'issued' || !p.instrument_id) return { result: 'not_redirectable' as const };
+      // The old card under its own lock (the lock every spend takes first): untouched = only its ISSUE row
+      // (released holds aside), still active.
+      const [old] = rowsOf(await tx.execute(sql`select id, status, initial_value_ugx from credit_instruments where id = ${p.instrument_id} for update`));
+      const moves = rowsOf(await tx.execute(sql`select type, amount_ugx, hold_state from credit_ledger where instrument_id = ${p.instrument_id}`));
+      const value = Number(old?.initial_value_ugx ?? 0);
+      const untouched = old?.status === 'active'
+        && moves.every((m) => m.type === 'ISSUE' || (m.type === 'HOLD' && m.hold_state === 'released'))
+        && moves.filter((m) => m.type === 'ISSUE').reduce((sum, m) => sum + Number(m.amount_ugx), 0) === value;
+      if (!untouched) return { result: 'touched' as const };
+      await tx.execute(sql`insert into credit_ledger (instrument_id, type, amount_ugx, actor_id, note)
+                           values (${old.id}, 'VOID', ${-value}, ${input.actorId}, ${input.note})`);
+      await tx.execute(sql`update credit_instruments set status = 'void', voided_by = ${input.actorId}, voided_at = ${input.now} where id = ${old.id}`);
+      const [card] = rowsOf(await tx.execute(sql`
+        insert into credit_instruments (kind, code_hash, code_last4, status, initial_value_ugx, reason, recipient_name, recipient_phone,
+                                        customer_user_id, source_order_id, issued_by, expires_at, approved_by, approved_at)
+        select 'gift_card', ${input.newCard.codeHash}, ${input.newCard.last4}, 'active', ${value}, ${input.newCard.reason}, recipient_name,
+               ${input.recipientPhone}, null, null, ${input.newCard.issuedBy}, null, ${input.newCard.issuedBy}, ${input.now}
+          from credit_instruments where id = ${old.id}
+        returning id`));
+      const instrumentId = String(card.id);
+      await tx.execute(sql`insert into credit_ledger (instrument_id, type, amount_ugx, actor_id, note)
+                           values (${instrumentId}, 'ISSUE', ${value}, ${input.newCard.issuedBy}, ${input.newCard.reason})`);
+      await tx.execute(sql`update gift_card_purchases set instrument_id = ${instrumentId}, recipient_phone = ${input.recipientPhone}, issued_at = ${input.now}, updated_at = now()
+                           where id = ${p.id}`);
+      await enqueueInTx(tx, input.newCard.message, instrumentId);
+      return { result: 'reissued' as const, instrumentId };
     });
   }
 

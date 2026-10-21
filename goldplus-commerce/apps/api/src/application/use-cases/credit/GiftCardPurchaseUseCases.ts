@@ -5,7 +5,7 @@ import type { CreditCodeTools } from './CreditUseCases';
 import { newCreditCode } from '../../../domain/credit/CreditInstrument';
 import {
   GIFT_CARD_DAILY_STARTS_PER_BUYER, GIFT_CARD_DAILY_UGX_PER_BUYER, checkGiftCardPurchase, giftCardPurchaseReference,
-  isGiftCardPurchaseReference, maskPhone, maskPhoneForSms, scheduledSendDue, type GiftCardField, type GiftCardPurchaseRequest,
+  isGiftCardPurchaseReference, isUgandanMobile, maskPhone, maskPhoneForSms, scheduledSendDue, type GiftCardField, type GiftCardPurchaseRequest,
 } from '../../../domain/credit/GiftCardPurchase';
 
 /**
@@ -55,6 +55,7 @@ export interface GiftCardPublicStatus {
   buyerPhoneMasked: string;
   sendTo: 'recipient' | 'buyer';
   deliverOn: string | null;
+  textStatus: 'sent' | 'sending' | 'failed' | 'not_sent' | null;
 }
 
 const PART_SPENT = 'Part of this card has been spent or is reserved by an order, so the payment cannot be refunded in full here. Settle it with the buyer and refund the rest from the Pesapal dashboard.';
@@ -198,6 +199,7 @@ export class GiftCardPurchaseUseCases {
       buyerPhoneMasked: maskPhone(p.buyerPhone),
       sendTo: p.sendTo,
       deliverOn: p.deliverOn,
+      textStatus: p.textStatus,
     };
   }
 
@@ -277,6 +279,51 @@ export class GiftCardPurchaseUseCases {
     }
     await this.repo.markRefunded(p.id, `REFUND_REQUESTED by ${actor.username}: ${reason.trim()}`.slice(0, 300));
     return { ok: true, message: `Refund of UGX ${p.amountUgx.toLocaleString('en-US')} asked of Pesapal; the buyer gets it on the account they paid from.` };
+  }
+
+  /**
+   * Staff: send the card to a different number (the buyer typed a wrong one, or the text failed). Before the card is
+   * issued only the number changes; afterwards an untouched card is swapped for a new code in one transaction, so the
+   * old code (possibly sitting on a stranger's phone) is dead before the new one is texted. A card anyone has spent
+   * from, or that an order is holding, is refused: that money is no longer the buyer's to redirect.
+   */
+  async redirect(reference: string, phone: string, actorId: string, note: string, now = new Date()): Promise<{ ok: boolean; message: string; purchaseId?: string }> {
+    const p = isGiftCardPurchaseReference(reference) ? await this.repo.byReference(reference) : null;
+    if (!p) return { ok: false, message: 'No gift card purchase has that reference.' };
+    if (p.sendTo !== 'recipient') return { ok: false, message: 'This code was texted to the buyer to hand over; change nothing here, call the buyer.', purchaseId: p.id };
+    if (!isUgandanMobile(phone)) return { ok: false, message: 'Type a Ugandan mobile number (for example 0772 123456).', purchaseId: p.id };
+    if (note.trim().length < 5) return { ok: false, message: 'Say why (for example "buyer typed the number wrong").', purchaseId: p.id };
+    const recipientPhone = this.tools.normalizePhone(phone);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const code = newCreditCode('gift_card', this.tools.randomIndexes());
+      try {
+        const r = await this.repo.redirect({
+          purchaseId: p.id, recipientPhone, actorId, now, note: `Sent to a different number (${p.reference}): ${note.trim()}`.slice(0, 500),
+          newCard: {
+            codeHash: this.tools.hash(code), last4: code.slice(-4), issuedBy: ONLINE_GIFT_CARD_ISSUER_ID,
+            reason: `Bought online ${p.reference} by ${p.buyerName}; re-sent to a corrected number`.slice(0, 500),
+            message: {
+              template: 'GIFT_CARD_RECEIVED', phone: recipientPhone, relatedEntity: 'credit_instrument', relatedEntityId: null,
+              idempotencyKey: `gift-card-received:${p.id}:${code.slice(-4)}:${now.getTime()}`,
+              data: {
+                template: 'GIFT_CARD_RECEIVED', creditKind: 'gift_card', creditCode: code, valueUgx: p.amountUgx, fromName: p.fromName,
+                giftMessage: p.message, customerName: p.recipientName, recipientName: p.recipientName, toBuyer: false, reference: p.reference,
+              },
+            },
+          },
+        });
+        if (r.result === 'updated') return { ok: true, message: `Number changed to ${maskPhone(recipientPhone)}. The card goes there on its day.`, purchaseId: p.id };
+        if (r.result === 'reissued') {
+          this.log('gift_card_redirected', { reference: p.reference, instrumentId: r.instrumentId });
+          return { ok: true, message: `Done. The old code no longer works; a new code was texted to ${maskPhone(recipientPhone)}.`, purchaseId: p.id };
+        }
+        if (r.result === 'touched') return { ok: false, message: 'Part of this card has been spent or is reserved by an order, so it cannot be moved. Nothing was changed.', purchaseId: p.id };
+        return { ok: false, message: 'Only a paid gift card that was texted to the person it is for can be moved. Nothing was changed.', purchaseId: p.id };
+      } catch (err) {
+        if (!/credit_instruments_code_hash_uq|duplicate key/i.test(String((err as Error)?.message ?? err))) throw err;
+      }
+    }
+    throw new Error('CREDIT_CODE_COLLISION');
   }
 
   /** Issue the card and text its code, when it is due. True when this call issued it. */

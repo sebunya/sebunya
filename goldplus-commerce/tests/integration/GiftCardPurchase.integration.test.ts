@@ -44,6 +44,7 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
   afterAll(async () => {
     if (!raw) return;
     await raw`delete from outbox_events where idempotency_key like ${'gift-card-%'} and related_entity_id = any(${[...purchaseIds, ...instrumentIds]})`;
+    await raw`delete from notification_attempts where related_entity = 'credit_instrument' and related_entity_id = any(${instrumentIds})`;
     await raw`delete from gift_card_purchases where id = any(${purchaseIds})`;
     await raw.begin(async (t: any) => {
       await t`set local goldplus.credit_maintenance = 'on'`;
@@ -104,6 +105,40 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     const [after] = await raw`select payload::text as p from outbox_events where id = ${row.id}`;
     expect(after.p).not.toContain('GPGC-GGGG');
     expect(after.p).toContain('creditCodeRemoved');
+  });
+
+  it('sends the card to a corrected number: old code void, new card, new text, in one go; a spent card is refused', async () => {
+    const p = await create();
+    await repo.markPaid(p.id, { confirmationCode: 'MTN6', paymentMethod: 'MTN', providerStatus: '1', now: new Date() }, null);
+    const first = await issue(p.id, `GPGC-MMMM-NNNN-${tag.slice(0, 4)}`);
+    instrumentIds.push(first.instrumentId);
+    expect((await repo.byReference(p.reference)).textStatus).toBe('sending');
+    // The provider reports a failure for the first text: staff see it.
+    await raw`insert into notification_attempts (channel, recipient, template, status, related_entity, related_entity_id)
+              values ('sms', '+256772111222', 'GIFT_CARD_RECEIVED', 'FAILED', 'credit_instrument', ${first.instrumentId})`;
+    await raw`update outbox_events set status = 'dead_letter', is_processed = true where related_entity_id = ${first.instrumentId}`;
+    expect((await repo.byReference(p.reference)).textStatus).toBe('failed');
+
+    const code = `GPGC-PPPP-QQQQ-${tag.slice(0, 4)}`;
+    const msg = (key: string) => ({ template: 'GIFT_CARD_RECEIVED', phone: '+256772999888', relatedEntity: 'credit_instrument', relatedEntityId: null, idempotencyKey: key,
+      data: { template: 'GIFT_CARD_RECEIVED', creditKind: 'gift_card', creditCode: code, valueUgx: 50_000, fromName: 'Rob' } });
+    const moved = await repo.redirect({ purchaseId: p.id, recipientPhone: '+256772999888', actorId: '00000000-0000-4000-8000-0000000000a1', now: new Date(), note: 'Buyer typo',
+      newCard: { codeHash: `h-${tag}-${code}`, last4: code.slice(-4), reason: 'Re-sent', issuedBy: '00000000-0000-4000-8000-00000000c1f7', message: msg(`gift-card-received:${p.id}:r1`) } });
+    expect(moved.result).toBe('reissued');
+    instrumentIds.push(moved.instrumentId);
+    const [oldCard] = await raw`select status, coalesce((select sum(amount_ugx) from credit_ledger where instrument_id = i.id), 0)::int as bal from credit_instruments i where id = ${first.instrumentId}`;
+    expect(oldCard).toEqual({ status: 'void', bal: 0 });
+    const [newCard] = await raw`select status, recipient_phone, recipient_name, coalesce((select sum(amount_ugx) from credit_ledger where instrument_id = i.id), 0)::int as bal from credit_instruments i where id = ${moved.instrumentId}`;
+    expect(newCard).toEqual({ status: 'active', recipient_phone: '+256772999888', recipient_name: 'Sarah N', bal: 50000 });
+    const now = await repo.byReference(p.reference);
+    expect([now.instrumentId, now.recipientPhone, now.textStatus]).toEqual([moved.instrumentId, '+256772999888', 'sending']);
+
+    // Spent from (an order holds part of it): refused, nothing written.
+    await raw`insert into credit_ledger (instrument_id, type, amount_ugx, hold_state, note) values (${moved.instrumentId}, 'HOLD', -10000, 'held', 'test order')`;
+    const again = await repo.redirect({ purchaseId: p.id, recipientPhone: '+256772777666', actorId: '00000000-0000-4000-8000-0000000000a1', now: new Date(), note: 'Again',
+      newCard: { codeHash: `h-${tag}-again`, last4: 'AGN1', reason: 'Re-sent', issuedBy: '00000000-0000-4000-8000-00000000c1f7', message: msg(`gift-card-received:${p.id}:r2`) } });
+    expect(again.result).toBe('touched');
+    expect((await raw`select 1 from credit_instruments where code_hash = ${`h-${tag}-again`}`).length).toBe(0);
   });
 
   it('a scheduled purchase is closed by refund before a card exists; never issued afterwards', async () => {

@@ -133,6 +133,11 @@ export function giftCardOpenUrl(code: string | null | undefined): string {
   return `${publicBaseUrl()}/gift-card/open${code ? `#${code}` : ''}`;
 }
 
+/** Where a buyer follows their gift card purchase (the GC- reference is unguessable and shows nothing in full). */
+export function giftCardStatusUrl(reference: string | null | undefined): string {
+  return `${publicBaseUrl()}/gift-card/bought${reference ? `?ref=${encodeURIComponent(reference)}` : ''}`;
+}
+
 export function formatUgx(amount: number | null | undefined): string {
   const n = Math.max(0, Math.round(Number(amount) || 0));
   return `UGX ${n.toLocaleString('en-UG')}`;
@@ -282,8 +287,8 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
     case 'GIFT_CARD_PAID':
       // 0199: to the buyer when the code goes to someone else. Never the code.
       return d.deliverOnWords
-        ? `${SHOP_NAME}: payment received, thank you. Your gift card of ${formatUgx(d.valueUgx)} for ${d.recipientName} will be texted to ${d.recipientPhoneMasked} on ${d.deliverOnWords} morning. Ref ${d.reference}. Questions? Call ${phone}.`
-        : `${SHOP_NAME}: payment received, thank you. Your gift card of ${formatUgx(d.valueUgx)} for ${d.recipientName} is being texted to ${d.recipientPhoneMasked} now. Ref ${d.reference}. If it does not arrive, call ${phone}.`;
+        ? `${SHOP_NAME}: payment received, thank you. Your gift card of ${formatUgx(d.valueUgx)} for ${d.recipientName} will be texted to ${d.recipientPhoneMasked} on ${d.deliverOnWords} morning. Follow it: ${giftCardStatusUrl(d.reference)} Questions? Call ${phone}.`
+        : `${SHOP_NAME}: payment received, thank you. Your gift card of ${formatUgx(d.valueUgx)} for ${d.recipientName} is being texted to ${d.recipientPhoneMasked} now. Follow it: ${giftCardStatusUrl(d.reference)} If it does not arrive, call ${phone}.`;
     case 'ORDER_REVIEW_REMINDER':
       // Sent once, a few days after delivery or collection, only when nothing on the order is rated.
       return `${SHOP_NAME}: how is what you bought on order${ref}? A rating helps the next shopper choose: ${reviewOrderUrl(d.orderNumber)} We will not ask again. If anything is wrong, call ${phone}.`;
@@ -444,7 +449,7 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         preheader: d.deliverOnWords ? `It will be texted to them on ${d.deliverOnWords}.` : 'Its code is being texted to them now.',
         headline: 'Gift card paid',
         body: `Thank you. We have your payment of ${formatUgx(d.valueUgx)} for a gift card for ${d.recipientName}. ${d.deliverOnWords ? `Its code will be texted to ${d.recipientPhoneMasked} on ${d.deliverOnWords} morning.` : `Its code is being texted to ${d.recipientPhoneMasked} now.`} Your reference is ${d.reference}. If they do not receive it, call ${phone} and we will help.`,
-        cta: { label: 'Check a gift card balance', url: `${publicBaseUrl()}/gift-card` },
+        cta: { label: 'Follow your gift card', url: giftCardStatusUrl(d.reference) },
         tone: 'success',
       };
     case 'ORDER_PAYMENT_REMINDER':
