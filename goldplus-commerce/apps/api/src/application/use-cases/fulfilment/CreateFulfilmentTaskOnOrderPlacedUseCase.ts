@@ -36,7 +36,8 @@ function buildDeliverySummary(order: Order): string {
     const unique = [...new Set(parts)];
     if (unique.length > 0) return unique.join(' · ');
   }
-  return [order.deliveryArea, order.deliveryAddress].filter(Boolean).join(' · ');
+  // A typed-in place fills both fields with the same words; said once (the queue showed it twice, 2026-10-21).
+  return [...new Set([order.deliveryArea, order.deliveryAddress].map((p) => (p ?? '').trim()).filter(Boolean))].join(' · ');
 }
 
 /**

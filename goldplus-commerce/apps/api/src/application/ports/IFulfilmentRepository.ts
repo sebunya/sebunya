@@ -15,6 +15,12 @@ export interface FulfilmentQueueQuery {
 export interface FulfilmentQueuePage {
   tasks: FulfilmentTaskSnapshot[];
   total: number;
+  /**
+   * The customer's phone per order id, read from the order (the task keeps only a masked copy). The queue is
+   * read under orders.read, which already shows the full number on the order page: the people preparing the
+   * order must be able to call the customer (2026-10-21). Optional so older fakes type.
+   */
+  customerPhones?: Record<string, string>;
 }
 
 export interface IFulfilmentRepository {

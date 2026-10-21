@@ -82,6 +82,7 @@ import { DrizzleCreditRepository } from './credit/DrizzleCreditRepository';
 import { DrizzleGiftCardPurchaseRepository } from './credit/DrizzleGiftCardPurchaseRepository';
 import { GiftCardPurchaseUseCases } from '../application/use-cases/credit/GiftCardPurchaseUseCases';
 import { storefrontOrigin } from './config/storefrontOrigin';
+import { deliveryMapUrl } from '../domain/fulfilment/PaidOrderAlert';
 import { normalizePhone } from '../application/services/validationHelpers';
 import { SettleByStoreCreditUseCase } from '../application/use-cases/payments/SettleByStoreCreditUseCase';
 import { ProductBundlesUseCase } from '../application/use-cases/pricing/ProductBundlesUseCase';
@@ -931,7 +932,18 @@ export class Registry {
           recipient,
           orderNumber: order.orderNumber,
           totalUgx: order.totalUgx,
-          deliveryArea: (order as { deliveryArea?: string }).deliveryArea ?? '',
+          deliveryArea: order.deliveryArea ?? '',
+          // 2026-10-21: what to pack, where it goes and who to call, so the text can be acted on as it is read.
+          // Customer fields use the names an erasure removes (customerName, customerPhone, deliveryPlace).
+          deliveryFeeUgx: order.deliveryFeeUgx,
+          items: order.items.map((it) => ({ name: it.name, sku: it.sku, quantity: it.quantity })),
+          customerName: order.customerName,
+          customerPhone: order.customerPhone,
+          deliveryPlace: order.deliveryAddress ?? '',
+          placeLabel: (order.deliveryLocation as { displayLabel?: string } | null)?.displayLabel ?? null,
+          mapUrl: deliveryMapUrl(order.deliveryLocation),
+          storeCreditUgx: order.storeCreditAppliedUgx ?? 0,
+          orderUrl: `${storefrontOrigin() ?? 'https://shopgoldplus.com'}/admin/orders/${order.id}`,
           test: opts?.test === true,
         } as never,
         idempotencyKey: opts?.test

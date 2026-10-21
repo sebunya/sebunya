@@ -1,6 +1,7 @@
 import { INotificationProvider, NotificationDispatchPayload, NotificationDispatchResult } from '../../application/ports/INotificationProvider';
 import { INotificationRouter, NotificationRoutingTarget } from '../../application/use-cases/outbox/ProcessOutboxBatchUseCase';
 import { parseAdminRecipients } from '../../domain/notifications/AdminOrderEmail';
+import { paidOrderAlertText } from '../../domain/fulfilment/PaidOrderAlert';
 import { IAutomationActionRepository } from '../../application/ports/IAutomationActionRepository';
 import { AutomationOutcomeTrackingProvider } from '../automation/AutomationOutcomeTrackingProvider';
 import { toRelatedEntityId } from '../../domain/notifications/RelatedEntityId';
@@ -257,9 +258,11 @@ export class DefaultNotificationRouter implements INotificationRouter {
       }
 
       /**
-       * The paid-order alert (0143). Internal: it goes to the shop's own
-       * fulfilment phone, never to a customer, and carries no customer name or
-       * address — just what is needed to go and pick the order up.
+       * The paid-order alert (0143). Internal: it goes only to the shop's own
+       * fulfilment phone(s), never to a customer. Since 2026-10-21 it carries what
+       * the person preparing the order needs to act on it as it is read: the
+       * items, the place, the customer's name and number, whether delivery was
+       * charged, and a link (domain/fulfilment/PaidOrderAlert.ts).
        */
       case 'FULFILMENT_PAID_ORDER_ALERT': {
         const recipient = typeof payload.recipient === 'string' ? payload.recipient : '';
@@ -270,7 +273,16 @@ export class DefaultNotificationRouter implements INotificationRouter {
         const amount = Number.isFinite(total) ? `UGX ${Math.round(total).toLocaleString('en-GB')}` : '';
         const message = payload.test === true
           ? `GoldPlus test alert: this is how a paid order will reach you. Nothing has been sold.`
-          : `GoldPlus: order ${orderNumber} is PAID${amount ? ` (${amount})` : ''}${area ? ` for ${area}` : ''}. Prepare it for delivery.`;
+          : Array.isArray(payload.items) && typeof payload.customerPhone === 'string'
+            ? paidOrderAlertText({
+                orderNumber, totalUgx: total, deliveryFeeUgx: Number(payload.deliveryFeeUgx ?? 0),
+                items: (payload.items as Array<Record<string, unknown>>).map((it) => ({ name: String(it.name ?? ''), sku: String(it.sku ?? ''), quantity: Number(it.quantity ?? 1) })),
+                customerName: String(payload.customerName ?? ''), customerPhone: String(payload.customerPhone ?? ''),
+                deliveryArea: area, deliveryAddress: String(payload.deliveryPlace ?? ''), placeLabel: (payload.placeLabel as string | null) ?? null,
+                mapUrl: (payload.mapUrl as string | null) ?? null, storeCreditUgx: Number(payload.storeCreditUgx ?? 0), orderUrl: String(payload.orderUrl ?? ''),
+              })
+            // Queued before 2026-10-21 (no items or phone in the event): the old one-line wording.
+            : `GoldPlus: order ${orderNumber} is PAID${amount ? ` (${amount})` : ''}${area ? ` for ${area}` : ''}. Prepare it for delivery.`;
         targets.push({
           channel: 'sms',
           provider: this.smsProvider,
