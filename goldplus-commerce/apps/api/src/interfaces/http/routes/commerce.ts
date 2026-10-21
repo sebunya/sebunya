@@ -373,6 +373,15 @@ routes.post('/gift-cards/open', async (c) => {
   return c.json({ success: true, data: { ...checked, code: normalized?.code ?? null, face } });
 });
 
+/** 0200: the occasions in the order the buy page shows them today (Kampala). Public: it is the calendar, nothing more. */
+routes.get('/gift-cards/occasions', async (c) => {
+  // A chosen day only outside production (local checks and screenshots); the live site always uses today.
+  const on = process.env.NODE_ENV === 'production' ? null : c.req.query('on') ?? null;
+  const data = await registry.giftCardOccasionUseCases.orderFor(new Date(), on);
+  c.header('Cache-Control', on ? 'no-store' : 'public, max-age=60');
+  return c.json({ success: true, data });
+});
+
 /** 0199: where a gift card purchase stands (the reference is unguessable; nothing in full is shown, never the code). */
 routes.get('/gift-cards/purchase/:reference', async (c) => {
   c.header('Cache-Control', 'no-store');

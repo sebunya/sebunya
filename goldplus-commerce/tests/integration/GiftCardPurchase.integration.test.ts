@@ -159,6 +159,19 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     expect(after.paidUgx).toBe(before.paidUgx + 50_000);
   });
 
+  it('0200: the new occasions are accepted; the occasion settings round-trip (also when stored as a jsonb string)', async () => {
+    const p = await create({ theme: 'eid' });
+    expect(p.theme).toBe('eid');
+    const { DrizzleOccasionSettingsRepository } = await import('../../apps/api/src/infrastructure/credit/DrizzleOccasionSettingsRepository');
+    const settings = new DrizzleOccasionSettingsRepository();
+    const before = await settings.read();
+    await settings.write({ dates: [{ occasion: 'eid', start: '2027-03-10', end: '2027-03-11' }], overrides: [] }, '00000000-0000-4000-8000-0000000000a1');
+    expect(await settings.read()).toEqual({ dates: [{ occasion: 'eid', start: '2027-03-10', end: '2027-03-11' }], overrides: [] });
+    await raw`update gift_card_occasion_settings set settings = to_jsonb(${JSON.stringify({ overrides: [] })}::text) where id = 1`;
+    expect(await settings.read()).toEqual({ overrides: [] });
+    await raw`update gift_card_occasion_settings set settings = ${JSON.stringify(before)}::jsonb where id = 1`;
+  });
+
   it('the database refuses an amount outside 10,000–500,000 and a "send to them" with no number', async () => {
     await expect(create({ amountUgx: 600_000 })).rejects.toThrow(/gift_card_purchases_amount_chk/);
     await expect(create({ recipientPhone: null })).rejects.toThrow(/gift_card_purchases_recipient_phone_chk/);

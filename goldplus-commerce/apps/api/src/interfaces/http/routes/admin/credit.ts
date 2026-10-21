@@ -40,6 +40,25 @@ routes.get('/ledger', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c)
   return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
 });
 
+// 0200: occasion adjustments (registered before '/:id'). Prominence only: every occasion stays selectable.
+routes.get('/occasions', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
+  const uc = Registry.getInstance().giftCardOccasionUseCases;
+  // ?on=YYYY-MM-DD previews another day (what the buy page will show then).
+  const data = { settings: await uc.settings(), today: await uc.orderFor(new Date(), c.req.query('on') ?? null) };
+  c.header('Cache-Control', 'no-store');
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+routes.put('/occasions', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const user = c.get('user') as { id: string };
+  const result = await Registry.getInstance().giftCardOccasionUseCases.save(body, user.id);
+  if (!result.ok) return c.json({ success: false, error: { code: 'BAD_SETTINGS', message: result.message } } satisfies ApiResponse<never>, 400);
+  await Registry.getInstance().createAuditLogUseCase.execute({
+    actorId: user.id, action: 'GIFT_CARD_OCCASIONS_SET', entity: 'gift_card_occasion_settings', entityId: '00000000-0000-4000-8000-000000000200', newState: result.value as never,
+  }).catch(() => undefined);
+  return c.json({ success: true, data: result.value });
+});
+
 // 0199: gift cards customers bought online (registered before '/:id').
 routes.get('/purchases', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
   const rows = await Registry.getInstance().giftCardPurchaseUseCases.recent(100);

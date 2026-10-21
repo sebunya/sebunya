@@ -30,6 +30,16 @@ const stepUpHint = (json: any, res: Response, fallback: string) =>
     ? `${json.error.message} Verify on Two-step verification (/admin/security/mfa), then try again. Nothing was changed.`
     : res.status === 403 ? 'Not permitted: your account cannot issue or change cards (payments.refund).' : (json?.error?.message || fallback);
 
+// 0200: the occasion settings, read before a save so fields this form does not edit (windows, period) are kept.
+let occasionData: any = null;
+try {
+  const previewOn = Astro.url.searchParams.get('previewOn');
+  const r = await fetch(`${apiBase}/admin/credit/occasions${previewOn && /^\d{4}-\d{2}-\d{2}$/.test(previewOn) ? `?on=${previewOn}` : ''}`, { headers });
+  const j: any = await r.json().catch(() => null);
+  if (j?.success) occasionData = j.data;
+} catch { /* the section shows it could not load */ }
+const occasionSettingsKept = { windowDays: occasionData?.settings?.windowDays, festivePeriod: occasionData?.settings?.festivePeriod };
+
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const intent = String(form.get('intent') ?? '');
@@ -56,6 +66,15 @@ if (Astro.request.method === 'POST') {
       notice = res.ok && json?.success
         ? { kind: 'success', text: `Given back to the card. ${formatUgx(json.data.leftUgx)} more could still go back for that order.` }
         : { kind: 'error', text: stepUpHint(json, res, 'Nothing was given back.') };
+    } else if (intent === 'occasions') {
+      // 0200: Eid dates and time-boxed adjustments, one per line (prominence only; nothing is ever removed).
+      const lines = (name: string) => String(form.get(name) ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const dates = lines('dates').map((l) => { const [start, end, ...label] = l.split(/\s+/); return { occasion: 'eid', start, end, label: label.join(' ') || undefined }; });
+      const overrides = lines('overrides').map((l) => { const [occasion, mode, from, to] = l.split(/\s+/); return { occasion, mode, from, to }; });
+      const res = await fetch(`${apiBase}/admin/credit/occasions`, { method: 'PUT', headers, body: JSON.stringify({ ...occasionSettingsKept, dates, overrides }) });
+      const json: any = await res.json().catch(() => null);
+      notice = res.ok && json?.success ? { kind: 'success', text: 'Occasions saved. The buy page uses them within a minute.' }
+        : { kind: 'error', text: res.status === 403 ? 'Not permitted: changing occasions needs settings.manage.' : (json?.error?.message ?? 'Not saved.') };
     } else if (intent === 'redirect-purchase') {
       // 0199: the code goes to a corrected number (an untouched card gets a new code; the old one stops working).
       const reference = String(form.get('reference') ?? '');
@@ -196,6 +215,27 @@ const prefillReturn = (Astro.url.searchParams.get('return') ?? '').toUpperCase()
         </div>
       </section>
     )}
+
+    <section class="rounded-2xl border bg-white p-5 space-y-3" data-credit-occasions>
+      <h3 class="font-black">Occasions on the buy page</h3>
+      {occasionData ? (
+        <>
+          <form method="GET" class="flex flex-wrap items-end gap-2 text-xs"><label class="font-bold">Preview a day<input type="date" name="previewOn" class="mt-1 block rounded-xl border p-2" /></label><button class="min-h-11 rounded-full border px-4 font-black uppercase">Preview</button></form>
+          <p class="text-sm text-gray-600">First six on {occasionData.today.today} (Kampala): <strong>{occasionData.today.featured.join(', ')}</strong>. Every other occasion is under "View all occasions", always selectable. Seasons come forward by the calendar on their own (Christmas from 27 November, Valentine's 21 days before, Easter computed); Eid only once you enter its dates.</p>
+          <form method="POST" class="grid gap-3 md:grid-cols-2">
+            <input type="hidden" name="intent" value="occasions" />
+            <label class="text-xs font-bold">Eid dates, one per line: start end name
+              <textarea name="dates" rows="3" placeholder="2027-03-10 2027-03-11 Eid al-Fitr" class="mt-1 w-full rounded-xl border p-2 font-mono text-xs">{(occasionData.settings.dates ?? []).map((d: any) => `${d.start} ${d.end}${d.label ? ` ${d.label}` : ''}`).join('\n')}</textarea>
+            </label>
+            <label class="text-xs font-bold">Adjustments, one per line: occasion feature|hide from to (at most 90 days)
+              <textarea name="overrides" rows="3" placeholder="christmas feature 2026-11-10 2026-12-25" class="mt-1 w-full rounded-xl border p-2 font-mono text-xs">{(occasionData.settings.overrides ?? []).map((o: any) => `${o.occasion} ${o.mode} ${o.from} ${o.to}`).join('\n')}</textarea>
+            </label>
+            <p class="text-xs text-gray-500 md:col-span-2">Occasion names: gold (A gift for you), birthday, thanks, celebrate (Congratulations), love, anniversary, valentine, mothers_day, fathers_day, easter, eid, christmas, new_year, festive (Season's greetings). "feature" brings one forward early; "hide" stops featuring it. Neither removes it from the list, and each ends on its "to" date.</p>
+            <div><button class="min-h-11 rounded-full border px-4 text-xs font-black uppercase">Save occasions</button></div>
+          </form>
+        </>
+      ) : <p class="text-sm text-gray-600">Occasion settings could not be loaded.</p>}
+    </section>
 
     <section class="rounded-2xl border bg-white p-5" data-credit-purchases>
       <h3 class="font-black">Bought online</h3>

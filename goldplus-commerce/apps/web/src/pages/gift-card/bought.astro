@@ -109,3 +109,10 @@ const waiting = s?.status === 'awaiting_payment' && !cancelled;
     )}
   </div>
 </BaseLayout>
+
+<script>
+  // A paid card ends the draft kept on this phone (the buy form starts empty next time).
+  if (document.querySelector('[data-gift-card-bought][data-status="paid"], [data-gift-card-bought][data-status="issued"]')) {
+    try { localStorage.removeItem('gp_gift_draft_v1'); } catch { /* nothing kept */ }
+  }
+</script>
