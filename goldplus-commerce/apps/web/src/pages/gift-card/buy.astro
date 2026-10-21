@@ -8,9 +8,15 @@ import GiftCardFace from '../../components/GiftCardFace.astro';
 import { GIFT_CARD_THEMES, giftCardTheme } from '../../lib/giftCardThemes';
 
 /**
- * Buy a GoldPlus gift card for someone (0199, self-service). Works without JavaScript: the form posts here, the API
- * opens a Pesapal payment under the purchase's own reference, and the buyer is sent to pay. A mistake comes back
- * with everything they typed still in place, next to the field that needs fixing.
+ * Buy a GoldPlus gift card for someone (0199). Built for a phone first:
+ *  - six things to fill, in the order a person thinks: how much, who for, how it looks and what it says, when,
+ *    and who you are (your name is the card's "From"; the receipt comes by SMS, so no email);
+ *  - their name and number from the phone's contacts where the browser can (Android Chrome);
+ *  - a message idea for the chosen design, one tap;
+ *  - every mistake shown at the field as it happens, and checked again before the page is left;
+ *  - the pay button always in reach at the bottom of the screen, with the amount on it.
+ * Works without JavaScript: the form posts here, the API opens a Pesapal payment under the purchase's own reference,
+ * and a mistake comes back with everything typed still in place, the first one focused.
  */
 const PRESETS = [20_000, 50_000, 100_000, 200_000];
 const MIN = 10_000;
@@ -21,12 +27,11 @@ const today = kampalaToday();
 
 type Fields = Record<string, string>;
 const v: Fields = {
-  amountPreset: '50000', amountOther: '', theme: 'gold', recipientName: '', recipientPhone: '', sendTo: 'recipient', when: 'now', deliverOn: '',
-  message: '', fromName: '', buyerName: '', buyerPhone: '', buyerEmail: '',
+  amountPreset: '50000', amountOther: '', theme: 'gold', recipientName: '', recipientPhone: '', sendToMe: '', when: 'now', deliverOn: '',
+  message: '', buyerName: '', buyerPhone: '',
 };
-// A theme from a link (/gift-card/buy?theme=birthday), when it is one we draw.
+// From a link: /gift-card/buy?theme=birthday&amount=100000 (the balance page, Goldie, a campaign).
 if (GIFT_CARD_THEMES.some((t) => t.key === Astro.url.searchParams.get('theme'))) v.theme = String(Astro.url.searchParams.get('theme'));
-// From the balance page or Goldie: /gift-card/buy?amount=100000
 const askedAmount = Number(Astro.url.searchParams.get('amount'));
 if (Number.isInteger(askedAmount) && askedAmount >= MIN && askedAmount <= MAX) {
   if (PRESETS.includes(askedAmount)) v.amountPreset = String(askedAmount);
@@ -34,19 +39,23 @@ if (Number.isInteger(askedAmount) && askedAmount >= MIN && askedAmount <= MAX) {
 }
 let errors: Record<string, string> = {};
 let problem = '';
+const token = readSessionToken(Astro.request);
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   for (const k of Object.keys(v)) v[k] = String(form.get(k) ?? '').slice(0, 300);
   const amountUgx = v.amountPreset === 'other' ? Number(v.amountOther.replace(/[,\s]/g, '')) : Number(v.amountPreset);
-  const token = readSessionToken(Astro.request);
+  const toMe = v.sendToMe === '1';
   try {
     const res = await fetch(`${apiBase}/commerce/gift-cards/purchase`, {
       method: 'POST',
       headers: apiHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, readClientAddress(Astro)),
       body: JSON.stringify({
-        amountUgx, theme: giftCardTheme(v.theme).key, recipientName: v.recipientName, recipientPhone: v.recipientPhone, sendTo: v.sendTo, message: v.message, fromName: v.fromName,
-        buyerName: v.buyerName, buyerPhone: v.buyerPhone, buyerEmail: v.buyerEmail, deliverOn: v.sendTo === 'recipient' && v.when === 'date' ? v.deliverOn : '',
+        amountUgx, theme: giftCardTheme(v.theme).key, recipientName: v.recipientName, recipientPhone: v.recipientPhone,
+        sendTo: toMe ? 'buyer' : 'recipient', message: v.message,
+        // One name: the buyer's is the card's "From".
+        fromName: v.buyerName, buyerName: v.buyerName, buyerPhone: v.buyerPhone, buyerEmail: '',
+        deliverOn: !toMe && v.when === 'date' ? v.deliverOn : '',
       }),
       signal: AbortSignal.timeout(20_000),
     });
@@ -55,245 +64,390 @@ if (Astro.request.method === 'POST') {
     if (res.ok && json?.success && typeof json.data?.redirectUrl === 'string' && /^(https:\/\/|http:\/\/(127\.0\.0\.1|localhost)[:/])/.test(json.data.redirectUrl)) {
       return Astro.redirect(json.data.redirectUrl, 303);
     }
-    errors = json?.error?.fields ?? {};
-    // The amount field the buyer sees is the "other amount" box when they chose it.
+    errors = { ...(json?.error?.fields ?? {}) };
     if (errors.amountUgx) errors[v.amountPreset === 'other' ? 'amountOther' : 'amountPreset'] = errors.amountUgx;
+    if (errors.fromName && !errors.buyerName) errors.buyerName = errors.fromName;
     problem = res.status === 429 && json?.error?.code !== 'LIMIT'
       ? 'Too many tries in a short time. Wait a minute and try again.'
-      : json?.error?.message ?? 'We could not start the payment just now. Nothing was charged. Please try again.';
+      : Object.keys(errors).length ? 'Please check the highlighted answers.' : (json?.error?.message ?? 'We could not start the payment just now. Nothing was charged. Please try again.');
   } catch {
     problem = 'We could not reach our payment service just now. Nothing was charged. Please try again in a minute.';
   }
+} else if (token) {
+  // Signed in: their number is already known. (Only a convenience; nothing waits on it.)
+  try {
+    const res = await fetch(`${apiBase}/account/me`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(3000) });
+    const json: any = res.ok ? await res.json().catch(() => null) : null;
+    const phone = String(json?.data?.phone ?? '');
+    if (/^\+2567\d{8}$/.test(phone)) v.buyerPhone = `0${phone.slice(4, 7)} ${phone.slice(7)}`;
+  } catch { /* typed by hand */ }
 }
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 
-const field = 'mt-1 w-full min-h-11 rounded-lg border px-3 py-2.5 text-base outline-none focus:ring-2 focus:ring-brand-primaryInk';
-const border = (name: string) => (errors[name] ? 'border-red-400 bg-red-50' : 'border-slate-300');
+const ORDER = ['amountPreset', 'amountOther', 'recipientName', 'recipientPhone', 'message', 'deliverOn', 'buyerName', 'buyerPhone'];
+const firstError = ORDER.find((k) => errors[k]) ?? null;
+const field = 'mt-1 w-full min-h-12 rounded-xl border px-3.5 py-3 text-base outline-none focus:ring-2 focus:ring-brand-primaryInk';
+const border = (name: string) => (errors[name] ? 'border-red-400 bg-red-50' : 'border-slate-300 bg-white');
 const label = 'text-sm font-bold text-gray-900';
-// What the preview shows first: what was typed, else the chosen amount.
+const toMe = v.sendToMe === '1';
+const theme = giftCardTheme(v.theme);
 const previewAmount = (() => {
   const n = v.amountPreset === 'other' ? Number(v.amountOther.replace(/[,\s]/g, '')) : Number(v.amountPreset);
   return Number.isFinite(n) && n > 0 ? n : 50_000;
 })();
+// The line under each field where its problem shows (from the server now, from the script as the buyer types).
+const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${errors[name] ? '' : 'hidden'}`;
 ---
 <BaseLayout
-  title="Buy a gift card | GoldPlus"
-  description="Send a GoldPlus gift card to anyone in Uganda. Pay with Mobile Money or card; we text them the code, now or on the day you choose."
+  title="Send a gift card | GoldPlus"
+  description="Send a GoldPlus gift card to anyone in Uganda in a minute. Pay with Mobile Money or card; they get a text, open their card and scratch to reveal the code."
 >
-  <div class="mx-auto max-w-6xl px-4 py-10 sm:py-14" data-gift-card-buy>
-    <div class="max-w-2xl">
-      <h1 class="text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Send a GoldPlus gift card</h1>
-      <p class="mt-3 text-base text-slate-600">
-        Design it, pay with Mobile Money or card, and we text them a link to open it, now or on the morning of the day you
-        choose. They scratch the card to reveal the code and spend it on shopgoldplus.com or in our shop on Burton Street,
-        Kampala. It does not expire.
-      </p>
-    </div>
+  <div class="mx-auto max-w-6xl px-4 pb-32 pt-6 sm:py-12 lg:pb-14" data-gift-card-buy data-no-totop>
+    <h1 class="text-2xl font-black tracking-tight text-gray-900 sm:text-4xl">Send a gift card</h1>
+    <ol class="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-700" aria-label="How it works">
+      <li class="rounded-full bg-slate-100 px-3 py-1.5">1. Choose and pay</li>
+      <li class="rounded-full bg-slate-100 px-3 py-1.5">2. We text them</li>
+      <li class="rounded-full bg-slate-100 px-3 py-1.5">3. They scratch and shop</li>
+    </ol>
 
-    {problem && <p role="alert" class="mt-6 max-w-2xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{problem}</p>}
+    {problem && <p role="alert" class="mt-5 max-w-2xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{problem}</p>}
 
-    <div class="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-12">
-    <aside class="lg:order-first">
-      <div class="lg:sticky lg:top-28">
-        <p class="mb-3 text-xs font-black uppercase tracking-widest text-slate-500">Their card</p>
-        <div class="mx-auto max-w-md" data-gc-preview>
-          <GiftCardFace theme={v.theme} amountUgx={previewAmount} toName={v.recipientName} fromName={v.fromName || v.buyerName} message={v.message} masked="GPGC-••••-••••-••••" />
+    <div class="mt-5 grid gap-6 lg:mt-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-12">
+      <aside>
+        <div class="lg:sticky lg:top-28">
+          <div class="mx-auto max-w-sm lg:max-w-md" data-gc-preview>
+            <GiftCardFace theme={v.theme} amountUgx={previewAmount} toName={v.recipientName} fromName={v.buyerName} message={v.message} masked="GPGC-••••-••••-••••" />
+          </div>
+          <p class="mx-auto mt-3 hidden max-w-md text-xs text-slate-500 lg:block">They open it from our text and scratch to reveal the code. The text has the code too, for a phone without internet. The card does not expire.</p>
         </div>
-        <p class="mx-auto mt-3 max-w-md text-xs text-slate-500">They open it from the text we send and scratch the corner to reveal the code. The text carries the code too, for a phone without internet.</p>
-      </div>
-    </aside>
+      </aside>
 
-    <form method="POST" action="/gift-card/buy" class="space-y-8" novalidate>
-      <fieldset>
-        <legend class="text-lg font-black text-gray-900">How much?</legend>
-        <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
-          {PRESETS.map((a) => (
-            <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 px-2 text-center text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-sky-500">
-              <input type="radio" name="amountPreset" value={String(a)} checked={v.amountPreset === String(a)} class="sr-only" />
-              {formatUgx(a)}
+      <form method="POST" action="/gift-card/buy" id="gift-form" class="space-y-7" novalidate>
+        <fieldset>
+          <legend class="text-lg font-black text-gray-900">How much?</legend>
+          <div class="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-5">
+            {PRESETS.map((a) => (
+              <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-1 text-center text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-sky-500">
+                <input type="radio" name="amountPreset" value={String(a)} checked={v.amountPreset === String(a)} class="sr-only" />
+                {`${a / 1000}k`}<span class="sr-only"> ({formatUgx(a)})</span>
+              </label>
+            ))}
+            <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-1 text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-sky-500">
+              <input type="radio" name="amountPreset" value="other" checked={v.amountPreset === 'other'} class="sr-only" data-other-amount />
+              Other
             </label>
-          ))}
-          <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 px-2 text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-sky-500">
-            <input type="radio" name="amountPreset" value="other" checked={v.amountPreset === 'other'} class="sr-only" data-other-amount />
-            Other
-          </label>
-        </div>
-        <label class="mt-3 block">
-          <span class={label}>Other amount (UGX)</span>
-          <input name="amountOther" inputmode="numeric" value={v.amountOther} placeholder={`${MIN.toLocaleString('en-US')} to ${MAX.toLocaleString('en-US')}`} class={`${field} ${border('amountOther')}`} aria-invalid={errors.amountOther ? 'true' : undefined} aria-describedby={errors.amountOther ? 'err-amount' : undefined} />
-          <span class="mt-1 block text-xs text-slate-500">Choose "Other" above to use this. Any amount in thousands, from {formatUgx(MIN)} to {formatUgx(MAX)}.</span>
-        </label>
-        {(errors.amountOther || errors.amountPreset) && <p id="err-amount" class="mt-1 text-sm font-semibold text-red-700">{errors.amountOther || errors.amountPreset}</p>}
-      </fieldset>
-
-      <fieldset>
-        <legend class="text-lg font-black text-gray-900">Choose a design</legend>
-        <div class="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-6 lg:grid-cols-3 xl:grid-cols-6">
-          {GIFT_CARD_THEMES.map((t) => (
-            <label class="group cursor-pointer text-center">
-              <input type="radio" name="theme" value={t.key} checked={v.theme === t.key} class="peer sr-only" data-gc-theme-input />
-              <span class="block aspect-[1.586/1] rounded-xl ring-offset-2 transition peer-checked:ring-4 peer-checked:ring-brand-primaryInk peer-focus-visible:ring-4 peer-focus-visible:ring-sky-500" style={`background:${t.background}`} aria-hidden="true"></span>
-              <span class="mt-1.5 block text-xs font-bold text-gray-900">{t.label}</span>
+          </div>
+          <p class="mt-2 text-xs text-slate-500">{`In UGX: ${PRESETS[0] / 1000}k = ${formatUgx(PRESETS[0])}.`}</p>
+          <div class={v.amountPreset === 'other' || errors.amountOther ? '' : 'js-hide'} data-other-box>
+            <label class="mt-3 block">
+              <span class={label}>Amount (UGX)</span>
+              <input name="amountOther" inputmode="numeric" autocomplete="off" value={v.amountOther} placeholder={`${MIN.toLocaleString('en-US')} to ${MAX.toLocaleString('en-US')}`} class={`${field} ${border('amountOther')}`} autofocus={firstError === 'amountOther'} />
             </label>
-          ))}
-        </div>
-      </fieldset>
+            <p class={errClass('amountOther')} data-err="amountOther">{errors['amountOther'] ?? ''}</p>
+          </div>
+          {errors.amountPreset && <p class="mt-1 text-sm font-semibold text-red-700">{errors.amountPreset}</p>}
+        </fieldset>
 
-      <fieldset>
-        <legend class="text-lg font-black text-gray-900">Who is it for?</legend>
-        <div class="mt-3 grid gap-4 sm:grid-cols-2">
-          <label class="block">
+        <fieldset>
+          <legend class="text-lg font-black text-gray-900">Who is it for?</legend>
+          <label class="mt-3 block">
             <span class={label}>Their name</span>
-            <input name="recipientName" required autocomplete="off" value={v.recipientName} maxlength="60" class={`${field} ${border('recipientName')}`} aria-invalid={errors.recipientName ? 'true' : undefined} />
-            {errors.recipientName && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.recipientName}</span>}
+            <input name="recipientName" required autocomplete="off" value={v.recipientName} maxlength="60" class={`${field} ${border('recipientName')}`} autofocus={firstError === 'recipientName'} />
           </label>
-          <label class="block">
-            <span class={label}>Their mobile number</span>
-            <input name="recipientPhone" type="tel" inputmode="tel" autocomplete="off" value={v.recipientPhone} placeholder="0772 123456" class={`${field} ${border('recipientPhone')}`} aria-invalid={errors.recipientPhone ? 'true' : undefined} />
-            {errors.recipientPhone && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.recipientPhone}</span>}
+          <p class={errClass('recipientName')} data-err="recipientName">{errors['recipientName'] ?? ''}</p>
+          <label class="mt-3 block" data-recipient-phone>
+            <span class={label}>Their mobile number <span class={`font-normal text-slate-500 ${toMe ? '' : 'hidden'}`} data-optional>(optional)</span></span>
+            <span class="mt-1 flex gap-2">
+              <input name="recipientPhone" type="tel" inputmode="tel" autocomplete="off" value={v.recipientPhone} placeholder="0772 123456" class={`${field} mt-0 ${border('recipientPhone')}`} autofocus={firstError === 'recipientPhone'} />
+              <button type="button" class="hidden min-h-12 shrink-0 items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-xs font-black uppercase tracking-wider text-gray-900" data-pick-contact aria-label="Pick their name and number from your contacts">Contacts</button>
+            </span>
           </label>
-        </div>
-        <div class="mt-4 space-y-2">
-          <label class="flex items-start gap-3 text-sm text-gray-900">
-            <input type="radio" name="sendTo" value="recipient" checked={v.sendTo !== 'buyer'} class="mt-1 h-4 w-4" />
-            <span><strong>Text the code to them</strong> (with your name and message)</span>
+          <p class={errClass('recipientPhone')} data-err="recipientPhone">{errors['recipientPhone'] ?? ''}</p>
+          <label class="mt-3 flex items-start gap-3 rounded-xl bg-slate-50 px-3.5 py-3 text-sm text-gray-900">
+            <input type="checkbox" name="sendToMe" value="1" checked={toMe} class="mt-0.5 h-5 w-5 shrink-0 accent-[#456B00]" />
+            <span>Send the code to me instead. I will give it to them myself.</span>
           </label>
-          <label class="flex items-start gap-3 text-sm text-gray-900">
-            <input type="radio" name="sendTo" value="buyer" checked={v.sendTo === 'buyer'} class="mt-1 h-4 w-4" />
-            <span><strong>Text the code to me</strong>, I will give it to them myself (their number is then optional)</span>
-          </label>
-        </div>
-      </fieldset>
+        </fieldset>
 
-      <fieldset>
-        <legend class="text-lg font-black text-gray-900">Your message and when it arrives</legend>
-        <div class="mt-3 grid gap-4 sm:grid-cols-2">
-          <label class="block">
-            <span class={label}>From (the name they will see)</span>
-            <input name="fromName" autocomplete="name" value={v.fromName} maxlength="40" placeholder="Your name" class={`${field} ${border('fromName')}`} />
-            {errors.fromName && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.fromName}</span>}
+        <fieldset>
+          <legend class="text-lg font-black text-gray-900">Design and message</legend>
+          <div class="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-6 lg:grid-cols-3 xl:grid-cols-6">
+            {GIFT_CARD_THEMES.map((t) => (
+              <label class="cursor-pointer text-center">
+                <input type="radio" name="theme" value={t.key} checked={v.theme === t.key} class="peer sr-only" />
+                <span class="block aspect-[1.586/1] rounded-xl ring-offset-2 transition peer-checked:ring-4 peer-checked:ring-brand-primaryInk peer-focus-visible:ring-4 peer-focus-visible:ring-sky-500" style={`background:${t.background}`} aria-hidden="true"></span>
+                <span class="mt-1 block text-xs font-bold text-gray-900">{t.label}</span>
+              </label>
+            ))}
+          </div>
+          <label class="mt-4 block">
+            <span class={label}>A short message <span class="font-normal text-slate-500">(optional)</span></span>
+            <textarea name="message" rows="2" maxlength="100" placeholder={theme.suggestions[0]} class={`${field} resize-none ${border('message')}`} autofocus={firstError === 'message'}>{v.message}</textarea>
           </label>
-          <label class="block sm:col-span-2">
-            <span class={label}>A short message (optional)</span>
-            <textarea name="message" rows="2" maxlength="100" placeholder="Happy birthday! Get yourself something nice." class={`${field} resize-none ${border('message')}`} aria-describedby="message-help">{v.message}</textarea>
-            <span id="message-help" class="mt-1 flex justify-between gap-3 text-xs text-slate-500"><span>For their safety, no links or phone numbers.</span><span data-gc-count aria-live="polite">{v.message.length}/100</span></span>
-            {errors.message && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.message}</span>}
-          </label>
-        </div>
-        <div class="mt-4 space-y-2">
-          <label class="flex items-start gap-3 text-sm text-gray-900">
-            <input type="radio" name="when" value="now" checked={v.when !== 'date'} class="mt-1 h-4 w-4" />
-            <span><strong>Send it as soon as I pay</strong></span>
-          </label>
-          <label class="flex items-start gap-3 text-sm text-gray-900">
-            <input type="radio" name="when" value="date" checked={v.when === 'date'} class="mt-1 h-4 w-4" />
-            <span><strong>Send it on a day I choose</strong> (texted that morning, from 9am)</span>
-          </label>
-          <label class="block pl-7">
-            <span class="sr-only">Day to send it</span>
-            <input type="date" name="deliverOn" value={v.deliverOn} min={today} max={plusDays(today, 90)} class={`${field} max-w-xs ${border('deliverOn')}`} />
-            {errors.deliverOn && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.deliverOn}</span>}
-          </label>
-        </div>
-      </fieldset>
+          <div class="mt-2 flex flex-wrap gap-2" data-suggestions aria-label="Message ideas">
+            {theme.suggestions.map((m) => (
+              <button type="button" class="hidden min-h-10 rounded-full border border-slate-300 bg-white px-3 text-xs font-bold text-gray-900" data-suggestion>{m}</button>
+            ))}
+          </div>
+          <p class="mt-1 flex justify-between gap-3 text-xs text-slate-500"><span>No links or phone numbers, for their safety.</span><span data-gc-count aria-live="polite">{v.message.length}/100</span></p>
+          <p class={errClass('message')} data-err="message">{errors['message'] ?? ''}</p>
+        </fieldset>
 
-      <fieldset>
-        <legend class="text-lg font-black text-gray-900">Your details</legend>
-        <p class="mt-1 text-sm text-slate-600">For your receipt, and so we can reach you if anything goes wrong.</p>
-        <div class="mt-3 grid gap-4 sm:grid-cols-2">
-          <label class="block">
-            <span class={label}>Your name</span>
-            <input name="buyerName" required autocomplete="name" value={v.buyerName} maxlength="60" class={`${field} ${border('buyerName')}`} />
-            {errors.buyerName && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.buyerName}</span>}
+        <fieldset data-when>
+          <legend class="text-lg font-black text-gray-900">When should it arrive?</legend>
+          <div class="mt-3 grid grid-cols-2 gap-2.5">
+            <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-sky-500">
+              <input type="radio" name="when" value="now" checked={v.when !== 'date'} class="sr-only" />Now
+            </label>
+            <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-sky-500">
+              <input type="radio" name="when" value="date" checked={v.when === 'date'} class="sr-only" />On a day
+            </label>
+          </div>
+          <div class={v.when === 'date' || errors.deliverOn ? '' : 'js-hide'} data-date-box>
+            <label class="mt-3 block">
+              <span class={label}>Day (texted that morning, from 9am)</span>
+              <input type="date" name="deliverOn" value={v.deliverOn} min={today} max={plusDays(today, 90)} class={`${field} ${border('deliverOn')}`} autofocus={firstError === 'deliverOn'} />
+            </label>
+            <p class={errClass('deliverOn')} data-err="deliverOn">{errors['deliverOn'] ?? ''}</p>
+          </div>
+          <p class="mt-2 hidden text-sm text-slate-600" data-when-me>The code comes to you as soon as you pay, to give whenever you like.</p>
+        </fieldset>
+
+        <fieldset>
+          <legend class="text-lg font-black text-gray-900">You</legend>
+          <label class="mt-3 block">
+            <span class={label}>Your name <span class="font-normal text-slate-500">(on the card as "From")</span></span>
+            <input name="buyerName" required autocomplete="name" value={v.buyerName} maxlength="40" class={`${field} ${border('buyerName')}`} autofocus={firstError === 'buyerName'} />
           </label>
-          <label class="block">
-            <span class={label}>Your mobile number</span>
-            <input name="buyerPhone" type="tel" inputmode="tel" required autocomplete="tel" value={v.buyerPhone} placeholder="0772 123456" class={`${field} ${border('buyerPhone')}`} />
-            {errors.buyerPhone && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.buyerPhone}</span>}
+          <p class={errClass('buyerName')} data-err="buyerName">{errors['buyerName'] ?? ''}</p>
+          <label class="mt-3 block">
+            <span class={label}>Your mobile number <span class="font-normal text-slate-500">(for your receipt)</span></span>
+            <input name="buyerPhone" type="tel" inputmode="tel" required autocomplete="tel-national" value={v.buyerPhone} placeholder="0772 123456" class={`${field} ${border('buyerPhone')}`} autofocus={firstError === 'buyerPhone'} />
           </label>
-          <label class="block sm:col-span-2">
-            <span class={label}>Your email (optional, for an emailed receipt)</span>
-            <input name="buyerEmail" type="email" autocomplete="email" value={v.buyerEmail} class={`${field} ${border('buyerEmail')}`} />
-            {errors.buyerEmail && <span class="mt-1 block text-sm font-semibold text-red-700">{errors.buyerEmail}</span>}
-          </label>
+          <p class={errClass('buyerPhone')} data-err="buyerPhone">{errors['buyerPhone'] ?? ''}</p>
+        </fieldset>
+
+        <div class="space-y-3" data-pay-block>
+          <p class="rounded-xl border border-brand-primaryInk/30 bg-brand-primary/10 px-4 py-3 text-sm font-semibold text-gray-900" data-gc-summary aria-live="polite" hidden></p>
+          <button type="submit" class="inline-flex min-h-14 w-full items-center justify-center rounded-full bg-brand-primary px-6 text-base font-black text-brand-black" data-pay-label>Pay {formatUgx(previewAmount)}</button>
+          <p class="text-center text-xs text-slate-500">Mobile Money or card on Pesapal's secure page. The card is made once your payment is confirmed.</p>
         </div>
-      </fieldset>
-
-      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-        <p>You pay on Pesapal's secure page with Mobile Money or card. The card is made only once your payment is confirmed. Anyone with the code can spend it, like cash, so share it only with the person it is for.</p>
-      </div>
-
-      <p class="rounded-xl border border-brand-primaryInk/30 bg-brand-primary/10 px-4 py-3 text-sm font-semibold text-gray-900" data-gc-summary aria-live="polite" hidden></p>
-      <button type="submit" class="inline-flex min-h-12 w-full items-center justify-center rounded-full bg-brand-primary px-6 text-sm font-black uppercase tracking-widest text-brand-black sm:w-auto">Continue to payment</button>
-    </form>
+      </form>
     </div>
 
     <p class="mt-10 text-sm text-slate-600">Already have a card? <a href="/gift-card" class="font-bold underline">Check its balance</a>.</p>
   </div>
+
+  {/* Always in reach on a phone: what you are paying and the button. Hidden while the form's own button shows. */}
+  <div class="fixed inset-x-0 bottom-0 z-40 hidden border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_-12px_rgba(0,0,0,.25)] backdrop-blur lg:hidden" data-pay-bar>
+    <div class="mx-auto flex max-w-xl items-center gap-3">
+      <button type="button" class="h-10 w-16 shrink-0 rounded-lg shadow ring-1 ring-black/10" style={`background:${theme.background}`} data-bar-thumb aria-label="See the card"></button>
+      <div class="min-w-0 flex-1">
+        <p class="truncate text-xs font-semibold text-slate-600" data-bar-for>Gift card</p>
+        <p class="text-base font-black tabular-nums text-gray-900" data-bar-amount>{formatUgx(previewAmount)}</p>
+      </div>
+      <button type="submit" form="gift-form" class="inline-flex min-h-12 items-center rounded-full bg-brand-primary px-6 text-sm font-black text-brand-black">Pay</button>
+    </div>
+  </div>
 </BaseLayout>
+
+<style>
+  /* Hidden only once the script runs; without JavaScript every box shows. */
+  :global(html.gc-js) .js-hide { display: none; }
+</style>
 
 <script>
   import { GIFT_CARD_THEMES } from '../../lib/giftCardThemes';
 
-  // The preview is the card: every change on the form redraws it (without JavaScript it shows what was posted).
-  const form = document.querySelector<HTMLFormElement>('[data-gift-card-buy] form');
+  document.documentElement.classList.add('gc-js');
+  const form = document.querySelector<HTMLFormElement>('#gift-form');
   const face = document.querySelector<HTMLElement>('[data-gc-preview] [data-gc-face]');
+  const MIN = 10_000;
+  const MAX = 500_000;
   const ugx = (n: number) => `UGX ${n.toLocaleString('en-US')}`;
-  const val = (name: string) => (form?.elements.namedItem(name) as HTMLInputElement | null)?.value?.trim() ?? '';
+  const el = <T extends Element = HTMLInputElement>(name: string) => form?.elements.namedItem(name) as T | null;
+  const val = (name: string) => (el<HTMLInputElement>(name)?.value ?? '').trim();
   const checked = (name: string) => form?.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`)?.value ?? '';
-  function redraw() {
-    if (!form || !face) return;
-    const preset = checked('amountPreset');
-    const amount = preset === 'other' ? Number(val('amountOther').replace(/[,\s]/g, '')) : Number(preset);
-    const t = GIFT_CARD_THEMES.find((x) => x.key === checked('theme')) ?? GIFT_CARD_THEMES[0];
-    const light = t.ink === 'light';
-    face.style.background = t.background;
-    face.dataset.theme = t.key;
-    face.classList.toggle('text-white', light);
-    face.classList.toggle('text-gray-900', !light);
-    const set = (sel: string, text: string) => { const el = face.querySelector<HTMLElement>(sel); if (el) el.textContent = text; };
-    set('[data-gc-headline]', t.headline);
-    set('[data-gc-amount]', Number.isFinite(amount) && amount > 0 ? ugx(amount) : 'UGX …');
-    set('[data-gc-to]', val('recipientName') || 'Someone special');
-    set('[data-gc-from]', val('fromName') || val('buyerName') || 'You');
-    const message = val('message');
-    const m = face.querySelector<HTMLElement>('[data-gc-message]');
-    if (m) { m.textContent = message ? `“${message}”` : ''; m.classList.toggle('hidden', !message); }
-    const pill = face.querySelector<HTMLElement>('[data-gc-amount-pill]');
-    if (pill) { pill.style.background = t.accent; pill.style.color = t.accentInk; }
-    const logo = face.querySelector<HTMLElement>('[data-gc-logo]');
-    if (logo) logo.style.filter = light ? 'brightness(0) invert(1)' : '';
-    face.querySelectorAll<HTMLElement>('p').forEach((p) => {
-      // The small labels follow the ink: swap the two muted tones.
-      if (light) { p.classList.replace('text-gray-900/70', 'text-white/75'); p.classList.replace('text-gray-900/65', 'text-white/70'); p.classList.replace('text-gray-900/85', 'text-white/90'); p.classList.replace('text-gray-900/75', 'text-white/80'); }
-      else { p.classList.replace('text-white/75', 'text-gray-900/70'); p.classList.replace('text-white/70', 'text-gray-900/65'); p.classList.replace('text-white/90', 'text-gray-900/85'); p.classList.replace('text-white/80', 'text-gray-900/75'); }
-    });
-    face.setAttribute('aria-label', `GoldPlus gift card for ${val('recipientName') || 'someone special'}${Number.isFinite(amount) && amount > 0 ? `, ${ugx(amount)}` : ''}`);
-    const count = document.querySelector<HTMLElement>('[data-gc-count]');
-    if (count) count.textContent = `${message.length}/100`;
-    // Said back before paying: who gets texted, at which number, and when. A typo caught here costs nothing.
-    const summary = document.querySelector<HTMLElement>('[data-gc-summary]');
-    if (summary) {
-      const toBuyer = checked('sendTo') === 'buyer';
-      const phone = toBuyer ? val('buyerPhone') : val('recipientPhone');
-      const name = val('recipientName');
-      const date = checked('when') === 'date' && !toBuyer ? val('deliverOn') : '';
-      const when = date ? `on ${new Date(`${date}T09:00:00+03:00`).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', weekday: 'long', day: 'numeric', month: 'long' })} from 9am` : 'as soon as you pay';
-      const ok = Number.isFinite(amount) && amount > 0 && name && phone.replace(/\D/g, '').length >= 9;
-      summary.hidden = !ok;
-      if (ok) summary.textContent = toBuyer
-        ? `We will text the card for ${name} (${ugx(amount)}) to you on ${phone}, ${when}, to give them yourself.`
-        : `We will text ${name} on ${phone} a ${ugx(amount)} gift card ${when}. Check the number: a wrong one sends the card to a stranger.`;
-    }
-  }
-  form?.addEventListener('input', redraw);
-  form?.addEventListener('change', redraw);
-  redraw();
+  const ugMobile = (raw: string) => /^(7\d{8}|07\d{8}|2567\d{8})$/.test(raw.replace(/[\s+()-]/g, ''));
+  const amount = () => {
+    const p = checked('amountPreset');
+    return p === 'other' ? Number(val('amountOther').replace(/[,\s]/g, '')) : Number(p);
+  };
+  const toMe = () => Boolean(el<HTMLInputElement>('sendToMe')?.checked);
 
-  // Typing an amount picks "Other" (without JavaScript the hint under the box says to choose it).
-  const other = document.querySelector<HTMLInputElement>('input[data-other-amount]');
-  document.querySelector<HTMLInputElement>('input[name="amountOther"]')?.addEventListener('input', () => { if (other) other.checked = true; redraw(); });
-  // Choosing a date picks "on a day I choose".
-  const onDate = document.querySelector<HTMLInputElement>('input[name="when"][value="date"]');
-  document.querySelector<HTMLInputElement>('input[name="deliverOn"]')?.addEventListener('change', () => { if (onDate) onDate.checked = true; });
+  // What is wrong with each answer right now (the server checks again, with the same words).
+  function problems(): Record<string, string> {
+    const out: Record<string, string> = {};
+    const a = amount();
+    if (checked('amountPreset') === 'other') {
+      if (!val('amountOther') || !Number.isFinite(a)) out.amountOther = 'Type an amount, for example 30000.';
+      else if (a < MIN) out.amountOther = `The smallest gift card is ${ugx(MIN)}.`;
+      else if (a > MAX) out.amountOther = `The largest online is ${ugx(MAX)}. Call us for a bigger one.`;
+      else if (a % 1000 !== 0) out.amountOther = 'Use whole thousands, for example 35,000.';
+    }
+    if (val('recipientName').length < 2) out.recipientName = 'Type the name of the person it is for.';
+    const rp = val('recipientPhone');
+    if (!toMe() && !ugMobile(rp)) out.recipientPhone = 'Type their Ugandan mobile number. The card is texted to it.';
+    else if (toMe() && rp && !ugMobile(rp)) out.recipientPhone = 'Check their number, or leave it empty.';
+    if (!toMe() && ugMobile(rp) && ugMobile(val('buyerPhone')) && rp.replace(/\D/g, '').slice(-9) === val('buyerPhone').replace(/\D/g, '').slice(-9)) {
+      out.recipientPhone = 'That is your own number. To give the card yourself, tick "Send the code to me instead".';
+    }
+    if (/https?:|www\.|\.(com|ug|net|org)\b|\d[\d\s.-]{5,}\d/i.test(val('message'))) out.message = 'For their safety the message cannot carry links or phone numbers.';
+    if (!toMe() && checked('when') === 'date' && !val('deliverOn')) out.deliverOn = 'Pick the day, or choose Now.';
+    if (val('buyerName').length < 2) out.buyerName = 'Type your name.';
+    if (!ugMobile(val('buyerPhone'))) out.buyerPhone = 'Type your Ugandan mobile number. Your receipt is texted to it.';
+    return out;
+  }
+  const touched = new Set<string>();
+  function showErrors(all: boolean) {
+    const p = problems();
+    form?.querySelectorAll<HTMLElement>('[data-err]').forEach((node) => {
+      const name = node.dataset.err!;
+      const msg = (all || touched.has(name)) ? p[name] : undefined;
+      // A server message stays until the field changes.
+      if (msg) { node.textContent = msg; node.classList.remove('hidden'); }
+      else if (all || touched.has(name)) { node.textContent = ''; node.classList.add('hidden'); }
+      const input = el<HTMLInputElement>(name);
+      if (input && (all || touched.has(name))) {
+        input.classList.toggle('border-red-400', Boolean(msg));
+        input.classList.toggle('bg-red-50', Boolean(msg));
+        input.classList.toggle('border-slate-300', !msg);
+        input.classList.toggle('bg-white', !msg);
+        input.setAttribute('aria-invalid', msg ? 'true' : 'false');
+      }
+    });
+    return p;
+  }
+
+  function redraw() {
+    if (!form) return;
+    const a = amount();
+    const okAmount = Number.isFinite(a) && a >= MIN && a <= MAX;
+    const t = GIFT_CARD_THEMES.find((x) => x.key === checked('theme')) ?? GIFT_CARD_THEMES[0];
+    const me = toMe();
+    // Progressive boxes.
+    form.querySelector('[data-other-box]')?.classList.toggle('js-hide', checked('amountPreset') !== 'other');
+    form.querySelector('[data-date-box]')?.classList.toggle('js-hide', me || checked('when') !== 'date');
+    form.querySelector('[data-when] .grid')?.classList.toggle('hidden', me);
+    form.querySelector('[data-when-me]')?.classList.toggle('hidden', !me);
+    form.querySelector('[data-optional]')?.classList.toggle('hidden', !me);
+
+    if (face) {
+      const light = t.ink === 'light';
+      face.style.background = t.background;
+      face.dataset.theme = t.key;
+      face.classList.toggle('text-white', light);
+      face.classList.toggle('text-gray-900', !light);
+      const set = (sel: string, text: string) => { const n = face.querySelector<HTMLElement>(sel); if (n) n.textContent = text; };
+      set('[data-gc-headline]', t.headline);
+      set('[data-gc-amount]', okAmount ? ugx(a) : 'UGX …');
+      set('[data-gc-to]', val('recipientName') || 'Someone special');
+      set('[data-gc-from]', val('buyerName') || 'You');
+      const m = face.querySelector<HTMLElement>('[data-gc-message]');
+      const message = val('message');
+      if (m) { m.textContent = message ? `“${message}”` : ''; m.classList.toggle('hidden', !message); }
+      const pill = face.querySelector<HTMLElement>('[data-gc-amount-pill]');
+      if (pill) { pill.style.background = t.accent; pill.style.color = t.accentInk; }
+      const logo = face.querySelector<HTMLElement>('[data-gc-logo]');
+      if (logo) logo.style.filter = light ? 'brightness(0) invert(1)' : '';
+      const swaps: Array<[string, string]> = [['text-gray-900/70', 'text-white/75'], ['text-gray-900/65', 'text-white/70'], ['text-gray-900/85', 'text-white/90'], ['text-gray-900/75', 'text-white/80']];
+      face.querySelectorAll<HTMLElement>('p').forEach((p) => swaps.forEach(([dark, lite]) => (light ? p.classList.replace(dark, lite) : p.classList.replace(lite, dark))));
+    }
+
+    // Message ideas for this design.
+    const box = form.querySelector<HTMLElement>('[data-suggestions]');
+    if (box && box.dataset.theme !== t.key) {
+      box.dataset.theme = t.key;
+      box.replaceChildren(...t.suggestions.map((s) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'min-h-10 rounded-full border border-slate-300 bg-white px-3 text-xs font-bold text-gray-900';
+        b.textContent = s;
+        b.addEventListener('click', () => { const ta = el<HTMLTextAreaElement>('message'); if (ta) { ta.value = s; touched.add('message'); redraw(); } });
+        return b;
+      }));
+      el<HTMLTextAreaElement>('message')?.setAttribute('placeholder', t.suggestions[0]);
+    }
+    const count = form.querySelector<HTMLElement>('[data-gc-count]');
+    if (count) count.textContent = `${val('message').length}/100`;
+
+    // The pay buttons carry the amount; the summary says back where it goes.
+    const payLabel = form.querySelector<HTMLElement>('[data-pay-label]');
+    if (payLabel) payLabel.textContent = okAmount ? `Pay ${ugx(a)}` : 'Pay';
+    const barAmount = document.querySelector<HTMLElement>('[data-bar-amount]');
+    if (barAmount) barAmount.textContent = okAmount ? ugx(a) : 'Choose an amount';
+    const thumb = document.querySelector<HTMLElement>('[data-bar-thumb]');
+    if (thumb) thumb.style.background = t.background;
+    const barFor = document.querySelector<HTMLElement>('[data-bar-for]');
+    if (barFor) barFor.textContent = val('recipientName') ? `Gift card for ${val('recipientName')}` : 'Gift card';
+    const summary = form.querySelector<HTMLElement>('[data-gc-summary]');
+    if (summary) {
+      const phone = me ? val('buyerPhone') : val('recipientPhone');
+      const name = val('recipientName');
+      const date = !me && checked('when') === 'date' ? val('deliverOn') : '';
+      const when = date ? `on ${new Date(`${date}T09:00:00+03:00`).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', weekday: 'long', day: 'numeric', month: 'long' })} from 9am` : 'as soon as you pay';
+      const ok = okAmount && name && ugMobile(phone);
+      summary.hidden = !ok;
+      if (ok) summary.textContent = me
+        ? `We will text the card for ${name} (${ugx(a)}) to you on ${phone}, ${when}.`
+        : `We will text ${name} on ${phone} a ${ugx(a)} gift card ${when}. Check the number: a wrong one sends the card to a stranger.`;
+    }
+    showErrors(false);
+  }
+
+  form?.addEventListener('input', (e) => { const n = (e.target as HTMLInputElement).name; if (n) touched.add(n); redraw(); });
+  form?.addEventListener('change', (e) => { const n = (e.target as HTMLInputElement).name; if (n) touched.add(n); redraw(); });
+  form?.addEventListener('focusout', (e) => { const n = (e.target as HTMLInputElement).name; if (n && val(n)) { touched.add(n); showErrors(false); } });
+  // Before leaving for the payment page: every answer checked here, the first problem shown and focused. The
+  // server checks again; this only saves a slow round trip on mobile data.
+  form?.addEventListener('submit', (e) => {
+    const p = showErrors(true);
+    const first = ['amountOther', 'recipientName', 'recipientPhone', 'message', 'deliverOn', 'buyerName', 'buyerPhone'].find((k) => p[k]);
+    if (first) {
+      e.preventDefault();
+      const input = el<HTMLInputElement>(first);
+      input?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      input?.focus({ preventScroll: true });
+      return;
+    }
+    form.querySelectorAll<HTMLButtonElement>('button[type="submit"]').forEach((b) => { b.disabled = true; b.textContent = 'Opening payment…'; });
+    document.querySelector<HTMLButtonElement>('[data-pay-bar] button')?.setAttribute('disabled', '');
+  });
+  // A choice that has a box opens it, ready to type.
+  form?.querySelector('[data-other-amount]')?.addEventListener('change', () => setTimeout(() => el<HTMLInputElement>('amountOther')?.focus(), 0));
+  form?.querySelectorAll<HTMLInputElement>('input[name="when"]').forEach((r) => r.addEventListener('change', () => { if (r.value === 'date') setTimeout(() => el<HTMLInputElement>('deliverOn')?.focus(), 0); }));
+
+  // Their name and number from the phone's contacts (Android Chrome); the button shows only where that exists.
+  const pick = form?.querySelector<HTMLButtonElement>('[data-pick-contact]');
+  const contacts = (navigator as unknown as { contacts?: { select(props: string[], opts: { multiple: boolean }): Promise<Array<{ name?: string[]; tel?: string[] }>> } }).contacts;
+  if (pick && contacts && 'ContactsManager' in window) {
+    pick.classList.remove('hidden');
+    pick.classList.add('inline-flex');
+    pick.addEventListener('click', async () => {
+      try {
+        const [c] = await contacts.select(['name', 'tel'], { multiple: false });
+        if (!c) return;
+        const tel = (c.tel ?? []).map((t) => t.replace(/[^\d+]/g, '')).find((t) => ugMobile(t)) ?? (c.tel ?? [])[0] ?? '';
+        const phone = el<HTMLInputElement>('recipientPhone');
+        if (phone && tel) phone.value = tel;
+        const name = el<HTMLInputElement>('recipientName');
+        if (name && !name.value.trim() && c.name?.[0]) name.value = c.name[0].slice(0, 60);
+        touched.add('recipientPhone'); touched.add('recipientName');
+        redraw();
+      } catch { /* the person closed the picker */ }
+    });
+  }
+
+  // The card in the bar opens the full preview at the top.
+  document.querySelector('[data-bar-thumb]')?.addEventListener('click', () => face?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+
+  // The bottom bar shows while the form's own pay button is off screen.
+  const bar = document.querySelector<HTMLElement>('[data-pay-bar]');
+  const payBlock = form?.querySelector('[data-pay-block]');
+  if (bar && payBlock && 'IntersectionObserver' in window) {
+    bar.classList.remove('hidden');
+    new IntersectionObserver(([entry]) => { bar.style.display = entry.isIntersecting ? 'none' : ''; }).observe(payBlock);
+  }
+
+  redraw();
 </script>

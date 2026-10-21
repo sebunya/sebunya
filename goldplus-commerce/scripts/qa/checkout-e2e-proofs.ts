@@ -537,15 +537,19 @@ async function giftCardPurchaseProofs(): Promise<void> {
   const buyerPhone = '0700000911';
   const buyerE164 = '+256700000911';
   const giftForm = {
-    amountPreset: 'other', amountOther: '75,000', theme: 'birthday', recipientName: 'Sarah Nakato', recipientPhone: '0772 000912', sendTo: 'recipient', when: 'now',
-    deliverOn: '', message: 'Happy birthday, Sarah!', fromName: 'Rob', buyerName: 'Robert Harness', buyerPhone, buyerEmail: '',
+    amountPreset: 'other', amountOther: '75,000', theme: 'birthday', recipientName: 'Sarah Nakato', recipientPhone: '0772 000912', when: 'now',
+    deliverOn: '', message: 'Happy birthday, Sarah!', buyerName: 'Rob Harness', buyerPhone,
   };
 
   // -- 15. A mistake keeps everything typed; nothing is charged ----------------
   console.log('\n--- 15. a mistake on the gift card form keeps what was typed and charges nothing');
   await resetStub();
   const jar = new Jar();
-  check('the buy page opens', (await get(jar, '/gift-card/buy')).status, 200);
+  const buyPage = await get(jar, '/gift-card/buy');
+  check('the buy page opens', buyPage.status, 200);
+  // Phone-first: one name (yours is the card's From), no email, the amount on the pay button.
+  check('the form asks only what it needs (no separate From, no email)', [/name="fromName"/.test(buyPage.body), /name="buyerEmail"/.test(buyPage.body)], [false, false]);
+  check('the pay button carries the amount', /Pay UGX\s50,000/.test(buyPage.body), true);
   const wrong = await postForm(jar, '/gift-card/buy', { ...giftForm, message: 'Send 50,000 to 0772 123 456 now' });
   check('the page comes back (no payment redirect)', wrong.status, 200);
   check('it says why, next to the message', /cannot carry links, web addresses or phone numbers/.test(wrong.body), true);
@@ -574,7 +578,7 @@ async function giftCardPurchaseProofs(): Promise<void> {
       coalesce(payload->>'message', (payload #>> '{}')::jsonb->>'message') as m from outbox_events where idempotency_key in (${`gift-card-paid:${bought?.id}`}, ${`gift-card-received:${bought?.id}`}) order by template`));
   check('two texts: the buyer’s receipt and the code to them', texts.map((t) => [t.template, t.phone]), [['GIFT_CARD_PAID', buyerE164], ['GIFT_CARD_RECEIVED', '+256772000912']]);
   check('the receipt never carries a code', /GPGC/.test(String(texts[0]?.m ?? '')), false);
-  const coded = /Rob sent you a gift card of UGX 75,000: "Happy birthday, Sarah!" Open it: \S+\/gift-card\/open#GPGC-\S+ Code: GPGC-|Gift card \/ store credit code \(removed once handled\)/.test(String(texts[1]?.m ?? ''));
+  const coded = /Rob Harness sent you a gift card of UGX 75,000: "Happy birthday, Sarah!" Open it: \S+\/gift-card\/open#GPGC-\S+ Code: GPGC-|Gift card \/ store credit code \(removed once handled\)/.test(String(texts[1]?.m ?? ''));
   check('their text names who it is from, the message, the link to open it and the code (or it was sent and scrubbed)', coded, true);
   const [codeRow] = rowsOf(await db.execute(sql`select coalesce(payload->>'creditCode', (payload #>> '{}')::jsonb->>'creditCode') as code from outbox_events where idempotency_key = ${`gift-card-received:${bought?.id}`}`));
   if (codeRow?.code) {
@@ -614,6 +618,15 @@ async function giftCardPurchaseProofs(): Promise<void> {
   check('it is paid, with no card yet', [p2?.status, p2?.instrument_id ?? null], ['paid', null]);
   const t2 = rowsOf(await db.execute(sql`select template from outbox_events where idempotency_key like ${`gift-card-%:${p2?.id}`}`)).map((r) => r.template);
   check('only the buyer’s receipt is queued', t2, ['GIFT_CARD_PAID']);
+
+  // -- 18. "Send the code to me instead": no recipient number needed ----------------
+  console.log('\n--- 18. a buyer who gives the card in person needs no number for the recipient');
+  await resetStub();
+  const meJar = new Jar();
+  const me = await postForm(meJar, '/gift-card/buy', { ...giftForm, recipientPhone: '', sendToMe: '1', buyerPhone: '0700000914' });
+  check('they are sent to pay', me.status, 303);
+  const meRow = await purchaseByBuyer('+256700000914');
+  check('the code will come to the buyer', [meRow?.send_to, meRow?.recipient_phone ?? null, meRow?.from_name], ['buyer', null, 'Rob Harness']);
 }
 
 /**

@@ -72,7 +72,8 @@
 
 <script>
   const btn = document.querySelector<HTMLButtonElement>('[data-totop]');
-  if (btn) {
+  // A page that ends in its own pay button opts out (data-no-totop): the round button sat on top of it.
+  if (btn && !document.querySelector('[data-no-totop]')) {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
     let ticking = false;
     let shown = false;
