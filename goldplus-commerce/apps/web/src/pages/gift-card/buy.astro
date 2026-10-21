@@ -135,11 +135,7 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
       <button type="button" class="font-bold underline" data-draft-clear>Start over</button>
     </p>
     <h1 class="text-2xl font-black tracking-tight text-gray-900 sm:text-4xl">Send a gift card</h1>
-    <ol class="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-700" aria-label="How it works">
-      <li class="rounded-full bg-slate-100 px-3 py-1.5">1. Choose and pay</li>
-      <li class="rounded-full bg-slate-100 px-3 py-1.5">2. We text them</li>
-      <li class="rounded-full bg-slate-100 px-3 py-1.5">3. They scratch and shop</li>
-    </ol>
+    <p class="mt-1.5 text-sm text-slate-600">Choose a card, pay with Mobile Money or card, and we text it to them. They scratch it to reveal the code.</p>
 
     {problem && <p role="alert" class="mt-5 max-w-2xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{problem}</p>}
 
@@ -154,52 +150,6 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
       </aside>
 
       <form method="POST" action="/gift-card/buy" id="gift-form" class="space-y-7" novalidate>
-        <fieldset>
-          <legend class="text-lg font-black text-gray-900">How much?</legend>
-          <div class="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-5">
-            {PRESETS.map((a) => (
-              <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-1 text-center text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-sky-500">
-                <input type="radio" name="amountPreset" value={String(a)} checked={v.amountPreset === String(a)} class="sr-only" />
-                {`${a / 1000}k`}<span class="sr-only"> ({formatUgx(a)})</span>
-              </label>
-            ))}
-            <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-1 text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-sky-500">
-              <input type="radio" name="amountPreset" value="other" checked={v.amountPreset === 'other'} class="sr-only" data-other-amount />
-              Other
-            </label>
-          </div>
-          <p class="mt-2 text-xs text-slate-500">{`In UGX: ${PRESETS[0] / 1000}k = ${formatUgx(PRESETS[0])}.`}</p>
-          <div class={v.amountPreset === 'other' || errors.amountOther ? '' : 'js-hide'} data-other-box>
-            <label class="mt-3 block">
-              <span class={label}>Amount (UGX)</span>
-              <input name="amountOther" inputmode="numeric" autocomplete="off" value={v.amountOther} placeholder={`${MIN.toLocaleString('en-US')} to ${MAX.toLocaleString('en-US')}`} class={`${field} ${border('amountOther')}`} autofocus={firstError === 'amountOther'} />
-            </label>
-            <p class={errClass('amountOther')} data-err="amountOther">{errors['amountOther'] ?? ''}</p>
-          </div>
-          {errors.amountPreset && <p class="mt-1 text-sm font-semibold text-red-700">{errors.amountPreset}</p>}
-        </fieldset>
-
-        <fieldset>
-          <legend class="text-lg font-black text-gray-900">Who is it for?</legend>
-          <label class="mt-3 block">
-            <span class={label}>Their name</span>
-            <input name="recipientName" required autocomplete="off" value={v.recipientName} maxlength="60" class={`${field} ${border('recipientName')}`} autofocus={firstError === 'recipientName'} />
-          </label>
-          <p class={errClass('recipientName')} data-err="recipientName">{errors['recipientName'] ?? ''}</p>
-          <label class="mt-3 block" data-recipient-phone>
-            <span class={label}>Their mobile number <span class={`font-normal text-slate-500 ${toMe ? '' : 'hidden'}`} data-optional>(optional)</span></span>
-            <span class="mt-1 flex gap-2">
-              <input name="recipientPhone" type="tel" inputmode="tel" autocomplete="off" value={v.recipientPhone} placeholder="0772 123456" class={`${field} mt-0 ${border('recipientPhone')}`} autofocus={firstError === 'recipientPhone'} />
-              <button type="button" class="hidden min-h-12 shrink-0 items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-xs font-black uppercase tracking-wider text-gray-900" data-pick-contact aria-label="Pick their name and number from your contacts">Contacts</button>
-            </span>
-          </label>
-          <p class={errClass('recipientPhone')} data-err="recipientPhone">{errors['recipientPhone'] ?? ''}</p>
-          <label class="mt-3 flex items-start gap-3 rounded-xl bg-slate-50 px-3.5 py-3 text-sm text-gray-900">
-            <input type="checkbox" name="sendToMe" value="1" checked={toMe} class="mt-0.5 h-5 w-5 shrink-0 accent-[#456B00]" />
-            <span>Send the code to me instead. I will give it to them myself.</span>
-          </label>
-        </fieldset>
-
         <fieldset>
           <legend class="text-lg font-black text-gray-900">Choose an occasion</legend>
           <p class="mt-1 text-sm text-slate-600" data-chosen-note hidden></p>
@@ -232,6 +182,53 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
             </details>
           )}
         </fieldset>
+
+        <fieldset>
+          <legend class="text-lg font-black text-gray-900">How much?</legend>
+          <div class="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-5">
+            {PRESETS.map((a) => (
+              <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-1 text-center text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-sky-500">
+                <input type="radio" name="amountPreset" value={String(a)} checked={v.amountPreset === String(a)} class="sr-only" />
+                {a.toLocaleString('en-US')}<span class="sr-only"> Uganda shillings</span>
+              </label>
+            ))}
+            <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-1 text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-sky-500">
+              <input type="radio" name="amountPreset" value="other" checked={v.amountPreset === 'other'} class="sr-only" data-other-amount />
+              Other
+            </label>
+          </div>
+          <p class="mt-2 text-xs text-slate-500">Amounts in UGX.</p>
+          <div class={v.amountPreset === 'other' || errors.amountOther ? '' : 'js-hide'} data-other-box>
+            <label class="mt-3 block">
+              <span class={label}>Amount (UGX)</span>
+              <input name="amountOther" enterkeyhint="next" inputmode="numeric" autocomplete="off" value={v.amountOther} placeholder={`${MIN.toLocaleString('en-US')} to ${MAX.toLocaleString('en-US')}`} class={`${field} ${border('amountOther')}`} autofocus={firstError === 'amountOther'} />
+            </label>
+            <p class={errClass('amountOther')} data-err="amountOther">{errors['amountOther'] ?? ''}</p>
+          </div>
+          {errors.amountPreset && <p class="mt-1 text-sm font-semibold text-red-700">{errors.amountPreset}</p>}
+        </fieldset>
+
+        <fieldset>
+          <legend class="text-lg font-black text-gray-900">Who is it for?</legend>
+          <label class="mt-3 block">
+            <span class={label}>Their name</span>
+            <input name="recipientName" enterkeyhint="next" required autocomplete="off" value={v.recipientName} maxlength="60" class={`${field} ${border('recipientName')}`} autofocus={firstError === 'recipientName'} />
+          </label>
+          <p class={errClass('recipientName')} data-err="recipientName">{errors['recipientName'] ?? ''}</p>
+          <label class="mt-3 block" data-recipient-phone>
+            <span class={label}>Their mobile number <span class={`font-normal text-slate-500 ${toMe ? '' : 'hidden'}`} data-optional>(optional)</span></span>
+            <span class="mt-1 flex gap-2">
+              <input name="recipientPhone" enterkeyhint="next" type="tel" inputmode="tel" autocomplete="off" value={v.recipientPhone} placeholder="0772 123456" class={`${field} mt-0 ${border('recipientPhone')}`} autofocus={firstError === 'recipientPhone'} />
+              <button type="button" class="hidden min-h-12 shrink-0 items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-xs font-black uppercase tracking-wider text-gray-900" data-pick-contact aria-label="Pick their name and number from your contacts">Contacts</button>
+            </span>
+          </label>
+          <p class={errClass('recipientPhone')} data-err="recipientPhone">{errors['recipientPhone'] ?? ''}</p>
+          <label class="mt-3 flex items-start gap-3 rounded-xl bg-slate-50 px-3.5 py-3 text-sm text-gray-900">
+            <input type="checkbox" name="sendToMe" value="1" checked={toMe} class="mt-0.5 h-5 w-5 shrink-0 accent-[#456B00]" />
+            <span>Send the code to me instead. I will give it to them myself.</span>
+          </label>
+        </fieldset>
+
 
         <fieldset>
           <legend class="text-lg font-black text-gray-900">Your message</legend>
@@ -272,12 +269,12 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
           <legend class="text-lg font-black text-gray-900">You</legend>
           <label class="mt-3 block">
             <span class={label}>Your name <span class="font-normal text-slate-500">(on the card as "From")</span></span>
-            <input name="buyerName" required autocomplete="name" value={v.buyerName} maxlength="40" class={`${field} ${border('buyerName')}`} autofocus={firstError === 'buyerName'} />
+            <input name="buyerName" enterkeyhint="next" required autocomplete="name" value={v.buyerName} maxlength="40" class={`${field} ${border('buyerName')}`} autofocus={firstError === 'buyerName'} />
           </label>
           <p class={errClass('buyerName')} data-err="buyerName">{errors['buyerName'] ?? ''}</p>
           <label class="mt-3 block">
             <span class={label}>Your mobile number <span class="font-normal text-slate-500">(for your receipt)</span></span>
-            <input name="buyerPhone" type="tel" inputmode="tel" required autocomplete="tel-national" value={v.buyerPhone} placeholder="0772 123456" class={`${field} ${border('buyerPhone')}`} autofocus={firstError === 'buyerPhone'} />
+            <input name="buyerPhone" enterkeyhint="done" type="tel" inputmode="tel" required autocomplete="tel-national" value={v.buyerPhone} placeholder="0772 123456" class={`${field} ${border('buyerPhone')}`} autofocus={firstError === 'buyerPhone'} />
           </label>
           <p class={errClass('buyerPhone')} data-err="buyerPhone">{errors['buyerPhone'] ?? ''}</p>
         </fieldset>
@@ -294,7 +291,7 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
   </div>
 
   {/* Always in reach on a phone: what you are paying and the button. Hidden while the form's own button shows. */}
-  <div class="fixed inset-x-0 bottom-0 z-40 hidden border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_-12px_rgba(0,0,0,.25)] backdrop-blur lg:hidden" data-pay-bar>
+  <div class="fixed inset-x-0 bottom-0 z-40 hidden border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_-12px_rgba(0,0,0,.25)] backdrop-blur lg:hidden" style="padding-bottom:max(0.75rem, env(safe-area-inset-bottom))" data-pay-bar>
     <div class="mx-auto flex max-w-xl items-center gap-3">
       <button type="button" class="h-10 w-16 shrink-0 rounded-lg shadow ring-1 ring-black/10" style={`background:${theme.background}`} data-bar-thumb aria-label="See the card"></button>
       <div class="min-w-0 flex-1">
@@ -468,6 +465,19 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
     form.querySelectorAll<HTMLButtonElement>('button[type="submit"]').forEach((b) => { b.disabled = true; b.textContent = 'Opening payment…'; });
     document.querySelector<HTMLButtonElement>('[data-pay-bar] button')?.setAttribute('disabled', '');
   });
+  // The keyboard's Next goes to the next box (Enter in a phone form otherwise submits it from the first field);
+  // only the last box (your number) sends the form.
+  form?.addEventListener('keydown', (e) => {
+    const t = e.target as HTMLInputElement;
+    if (e.key !== 'Enter' || t.tagName !== 'INPUT' || !['text', 'tel', 'date', ''].includes(t.type) && t.inputMode !== 'numeric') return;
+    if (t.name === 'buyerPhone') return;
+    e.preventDefault();
+    // The page order: amount, their name and number, the message, then you.
+    const order = ['amountOther', 'recipientName', 'recipientPhone', 'message', 'buyerName', 'buyerPhone'];
+    const visible = order.map((n) => el<HTMLInputElement>(n)).filter((i): i is HTMLInputElement => Boolean(i && i.offsetParent !== null));
+    visible[visible.indexOf(t) + 1]?.focus();
+  });
+
   // A choice that has a box opens it, ready to type.
   form?.querySelector('[data-other-amount]')?.addEventListener('change', () => setTimeout(() => el<HTMLInputElement>('amountOther')?.focus(), 0));
   form?.querySelectorAll<HTMLInputElement>('input[name="when"]').forEach((r) => r.addEventListener('change', () => { if (r.value === 'date') setTimeout(() => el<HTMLInputElement>('deliverOn')?.focus(), 0); }));

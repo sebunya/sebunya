@@ -122,10 +122,13 @@ const shareSource = opened ? {
                 <textarea id="share-caption" rows="2" maxlength="300" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-base" data-share-caption></textarea>
                 <label class="flex items-center gap-3 text-sm"><input type="checkbox" class="h-5 w-5 accent-[#456B00]" data-share-link />Add a link to buy GoldPlus gift cards</label>
               </div>
-              <div class="flex flex-wrap gap-2">
-                <button type="button" class="hidden min-h-12 items-center rounded-full bg-brand-primary px-5 text-sm font-black text-brand-black disabled:opacity-50" data-share-native disabled>Share image</button>
-                <button type="button" class="inline-flex min-h-12 items-center rounded-full border-2 border-brand-primary px-5 text-sm font-black text-gray-900 disabled:opacity-50" data-share-save disabled>Save image</button>
-                <button type="button" class="inline-flex min-h-12 items-center rounded-full border-2 border-slate-300 px-5 text-sm font-black text-gray-900" data-share-copy>Copy caption</button>
+              {/* Thumb-sized on a phone: the share menu first and full width, save and copy side by side. */}
+              <div class="space-y-2">
+                <button type="button" class="hidden min-h-14 w-full items-center justify-center rounded-full bg-brand-primary px-5 text-base font-black text-brand-black disabled:opacity-50" data-share-native disabled>Share image</button>
+                <div class="grid grid-cols-2 gap-2">
+                  <button type="button" class="inline-flex min-h-12 items-center justify-center rounded-full border-2 border-brand-primary px-3 text-sm font-black text-gray-900 disabled:opacity-50" data-share-save disabled>Save image</button>
+                  <button type="button" class="inline-flex min-h-12 items-center justify-center rounded-full border-2 border-slate-300 px-3 text-sm font-black text-gray-900" data-share-copy>Copy caption</button>
+                </div>
               </div>
               <p class="hidden text-sm text-slate-600" data-share-hint>Save the image, then upload it in your favourite app.</p>
               <p class="text-sm font-semibold text-slate-700" aria-live="polite" data-share-status></p>
