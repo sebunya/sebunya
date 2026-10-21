@@ -73,3 +73,14 @@ describe('the fulfilment queue shows the customer’s number to the people prepa
     expect(page.tasks.map((t) => [t.id, t.customerPhone])).toEqual([['t1', '+4512345643'], ['t2', null]]);
   });
 });
+
+describe('the test alert shows the real text', () => {
+  it('built from the latest paid order and marked TEST, so nobody prepares it twice', async () => {
+    const provider = { name: 'test', send: async () => ({ ok: true }) } as any;
+    const router = new DefaultNotificationRouter(provider, provider, provider);
+    const [t] = await router.route('FULFILMENT_PAID_ORDER_ALERT', { recipient: '+256700000001', ...order, deliveryPlace: order.deliveryAddress, items: order.items, test: true });
+    const text = String((t.payload.data as any).message);
+    expect(text.startsWith('TEST - nothing new was sold. A paid order reaches you like this:\nGoldPlus PAID GP-202610-B6705CAB')).toBe(true);
+    expect(text).toContain('Customer: Mrs Susan Lutzner +4512345643');
+  });
+});
