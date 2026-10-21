@@ -17,6 +17,8 @@ export interface GiftCardTheme {
   /** amount pill and small accents */
   accent: string;
   accentInk: string;
+  /** Tap-to-fill messages for this occasion (a blank box is where buyers stall on a phone). Short, no numbers. */
+  suggestions: readonly string[];
 }
 
 const svg = (body: string) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'>${body}</svg>`)}")`;
@@ -29,12 +31,12 @@ const snow = svg(`<g fill='#fff' opacity='.22'><circle cx='20' cy='30' r='2.5'/>
 const glow = svg(`<g fill='none' stroke='#93D500' stroke-width='1' opacity='.22'><circle cx='150' cy='10' r='40'/><circle cx='150' cy='10' r='70'/><circle cx='150' cy='10' r='100'/></g>`);
 
 export const GIFT_CARD_THEMES: readonly GiftCardTheme[] = [
-  { key: 'gold', label: 'GoldPlus', headline: 'A gift for you', background: `${glow}, radial-gradient(120% 90% at 100% 0%, rgba(147,213,0,.35) 0%, rgba(147,213,0,0) 55%), linear-gradient(135deg, #0A0A0A 0%, #1C1C1C 100%)`, ink: 'light', accent: '#93D500', accentInk: '#0A0A0A' },
-  { key: 'birthday', label: 'Birthday', headline: 'Happy birthday', background: `${confetti}, linear-gradient(135deg, #FFB547 0%, #FF7A59 100%)`, ink: 'dark', accent: '#1C1C1C', accentInk: '#FFFFFF' },
-  { key: 'thanks', label: 'Thank you', headline: 'Thank you', background: `${leaves}, linear-gradient(135deg, #0F5132 0%, #2E7D4F 100%)`, ink: 'light', accent: '#93D500', accentInk: '#0A0A0A' },
-  { key: 'love', label: 'With love', headline: 'With love', background: `${hearts}, linear-gradient(135deg, #9D174D 0%, #BE185D 100%)`, ink: 'light', accent: '#FFFFFF', accentInk: '#9D174D' },
-  { key: 'celebrate', label: 'Congratulations', headline: 'Congratulations', background: `${stars}, linear-gradient(135deg, #2E1065 0%, #6D28D9 100%)`, ink: 'light', accent: '#FDE68A', accentInk: '#2E1065' },
-  { key: 'festive', label: 'Festive', headline: "Season's greetings", background: `${snow}, linear-gradient(135deg, #7F1D1D 0%, #B91C1C 100%)`, ink: 'light', accent: '#F5C542', accentInk: '#7F1D1D' },
+  { key: 'gold', label: 'GoldPlus', headline: 'A gift for you', background: `${glow}, radial-gradient(120% 90% at 100% 0%, rgba(147,213,0,.35) 0%, rgba(147,213,0,0) 55%), linear-gradient(135deg, #0A0A0A 0%, #1C1C1C 100%)`, ink: 'light', accent: '#93D500', accentInk: '#0A0A0A', suggestions: ['A little gift for you', 'Treat yourself, on me', 'Thinking of you'] },
+  { key: 'birthday', label: 'Birthday', headline: 'Happy birthday', background: `${confetti}, linear-gradient(135deg, #FFB547 0%, #FF7A59 100%)`, ink: 'dark', accent: '#1C1C1C', accentInk: '#FFFFFF', suggestions: ['Happy birthday!', 'Have a wonderful birthday', 'Happy birthday, enjoy your day'] },
+  { key: 'thanks', label: 'Thank you', headline: 'Thank you', background: `${leaves}, linear-gradient(135deg, #0F5132 0%, #2E7D4F 100%)`, ink: 'light', accent: '#93D500', accentInk: '#0A0A0A', suggestions: ['Thank you for everything', 'Thanks for your help', 'With many thanks'] },
+  { key: 'love', label: 'With love', headline: 'With love', background: `${hearts}, linear-gradient(135deg, #9D174D 0%, #BE185D 100%)`, ink: 'light', accent: '#FFFFFF', accentInk: '#9D174D', suggestions: ['With all my love', 'For my favourite person', 'Thinking of you always'] },
+  { key: 'celebrate', label: 'Congratulations', headline: 'Congratulations', background: `${stars}, linear-gradient(135deg, #2E1065 0%, #6D28D9 100%)`, ink: 'light', accent: '#FDE68A', accentInk: '#2E1065', suggestions: ['Congratulations!', 'Well done, you earned it', 'So proud of you'] },
+  { key: 'festive', label: 'Festive', headline: "Season's greetings", background: `${snow}, linear-gradient(135deg, #7F1D1D 0%, #B91C1C 100%)`, ink: 'light', accent: '#F5C542', accentInk: '#7F1D1D', suggestions: ['Merry Christmas!', 'Happy holidays', 'Season\'s greetings to you'] },
 ];
 
 export function giftCardTheme(key: unknown): GiftCardTheme {
