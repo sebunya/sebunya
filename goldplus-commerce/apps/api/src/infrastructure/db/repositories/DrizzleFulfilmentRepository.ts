@@ -1,6 +1,7 @@
 import { db } from '../client';
 import { fulfilmentTasks } from '../schema/fulfilment';
-import { and, eq, asc, sql, notInArray, count, isNull, lt } from 'drizzle-orm';
+import { and, eq, asc, sql, notInArray, count, isNull, lt, inArray } from 'drizzle-orm';
+import { orders } from '../schema/commerce';
 import {
   FulfilmentTask,
   FulfilmentStatus,
@@ -246,7 +247,12 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
       .from(fulfilmentTasks)
       .where(where);
 
-    return { tasks: rows.map(toSnapshot), total: Number(total) };
+    const orderIds = [...new Set(rows.map((r) => r.orderId))];
+    const phones = orderIds.length
+      ? await db.select({ id: orders.id, phone: orders.customerPhone }).from(orders).where(inArray(orders.id, orderIds))
+      : [];
+    const customerPhones = Object.fromEntries(phones.filter((p) => p.phone).map((p) => [p.id, p.phone]));
+    return { tasks: rows.map(toSnapshot), total: Number(total), customerPhones };
   }
 
   async countNew(): Promise<number> {

@@ -483,7 +483,7 @@ export class DrizzlePersonalDataEraser implements IPersonalDataEraser {
         // Customer messages are stored as a jsonb STRING (drizzle 0.29 + postgres-js), and the object-only form of this
         // update skipped every one of them: an erased customer's phone and name stayed in their order messages.
         counts.outboxPayloads = affected(await exec.execute(sql`
-          update outbox_events set payload = ${OUTBOX_OBJECT} - 'customerPhone' - 'customerEmail' - 'customerName' - 'phone' - 'email'
+          update outbox_events set payload = ${OUTBOX_OBJECT} - 'customerPhone' - 'customerEmail' - 'customerName' - 'phone' - 'email' - 'deliveryPlace' - 'placeLabel' - 'mapUrl'
           where related_entity = 'order' and related_entity_id in (${uuidList(orderIds)}) and ${OUTBOX_IS_OBJECT}`));
       }
 

@@ -172,10 +172,12 @@ const statusFilter = Astro.url.searchParams.get("status") || "";
 // The API pages at 50 by default; without offset the rest of the queue was unreachable.
 const paging = readPaging(Astro.url.searchParams);
 
+// A typed-in place filled both the area and the address with the same words, and older tasks keep both: say it once.
+const placeOnce = (summary: string) => [...new Set(String(summary ?? "").split(" · ").map((p) => p.trim()).filter(Boolean))].join(" · ");
 interface ItemLine { sku: string; name: string; quantity: number; unitPriceUgx: number; lineTotalUgx: number; }
 interface Task {
-  id: string; orderNumber: string; status: Status; paymentStatus: string; paymentMethod: string | null;
-  customerName: string; customerContactMasked: string; deliveryArea: string; deliverySummary: string;
+  id: string; orderId: string; orderNumber: string; status: Status; paymentStatus: string; paymentMethod: string | null;
+  customerName: string; customerContactMasked: string; customerPhone?: string | null; deliveryArea: string; deliverySummary: string;
   totalUgx: number; deliveryFeeUgx: number; itemCount: number; items: ItemLine[]; warnings: string[];
   priority: "low" | "normal" | "high" | "urgent"; slaDueAt: string; assignedTo: string | null;
   overdue: boolean; createdAt: string;
@@ -399,7 +401,7 @@ function liveWarnings(task: { paymentStatus: string; paymentMethod?: string | nu
           <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
             <div>
               <div class="flex items-center gap-2 flex-wrap">
-                <span class="font-mono font-black text-brand-dark">{task.orderNumber}</span>
+                <a href={`/admin/orders/${task.orderId}`} class="font-mono font-black text-brand-dark hover:underline" title="Open the order">{task.orderNumber}</a>
                 <span class={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${statusChip(task.status)}`}>{STATUS_WORDS[task.status]}</span>
                 <span class={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${payChip(task.paymentStatus)}`}>{task.paymentStatus === "paid" ? "Paid" : task.paymentStatus === "failed" ? "Payment failed" : "Not paid yet"}</span>
                 {task.priority !== "normal" && (
@@ -410,8 +412,19 @@ function liveWarnings(task: { paymentStatus: string; paymentMethod?: string | nu
                 )}
               </div>
               <p class="text-xs text-gray-500 mt-1.5">
-                {task.customerName} · {task.customerContactMasked} · {task.deliverySummary || task.deliveryArea}
+                {task.customerName} ·{" "}
+                {task.customerPhone
+                  ? <a href={`tel:${task.customerPhone.replace(/\s+/g, "")}`} class="font-bold text-brand-dark underline" title="Call the customer">{task.customerPhone}</a>
+                  : task.customerContactMasked}
+                {" · "}{placeOnce(task.deliverySummary || task.deliveryArea)}
               </p>
+              {task.customerPhone && (
+                <p class="mt-2 flex flex-wrap gap-2 text-xs font-bold">
+                  <a href={`tel:${task.customerPhone.replace(/\s+/g, "")}`} class="inline-flex min-h-9 items-center rounded-full border border-slate-300 px-3 text-brand-dark">Call</a>
+                  <a href={`https://wa.me/${task.customerPhone.replace(/[^0-9]/g, "").replace(/^0/, "256")}`} target="_blank" rel="noopener noreferrer" class="inline-flex min-h-9 items-center rounded-full border border-slate-300 px-3 text-brand-dark">WhatsApp</a>
+                  <a href={`/admin/orders/${task.orderId}`} class="inline-flex min-h-9 items-center rounded-full border border-slate-300 px-3 text-brand-dark">Open order</a>
+                </p>
+              )}
               <p class="text-[11px] text-gray-400 mt-1">
                 Promised to the customer {new Date(task.slaDueAt).toLocaleString("en-GB", { timeZone: "Africa/Kampala", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} — {dueInWords(task.slaDueAt, task.overdue)} · {task.assignedTo ? (task.assignedTo === currentUserId ? "you are handling it" : "somebody is handling it") : "nobody is handling it yet"}
               </p>
