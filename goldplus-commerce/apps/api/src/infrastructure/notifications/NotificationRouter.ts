@@ -271,18 +271,20 @@ export class DefaultNotificationRouter implements INotificationRouter {
         const total = Number(payload.totalUgx ?? 0);
         const area = String(payload.deliveryArea ?? '').trim();
         const amount = Number.isFinite(total) ? `UGX ${Math.round(total).toLocaleString('en-GB')}` : '';
+        const full = Array.isArray(payload.items) && typeof payload.customerPhone === 'string'
+          ? paidOrderAlertText({
+              orderNumber, totalUgx: total, deliveryFeeUgx: Number(payload.deliveryFeeUgx ?? 0),
+              items: (payload.items as Array<Record<string, unknown>>).map((it) => ({ name: String(it.name ?? ''), sku: String(it.sku ?? ''), quantity: Number(it.quantity ?? 1) })),
+              customerName: String(payload.customerName ?? ''), customerPhone: String(payload.customerPhone ?? ''),
+              deliveryArea: area, deliveryAddress: String(payload.deliveryPlace ?? ''), placeLabel: (payload.placeLabel as string | null) ?? null,
+              mapUrl: (payload.mapUrl as string | null) ?? null, storeCreditUgx: Number(payload.storeCreditUgx ?? 0), orderUrl: String(payload.orderUrl ?? ''),
+            })
+          : null;
+        // The test shows the REAL text, built from the latest paid order, marked so nobody prepares it twice.
         const message = payload.test === true
-          ? `GoldPlus test alert: this is how a paid order will reach you. Nothing has been sold.`
-          : Array.isArray(payload.items) && typeof payload.customerPhone === 'string'
-            ? paidOrderAlertText({
-                orderNumber, totalUgx: total, deliveryFeeUgx: Number(payload.deliveryFeeUgx ?? 0),
-                items: (payload.items as Array<Record<string, unknown>>).map((it) => ({ name: String(it.name ?? ''), sku: String(it.sku ?? ''), quantity: Number(it.quantity ?? 1) })),
-                customerName: String(payload.customerName ?? ''), customerPhone: String(payload.customerPhone ?? ''),
-                deliveryArea: area, deliveryAddress: String(payload.deliveryPlace ?? ''), placeLabel: (payload.placeLabel as string | null) ?? null,
-                mapUrl: (payload.mapUrl as string | null) ?? null, storeCreditUgx: Number(payload.storeCreditUgx ?? 0), orderUrl: String(payload.orderUrl ?? ''),
-              })
-            // Queued before 2026-10-21 (no items or phone in the event): the old one-line wording.
-            : `GoldPlus: order ${orderNumber} is PAID${amount ? ` (${amount})` : ''}${area ? ` for ${area}` : ''}. Prepare it for delivery.`;
+          ? (full ? `TEST - nothing new was sold. A paid order reaches you like this:\n${full}` : `GoldPlus test alert: this is how a paid order will reach you. Nothing has been sold.`)
+          // Queued before 2026-10-21 (no items or phone in the event): the old one-line wording.
+          : full ?? `GoldPlus: order ${orderNumber} is PAID${amount ? ` (${amount})` : ''}${area ? ` for ${area}` : ''}. Prepare it for delivery.`;
         targets.push({
           channel: 'sms',
           provider: this.smsProvider,
