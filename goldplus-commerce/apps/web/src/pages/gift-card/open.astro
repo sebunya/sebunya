@@ -357,24 +357,26 @@ const shareSource = opened ? {
       // Measured in the face it is drawn in (Montserrat), so "fits" means fits.
       await loadShareFonts();
       if (mine !== run) return;
-      // A message too long for this size is never cut or shrunk: the recipient writes a shorter one for the picture.
+      // A message too long for this size (beside the other chosen details) is never cut or shrunk: the recipient
+      // writes a shorter one for the picture.
+      const picked = { recipientName: choice('recipientName'), senderName: choice('senderName'), amount: choice('amount'), photo: choice('photo') };
+      const rest = shareContent(source, { ...picked, message: false });
       let messageForPicture: string | null = null;
       if (choice('message') && source.message) {
         const ctx = canvas.getContext('2d')!;
-        const fits = messageFits(ctx, source.message, size());
+        const fits = messageFits(ctx, source.message, size(), rest);
         excerptBox.classList.toggle('hidden', fits);
         if (!fits) {
           if (!excerpt.value) excerpt.value = source.message;
-          const ok = messageFits(ctx, excerpt.value.trim(), size()) && excerpt.value.trim().length > 0;
+          const ok = messageFits(ctx, excerpt.value.trim(), size(), rest) && excerpt.value.trim().length > 0;
           excerptWarn.classList.toggle('hidden', ok);
           messageForPicture = ok ? excerpt.value.trim() : null;
         }
       } else excerptBox.classList.add('hidden');
       const content = shareContent(source, {
-        recipientName: choice('recipientName'), senderName: choice('senderName'),
+        ...picked,
         // In whole, when it fits; otherwise only the recipient's own shorter version (never a silent cut).
         message: choice('message') && (excerptBox.classList.contains('hidden') || messageForPicture !== null),
-        amount: choice('amount'), photo: choice('photo'),
       }, messageForPicture);
       try {
         await drawShareImage(canvas, content, size());

@@ -351,6 +351,10 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
 <script>
   import { GIFT_CARD_THEMES, GIFT_MESSAGE_MAX, logoUrl } from '../../lib/giftCardThemes';
   import { giftCardPhotoUrl } from '../../lib/giftCardPhoto';
+  import { CARD_PLACEHOLDER, asCardNote, giftCardLabel, greetingParts } from '../../lib/giftCardFaceText';
+  import { cropSource, cropTransform, initialCrop, panCrop, zoomCrop, type PhotoCrop } from '../../lib/photoCrop';
+  // The API's own text rule (one file, shared): the page refuses exactly what the server would, in the same words.
+  import { unsafeGiftText } from '@goldplus/shared/src/gift-cards/giftText';
 
   document.documentElement.classList.add('gc-js');
   const form = document.querySelector<HTMLFormElement>('#gift-form');
@@ -379,6 +383,7 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
       else if (a % 1000 !== 0) out.amountOther = 'Use whole thousands, for example 35,000.';
     }
     if (val('recipientName').length < 2) out.recipientName = 'Type the name of the person it is for.';
+    else if (unsafeGiftText(val('recipientName'))) out.recipientName = 'Use only their name here.';
     const rp = val('recipientPhone');
     if (!toMe() && !ugMobile(rp)) out.recipientPhone = 'Type their Ugandan mobile number. The card is texted to it.';
     else if (toMe() && rp && !ugMobile(rp)) out.recipientPhone = 'Check their number, or leave it empty.';
@@ -386,9 +391,10 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
       out.recipientPhone = 'That is your own number. To give the card yourself, tick "Send the code to me instead".';
     }
     if (val('message').length > GIFT_MESSAGE_MAX) out.message = `Keep the note to ${GIFT_MESSAGE_MAX} characters.`;
-    else if (/https?:|www\.|\.(com|ug|net|org)\b|\d[\d\s.-]{5,}\d/i.test(val('message'))) out.message = 'For their safety the message cannot carry links or phone numbers.';
+    else if (unsafeGiftText(val('message'))) out.message = 'For their safety the message cannot carry links, web addresses or phone numbers.';
     if (!toMe() && checked('when') === 'date' && !val('deliverOn')) out.deliverOn = 'Pick the day, or choose Now.';
     if (val('buyerName').length < 2) out.buyerName = 'Type your name.';
+    else if (unsafeGiftText(val('buyerName'))) out.buyerName = 'Use only your name here.';
     if (!ugMobile(val('buyerPhone'))) out.buyerPhone = 'Type your Ugandan mobile number. Your receipt is texted to it.';
     return out;
   }
@@ -413,10 +419,6 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
     return p;
   }
 
-  // What a screen reader says for the card (it is one image to them): greeting, who, from, the amount, then the note.
-  const cardLabel = (headline: string, to: string, from: string, note: string, amount: string, photo: boolean) =>
-    [`GoldPlus gift card: ${headline.replace(/\n/g, ' ').replace(/\u00ad/g, '')}`, `to ${to}`, `from ${from}`, amount, photo && 'with a photo', note && `note: ${note}`]
-      .filter(Boolean).join(', ');
   function redraw() {
     if (!form) return;
     const a = amount();
@@ -438,20 +440,23 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
       const set = (sel: string, text: string) => { const n = face.querySelector<HTMLElement>(sel); if (n) n.textContent = text; };
       const head = face.querySelector<HTMLElement>('[data-gc-headline]');
       if (head) {
-        const lines = t.headline.split('\n');
+        const { lines, long } = greetingParts(t.headline);
         head.replaceChildren(...lines.flatMap((l, i) => (i > 0 ? [document.createElement('br'), l] : [l])));
-        head.classList.toggle('gcf-greet-long', lines.some((l) => l.replace(/\u00ad/g, '').length > 12));
+        head.classList.toggle('gcf-greet-long', long);
       }
       face.querySelector<HTMLImageElement>('[data-gc-logo]')?.setAttribute('src', logoUrl(t.logo));
       face.querySelector<HTMLImageElement>('[data-gc-art]')?.setAttribute('src', t.art);
       set('[data-gc-amount]', okAmount ? ugx(a) : 'UGX …');
-      set('[data-gc-to]', val('recipientName') || 'Someone special');
-      set('[data-gc-from]', val('buyerName') || 'You');
+      set('[data-gc-to]', val('recipientName') || CARD_PLACEHOLDER.to);
+      set('[data-gc-from]', val('buyerName') || CARD_PLACEHOLDER.from);
       const m = face.querySelector<HTMLElement>('[data-gc-message]');
-      // As the shop will keep it: line breaks and runs of spaces become one space (the card is one paragraph).
-      const message = val('message').replace(/\s+/g, ' ');
+      // As the shop will keep it (one paragraph), and as the server draws it.
+      const message = asCardNote(val('message'));
       if (m) { m.textContent = message; m.classList.toggle('gcf-hidden', !message); }
-      face.setAttribute('aria-label', cardLabel(t.headline, val('recipientName') || 'someone special', val('buyerName') || 'you', message, okAmount ? ugx(a) : '', face.classList.contains('gcf-has-photo')));
+      face.setAttribute('aria-label', giftCardLabel({
+        headline: t.headline, to: val('recipientName'), from: val('buyerName'), amount: okAmount ? ugx(a) : null,
+        photo: face.classList.contains('gcf-has-photo'), note: message,
+      }));
     }
 
     // Note ideas for this occasion: each button puts in exactly the words it shows.
@@ -621,34 +626,33 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
     location.replace(location.pathname);
   });
   // ── An optional photo: chosen, placed and zoomed on the phone, then uploaded once as a square JPEG ──────────
-  // The preview is a data: URL (the page allows no blob: images). The shop re-encodes it and strips its metadata.
+  // The geometry is lib/photoCrop.ts (tested): the crop is kept in the photo's own pixels, so what the frame shows is
+  // exactly what is uploaded, whatever the frame's size. The preview is a data: URL (the page allows no blob: images);
+  // the shop re-encodes the upload and strips its metadata.
   const photoBox = form?.querySelector<HTMLElement>('[data-photo]');
   const frame = photoBox?.querySelector<HTMLElement>('[data-photo-frame]');
   const source = photoBox?.querySelector<HTMLImageElement>('[data-photo-source]');
   const zoom = photoBox?.querySelector<HTMLInputElement>('[data-photo-zoom]');
   const status = photoBox?.querySelector<HTMLElement>('[data-photo-status]');
-  const crop = { x: 0, y: 0, base: 1, w: 0, h: 0 };
+  let crop: PhotoCrop | null = null;
+  /** The photo last opened (a data: URL) and where it was placed, so "Adjust" comes back to that placement. */
   let lastFile: string | null = null;
+  let lastCrop: PhotoCrop | null = null;
   const say = (text: string) => { if (status) { status.textContent = text; status.classList.toggle('hidden', !text); } };
   const frameSize = () => frame?.clientWidth || 288;
-  function place() {
-    if (!source || !zoom) return;
-    const V = frameSize();
-    const scale = crop.base * Number(zoom.value);
-    // Never a gap: the photo always covers the square.
-    crop.x = Math.min(0, Math.max(V - crop.w * scale, crop.x));
-    crop.y = Math.min(0, Math.max(V - crop.h * scale, crop.y));
-    source.style.transform = `translate(${crop.x}px, ${crop.y}px) scale(${scale})`;
+  function place(next: PhotoCrop | null = crop) {
+    crop = next;
+    if (!source || !zoom || !crop) return;
+    const t = cropTransform(crop, frameSize());
+    source.style.transform = `translate(${t.x}px, ${t.y}px) scale(${t.scale})`;
+    zoom.value = String(crop.zoom);
   }
-  function openCrop(dataUrl: string) {
+  function openCrop(dataUrl: string, keepPlacement = false) {
     if (!source || !zoom) return;
     source.onload = () => {
-      crop.w = source.naturalWidth; crop.h = source.naturalHeight;
-      const V = frameSize();
-      crop.base = Math.max(V / crop.w, V / crop.h);
-      zoom.value = '1'; zoom.dataset.prev = '1';
-      crop.x = (V - crop.w * crop.base) / 2; crop.y = (V - crop.h * crop.base) / 2;
-      place();
+      const fresh = initialCrop(source.naturalWidth, source.naturalHeight);
+      const kept = keepPlacement && lastCrop && lastCrop.width === fresh.width && lastCrop.height === fresh.height ? lastCrop : null;
+      place(kept ?? fresh);
     };
     source.onerror = () => { say('This phone cannot open that photo here. Choose a JPEG or PNG photo.'); closeCrop(); };
     source.src = dataUrl;
@@ -700,52 +704,36 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
     if (!/^image\//.test(file.type) || /svg|gif/i.test(file.type)) { say('Choose a photo (JPEG, PNG or one from your camera).'); return; }
     if (file.size > 25 * 1024 * 1024) { say('That photo is too large. Choose one under 25 MB.'); return; }
     const reader = new FileReader();
-    reader.onload = () => { lastFile = String(reader.result); openCrop(lastFile); };
+    reader.onload = () => { lastFile = String(reader.result); lastCrop = null; openCrop(lastFile); };
     reader.onerror = () => say('That photo could not be read. Try another.');
     reader.readAsDataURL(file);
   }));
-  photoBox?.querySelector('[data-photo-adjust]')?.addEventListener('click', () => { if (lastFile) openCrop(lastFile); });
+  photoBox?.querySelector('[data-photo-adjust]')?.addEventListener('click', () => { if (lastFile) openCrop(lastFile, true); });
   photoBox?.querySelector('[data-photo-cancel]')?.addEventListener('click', closeCrop);
   photoBox?.querySelector('[data-photo-remove]')?.addEventListener('click', removePhoto);
-  // Zoom about a point of the square (its centre for the slider and keys, the fingers' midpoint for a pinch),
-  // so what is under that point stays there. 1 = the photo just covers the square; 3 = three times closer.
-  const ZOOM_MIN = 1, ZOOM_MAX = 3;
-  function zoomTo(next: number, fx = frameSize() / 2, fy = frameSize() / 2) {
-    if (!zoom) return;
-    const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next));
-    const before = crop.base * Number(zoom.dataset.prev ?? zoom.value);
-    const after = crop.base * z;
-    crop.x = fx - ((fx - crop.x) * after) / before;
-    crop.y = fy - ((fy - crop.y) * after) / before;
-    zoom.value = String(z);
-    zoom.dataset.prev = String(z);
-    place();
-  }
-  zoom?.addEventListener('input', () => { const z = Number(zoom.value); zoom.value = zoom.dataset.prev ?? '1'; zoomTo(z); });
+  // Zoom about a point of the frame: its centre for the slider and keys, the fingers' midpoint for a pinch.
+  const zoomTo = (next: number, fx?: number, fy?: number) => { if (crop) place(zoomCrop(crop, next, frameSize(), fx, fy)); };
+  const panBy = (dx: number, dy: number) => { if (crop) place(panCrop(crop, dx, dy, frameSize())); };
+  zoom?.addEventListener('input', () => zoomTo(Number(zoom.value)));
   // One finger (or the mouse) moves the photo; two fingers pinch to zoom.
   const pointers = new Map<number, { x: number; y: number }>();
   let pinch: { dist: number; zoom: number } | null = null;
-  const spread = () => { const [a, b] = [...pointers.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  const spread = () => { const [p1, p2] = [...pointers.values()]; return Math.hypot(p1.x - p2.x, p1.y - p2.y); };
   frame?.addEventListener('pointerdown', (e) => {
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     frame.setPointerCapture(e.pointerId);
-    if (pointers.size === 2 && zoom) pinch = { dist: spread(), zoom: Number(zoom.value) };
+    if (pointers.size === 2 && crop) pinch = { dist: spread(), zoom: crop.zoom };
   });
   frame?.addEventListener('pointermove', (e) => {
     const last = pointers.get(e.pointerId);
     if (!last) return;
     const now = { x: e.clientX, y: e.clientY };
-    if (pointers.size === 1) {
-      crop.x += now.x - last.x; crop.y += now.y - last.y;
-      pointers.set(e.pointerId, now);
-      place();
-      return;
-    }
     pointers.set(e.pointerId, now);
+    if (pointers.size === 1) { panBy(now.x - last.x, now.y - last.y); return; }
     if (pinch && pointers.size === 2) {
       const r = frame.getBoundingClientRect();
-      const [a, b] = [...pointers.values()];
-      zoomTo(pinch.zoom * (spread() / Math.max(1, pinch.dist)), (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top);
+      const [p1, p2] = [...pointers.values()];
+      zoomTo(pinch.zoom * (spread() / Math.max(1, pinch.dist)), (p1.x + p2.x) / 2 - r.left, (p1.y + p2.y) / 2 - r.top);
     }
   });
   const endPointer = (e: PointerEvent) => { pointers.delete(e.pointerId); if (pointers.size < 2) pinch = null; };
@@ -754,23 +742,23 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
   // A mouse wheel or trackpad zooms too; the keyboard moves (arrows) and zooms (+ and -).
   frame?.addEventListener('wheel', (e) => {
     e.preventDefault();
+    if (!crop) return;
     const r = frame.getBoundingClientRect();
-    zoomTo(Number(zoom?.value ?? 1) * (e.deltaY < 0 ? 1.08 : 1 / 1.08), e.clientX - r.left, e.clientY - r.top);
+    zoomTo(crop.zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08), e.clientX - r.left, e.clientY - r.top);
   }, { passive: false });
   frame?.addEventListener('keydown', (e) => {
     const step = e.shiftKey ? 40 : 12;
     const moves: Record<string, [number, number]> = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
-    if (moves[e.key]) { e.preventDefault(); crop.x += moves[e.key][0]; crop.y += moves[e.key][1]; place(); return; }
-    if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomTo(Number(zoom?.value ?? 1) + 0.1); }
-    if (e.key === '-') { e.preventDefault(); zoomTo(Number(zoom?.value ?? 1) - 0.1); }
+    if (moves[e.key]) { e.preventDefault(); panBy(moves[e.key][0], moves[e.key][1]); return; }
+    if ((e.key === '+' || e.key === '=') && crop) { e.preventDefault(); zoomTo(crop.zoom + 0.1); }
+    if (e.key === '-' && crop) { e.preventDefault(); zoomTo(crop.zoom - 0.1); }
   });
+  // The frame can change size while a photo is being placed (the phone turns); the crop itself does not move.
+  if (frame && 'ResizeObserver' in window) new ResizeObserver(() => place()).observe(frame);
   photoBox?.querySelector<HTMLButtonElement>('[data-photo-use]')?.addEventListener('click', async (e) => {
     const button = e.currentTarget as HTMLButtonElement;
-    if (!source || !zoom || !crop.w) return;
-    const V = frameSize();
-    const scale = crop.base * Number(zoom.value);
-    const side = V / scale; // the square, in the photo's own pixels
-    const out = Math.max(200, Math.min(1080, Math.round(side)));
+    if (!source || !crop) return;
+    const { sx, sy, side, out } = cropSource(crop);
     let dataUrl = '';
     let blob: Blob | null = null;
     try {
@@ -780,7 +768,7 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
       if (!c) throw new Error('NO_CANVAS');
       c.fillStyle = '#FFFFFF'; // a transparent PNG becomes white, not black, as a JPEG
       c.fillRect(0, 0, out, out);
-      c.drawImage(source, -crop.x / scale, -crop.y / scale, side, side, 0, 0, out, out);
+      c.drawImage(source, sx, sy, side, side, 0, 0, out, out);
       dataUrl = canvas.toDataURL('image/jpeg', 0.86);
       blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.86));
     } catch { blob = null; }
@@ -790,6 +778,7 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
       const res = await fetch('/gift-card/photo', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
       const json = await res.json().catch(() => null) as { success?: boolean; data?: { photoId?: string }; error?: { message?: string } } | null;
       if (!res.ok || !json?.success || !json.data?.photoId) { say(json?.error?.message ?? 'We could not add the photo just now. Try again, or send the card without one.'); return; }
+      lastCrop = crop;
       closeCrop();
       showPhoto(json.data.photoId, dataUrl);
       // Focus where the photo now is (the cropper that had it is gone), so a keyboard or screen reader is not lost.

@@ -12,9 +12,15 @@ export interface GiftCardFace {
   photoId: string | null;
 }
 
-/** 0201: turns whatever a phone sent into a safe square JPEG (no metadata), or refuses it. */
-export interface IGiftCardPhotoProcessor {
-  process(input: Buffer): Promise<{ image: Buffer; width: number; height: number }>;
+/**
+ * create(): the photo the form names cannot go on this purchase (it is gone, too old to claim, or on another buyer's
+ * purchase). Nothing was written. The buyer is asked to add the photo again.
+ */
+export class GiftCardPhotoUnavailableError extends Error {
+  constructor() {
+    super('GIFT_CARD_PHOTO_UNAVAILABLE');
+    this.name = 'GiftCardPhotoUnavailableError';
+  }
 }
 
 /** 0199: a gift card bought online (domain/credit/GiftCardPurchase.ts). */
@@ -68,27 +74,17 @@ export interface GiftCardOutboxMessage {
 
 export interface IGiftCardPurchaseRepository {
   /**
-   * The purchase, and (when photoId is given) its photo claimed in the same transaction. Throws PHOTO_UNAVAILABLE
-   * when that photo does not exist, is already on another purchase, or is older than two days.
+   * The purchase, and (when photoId is given) its photo, in one transaction (0201):
+   *  - an unclaimed upload made after `photoClaimableAfter` is claimed for it;
+   *  - a photo already on one of this buyer's purchases (the same phone) is copied for it, so trying again after a
+   *    failed or cancelled payment keeps the photo, and the first purchase keeps its own;
+   *  - anything else throws GiftCardPhotoUnavailableError and nothing is written.
    */
-  create(input: Omit<GiftCardPurchaseRecord, 'id' | 'status' | 'orderTrackingId' | 'redirectUrl' | 'providerStatus' | 'confirmationCode' | 'paymentMethod' | 'instrumentId' | 'cardLast4' | 'textStatus' | 'createdAt' | 'paidAt' | 'issuedAt'>): Promise<GiftCardPurchaseRecord>;
+  create(
+    input: Omit<GiftCardPurchaseRecord, 'id' | 'status' | 'orderTrackingId' | 'redirectUrl' | 'providerStatus' | 'confirmationCode' | 'paymentMethod' | 'instrumentId' | 'cardLast4' | 'textStatus' | 'createdAt' | 'paidAt' | 'issuedAt'>,
+    opts: { photoClaimableAfter: Date },
+  ): Promise<GiftCardPurchaseRecord>;
   byReference(reference: string): Promise<GiftCardPurchaseRecord | null>;
-  /** 0201: a processed photo, kept until a purchase claims it (or three days pass). */
-  savePhoto(image: Buffer, width: number, height: number, uploaderKey: string | null): Promise<string>;
-  /** The photo's JPEG bytes, or null: unknown, removed, or an unclaimed upload older than `unclaimedAfter`. */
-  photoImage(id: string, unclaimedAfter: Date): Promise<Buffer | null>;
-  /** Photos uploaded since `since`, claimed or not: shop-wide, or by one uploader (the daily ceilings). */
-  photosSince(since: Date, uploaderKey?: string): Promise<number>;
-  /**
-   * Photos no purchase claimed, uploaded before `unclaimedBefore`; photos of purchases that ended unpaid or
-   * refunded before `endedBefore`; and photos of cards that were used up, cancelled or expired before `cardDoneBefore`
-   * (the picture is kept while the card can still be opened and spent, not for ever).
-   */
-  deleteStalePhotos(unclaimedBefore: Date, endedBefore: Date, cardDoneBefore: Date): Promise<number>;
-  /** The purchase whose issued card has this code hash (the holder of the code is the person it is for). */
-  purchaseIdByCodeHash(codeHash: string): Promise<string | null>;
-  /** Staff: take the photo off a purchase (and delete it). */
-  removePhoto(purchaseId: string): Promise<boolean>;
   byTrackingId(trackingId: string): Promise<GiftCardPurchaseRecord | null>;
   /** The provider transaction opened for this purchase (once; a second call changes nothing). */
   recordStarted(id: string, trackingId: string, redirectUrl: string): Promise<void>;

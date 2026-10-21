@@ -1,8 +1,8 @@
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { clientKey, isInternalCall } from '../clientAddress';
-import { piiHasher } from '../../../infrastructure/security/PiiHashingService';
-import { GIFT_CARD_PHOTO_MAX_BYTES } from '../../../application/use-cases/credit/GiftCardPurchaseUseCases';
+import { GIFT_CARD_PHOTO_MAX_BYTES, type GiftCardPhotoRefusal } from '../../../domain/credit/GiftCardPhoto';
+import { GIFT_CARD_PHOTO_REFUSAL_WORDS, type RemoveGiftCardPhotoResult } from '../../../application/use-cases/credit/GiftCardPhotoUseCases';
 import { isGiftCardPurchaseReference } from '../../../domain/credit/GiftCardPurchase';
 import { z } from 'zod';
 import { Registry } from '../../../infrastructure/Registry';
@@ -379,21 +379,28 @@ routes.post('/gift-cards/open', async (c) => {
   return c.json({ success: true, data: { ...checked, code: normalized?.code ?? null, face, originalUgx } });
 });
 
+/** 0201: each photo refusal's HTTP status (the words come with it; the storefront shows them as they are). */
+const PHOTO_REFUSAL_STATUS: Record<GiftCardPhotoRefusal, 400 | 413 | 429 | 503> = {
+  empty: 400, not_an_image: 400, too_small: 400, too_detailed: 400, too_large: 413,
+  visitor_daily_limit: 429, shop_daily_limit: 429, unavailable: 503,
+};
+const removedPhotoResponse = (c: Context, result: RemoveGiftCardPhotoResult) => (result.ok
+  ? c.json({ success: true, data: { message: result.message } })
+  : c.json({ success: false, error: { code: result.reason === 'no_photo' ? 'NO_PHOTO' : 'NOT_FOUND', message: result.message } }, result.reason === 'no_photo' ? 409 : 404));
+
 /**
  * 0201: the buyer's optional photo (raw image bytes; the phone has already cropped it). Re-encoded without metadata
  * and kept until a purchase claims it. Answers the id the purchase form sends back.
  */
 routes.post('/gift-cards/photos', bodyLimit({
   maxSize: GIFT_CARD_PHOTO_MAX_BYTES,
-  onError: (c) => c.json({ success: false, error: { code: 'TOO_LARGE', message: 'Choose a photo smaller than 6 MB.' } }, 413),
+  onError: (c) => c.json({ success: false, error: { code: 'TOO_LARGE', message: GIFT_CARD_PHOTO_REFUSAL_WORDS.too_large } }, 413),
 }), async (c) => {
   c.header('Cache-Control', 'no-store');
   const bytes = Buffer.from(await c.req.arrayBuffer());
-  // Who uploads, for the per-visitor daily ceiling: a peppered hash of the rate-limit key, never the address itself.
-  // Our own server calls (no forwarded address) count only against the shop-wide ceiling.
-  const uploaderKey = isInternalCall(c) ? null : piiHasher.hashName(clientKey(c));
-  const result = await registry.giftCardPurchaseUseCases.uploadPhoto(bytes, uploaderKey);
-  if (!result.ok) return c.json({ success: false, error: { code: 'PHOTO_REFUSED', message: result.message } }, 400);
+  // The uploader for the per-visitor daily ceiling (hashed in the use case). Our own server calls carry no visitor.
+  const result = await registry.giftCardPhotoUseCases.upload(bytes, isInternalCall(c) ? null : clientKey(c));
+  if (!result.ok) return c.json({ success: false, error: { code: 'PHOTO_REFUSED', reason: result.reason, message: result.message } }, PHOTO_REFUSAL_STATUS[result.reason]);
   return c.json({ success: true, data: { photoId: result.photoId } });
 });
 
@@ -406,17 +413,13 @@ routes.post('/gift-cards/photo/remove-by-code', async (c) => {
   const body = await c.req.json().catch(() => null);
   const normalized = normalizeCreditCode(body?.code);
   if (!normalized) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'That code is not right. Check each character, or call us.' } }, 404);
-  const result = await registry.giftCardPurchaseUseCases.removePhotoByCode(normalized.code);
-  if (!result.ok) return c.json({ success: false, error: { code: 'NOT_REMOVED', message: result.message } }, result.purchaseId ? 409 : 404);
-  return c.json({ success: true, data: { message: result.message } });
+  return removedPhotoResponse(c, await registry.giftCardPhotoUseCases.removeByCode(normalized.code));
 });
 
 /** 0201: the buyer takes the photo off the card they bought (the purchase's unguessable reference is the proof). */
 routes.post('/gift-cards/purchase/:reference/remove-photo', async (c) => {
   c.header('Cache-Control', 'no-store');
-  const result = await registry.giftCardPurchaseUseCases.removePhoto(c.req.param('reference'));
-  if (!result.ok) return c.json({ success: false, error: { code: 'NOT_REMOVED', message: result.message } }, result.purchaseId ? 409 : 404);
-  return c.json({ success: true, data: { message: result.message } });
+  return removedPhotoResponse(c, await registry.giftCardPhotoUseCases.removeByReference(c.req.param('reference')));
 });
 
 /**
@@ -424,10 +427,12 @@ routes.post('/gift-cards/purchase/:reference/remove-photo', async (c) => {
  * code (the card) are shown, so the id is the permission; never indexed, never cached by a shared cache.
  */
 routes.get('/gift-cards/photos/:id', async (c) => {
-  const image = await registry.giftCardPurchaseUseCases.photoImage(c.req.param('id'));
+  const image = await registry.giftCardPhotoUseCases.image(c.req.param('id'));
   if (!image) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No such photo.' } }, 404);
-  return c.body(new Uint8Array(image), 200, {
-    'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=3600', 'X-Robots-Tag': 'noindex', 'X-Content-Type-Options': 'nosniff',
+  // A view of the stored bytes, not a copy (a Node Buffer's store is an ArrayBuffer; the type only says "like").
+  return c.body(new Uint8Array(image.buffer as ArrayBuffer, image.byteOffset, image.byteLength), 200, {
+    'Content-Type': 'image/jpeg', 'Content-Length': String(image.byteLength),
+    'Cache-Control': 'private, max-age=3600', 'X-Robots-Tag': 'noindex', 'X-Content-Type-Options': 'nosniff',
   });
 });
 

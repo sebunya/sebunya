@@ -1,5 +1,6 @@
 ---
 import { giftCardTheme, logoUrl } from '../lib/giftCardThemes';
+import { CARD_PLACEHOLDER, asCardNote, giftCardLabel, greetingParts } from '../lib/giftCardFaceText';
 import { formatUgx } from '../lib/money';
 
 /**
@@ -24,13 +25,9 @@ interface Props {
 }
 const { theme: themeKey, amountUgx, toName, fromName, message, photoUrl, masked, class: extra = '' } = Astro.props;
 const t = giftCardTheme(themeKey);
-const lines = t.headline.split('\n');
-const longWord = lines.some((l) => l.replace(/\u00ad/g, '').length > 12);
-// One image to a screen reader, so everything on the card is in its name: greeting, who, from, the amount, the note last.
-const label = [
-  `GoldPlus gift card: ${t.headline.replace(/\n/g, ' ').replace(/\u00ad/g, '')}`,
-  toName && `to ${toName}`, fromName && `from ${fromName}`, formatUgx(amountUgx), photoUrl && 'with a photo', message && `note: ${message}`,
-].filter(Boolean).join(', ');
+const { lines, long: longWord } = greetingParts(t.headline);
+const note = asCardNote(message);
+const label = giftCardLabel({ headline: t.headline, to: toName, from: fromName, amount: formatUgx(amountUgx), photo: Boolean(photoUrl), note });
 ---
 <div class={`gcf-shell ${extra}`}>
 <div
@@ -47,8 +44,8 @@ const label = [
       <p class={`gcf-greet ${longWord ? 'gcf-greet-long' : ''}`} data-gc-headline>{lines.map((l, i) => <>{i > 0 && <br />}{l}</>)}</p>
       <div class="gcf-person">
         <p class="gcf-label">To</p>
-        <p class="gcf-name" data-gc-to>{toName || 'Someone special'}</p>
-        <p class={`gcf-note ${message ? '' : 'gcf-hidden'}`} data-gc-message>{message ?? ''}</p>
+        <p class="gcf-name" data-gc-to>{toName || CARD_PLACEHOLDER.to}</p>
+        <p class={`gcf-note ${note ? '' : 'gcf-hidden'}`} data-gc-message>{note}</p>
       </div>
     </div>
     <div class="gcf-art">
@@ -57,7 +54,7 @@ const label = [
     </div>
   </div>
   <div class="gcf-band">
-    <p class="gcf-from"><span class="gcf-label">From</span><span data-gc-from>{fromName || 'You'}</span></p>
+    <p class="gcf-from"><span class="gcf-label">From</span><span data-gc-from>{fromName || CARD_PLACEHOLDER.from}</span></p>
     <div class="gcf-value">
       <p class="gcf-amount" data-gc-amount>{formatUgx(amountUgx)}</p>
       <slot>{masked && <p class="gcf-masked">{masked}</p>}</slot>

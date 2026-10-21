@@ -87,8 +87,8 @@ routes.post('/purchases/:reference/redirect', requirePermissions([PERMISSIONS.PA
 routes.post('/purchases/:reference/remove-photo', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), async (c) => {
   const user = c.get('user') as { id: string };
   const reference = c.req.param('reference') ?? '';
-  const result = await Registry.getInstance().giftCardPurchaseUseCases.removePhoto(reference);
-  if (result.ok && result.purchaseId) {
+  const result = await Registry.getInstance().giftCardPhotoUseCases.removeByReference(reference);
+  if (result.ok) {
     await Registry.getInstance().createAuditLogUseCase.execute({
       actorId: user.id, action: 'GIFT_CARD_PHOTO_REMOVED', entity: 'gift_card_purchase', entityId: result.purchaseId, newState: { reference },
     }).catch(() => undefined);

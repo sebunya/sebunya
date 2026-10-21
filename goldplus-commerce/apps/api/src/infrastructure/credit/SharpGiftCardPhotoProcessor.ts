@@ -1,37 +1,81 @@
-import type { IGiftCardPhotoProcessor } from '../../application/ports/IGiftCardPurchaseRepository';
+import type { IGiftCardPhotoProcessor } from '../../application/ports/IGiftCardPhotoRepository';
+import {
+  GIFT_CARD_PHOTO_MAX_INPUT_PIXELS, GIFT_CARD_PHOTO_MAX_SIDE, GIFT_CARD_PHOTO_MIN_SIDE, GIFT_CARD_PHOTO_STORED_MAX_BYTES,
+} from '../../domain/credit/GiftCardPhoto';
 
 /**
  * 0201: whatever a phone sent becomes a square JPEG of at most 1080 px. sharp drops every piece of metadata (EXIF,
- * GPS, camera) unless asked to keep it, and refuses anything that is not a real image. The crop was chosen on the
- * phone; a non-square upload is centred, never stretched.
+ * GPS, camera) and converts to sRGB unless asked otherwise, and refuses anything that is not a real image. The crop
+ * was chosen on the phone; a non-square upload is centred, never stretched.
+ *
+ * Memory is the constraint that matters: the API runs in a 512 MB container and libvips works outside the JavaScript
+ * heap. So the picture's declared size is checked before anything is decoded (GIFT_CARD_PHOTO_MAX_INPUT_PIXELS), it is
+ * decoded once, libvips keeps no cache of it, and at most two photos are worked on at a time in a process.
  *
  * sharp is a native module, loaded on the first photo rather than when the API starts: if its binary were ever
  * missing from an image, photos would say "not available" and everything else would keep running. (CI proves it
  * loads inside the production image: the api-image job.)
  */
+export { GIFT_CARD_PHOTO_STORED_MAX_BYTES };
+
 type Sharp = (typeof import('sharp'))['default'];
 let loaded: Promise<Sharp> | null = null;
-const loadSharp = () => (loaded ??= import('sharp').then((m) => ((m as unknown as { default?: Sharp }).default ?? (m as unknown as Sharp))));
+const loadSharp = () => (loaded ??= import('sharp').then((m) => {
+  const sharp = (m as unknown as { default?: Sharp }).default ?? (m as unknown as Sharp);
+  sharp.cache(false); // every photo is new: a cache only holds memory
+  return sharp;
+}));
 
-/** The column allows 1,500,000 bytes; a very detailed photo steps down in quality until it fits under this. */
-export const GIFT_CARD_PHOTO_STORED_MAX_BYTES = 1_400_000;
+const QUALITIES = [84, 74, 64, 54];
+const FORMATS = ['jpeg', 'png', 'webp', 'heif', 'avif'];
+const MAX_AT_ONCE = 2;
+
+/** At most MAX_AT_ONCE photos at a time; the rest wait their turn (uploads are rate-limited, so the queue stays short). */
+let running = 0;
+const waiting: Array<() => void> = [];
+async function oneAtATime<T>(work: () => Promise<T>): Promise<T> {
+  if (running >= MAX_AT_ONCE) await new Promise<void>((resolve) => waiting.push(resolve));
+  running += 1;
+  try {
+    return await work();
+  } finally {
+    running -= 1;
+    waiting.shift()?.();
+  }
+}
 
 export class SharpGiftCardPhotoProcessor implements IGiftCardPhotoProcessor {
-  async process(input: Buffer) {
+  async process(input: Buffer): ReturnType<IGiftCardPhotoProcessor['process']> {
     let sharp: Sharp;
-    try { sharp = await loadSharp(); } catch { loaded = null; throw new Error('PHOTO_PROCESSOR_UNAVAILABLE'); }
-    const meta = await sharp(input, { limitInputPixels: 40_000_000, failOn: 'error' }).metadata();
-    if (!meta.width || !meta.height || !['jpeg', 'png', 'webp', 'heif', 'avif'].includes(String(meta.format))) throw new Error('PHOTO_NOT_AN_IMAGE');
-    if (meta.width < 200 || meta.height < 200) throw new Error('PHOTO_TOO_SMALL');
-    const size = Math.min(1080, meta.width, meta.height);
-    for (const quality of [84, 74, 64, 54]) {
-      const { data, info } = await sharp(input, { limitInputPixels: 40_000_000 })
-        .rotate() // honour the phone's orientation, then forget it
-        .resize(size, size, { fit: 'cover', position: 'centre' })
-        .jpeg({ quality, mozjpeg: true })
-        .toBuffer({ resolveWithObject: true });
-      if (data.length <= GIFT_CARD_PHOTO_STORED_MAX_BYTES) return { image: data, width: info.width, height: info.height };
-    }
-    throw new Error('PHOTO_TOO_DETAILED');
+    try { sharp = await loadSharp(); } catch { loaded = null; return { ok: false, reason: 'unavailable' }; }
+    return oneAtATime(async () => {
+      // The header only: format and declared size, before a single pixel is decoded.
+      let meta;
+      try { meta = await sharp(input, { limitInputPixels: false, failOn: 'error' }).metadata(); } catch { return { ok: false, reason: 'not_an_image' } as const; }
+      if (!meta.width || !meta.height || !FORMATS.includes(String(meta.format))) return { ok: false, reason: 'not_an_image' } as const;
+      if (meta.width * meta.height > GIFT_CARD_PHOTO_MAX_INPUT_PIXELS) return { ok: false, reason: 'too_large' } as const;
+      if (meta.width < GIFT_CARD_PHOTO_MIN_SIDE || meta.height < GIFT_CARD_PHOTO_MIN_SIDE) return { ok: false, reason: 'too_small' } as const;
+
+      // Decode once: oriented, centred and sized, as raw pixels; then encode, stepping down in quality only if needed.
+      const side = Math.min(GIFT_CARD_PHOTO_MAX_SIDE, meta.width, meta.height);
+      let raw;
+      try {
+        raw = await sharp(input, { limitInputPixels: GIFT_CARD_PHOTO_MAX_INPUT_PIXELS, failOn: 'error' })
+          .rotate() // honour the phone's orientation, then forget it
+          .resize(side, side, { fit: 'cover', position: 'centre' })
+          .flatten({ background: '#ffffff' }) // a transparent PNG becomes white, as the phone's cropper makes it
+          .raw()
+          .toBuffer({ resolveWithObject: true });
+      } catch {
+        return { ok: false, reason: 'not_an_image' } as const;
+      }
+      for (const quality of QUALITIES) {
+        const { data, info } = await sharp(raw.data, { raw: { width: raw.info.width, height: raw.info.height, channels: raw.info.channels } })
+          .jpeg({ quality, mozjpeg: true })
+          .toBuffer({ resolveWithObject: true });
+        if (data.length <= GIFT_CARD_PHOTO_STORED_MAX_BYTES) return { ok: true, image: data, width: info.width, height: info.height } as const;
+      }
+      return { ok: false, reason: 'too_detailed' } as const;
+    });
   }
 }

@@ -11,7 +11,7 @@ export type GiftCardThemeKey =
   | 'gold' | 'birthday' | 'thanks' | 'celebrate' | 'love' | 'anniversary'
   | 'valentine' | 'mothers_day' | 'fathers_day' | 'easter' | 'eid' | 'christmas' | 'new_year' | 'festive';
 
-export const BRAND = { green: '#96CC06', black: '#000000', white: '#FFFFFF', grey: '#6B6B6B', paper: '#F4F4F2' } as const;
+export const BRAND = { green: '#96CC06', black: '#000000', white: '#FFFFFF' } as const;
 
 export interface GiftCardTheme {
   key: GiftCardThemeKey;
@@ -110,5 +110,5 @@ export function giftCardTheme(key: unknown): GiftCardTheme {
 
 export const logoUrl = (logo: GiftCardTheme['logo']) => `/gift-cards/goldplus-logo-${logo}.svg`;
 
-/** The note's limit: the same in the form, the API and the database (GIFT_CARD_MESSAGE_MAX). */
-export const GIFT_MESSAGE_MAX = 160;
+/** The note's limit: the same in the form, the API and the database (one constant, shared with the API). */
+export { GIFT_CARD_MESSAGE_MAX as GIFT_MESSAGE_MAX } from '@goldplus/shared/src/gift-cards/giftText';

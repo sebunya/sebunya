@@ -98,6 +98,12 @@ async function runOnce(): Promise<void> {
   } catch (error) {
     logger.error({ err: error }, '[gift-card] sweep failed');
   }
+  try {
+    // 0201: gift card photos the retention rules no longer keep (deletes only; both replicas may run it).
+    await registry.giftCardPhotoUseCases.sweep(new Date());
+  } catch (error) {
+    logger.error({ err: error }, '[gift-card-photo] sweep failed');
+  }
   let opsLock: HeldSessionLock | null = null;
   try {
     opsLock = await tryAcquireSessionLock(PAYMENT_OPS_LOCK_ID);

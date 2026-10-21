@@ -10,7 +10,7 @@ const URL = process.env.COMMERCE_TEST_DATABASE_URL;
 const describeIf = URL ? describe : describe.skip;
 
 describeIf('gift cards bought online (real PostgreSQL)', () => {
-  let raw: any; let repo: any; let outbox: any;
+  let raw: any; let repo: any; let outbox: any; let photos: any;
   const tag = Date.now().toString(36).toUpperCase().slice(-6);
   const purchaseIds: string[] = [];
   const photoIds: string[] = [];
@@ -18,11 +18,12 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
   let n = 0;
   const ref = () => `GC-${tag}${String(++n).padStart(10 - tag.length, '0')}`.slice(0, 13);
 
+  const claimable = () => new Date(Date.now() - 2 * 86_400_000);
   const create = async (over: Record<string, unknown> = {}) => {
     const p = await repo.create({
       reference: ref(), amountUgx: 50_000, buyerName: 'Robert S', buyerPhone: '+256701333444', buyerEmail: null, buyerUserId: null,
       fromName: 'Rob', recipientName: 'Sarah N', recipientPhone: '+256772111222', sendTo: 'recipient', message: 'Happy birthday!', theme: 'birthday', deliverOn: null, photoId: null, ...over,
-    });
+    }, { photoClaimableAfter: claimable() });
     purchaseIds.push(p.id);
     return p;
   };
@@ -39,6 +40,7 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     const postgres = require('../../apps/api/node_modules/postgres');
     raw = postgres(URL!, { max: 4, prepare: false });
     repo = new (await import('../../apps/api/src/infrastructure/credit/DrizzleGiftCardPurchaseRepository')).DrizzleGiftCardPurchaseRepository();
+    photos = new (await import('../../apps/api/src/infrastructure/credit/DrizzleGiftCardPhotoRepository')).DrizzleGiftCardPhotoRepository();
     outbox = new (await import('../../apps/api/src/infrastructure/db/repositories/DrizzleOutboxRepository')).DrizzleOutboxRepository(`worker-${tag}`);
   });
 
@@ -180,90 +182,108 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     await expect(create({ theme: 'neon' })).rejects.toThrow(/gift_card_purchases_theme_chk/);
   });
 
-  it('0201: a photo is stored as bytes, claimed by exactly one purchase in the same transaction, and removable', async () => {
-    const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(2048, 7), Buffer.from([0xff, 0xd9])]);
-    const id = await repo.savePhoto(jpeg, 1080, 1080, null);
-    photoIds.push(id);
-    expect(Buffer.compare(await repo.photoImage(id, new Date(Date.now() - 2 * 86_400_000)), jpeg)).toBe(0); // bytea round trip, byte for byte
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(2048, 7), Buffer.from([0xff, 0xd9])]);
+  const savePhoto = async (key: string | null = null) => { const id = await photos.save({ image: jpeg, width: 1080, height: 1080 }, key); photoIds.push(id); return id; };
+  const cutoffs = (o: Partial<Record<'unclaimedBefore' | 'purchaseEndedBefore' | 'cardDoneBefore', Date>>) => ({ unclaimedBefore: new Date(0), purchaseEndedBefore: new Date(0), cardDoneBefore: new Date(0), ...o });
+
+  it('0201: a photo is stored byte for byte and claimed by one purchase; another buyer cannot take it (nothing is written)', async () => {
+    const id = await savePhoto();
+    expect(Buffer.compare(await photos.image(id, claimable()), jpeg)).toBe(0); // bytea round trip
     const p = await create({ photoId: id });
     expect(p.photoId).toBe(id);
-    // A second purchase cannot take the same photo, and is not written at all (one transaction).
-    const before = (await raw`select count(*)::int as n from gift_card_purchases where photo_id = ${id}`)[0].n;
-    await expect(create({ photoId: id })).rejects.toThrow('PHOTO_UNAVAILABLE');
-    expect((await raw`select count(*)::int as n from gift_card_purchases where photo_id = ${id}`)[0].n).toBe(before);
-    // An unclaimed photo older than the cut-off is swept; a claimed one never is.
-    const stray = await repo.savePhoto(jpeg, 1080, 1080, null);
-    photoIds.push(stray);
-    await raw`update gift_card_photos set created_at = now() - interval '4 days' where id = any(${[id, stray]})`;
-    await repo.deleteStalePhotos(new Date(Date.now() - 3 * 86_400_000), new Date(Date.now() - 30 * 86_400_000), new Date(0));
-    expect(await repo.photoImage(stray, new Date(0))).toBeNull();
-    expect(await repo.photoImage(id, new Date(Date.now() - 2 * 86_400_000))).not.toBeNull();
-    // A photo older than two days cannot be claimed (the form asks for it again).
-    const old = await repo.savePhoto(jpeg, 1080, 1080, null);
-    photoIds.push(old);
-    await raw`update gift_card_photos set created_at = now() - interval '3 days' where id = ${old}`;
-    await expect(create({ photoId: old })).rejects.toThrow('PHOTO_UNAVAILABLE');
-    // The link stops serving an unclaimed upload once it can no longer be claimed.
-    const unclaimed = await repo.savePhoto(jpeg, 1080, 1080, null);
-    photoIds.push(unclaimed);
-    await raw`update gift_card_photos set created_at = now() - interval '50 hours' where id = ${unclaimed}`;
-    expect(await repo.photoImage(unclaimed, new Date(Date.now() - 48 * 3_600_000))).toBeNull();
-    // A purchase that ended unpaid more than 30 days ago loses its photo; the purchase itself stays.
-    const endedPhoto = await repo.savePhoto(jpeg, 1080, 1080, null);
-    photoIds.push(endedPhoto);
+    const before = (await raw`select count(*)::int as n from gift_card_purchases`)[0].n;
+    await expect(create({ photoId: id, buyerPhone: '+256709999888' })).rejects.toThrow('GIFT_CARD_PHOTO_UNAVAILABLE');
+    expect((await raw`select count(*)::int as n from gift_card_purchases`)[0].n).toBe(before);
+  });
+
+  it('0201: the same buyer trying again (after a failed payment) gets a copy for the new purchase; the first keeps its own', async () => {
+    const id = await savePhoto();
+    const first = await create({ photoId: id });
+    await raw`update gift_card_purchases set status = 'failed' where id = ${first.id}`;
+    const retry = await create({ photoId: id, buyerPhone: '+256 701 333 444' }); // the same phone, typed with spaces
+    photoIds.push(retry.photoId);
+    expect(retry.photoId).not.toBeNull();
+    expect(retry.photoId).not.toBe(id);
+    expect(Buffer.compare(await photos.image(retry.photoId, claimable()), jpeg)).toBe(0);
+    expect((await repo.byReference(first.reference)).photoId).toBe(id);
+    // The copy is a photo of its own: removing it from the retry leaves the first purchase's untouched.
+    expect(await photos.removeFromPurchase(retry.id)).toBe(true);
+    expect((await repo.byReference(first.reference)).photoId).toBe(id);
+  });
+
+  it('0201: an upload past its claim window can be neither claimed nor shown; the sweep deletes unclaimed ones after 3 days', async () => {
+    const old = await savePhoto();
+    await raw`update gift_card_photos set created_at = now() - interval '50 hours' where id = ${old}`;
+    expect(await photos.image(old, claimable())).toBeNull();
+    await expect(create({ photoId: old })).rejects.toThrow('GIFT_CARD_PHOTO_UNAVAILABLE');
+    const stray = await savePhoto();
+    const kept = await savePhoto();
+    const p = await create({ photoId: kept });
+    await raw`update gift_card_photos set created_at = now() - interval '4 days' where id = any(${[stray, kept]})`;
+    await photos.deleteStale(cutoffs({ unclaimedBefore: new Date(Date.now() - 3 * 86_400_000) }));
+    expect((await raw`select count(*)::int as n from gift_card_photos where id = ${stray}`)[0].n).toBe(0);
+    expect((await repo.byReference(p.reference)).photoId).toBe(kept); // claimed: never swept as unclaimed
+  });
+
+  it('0201: a purchase that ended unpaid 30+ days ago loses its photo; the purchase keeps everything else', async () => {
+    const endedPhoto = await savePhoto();
     const ended = await create({ photoId: endedPhoto });
     await raw`update gift_card_purchases set status = 'abandoned', updated_at = now() - interval '31 days' where id = ${ended.id}`;
-    expect(await repo.deleteStalePhotos(new Date(0), new Date(Date.now() - 30 * 86_400_000), new Date(0))).toBeGreaterThanOrEqual(1);
-    expect((await repo.byReference(ended.reference)).photoId).toBeNull();
+    expect(await photos.deleteStale(cutoffs({ purchaseEndedBefore: new Date(Date.now() - 30 * 86_400_000) }))).toBeGreaterThanOrEqual(1);
+    const after = await repo.byReference(ended.reference);
+    expect([after.photoId, after.status, after.amountUgx]).toEqual([null, 'abandoned', 50_000]);
     expect((await raw`select count(*)::int as n from gift_card_photos where id = ${endedPhoto}`)[0].n).toBe(0);
-    // The daily ceiling counts every upload in the window, claimed or not.
-    const since = new Date(Date.now() - 3_600_000);
-    const counted = await repo.photosSince(since);
-    photoIds.push(await repo.savePhoto(jpeg, 1080, 1080, null));
-    expect(await repo.photosSince(since)).toBe(counted + 1);
-    // Staff remove it: gone from the card and from the table.
-    expect(await repo.removePhoto(p.id)).toBe(true);
+  });
+
+  it('0201: removal by reference and by the card’s code finds the purchase; a second removal reports there is none', async () => {
+    const id = await savePhoto();
+    const p = await create({ photoId: id });
+    await repo.markPaid(p.id, { confirmationCode: `MTN-R-${tag}`, paymentMethod: 'MTN', providerStatus: '1', now: new Date() }, null);
+    const issued = await issue(p.id, `GPGC-REMV-OOOO-${tag.slice(0, 4)}`);
+    instrumentIds.push(issued.instrumentId);
+    expect(await photos.purchaseIdByReference(p.reference)).toBe(p.id);
+    expect(await photos.purchaseIdByCodeHash(`h-${tag}-GPGC-REMV-OOOO-${tag.slice(0, 4)}`)).toBe(p.id);
+    expect(await photos.purchaseIdByReference('GC-NOTAREAL00')).toBeNull();
+    expect(await photos.removeFromPurchase(p.id)).toBe(true);
     expect((await repo.byReference(p.reference)).photoId).toBeNull();
-    expect(await repo.photoImage(id, new Date(Date.now() - 2 * 86_400_000))).toBeNull();
-    expect(await repo.removePhoto(p.id)).toBe(false);
+    expect(await photos.image(id, claimable())).toBeNull();
+    expect(await photos.removeFromPurchase(p.id)).toBe(false);
   });
 
   it('0201: the database refuses an oversized or tiny photo', async () => {
-    await expect(repo.savePhoto(Buffer.alloc(1_600_000, 1), 1080, 1080, null)).rejects.toThrow(/gift_card_photos_size_chk/);
-    await expect(repo.savePhoto(Buffer.alloc(100, 1), 100, 100, null)).rejects.toThrow(/gift_card_photos_size_chk/);
+    await expect(photos.save({ image: Buffer.alloc(1_600_000, 1), width: 1080, height: 1080 }, null)).rejects.toThrow(/gift_card_photos_size_chk/);
+    await expect(photos.save({ image: Buffer.alloc(100, 1), width: 100, height: 100 }, null)).rejects.toThrow(/gift_card_photos_size_chk/);
   });
 
-  it('0201: uploads are counted per visitor (by a key, never an address); a card cancelled 90+ days ago loses its photo', async () => {
-    const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8]), Buffer.alloc(1024, 3), Buffer.from([0xff, 0xd9])]);
+  it('0201: uploads are counted per visitor (by a key, never an address) and across the shop', async () => {
     const key = `test-visitor-${tag}`;
     const since = new Date(Date.now() - 3_600_000);
-    const before = await repo.photosSince(since, key);
-    const mine = await repo.savePhoto(jpeg, 1080, 1080, key);
-    photoIds.push(mine);
-    photoIds.push(await repo.savePhoto(jpeg, 1080, 1080, `other-${tag}`));
-    expect(await repo.photosSince(since, key)).toBe(before + 1);
+    const [mineBefore, allBefore] = [await photos.countSince(since, key), await photos.countSince(since)];
+    await savePhoto(key);
+    await savePhoto(`other-${tag}`);
+    expect(await photos.countSince(since, key)).toBe(mineBefore + 1);
+    expect(await photos.countSince(since)).toBe(allBefore + 2);
+  });
 
-    // A paid card with the photo, then cancelled 91 days ago: the sweep takes the photo, the card and purchase stay.
+  it('0201: a card cancelled 90+ days ago loses its photo (with the ledger’s own guards in place)', async () => {
+    const mine = await savePhoto();
     const p = await create({ photoId: mine });
     await repo.markPaid(p.id, { confirmationCode: `MTN-${tag}`, paymentMethod: 'MTN', providerStatus: '1', now: new Date() }, null);
     const issued = await issue(p.id, `GPGC-PHOT-OOOO-${tag.slice(0, 4)}`);
     instrumentIds.push(issued.instrumentId);
-    // Cancelled recently: kept.
+    const done = cutoffs({ cardDoneBefore: new Date(Date.now() - 90 * 86_400_000) });
     await raw.begin(async (t: any) => {
       await t`set local goldplus.credit_maintenance = 'on'`;
       await t`update credit_instruments set status = 'void', voided_at = now() - interval '10 days' where id = ${issued.instrumentId}`;
     });
-    await repo.deleteStalePhotos(new Date(0), new Date(0), new Date(Date.now() - 90 * 86_400_000));
-    expect((await repo.byReference(p.reference)).photoId).toBe(mine);
-    // Cancelled 91 days ago: the photo goes.
+    await photos.deleteStale(done);
+    expect((await repo.byReference(p.reference)).photoId).toBe(mine); // cancelled recently: kept
     await raw.begin(async (t: any) => {
       await t`set local goldplus.credit_maintenance = 'on'`;
       await t`update credit_instruments set voided_at = now() - interval '91 days' where id = ${issued.instrumentId}`;
     });
-    await repo.deleteStalePhotos(new Date(0), new Date(0), new Date(Date.now() - 90 * 86_400_000));
+    await photos.deleteStale(done);
     expect((await repo.byReference(p.reference)).photoId).toBeNull();
     expect((await raw`select count(*)::int as n from gift_card_photos where id = ${mine}`)[0].n).toBe(0);
-    // The holder's code finds the purchase (for removal by the person it is for).
-    expect(await repo.purchaseIdByCodeHash(`h-${tag}-GPGC-PHOT-OOOO-${tag.slice(0, 4)}`)).toBe(p.id);
   });
 });

@@ -51,3 +51,4 @@ export * from './batteries';
 export * from './media/resolveGallery';
 export * from './activation/liveReviewRules';
 export * from './attribution/heardAbout';
+export * from './gift-cards/giftText';

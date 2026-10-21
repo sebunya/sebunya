@@ -14,9 +14,14 @@ export const GET: APIRoute = async ({ params }) => {
   try {
     const upstream = await fetch(`${apiBase}/commerce/gift-cards/photos/${id}`, { signal: AbortSignal.timeout(8000) });
     if (!upstream.ok) return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
-    return new Response(await upstream.arrayBuffer(), {
+    // Streamed through, not held in the storefront's memory.
+    const length = upstream.headers.get('content-length');
+    return new Response(upstream.body, {
       status: 200,
-      headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=3600', 'X-Robots-Tag': 'noindex', 'X-Content-Type-Options': 'nosniff' },
+      headers: {
+        'Content-Type': 'image/jpeg', ...(length ? { 'Content-Length': length } : {}),
+        'Cache-Control': 'private, max-age=3600', 'X-Robots-Tag': 'noindex', 'X-Content-Type-Options': 'nosniff',
+      },
     });
   } catch {
     return new Response('Unavailable', { status: 502, headers: { 'Cache-Control': 'no-store' } });

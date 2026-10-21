@@ -214,14 +214,17 @@ jobs:
           docker run --rm --entrypoint node goldplus-api:ci -e "
             const { SharpGiftCardPhotoProcessor } = require('./apps/api/dist/infrastructure/credit/SharpGiftCardPhotoProcessor.js');
             const sharp = require('sharp');
-            sharp({ create: { width: 1600, height: 1200, channels: 3, background: '#96CC06' } })
-              .jpeg().withExif({ IFD0: { Make: 'CiCam' } }).toBuffer()
-              .then((b) => new SharpGiftCardPhotoProcessor().process(b))
-              .then((o) => {
-                if (o.width !== 1080 || o.height !== 1080 || o.image.includes(Buffer.from('CiCam'))) throw new Error('unexpected output');
-                console.log('sharp works in the API image:', o.image.length, 'bytes');
-              })
-              .catch((e) => { console.error(e); process.exit(1); });
+            const processor = new SharpGiftCardPhotoProcessor();
+            (async () => {
+              const camera = await sharp({ create: { width: 1600, height: 1200, channels: 3, background: '#96CC06' } }).jpeg().withExif({ IFD0: { Make: 'CiCam' } }).toBuffer();
+              const o = await processor.process(camera);
+              if (!o.ok || o.width !== 1080 || o.height !== 1080 || o.image.includes(Buffer.from('CiCam'))) throw new Error('unexpected output: ' + JSON.stringify(o.ok ? { w: o.width, h: o.height } : o));
+              // The memory guard: a picture too large to decode safely is refused from its header.
+              const big = await sharp({ create: { width: 2100, height: 2100, channels: 3, background: '#000000' } }).png().toBuffer();
+              const r = await processor.process(big);
+              if (r.ok || r.reason !== 'too_large') throw new Error('the decode limit did not hold: ' + JSON.stringify(r.ok ? 'accepted' : r));
+              console.log('sharp works in the API image:', o.image.length, 'bytes; oversized picture refused:', r.reason);
+            })().catch((e) => { console.error(e); process.exit(1); });
           "
 
   # The browser suite needs a running shop. Until 2026-10-07 this job started

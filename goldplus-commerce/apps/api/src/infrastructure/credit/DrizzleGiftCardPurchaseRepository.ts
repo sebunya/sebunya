@@ -2,7 +2,9 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { outboxEvents } from '../db/schema/system';
 import { customerOutboxValues } from '../notifications/CustomerOutboxNotifier';
-import type { GiftCardOutboxMessage, GiftCardPurchaseRecord, IGiftCardPurchaseRepository } from '../../application/ports/IGiftCardPurchaseRepository';
+import {
+  GiftCardPhotoUnavailableError, type GiftCardOutboxMessage, type GiftCardPurchaseRecord, type IGiftCardPurchaseRepository,
+} from '../../application/ports/IGiftCardPurchaseRepository';
 
 const rowsOf = (r: unknown) => (Array.isArray(r) ? r : ((r as { rows?: unknown[] })?.rows ?? [])) as Array<Record<string, any>>;
 const at = (v: unknown) => (v ? new Date(v as string) : null);
@@ -44,6 +46,33 @@ const SELECT = sql.raw(`select p.*, i.code_last4 as card_last4,
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+const lastNine = (phone: string) => phone.replace(/\D/g, '').slice(-9);
+
+/**
+ * 0201: the photo a new purchase will carry, inside the purchase's own transaction. An unclaimed upload made after
+ * `claimableAfter` is claimed (the row lock makes it one purchase's). Otherwise, when the photo is already on one of
+ * this buyer's purchases (the same phone, last nine digits, as buyerActivity counts them), it is copied: trying again
+ * after a failed or cancelled payment keeps the photo, and the earlier purchase keeps its own, should it be paid late.
+ * Anything else (gone, too old, another buyer's): GiftCardPhotoUnavailableError, and the transaction writes nothing.
+ */
+async function claimPhoto(tx: Tx, photoId: string, buyerPhone: string, claimableAfter: Date): Promise<string> {
+  const [claimed] = rowsOf(await tx.execute(sql`
+    update gift_card_photos set attached_at = now()
+     where id = ${photoId} and attached_at is null and created_at > ${claimableAfter}
+    returning id`));
+  if (claimed) return String(claimed.id);
+  const [copy] = rowsOf(await tx.execute(sql`
+    insert into gift_card_photos (image, width, height, attached_at, uploader_key)
+    select ph.image, ph.width, ph.height, now(), ph.uploader_key
+      from gift_card_photos ph
+     where ph.id = ${photoId}
+       and exists (select 1 from gift_card_purchases p
+                    where p.photo_id = ph.id and right(regexp_replace(p.buyer_phone, '\\D', '', 'g'), 9) = ${lastNine(buyerPhone)})
+    returning id`));
+  if (copy) return String(copy.id);
+  throw new GiftCardPhotoUnavailableError();
+}
+
 /** The outbox row for a gift card message, written with the same writer (and encoding) as every customer message. */
 async function enqueueInTx(tx: Tx, m: GiftCardOutboxMessage, relatedEntityId: string): Promise<void> {
   const values = customerOutboxValues({
@@ -55,76 +84,20 @@ async function enqueueInTx(tx: Tx, m: GiftCardOutboxMessage, relatedEntityId: st
 
 /** 0199: gift cards bought online. Every status change is a compare-and-set on the current status. */
 export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepository {
-  async create(input: Parameters<IGiftCardPurchaseRepository['create']>[0]): Promise<GiftCardPurchaseRecord> {
+  async create(
+    input: Parameters<IGiftCardPurchaseRepository['create']>[0],
+    opts: Parameters<IGiftCardPurchaseRepository['create']>[1],
+  ): Promise<GiftCardPurchaseRecord> {
     return db.transaction(async (tx) => {
-      if (input.photoId) {
-        // The photo is claimed in the same transaction: one photo, one purchase, and only a fresh upload.
-        const claimed = rowsOf(await tx.execute(sql`
-          update gift_card_photos set attached_at = now()
-           where id = ${input.photoId} and attached_at is null and created_at > now() - interval '2 days' returning id`));
-        if (claimed.length === 0) throw new Error('PHOTO_UNAVAILABLE');
-      }
+      const photoId = input.photoId ? await claimPhoto(tx, input.photoId, input.buyerPhone, opts.photoClaimableAfter) : null;
       const [r] = rowsOf(await tx.execute(sql`
         insert into gift_card_purchases (reference, amount_ugx, buyer_name, buyer_phone, buyer_email, buyer_user_id, from_name,
                                          recipient_name, recipient_phone, send_to, message, theme, deliver_on, photo_id)
         values (${input.reference}, ${input.amountUgx}, ${input.buyerName}, ${input.buyerPhone}, ${input.buyerEmail}, ${input.buyerUserId},
                 ${input.fromName}, ${input.recipientName}, ${input.recipientPhone}, ${input.sendTo}, ${input.message}, ${input.theme}, ${input.deliverOn}::date,
-                ${input.photoId})
+                ${photoId})
         returning *`));
       return record(r);
-    });
-  }
-
-  async savePhoto(image: Buffer, width: number, height: number, uploaderKey: string | null): Promise<string> {
-    const [r] = rowsOf(await db.execute(sql`
-      insert into gift_card_photos (image, width, height, uploader_key) values (${image}, ${width}, ${height}, ${uploaderKey}) returning id`));
-    return String(r.id);
-  }
-  async photoImage(id: string, unclaimedAfter: Date): Promise<Buffer | null> {
-    const [r] = rowsOf(await db.execute(sql`
-      select image from gift_card_photos where id = ${id} and (attached_at is not null or created_at > ${unclaimedAfter})`));
-    return r?.image ? Buffer.from(r.image) : null;
-  }
-  async photosSince(since: Date, uploaderKey?: string): Promise<number> {
-    const [r] = rowsOf(await db.execute(sql`
-      select count(*)::int as n from gift_card_photos
-       where created_at > ${since} ${uploaderKey ? sql`and uploader_key = ${uploaderKey}` : sql``}`));
-    return Number(r?.n ?? 0);
-  }
-  async deleteStalePhotos(unclaimedBefore: Date, endedBefore: Date, cardDoneBefore: Date): Promise<number> {
-    const unclaimed = rowsOf(await db.execute(sql`delete from gift_card_photos where attached_at is null and created_at < ${unclaimedBefore} returning id`)).length;
-    // photo_id is ON DELETE SET NULL: the purchase keeps everything else.
-    const ended = rowsOf(await db.execute(sql`
-      delete from gift_card_photos where id in (
-        select photo_id from gift_card_purchases
-         where photo_id is not null and status in ('abandoned', 'failed', 'refunded') and updated_at < ${endedBefore})
-      returning id`)).length;
-    // A card that can no longer be spent: cancelled, expired, or used up (the shop's own balance rule: every ledger row
-    // except released holds) with its last movement before the cut-off.
-    const done = rowsOf(await db.execute(sql`
-      delete from gift_card_photos where id in (
-        select p.photo_id from gift_card_purchases p join credit_instruments i on i.id = p.instrument_id
-         where p.photo_id is not null and (
-               (i.status = 'void' and coalesce(i.voided_at, i.created_at) < ${cardDoneBefore})
-            or (i.expires_at is not null and i.expires_at < ${cardDoneBefore})
-            or (coalesce((select sum(l.amount_ugx) from credit_ledger l
-                           where l.instrument_id = i.id and not (l.type = 'HOLD' and l.hold_state = 'released')), 0) <= 0
-                and (select max(l.created_at) from credit_ledger l where l.instrument_id = i.id) < ${cardDoneBefore})))
-      returning id`)).length;
-    return unclaimed + ended + done;
-  }
-  async purchaseIdByCodeHash(codeHash: string): Promise<string | null> {
-    const [r] = rowsOf(await db.execute(sql`
-      select p.id from gift_card_purchases p join credit_instruments i on i.id = p.instrument_id where i.code_hash = ${codeHash} limit 1`));
-    return r?.id ? String(r.id) : null;
-  }
-  async removePhoto(purchaseId: string): Promise<boolean> {
-    return db.transaction(async (tx) => {
-      const [p] = rowsOf(await tx.execute(sql`select photo_id from gift_card_purchases where id = ${purchaseId} for update`));
-      if (!p?.photo_id) return false;
-      await tx.execute(sql`update gift_card_purchases set photo_id = null, updated_at = now() where id = ${purchaseId}`);
-      await tx.execute(sql`delete from gift_card_photos where id = ${p.photo_id}`);
-      return true;
     });
   }
 
@@ -141,7 +114,7 @@ export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepos
   }
 
   async buyerActivity(buyerPhone: string, since: Date): Promise<{ started: number; paidUgx: number }> {
-    const last9 = buyerPhone.replace(/\D/g, '').slice(-9);
+    const last9 = lastNine(buyerPhone);
     const [r] = rowsOf(await db.execute(sql`
       select count(*)::int as started,
              coalesce(sum(amount_ugx) filter (where status in ('paid','issued')), 0)::bigint as paid

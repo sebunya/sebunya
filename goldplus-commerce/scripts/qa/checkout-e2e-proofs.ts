@@ -669,7 +669,7 @@ async function giftCardPurchaseProofs(): Promise<void> {
   const pRow = await purchaseByBuyer('+256700000915');
   check('the purchase holds the photo', pRow?.photo_id, photoId);
   const reuse = await postForm(new Jar(), '/gift-card/buy', { ...giftForm, buyerPhone: '0700000916', photoId });
-  check('the same photo cannot ride a second purchase: the form says so, nothing is charged', [reuse.status, /Your photo expired/.test(reuse.body), (await stubSubmissions()).length], [200, true, 1]);
+  check('another buyer cannot put the same photo on their card: the form says so, nothing is charged', [reuse.status, /Your photo can no longer be used/.test(reuse.body), (await stubSubmissions()).length], [200, true, 1]);
   const s3 = (await stubSubmissions()) as Array<{ merchantReference: string; orderTrackingId: string }>;
   await fetch(`${STUB}/__stub/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderTrackingId: s3[0]?.orderTrackingId, status: 'COMPLETED' }) });
   await fetch(`${process.env.E2E_API_BASE}/commerce/payments/pesapal/ipn?OrderTrackingId=${encodeURIComponent(s3[0]?.orderTrackingId ?? '')}&OrderMerchantReference=${encodeURIComponent(s3[0]?.merchantReference ?? '')}&OrderNotificationType=IPNCHANGE`);
@@ -682,6 +682,21 @@ async function giftCardPurchaseProofs(): Promise<void> {
     check('their card shows the photo, and the share panel offers it (off until chosen)', [opened3.body.includes(`/gift-card/photo/${photoId}`), /data-share-opt="photo"/.test(opened3.body), /data-share-opt="photo" checked/.test(opened3.body)], [true, true, false]);
   } else note('the code was already sent and scrubbed; the open page with a photo is proved by the unit suite');
   if (E2E_GIFT_PHOTO_OUT) writeFileSync(E2E_GIFT_PHOTO_OUT, JSON.stringify({ code: code3?.code ?? null, reference: s3[0]?.merchantReference ?? null, photoId }));
+
+  // A payment that fails, then the same buyer tries again with the draft's photo: the new purchase carries a copy.
+  await resetStub();
+  const upRetry = await fetch(`${WEB}/gift-card/photo`, { method: 'POST', headers: { 'content-type': 'image/jpeg', origin: WEB }, body: camera });
+  const retryPhoto = String(((await upRetry.json().catch(() => null)) as any)?.data?.photoId ?? '');
+  const retryJar = new Jar();
+  check('a card with a photo goes to pay', (await postForm(retryJar, '/gift-card/buy', { ...giftForm, buyerPhone: '0700000918', photoId: retryPhoto })).status, 303);
+  const s5 = (await stubSubmissions()) as Array<{ merchantReference: string; orderTrackingId: string }>;
+  await fetch(`${STUB}/__stub/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderTrackingId: s5[0]?.orderTrackingId, status: 'FAILED' }) });
+  await fetch(`${process.env.E2E_API_BASE}/commerce/payments/pesapal/ipn?OrderTrackingId=${encodeURIComponent(s5[0]?.orderTrackingId ?? '')}&OrderMerchantReference=${encodeURIComponent(s5[0]?.merchantReference ?? '')}&OrderNotificationType=IPNCHANGE`);
+  check('…the payment fails', (await purchaseByBuyer('+256700000918'))?.status, 'failed');
+  const again = await postForm(retryJar, '/gift-card/buy', { ...giftForm, buyerPhone: '0700 000 918', photoId: retryPhoto });
+  const retried = await purchaseByBuyer('+256700000918');
+  check('…and trying again with the same photo works: the new purchase carries its own copy, the failed one keeps its own',
+    [again.status, Boolean(retried?.photo_id), retried?.photo_id !== retryPhoto, rowsOf(await db.execute(sql`select 1 from gift_card_purchases where photo_id = ${retryPhoto}`)).length], [303, true, true, 1]);
 
   // The person it is for can take the photo off their card (the code is the proof); the buyer can too (the reference).
   if (code3?.code) {

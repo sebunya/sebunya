@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   GIFT_CARD_PHOTO_RETENTION_DAYS, GIFT_CARD_PHOTOS_PER_DAY, GIFT_CARD_PHOTOS_PER_VISITOR_PER_DAY,
-} from '../../apps/api/src/application/use-cases/credit/GiftCardPurchaseUseCases';
+} from '../../apps/api/src/domain/credit/GiftCardPhoto';
 import { policyBySlug } from '../../apps/web/src/lib/legal-policies';
 
 const read = (p: string) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
