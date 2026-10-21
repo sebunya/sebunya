@@ -189,9 +189,9 @@ export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepos
   }
   async faceByCodeHash(codeHash: string) {
     const [r] = rowsOf(await db.execute(sql`
-      select p.theme, p.from_name, p.recipient_name, p.message from gift_card_purchases p
+      select p.theme, p.from_name, p.recipient_name, p.message, i.initial_value_ugx from gift_card_purchases p
         join credit_instruments i on i.id = p.instrument_id where i.code_hash = ${codeHash} limit 1`));
-    return r ? { theme: r.theme, fromName: r.from_name, toName: r.recipient_name, message: r.message ?? null } : null;
+    return r ? { theme: r.theme, fromName: r.from_name, toName: r.recipient_name, message: r.message ?? null, originalUgx: Number(r.initial_value_ugx) } : null;
   }
   async recent(limit: number) {
     return rowsOf(await db.execute(sql`${SELECT} order by p.created_at desc limit ${limit}`)).map(record);

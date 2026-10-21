@@ -6,6 +6,8 @@ export interface GiftCardFace {
   fromName: string;
   toName: string;
   message: string | null;
+  /** What the card was worth when given (never the balance): the holder may choose to show it when sharing. */
+  originalUgx: number;
 }
 
 /** 0199: a gift card bought online (domain/credit/GiftCardPurchase.ts). */

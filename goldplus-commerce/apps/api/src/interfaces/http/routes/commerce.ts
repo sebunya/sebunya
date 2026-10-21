@@ -370,7 +370,9 @@ routes.post('/gift-cards/open', async (c) => {
   if (!checked.ok) return c.json({ success: false, error: { code: 'STORE_CREDIT_UNAVAILABLE', message: 'That code is not right. Check each character, or call us.' } }, 404);
   const normalized = normalizeCreditCode(body?.code);
   const face = normalized ? await registry.giftCardPurchaseUseCases.faceForCode(normalized.code) : null;
-  return c.json({ success: true, data: { ...checked, code: normalized?.code ?? null, face } });
+  // A card staff issued has no face; its original value still lets the holder share "a GoldPlus gift" with an amount.
+  const originalUgx = face?.originalUgx ?? (normalized ? (await registry.creditRepo.findByCodeHash(creditCodeHash(normalized.code)))?.initialValueUgx ?? null : null);
+  return c.json({ success: true, data: { ...checked, code: normalized?.code ?? null, face, originalUgx } });
 });
 
 /** 0200: the occasions in the order the buy page shows them today (Kampala). Public: it is the calendar, nothing more. */
