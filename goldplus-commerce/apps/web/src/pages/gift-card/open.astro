@@ -14,7 +14,8 @@ import { formatUgx } from '../../lib/money';
  */
 type Opened = {
   kind: 'gift_card' | 'store_credit'; masked: string; balanceUgx: number; usable: boolean; reason: string | null; code: string | null;
-  face: { theme: string; fromName: string; toName: string; message: string | null } | null;
+  face: { theme: string; fromName: string; toName: string; message: string | null; originalUgx?: number } | null;
+  originalUgx?: number | null;
 };
 let opened: Opened | null = null;
 let problem = '';
@@ -42,6 +43,15 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
 // this page's own form, and the storefront's cross-site guard refuses it (seen in a real browser, 2026-10-21).
 Astro.response.headers.set('Referrer-Policy', 'same-origin');
 const kindWord = opened?.kind === 'store_credit' ? 'store credit' : 'gift card';
+// What "Share your gift" may use: an explicit list of permitted fields, built here and nothing more. The code, the
+// balance, the private link and anything about payment never enter it (the share script reads only this).
+const shareSource = opened ? {
+  occasion: opened.face?.theme ?? 'gold',
+  recipientName: opened.face?.toName ?? null,
+  senderName: opened.face?.fromName ?? null,
+  message: opened.face?.message ?? null,
+  originalUgx: opened.originalUgx ?? opened.face?.originalUgx ?? null,
+} : null;
 ---
 <BaseLayout title="A GoldPlus gift card for you" description="Someone sent you a GoldPlus gift card. Open it, scratch to reveal your code, and spend it on shopgoldplus.com or in our shop in Kampala." robotsMeta="noindex,nofollow">
   <div class="mx-auto max-w-xl px-4 py-10 sm:py-14" data-gift-card-open data-state={opened ? (opened.usable ? 'ready' : 'unusable') : problem ? 'problem' : 'form'}>
@@ -67,6 +77,65 @@ const kindWord = opened?.kind === 'store_credit' ? 'store credit' : 'gift card';
         <div class="mt-6">
           <GiftCardFace theme={opened.face?.theme} amountUgx={opened.balanceUgx} toName={opened.face?.toName} fromName={opened.face?.fromName ?? 'GoldPlus'} message={opened.face?.message} masked={opened.usable ? null : opened.masked} />
         </div>
+
+        {/* Share your gift: optional, secondary, and available after the card is spent too. */}
+        <script type="application/json" id="gc-share-source" nonce={Astro.locals.cspNonce} set:html={JSON.stringify(shareSource).replace(/</g, '\\u003c')}></script>
+        <div class="mt-3 flex justify-end">
+          <button type="button" class="inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-xs font-black uppercase tracking-wider text-gray-900" data-share-open aria-expanded="false" aria-controls="share-panel" hidden>Share your gift</button>
+        </div>
+        <section id="share-panel" class="mt-3 hidden rounded-2xl border border-slate-200 bg-white p-4 sm:p-5" aria-labelledby="share-title" data-share-panel>
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h2 id="share-title" class="text-lg font-black text-gray-900">Share your gift</h2>
+              <p class="mt-0.5 text-sm text-slate-600">Choose what you’d like others to see.</p>
+            </div>
+            <button type="button" class="min-h-10 rounded-full px-3 text-sm font-bold text-slate-600 underline" data-share-close>Close</button>
+          </div>
+          <div class="mt-4 grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div class="flex items-start justify-center rounded-xl bg-slate-100 p-3">
+              <canvas class="h-auto max-h-[420px] w-auto max-w-full rounded-lg shadow" data-share-canvas aria-label="Preview of the picture you will share" role="img"></canvas>
+            </div>
+            <div class="space-y-4">
+              <fieldset class="space-y-2" data-share-options>
+                <legend class="text-sm font-bold text-gray-900">Show on the picture</legend>
+                {shareSource?.message && <label class="flex items-center gap-3 text-sm"><input type="checkbox" class="h-5 w-5 accent-[#456B00]" data-share-opt="message" />The personal message</label>}
+                {shareSource?.recipientName && <label class="flex items-center gap-3 text-sm"><input type="checkbox" class="h-5 w-5 accent-[#456B00]" data-share-opt="recipientName" />My name ({shareSource.recipientName})</label>}
+                {shareSource?.senderName && <label class="flex items-center gap-3 text-sm"><input type="checkbox" class="h-5 w-5 accent-[#456B00]" data-share-opt="senderName" />Who it is from ({shareSource.senderName})</label>}
+                {shareSource?.originalUgx && <label class="flex items-center gap-3 text-sm"><input type="checkbox" class="h-5 w-5 accent-[#456B00]" data-share-opt="amount" />The gift amount ({formatUgx(shareSource.originalUgx)})</label>}
+              </fieldset>
+              <div class="hidden space-y-1" data-share-excerpt-box>
+                <label class="block text-sm font-bold text-gray-900" for="share-excerpt">A shorter message for the picture</label>
+                <p class="text-xs text-slate-600">The message is long for this size. Your card keeps the full message; this is only for the picture.</p>
+                <textarea id="share-excerpt" rows="3" maxlength="200" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-base" data-share-excerpt></textarea>
+                <p class="hidden text-xs font-semibold text-amber-800" data-share-excerpt-warn>Still too long for this size: shorten it a little more.</p>
+              </div>
+              <fieldset>
+                <legend class="text-sm font-bold text-gray-900">Size</legend>
+                <div class="mt-2 grid grid-cols-2 gap-2">
+                  <label class="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-slate-300 text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20"><input type="radio" name="share-size" value="square" checked class="sr-only" />Square</label>
+                  <label class="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-slate-300 text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20"><input type="radio" name="share-size" value="story" class="sr-only" />Story / Status</label>
+                </div>
+              </fieldset>
+              <div class="space-y-2">
+                <label class="block text-sm font-bold text-gray-900" for="share-caption">Caption <span class="font-normal text-slate-500">(yours to write; ideas below)</span></label>
+                <div class="flex flex-wrap gap-2" data-share-captions></div>
+                <textarea id="share-caption" rows="2" maxlength="300" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-base" data-share-caption></textarea>
+                <label class="flex items-center gap-3 text-sm"><input type="checkbox" class="h-5 w-5 accent-[#456B00]" data-share-link />Add a link to buy GoldPlus gift cards</label>
+              </div>
+              {/* Thumb-sized on a phone: the share menu first and full width, save and copy side by side. */}
+              <div class="space-y-2">
+                <button type="button" class="hidden min-h-14 w-full items-center justify-center rounded-full bg-brand-primary px-5 text-base font-black text-brand-black disabled:opacity-50" data-share-native disabled>Share image</button>
+                <div class="grid grid-cols-2 gap-2">
+                  <button type="button" class="inline-flex min-h-12 items-center justify-center rounded-full border-2 border-brand-primary px-3 text-sm font-black text-gray-900 disabled:opacity-50" data-share-save disabled>Save image</button>
+                  <button type="button" class="inline-flex min-h-12 items-center justify-center rounded-full border-2 border-slate-300 px-3 text-sm font-black text-gray-900" data-share-copy>Copy caption</button>
+                </div>
+              </div>
+              <p class="hidden text-sm text-slate-600" data-share-hint>Save the image, then upload it in your favourite app.</p>
+              <p class="text-sm font-semibold text-slate-700" aria-live="polite" data-share-status></p>
+              <button type="button" class="hidden min-h-11 rounded-full border border-slate-300 px-4 text-xs font-black uppercase" data-share-retry>Try again</button>
+            </div>
+          </div>
+        </section>
 
         {opened.usable && opened.code && (
           <section class="mt-6" aria-labelledby="scratch-title" data-scratch>
@@ -203,6 +272,138 @@ const kindWord = opened?.kind === 'store_credit' ? 'store credit' : 'gift card';
     // "Shop with it": checkout fills the gift card box from this tab (sessionStorage dies with the tab).
     panel.querySelector('[data-shop-with]')?.addEventListener('click', () => {
       try { sessionStorage.setItem('gp_gift_code', code); } catch { /* the code is on screen to type */ }
+    });
+  }
+</script>
+
+<script>
+  import { PUBLIC_BUY_URL, canvasToBlob, captionSuggestions, drawShareImage, messageFits, shareContent, shareFileName, type ShareSize } from '../../lib/giftCardShare';
+
+  // "Share your gift". Reads ONLY #gc-share-source (the permitted fields the page wrote), never the card's code,
+  // balance or link. Nothing is posted anywhere: the picture is made here and handed to the phone's own share menu.
+  const sourceEl = document.getElementById('gc-share-source');
+  const panel = document.querySelector<HTMLElement>('[data-share-panel]');
+  const openBtn = document.querySelector<HTMLButtonElement>('[data-share-open]');
+  let raw: Record<string, unknown> | null = null;
+  try { raw = JSON.parse(sourceEl?.textContent || 'null'); } catch { raw = null; }
+  if (raw && panel && openBtn) {
+    // Re-picked by name: even the page's own object cannot add a field the renderer would use.
+    const source = {
+      occasion: String(raw.occasion ?? 'gold'),
+      recipientName: typeof raw.recipientName === 'string' ? raw.recipientName : null,
+      senderName: typeof raw.senderName === 'string' ? raw.senderName : null,
+      message: typeof raw.message === 'string' ? raw.message : null,
+      originalUgx: typeof raw.originalUgx === 'number' ? raw.originalUgx : null,
+    };
+    const canvas = panel.querySelector<HTMLCanvasElement>('[data-share-canvas]')!;
+    const status = panel.querySelector<HTMLElement>('[data-share-status]')!;
+    const retry = panel.querySelector<HTMLButtonElement>('[data-share-retry]')!;
+    const nativeBtn = panel.querySelector<HTMLButtonElement>('[data-share-native]')!;
+    const saveBtn = panel.querySelector<HTMLButtonElement>('[data-share-save]')!;
+    const hint = panel.querySelector<HTMLElement>('[data-share-hint]')!;
+    const captionBox = panel.querySelector<HTMLTextAreaElement>('[data-share-caption]')!;
+    const linkBox = panel.querySelector<HTMLInputElement>('[data-share-link]')!;
+    const excerptBox = panel.querySelector<HTMLElement>('[data-share-excerpt-box]')!;
+    const excerpt = panel.querySelector<HTMLTextAreaElement>('[data-share-excerpt]')!;
+    const excerptWarn = panel.querySelector<HTMLElement>('[data-share-excerpt-warn]')!;
+    const choice = (k: string) => Boolean(panel.querySelector<HTMLInputElement>(`[data-share-opt="${k}"]`)?.checked);
+    const size = () => (panel.querySelector<HTMLInputElement>('input[name="share-size"]:checked')?.value === 'story' ? 'story' : 'square') as ShareSize;
+    let file: File | null = null;
+    let blob: Blob | null = null;
+    let timer = 0;
+    let run = 0;
+
+    // Captions: the occasion's own, then the general thank-yous. Never the private message, no tags, no hashtags.
+    const chips = panel.querySelector<HTMLElement>('[data-share-captions]')!;
+    for (const c of captionSuggestions(source.occasion)) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'min-h-10 rounded-full border border-slate-300 bg-white px-3 text-xs font-bold text-gray-900';
+      b.textContent = c;
+      b.addEventListener('click', () => { captionBox.value = c; captionBox.focus(); });
+      chips.append(b);
+    }
+    const caption = () => [captionBox.value.trim(), linkBox.checked ? PUBLIC_BUY_URL : ''].filter(Boolean).join('\n');
+
+    async function render() {
+      const mine = ++run;
+      status.textContent = '';
+      retry.classList.add('hidden');
+      nativeBtn.disabled = true; saveBtn.disabled = true; file = null; blob = null;
+      // A message too long for this size is never cut or shrunk: the recipient writes a shorter one for the picture.
+      let messageForPicture: string | null = null;
+      if (choice('message') && source.message) {
+        const ctx = canvas.getContext('2d')!;
+        const fits = messageFits(ctx, source.message, size());
+        excerptBox.classList.toggle('hidden', fits);
+        if (!fits) {
+          if (!excerpt.value) excerpt.value = source.message;
+          const ok = messageFits(ctx, excerpt.value.trim(), size()) && excerpt.value.trim().length > 0;
+          excerptWarn.classList.toggle('hidden', ok);
+          messageForPicture = ok ? excerpt.value.trim() : null;
+        }
+      } else excerptBox.classList.add('hidden');
+      const content = shareContent(source, {
+        recipientName: choice('recipientName'), senderName: choice('senderName'),
+        // In whole, when it fits; otherwise only the recipient's own shorter version (never a silent cut).
+        message: choice('message') && (excerptBox.classList.contains('hidden') || messageForPicture !== null),
+        amount: choice('amount'),
+      }, messageForPicture);
+      try {
+        await drawShareImage(canvas, content, size(), '/goldplus-logo-header-desktop-150x43.svg');
+        const b = await canvasToBlob(canvas);
+        if (mine !== run) return; // a newer choice is being drawn
+        blob = b;
+        file = new File([b], shareFileName(source.occasion, size()), { type: 'image/png' });
+        saveBtn.disabled = false;
+        const canFiles = typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] });
+        nativeBtn.classList.toggle('hidden', !canFiles); nativeBtn.classList.toggle('inline-flex', canFiles);
+        nativeBtn.disabled = !canFiles;
+        hint.classList.toggle('hidden', canFiles);
+      } catch {
+        if (mine !== run) return;
+        // Choices are kept; a retry draws again. Never a fallback to sharing a link.
+        status.textContent = 'We could not make the picture just now. Your choices are kept.';
+        retry.classList.remove('hidden');
+      }
+    }
+    const soon = () => { clearTimeout(timer); timer = window.setTimeout(render, 120); };
+    panel.addEventListener('change', (e) => { if ((e.target as HTMLElement).matches('[data-share-opt], input[name="share-size"]')) soon(); });
+    excerpt.addEventListener('input', soon);
+    retry.addEventListener('click', render);
+
+    openBtn.hidden = false;
+    openBtn.addEventListener('click', () => {
+      const open = panel.classList.toggle('hidden') === false;
+      openBtn.setAttribute('aria-expanded', String(open));
+      if (open) { render(); panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+    });
+    panel.querySelector('[data-share-close]')?.addEventListener('click', () => { panel.classList.add('hidden'); openBtn.setAttribute('aria-expanded', 'false'); openBtn.focus(); });
+
+    nativeBtn.addEventListener('click', async () => {
+      if (!file) return;
+      try {
+        await navigator.share({ files: [file], text: caption() || undefined });
+        status.textContent = ''; // the menu closed; whether it was posted is the app's to know, not ours to claim
+      } catch (err) {
+        // Closing the share menu is not an error.
+        status.textContent = (err as DOMException)?.name === 'AbortError' ? '' : 'The share menu did not open. Save the image, then upload it in your favourite app.';
+      }
+    });
+    saveBtn.addEventListener('click', () => {
+      if (!blob || !file) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = file.name;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      status.textContent = 'Your image is downloading.';
+    });
+    panel.querySelector('[data-share-copy]')?.addEventListener('click', async () => {
+      const text = caption();
+      if (!text) { status.textContent = 'Write or pick a caption first.'; captionBox.focus(); return; }
+      try { await navigator.clipboard.writeText(text); status.textContent = 'Caption copied.'; }
+      catch { captionBox.select(); status.textContent = 'Select the caption and copy it.'; }
     });
   }
 </script>

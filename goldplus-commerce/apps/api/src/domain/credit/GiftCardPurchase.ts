@@ -8,6 +8,7 @@
  * Pure: no database, no clock of its own, no randomness of its own.
  */
 import { SECOND_APPROVAL_ABOVE_UGX } from './CreditInstrument';
+import { GIFT_CARD_OCCASIONS, isGiftCardOccasion, type GiftCardOccasion } from './GiftCardOccasions';
 
 export const GIFT_CARD_MIN_UGX = 10_000;
 /** Online cards never need a second staff approval: the ceiling is the approval threshold. */
@@ -25,10 +26,10 @@ export const GIFT_CARD_MESSAGE_MAX = 100;
 export const GIFT_CARD_FROM_MAX = 40;
 
 export type GiftCardSendTo = 'recipient' | 'buyer';
-/** The card's look, chosen by the buyer (the storefront draws each; the database checks the list). */
-export const GIFT_CARD_THEMES = ['gold', 'birthday', 'thanks', 'love', 'celebrate', 'festive'] as const;
-export type GiftCardTheme = (typeof GIFT_CARD_THEMES)[number];
-export const isGiftCardTheme = (v: unknown): v is GiftCardTheme => typeof v === 'string' && (GIFT_CARD_THEMES as readonly string[]).includes(v);
+/** The card's look is its occasion (GiftCardOccasions.ts: one list; the storefront draws each; the database checks it). */
+export const GIFT_CARD_THEMES = GIFT_CARD_OCCASIONS;
+export type GiftCardTheme = GiftCardOccasion;
+export const isGiftCardTheme = isGiftCardOccasion;
 export type GiftCardPurchaseStatus = 'awaiting_payment' | 'paid' | 'issued' | 'failed' | 'abandoned' | 'review' | 'refunded';
 
 export interface GiftCardPurchaseRequest {

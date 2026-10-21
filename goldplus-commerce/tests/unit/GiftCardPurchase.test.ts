@@ -103,6 +103,12 @@ describe('gift card messages (0199)', () => {
     expect(CUSTOMER_TRANSACTIONAL_TEMPLATES).toEqual(expect.arrayContaining(['GIFT_CARD_RECEIVED', 'GIFT_CARD_PAID']));
   });
 
+  it('an emoji in the message shows on the card but not in the SMS (one emoji would triple its parts)', () => {
+    const t = smsText('GIFT_CARD_RECEIVED', { fromName: 'Rob 😊', giftMessage: 'Happy birthday! 🎂', valueUgx: 50_000, creditCode: 'GPGC-AAAA-BBBB-CCCC' } as never)!;
+    expect(t).toContain('Rob sent you a gift card of UGX 50,000: "Happy birthday!"');
+    expect(/[\u{1F300}-\u{1FAFF}]/u.test(t)).toBe(false);
+  });
+
   it('every gift card text stays in the GSM alphabet (one "•" made the receipt UCS-2: 3 SMS parts instead of 2)', async () => {
     const GSM = "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà^{}\\[~]|€";
     const h = harness();

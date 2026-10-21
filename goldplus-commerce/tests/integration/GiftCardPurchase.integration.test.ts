@@ -89,7 +89,7 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     await expect(raw`update gift_card_purchases set instrument_id = null where id = ${p.id}`).rejects.toThrow(/gift_card_purchases_issued_chk/);
     // The open page finds the card's face by its code's hash.
     expect(await repo.faceByCodeHash(`h-${tag}-${winners[0] === a ? `GPGC-AAAA-BBBB-${tag.slice(0, 4)}` : `GPGC-CCCC-DDDD-${tag.slice(0, 4)}`}`))
-      .toEqual({ theme: 'birthday', fromName: 'Rob', toName: 'Sarah N', message: 'Happy birthday!' });
+      .toEqual({ theme: 'birthday', fromName: 'Rob', toName: 'Sarah N', message: 'Happy birthday!', originalUgx: 50000 });
     expect(await repo.faceByCodeHash('no-such-hash')).toBeNull();
   });
 
@@ -157,6 +157,19 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     const after = await repo.buyerActivity('+256701333444', since);
     expect(after.started).toBe(before.started + 1);
     expect(after.paidUgx).toBe(before.paidUgx + 50_000);
+  });
+
+  it('0200: the new occasions are accepted; the occasion settings round-trip (also when stored as a jsonb string)', async () => {
+    const p = await create({ theme: 'eid' });
+    expect(p.theme).toBe('eid');
+    const { DrizzleOccasionSettingsRepository } = await import('../../apps/api/src/infrastructure/credit/DrizzleOccasionSettingsRepository');
+    const settings = new DrizzleOccasionSettingsRepository();
+    const before = await settings.read();
+    await settings.write({ dates: [{ occasion: 'eid', start: '2027-03-10', end: '2027-03-11' }], overrides: [] }, '00000000-0000-4000-8000-0000000000a1');
+    expect(await settings.read()).toEqual({ dates: [{ occasion: 'eid', start: '2027-03-10', end: '2027-03-11' }], overrides: [] });
+    await raw`update gift_card_occasion_settings set settings = to_jsonb(${JSON.stringify({ overrides: [] })}::text) where id = 1`;
+    expect(await settings.read()).toEqual({ overrides: [] });
+    await raw`update gift_card_occasion_settings set settings = ${JSON.stringify(before)}::jsonb where id = 1`;
   });
 
   it('the database refuses an amount outside 10,000–500,000 and a "send to them" with no number', async () => {

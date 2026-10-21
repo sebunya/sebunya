@@ -1,4 +1,4 @@
-import { bigint, check, date, index, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { bigint, check, date, index, jsonb, pgTable, smallint, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -87,3 +87,11 @@ export const giftCardPurchases = pgTable('gift_card_purchases', {
   buyerUserIdx: index('gift_card_purchases_buyer_user_idx').on(t.buyerUserId),
   sendToChk: check('gift_card_purchases_send_to_chk', sql`${t.sendTo} in ('recipient','buyer')`),
 }));
+
+/** 0200: the owner's occasion adjustments (one row): Eid dates and time-boxed feature/hide. Prominence only. */
+export const giftCardOccasionSettings = pgTable('gift_card_occasion_settings', {
+  id: smallint('id').primaryKey().default(1),
+  settings: jsonb('settings').default({}).notNull(),
+  updatedBy: uuid('updated_by'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});

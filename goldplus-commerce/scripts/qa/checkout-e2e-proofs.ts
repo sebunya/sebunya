@@ -550,6 +550,18 @@ async function giftCardPurchaseProofs(): Promise<void> {
   // Phone-first: one name (yours is the card's From), no email, the amount on the pay button.
   check('the form asks only what it needs (no separate From, no email)', [/name="fromName"/.test(buyPage.body), /name="buyerEmail"/.test(buyPage.body)], [false, false]);
   check('the pay button carries the amount', /Pay UGX\s50,000/.test(buyPage.body), true);
+  // Occasions: the first six by the calendar, every other one a tap away (View all occasions).
+  const firstSix = (html: string) => [...(html.split('data-occasions-first')[1] ?? '').split('data-occasions-more')[0].matchAll(/data-occasion="([a-z_]+)"/g)].map((m) => m[1]);
+  const allOccasions = (html: string) => [...html.matchAll(/name="theme" value="([a-z_]+)"/g)].map((m) => m[1]).sort();
+  check('"Choose an occasion" with "View all occasions"', /Choose an occasion/.test(buyPage.body) && /View all occasions/.test(buyPage.body), true);
+  const xmasDay = await get(new Jar(), '/gift-card/buy?on=2026-12-25');
+  check('on Christmas Day: Christmas (Today) and New Year first, then A gift for you and Birthday', firstSix(xmasDay.body), ['christmas', 'new_year', 'gold', 'birthday', 'thanks', 'celebrate']);
+  check('…labelled from the dates', /Today<\/span>/.test(xmasDay.body) && /Coming up<\/span>/.test(xmasDay.body), true);
+  const plainDay = await get(new Jar(), '/gift-card/buy?on=2026-10-21');
+  check('on an ordinary day (21 October): the everyday six', firstSix(plainDay.body), ['gold', 'birthday', 'thanks', 'celebrate', 'love', 'anniversary']);
+  check('every one of the 14 occasions is selectable on both days', [allOccasions(xmasDay.body).length, allOccasions(plainDay.body).length, new Set(allOccasions(xmasDay.body)).size], [14, 14, 14]);
+  const outOfSeason = await get(new Jar(), '/gift-card/buy?theme=valentine&on=2026-10-21');
+  check('a chosen out-of-season occasion is shown beside the six, marked "Your choice", and still selected', /data-occasion="valentine"[^>]*>\s*<input[^>]*value="valentine" checked[\s\S]{0,4000}?Your choice<\/span>\s*<span[^>]*>Valentine/.test(outOfSeason.body.split('data-occasions-more')[0]), true);
   const wrong = await postForm(jar, '/gift-card/buy', { ...giftForm, message: 'Send 50,000 to 0772 123 456 now' });
   check('the page comes back (no payment redirect)', wrong.status, 200);
   check('it says why, next to the message', /cannot carry links, web addresses or phone numbers/.test(wrong.body), true);
@@ -599,7 +611,7 @@ async function giftCardPurchaseProofs(): Promise<void> {
     note('the code was already sent and scrubbed from the outbox; the open page is proved by the unit suite');
   }
   const page = await get(jar, `/gift-card/bought?ref=${encodeURIComponent(ref)}`);
-  check('the buyer’s page says it is paid and where the text stands (no sender runs here: queued), number masked', /Thank you, it is paid[\s\S]*(Sarah has been texted, on 07•• ••• 912, a link to open the card|being texted to Sarah on 07•• ••• 912)/.test(page.body), true);
+  check('the buyer’s page says it is paid and where the text stands (no sender runs here: queued), number masked', /Thank you, it is paid[\s\S]*(Sarah has been texted, on 07••\s•••\s912, a link to open the card|being texted to Sarah on 07••\s•••\s912)/.test(page.body), true);
   const ipn = await fetch(`${process.env.E2E_API_BASE}/commerce/payments/pesapal/ipn?OrderTrackingId=${encodeURIComponent(subs[0]?.orderTrackingId ?? '')}&OrderMerchantReference=${encodeURIComponent(ref)}&OrderNotificationType=IPNCHANGE`);
   check('the IPN that follows is acknowledged', ipn.status, 200);
   check('and makes no second card', rowsOf(await db.execute(sql`select 1 from credit_instruments where reason like ${`%${ref}%`}`)).length, 1);
@@ -623,10 +635,10 @@ async function giftCardPurchaseProofs(): Promise<void> {
   console.log('\n--- 18. a buyer who gives the card in person needs no number for the recipient');
   await resetStub();
   const meJar = new Jar();
-  const me = await postForm(meJar, '/gift-card/buy', { ...giftForm, recipientPhone: '', sendToMe: '1', buyerPhone: '0700000914' });
+  const me = await postForm(meJar, '/gift-card/buy', { ...giftForm, theme: 'eid', recipientPhone: '', sendToMe: '1', buyerPhone: '0700000914' });
   check('they are sent to pay', me.status, 303);
   const meRow = await purchaseByBuyer('+256700000914');
-  check('the code will come to the buyer', [meRow?.send_to, meRow?.recipient_phone ?? null, meRow?.from_name], ['buyer', null, 'Rob Harness']);
+  check('the code will come to the buyer, on the Eid card chosen out of season', [meRow?.send_to, meRow?.recipient_phone ?? null, meRow?.from_name, meRow?.theme], ['buyer', null, 'Rob Harness', 'eid']);
 }
 
 /**

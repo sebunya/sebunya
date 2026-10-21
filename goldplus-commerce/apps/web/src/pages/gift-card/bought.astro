@@ -24,7 +24,12 @@ if (/^GC-[0-9A-Z]{10}$/.test(ref)) {
       headers: apiHeaders({ Accept: 'application/json' }, readClientAddress(Astro)), signal: AbortSignal.timeout(15_000),
     });
     const json: any = await res.json().catch(() => null);
-    if (res.ok && json?.success) s = json.data as Status;
+    if (res.ok && json?.success) {
+      s = json.data as Status;
+      // A masked number stays on one line on a narrow phone ("07•• ••• 912" broke after "07••").
+      s.recipientPhoneMasked = (s.recipientPhoneMasked ?? '').replace(/ /g, '\u00a0');
+      s.buyerPhoneMasked = (s.buyerPhoneMasked ?? '').replace(/ /g, '\u00a0');
+    }
     else if (res.status !== 404) unreachable = true;
   } catch {
     unreachable = true;
@@ -52,7 +57,7 @@ const waiting = s?.status === 'awaiting_payment' && !cancelled;
     {s && s.status === 'awaiting_payment' && cancelled && (
       <>
         <h1 class="text-3xl font-black tracking-tight text-gray-900">Payment not finished</h1>
-        <p class="mt-3 text-base text-slate-600">Nothing was charged and no card was made. You can <a class="font-bold underline" href={`/gift-card/buy?amount=${s.amountUgx}`}>start again</a> whenever you are ready.</p>
+        <p class="mt-3 text-base text-slate-600">Nothing was charged and no card was made. You can <a class="font-bold underline" href="/gift-card/buy">start again</a> whenever you are ready.</p>
       </>
     )}
     {waiting && s && (
@@ -92,7 +97,7 @@ const waiting = s?.status === 'awaiting_payment' && !cancelled;
       <>
         <h1 class="text-3xl font-black tracking-tight text-gray-900">The payment did not go through</h1>
         <p class="mt-3 text-base text-slate-600">No card was made. If money left your phone or card, it comes back; tell us if it does not (reference {s.reference}).</p>
-        <a href={`/gift-card/buy?amount=${s.amountUgx}`} class="mt-6 inline-flex min-h-12 items-center rounded-full bg-brand-primary px-6 text-xs font-black uppercase tracking-widest text-brand-black">Try again</a>
+        <a href="/gift-card/buy" class="mt-6 inline-flex min-h-12 items-center rounded-full bg-brand-primary px-6 text-xs font-black uppercase tracking-widest text-brand-black">Try again</a>
       </>
     )}
     {s && s.status === 'review' && (
@@ -109,3 +114,10 @@ const waiting = s?.status === 'awaiting_payment' && !cancelled;
     )}
   </div>
 </BaseLayout>
+
+<script>
+  // A paid card ends the draft kept on this phone (the buy form starts empty next time).
+  if (document.querySelector('[data-gift-card-bought][data-status="paid"], [data-gift-card-bought][data-status="issued"]')) {
+    try { localStorage.removeItem('gp_gift_draft_v1'); } catch { /* nothing kept */ }
+  }
+</script>

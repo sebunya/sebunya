@@ -81,6 +81,8 @@ import { creditCodeHash, creditRandomIndexes } from './credit/CreditCodeCrypto';
 import { DrizzleCreditRepository } from './credit/DrizzleCreditRepository';
 import { DrizzleGiftCardPurchaseRepository } from './credit/DrizzleGiftCardPurchaseRepository';
 import { GiftCardPurchaseUseCases } from '../application/use-cases/credit/GiftCardPurchaseUseCases';
+import { GiftCardOccasionUseCases } from '../application/use-cases/credit/GiftCardOccasionUseCases';
+import { DrizzleOccasionSettingsRepository } from './credit/DrizzleOccasionSettingsRepository';
 import { storefrontOrigin } from './config/storefrontOrigin';
 import { deliveryMapUrl } from '../domain/fulfilment/PaidOrderAlert';
 import { normalizePhone } from '../application/services/validationHelpers';
@@ -2823,6 +2825,8 @@ export class Registry {
   };
   public readonly notifyCardUsedUseCase = new NotifyCardUsedUseCase(this.creditRepo, this.creditNoticeSender);
   public readonly creditExpiryRemindersUseCase = new CreditExpiryRemindersUseCase(this.creditRepo, this.creditNoticeSender);
+  /** 0200: which gift card occasions come first today (calendar + the owner's time-boxed adjustments). */
+  public readonly giftCardOccasionUseCases = new GiftCardOccasionUseCases(new DrizzleOccasionSettingsRepository());
   /** 0199: customers buy a gift card online for someone else; paid through Pesapal under its own GC- reference. */
   public readonly giftCardPurchaseUseCases = new GiftCardPurchaseUseCases(
     new DrizzleGiftCardPurchaseRepository(),

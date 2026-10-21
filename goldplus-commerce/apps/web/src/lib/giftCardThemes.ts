@@ -3,7 +3,9 @@
  * against the same list); everything about how a theme looks lives here. Drawn with gradients and small inline SVG
  * motifs: no photos to load, nothing borrowed, and the text always meets contrast on its own background.
  */
-export type GiftCardThemeKey = 'gold' | 'birthday' | 'thanks' | 'love' | 'celebrate' | 'festive';
+export type GiftCardThemeKey =
+  | 'gold' | 'birthday' | 'thanks' | 'celebrate' | 'love' | 'anniversary'
+  | 'valentine' | 'mothers_day' | 'fathers_day' | 'easter' | 'eid' | 'christmas' | 'new_year' | 'festive';
 
 export interface GiftCardTheme {
   key: GiftCardThemeKey;
@@ -28,15 +30,29 @@ const leaves = svg(`<g fill='none' stroke='#fff' stroke-width='2' opacity='.16'>
 const hearts = svg(`<g fill='#fff' opacity='.18'><path d='M40 52c-6-12-24-8-22 6 2 10 22 22 22 22s20-12 22-22c2-14-16-18-22-6z'/><path d='M118 118c-4-8-16-5-15 4 1 7 15 15 15 15s14-8 15-15c1-9-11-12-15-4z'/></g>`);
 const stars = svg(`<g fill='#fff' opacity='.28'><path d='M30 24l3 8 8 3-8 3-3 8-3-8-8-3 8-3z'/><path d='M124 70l2 6 6 2-6 2-2 6-2-6-6-2 6-2z'/><path d='M70 128l2.5 7 7 2.5-7 2.5-2.5 7-2.5-7-7-2.5 7-2.5z'/><circle cx='100' cy='26' r='1.6'/><circle cx='20' cy='92' r='1.6'/></g>`);
 const snow = svg(`<g fill='#fff' opacity='.22'><circle cx='20' cy='30' r='2.5'/><circle cx='86' cy='18' r='1.8'/><circle cx='140' cy='52' r='2.5'/><circle cx='50' cy='96' r='1.8'/><circle cx='118' cy='124' r='2.5'/><circle cx='24' cy='146' r='1.8'/></g><g stroke='#F5C542' stroke-width='1.5' opacity='.5' fill='none'><path d='M128 14v16M120 22h16M122 16l12 12M134 16l-12 12'/></g>`);
+const rings = svg(`<g fill='none' stroke='#FDE68A' stroke-width='2' opacity='.35'><circle cx='118' cy='36' r='16'/><circle cx='136' cy='36' r='16'/></g><g fill='#fff' opacity='.12'><circle cx='30' cy='130' r='2'/><circle cx='60' cy='112' r='1.5'/></g>`);
+const stripes = svg(`<g stroke='#fff' stroke-width='10' opacity='.06'><path d='M-20 40 60 -40M0 100 100 0M40 160 160 40M100 180 180 100'/></g>`);
+const flowers = svg(`<g fill='#9D174D' opacity='.16'><circle cx='30' cy='30' r='5'/><circle cx='38' cy='24' r='5'/><circle cx='38' cy='36' r='5'/><circle cx='46' cy='30' r='5'/><circle cx='120' cy='118' r='4'/><circle cx='127' cy='113' r='4'/><circle cx='127' cy='123' r='4'/><circle cx='134' cy='118' r='4'/></g>`);
+const eggs = svg(`<g opacity='.35'><ellipse cx='30' cy='36' rx='9' ry='12' fill='#C4B5FD'/><ellipse cx='128' cy='120' rx='8' ry='11' fill='#FDE68A'/><ellipse cx='136' cy='34' rx='6' ry='8' fill='#F9A8D4'/></g>`);
+const crescent = svg(`<g fill='#F5C542' opacity='.45'><path d='M128 22a18 18 0 1 0 14 30 14 14 0 1 1-14-30z'/><path d='M150 18l2 5 5 1-4 3 1 5-4-3-4 3 1-5-4-3 5-1z'/></g><g fill='#fff' opacity='.12'><circle cx='24' cy='120' r='1.6'/><circle cx='60' cy='140' r='1.4'/></g>`);
+const sparkle = svg(`<g stroke='#FDE68A' stroke-width='1.6' opacity='.5' fill='none'><path d='M120 30v20M110 40h20M114 34l12 12M126 34l-12 12'/></g><g fill='#fff' opacity='.3'><circle cx='30' cy='26' r='1.6'/><circle cx='70' cy='16' r='1.2'/><circle cx='150' cy='90' r='1.4'/><circle cx='20' cy='110' r='1.2'/></g>`);
 const glow = svg(`<g fill='none' stroke='#93D500' stroke-width='1' opacity='.22'><circle cx='150' cy='10' r='40'/><circle cx='150' cy='10' r='70'/><circle cx='150' cy='10' r='100'/></g>`);
 
 export const GIFT_CARD_THEMES: readonly GiftCardTheme[] = [
-  { key: 'gold', label: 'GoldPlus', headline: 'A gift for you', background: `${glow}, radial-gradient(120% 90% at 100% 0%, rgba(147,213,0,.35) 0%, rgba(147,213,0,0) 55%), linear-gradient(135deg, #0A0A0A 0%, #1C1C1C 100%)`, ink: 'light', accent: '#93D500', accentInk: '#0A0A0A', suggestions: ['A little gift for you', 'Treat yourself, on me', 'Thinking of you'] },
-  { key: 'birthday', label: 'Birthday', headline: 'Happy birthday', background: `${confetti}, linear-gradient(135deg, #FFB547 0%, #FF7A59 100%)`, ink: 'dark', accent: '#1C1C1C', accentInk: '#FFFFFF', suggestions: ['Happy birthday!', 'Have a wonderful birthday', 'Happy birthday, enjoy your day'] },
+  { key: 'gold', label: 'A gift for you', headline: 'A gift for you', background: `${glow}, radial-gradient(120% 90% at 100% 0%, rgba(147,213,0,.35) 0%, rgba(147,213,0,0) 55%), linear-gradient(135deg, #0A0A0A 0%, #1C1C1C 100%)`, ink: 'light', accent: '#93D500', accentInk: '#0A0A0A', suggestions: ['A little gift for you', 'Treat yourself, on me', 'Thinking of you'] },
+  { key: 'birthday', label: 'Birthday', headline: 'Happy birthday', background: `${confetti}, linear-gradient(135deg, #FFB547 0%, #FF7A59 100%)`, ink: 'dark', accent: '#1C1C1C', accentInk: '#FFFFFF', suggestions: ['Happy birthday! 🎂', 'Have a wonderful birthday', 'Happy birthday, enjoy your day'] },
   { key: 'thanks', label: 'Thank you', headline: 'Thank you', background: `${leaves}, linear-gradient(135deg, #0F5132 0%, #2E7D4F 100%)`, ink: 'light', accent: '#93D500', accentInk: '#0A0A0A', suggestions: ['Thank you for everything', 'Thanks for your help', 'With many thanks'] },
   { key: 'love', label: 'With love', headline: 'With love', background: `${hearts}, linear-gradient(135deg, #9D174D 0%, #BE185D 100%)`, ink: 'light', accent: '#FFFFFF', accentInk: '#9D174D', suggestions: ['With all my love', 'For my favourite person', 'Thinking of you always'] },
   { key: 'celebrate', label: 'Congratulations', headline: 'Congratulations', background: `${stars}, linear-gradient(135deg, #2E1065 0%, #6D28D9 100%)`, ink: 'light', accent: '#FDE68A', accentInk: '#2E1065', suggestions: ['Congratulations!', 'Well done, you earned it', 'So proud of you'] },
-  { key: 'festive', label: 'Festive', headline: "Season's greetings", background: `${snow}, linear-gradient(135deg, #7F1D1D 0%, #B91C1C 100%)`, ink: 'light', accent: '#F5C542', accentInk: '#7F1D1D', suggestions: ['Merry Christmas!', 'Happy holidays', 'Season\'s greetings to you'] },
+  { key: 'anniversary', label: 'Anniversary', headline: 'Happy anniversary', background: `${rings}, linear-gradient(135deg, #4C0519 0%, #881337 100%)`, ink: 'light', accent: '#FDE68A', accentInk: '#4C0519', suggestions: ['Happy anniversary, my love ❤️', 'Here is to many more years together', 'Thank you for every year with you'] },
+  { key: 'valentine', label: "Valentine's Day", headline: "Happy Valentine's Day", background: `${hearts}, linear-gradient(135deg, #9F1239 0%, #BE123C 100%)`, ink: 'light', accent: '#FFFFFF', accentInk: '#9F1239', suggestions: ['Happy Valentine’s Day ❤️', 'To my Valentine, with love', 'You make every day special'] },
+  { key: 'mothers_day', label: "Mother's Day", headline: "Happy Mother's Day", background: `${flowers}, linear-gradient(135deg, #FCE7F3 0%, #FBCFE8 100%)`, ink: 'dark', accent: '#9D174D', accentInk: '#FFFFFF', suggestions: ['Happy Mother’s Day, Mum 💐', 'Thank you for everything, Mum', 'For the best mum in the world'] },
+  { key: 'fathers_day', label: "Father's Day", headline: "Happy Father's Day", background: `${stripes}, linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)`, ink: 'light', accent: '#93D500', accentInk: '#0A0A0A', suggestions: ['Happy Father’s Day, Dad', 'Thank you for everything, Dad', 'For the best dad around'] },
+  { key: 'easter', label: 'Easter', headline: 'Happy Easter', background: `${eggs}, linear-gradient(135deg, #EDE9FE 0%, #FEF3C7 100%)`, ink: 'dark', accent: '#5B21B6', accentInk: '#FFFFFF', suggestions: ['Happy Easter! 🐣', 'Wishing you a joyful Easter', 'Easter blessings to you and the family'] },
+  { key: 'eid', label: 'Eid', headline: 'Eid Mubarak', background: `${crescent}, linear-gradient(135deg, #064E3B 0%, #0F766E 100%)`, ink: 'light', accent: '#F5C542', accentInk: '#064E3B', suggestions: ['Eid Mubarak 🌙', 'Wishing you a blessed Eid', 'Eid Mubarak to you and the family'] },
+  { key: 'christmas', label: 'Christmas', headline: 'Merry Christmas', background: `${snow}, linear-gradient(135deg, #14532D 0%, #166534 100%)`, ink: 'light', accent: '#DC2626', accentInk: '#FFFFFF', suggestions: ['Merry Christmas! 🎄', 'Wishing you a joyful Christmas', 'Merry Christmas and a happy new year'] },
+  { key: 'new_year', label: 'New Year', headline: 'Happy New Year', background: `${sparkle}, linear-gradient(135deg, #0B1120 0%, #312E81 100%)`, ink: 'light', accent: '#FDE68A', accentInk: '#0B1120', suggestions: ['Happy New Year! 🎉', 'Wishing you a wonderful year ahead', 'Cheers to a great new year'] },
+  { key: 'festive', label: "Season's greetings", headline: "Season's greetings", background: `${snow}, linear-gradient(135deg, #7F1D1D 0%, #B91C1C 100%)`, ink: 'light', accent: '#F5C542', accentInk: '#7F1D1D', suggestions: ['Season’s greetings! ✨', 'Happy holidays', 'Warm wishes for the festive season'] },
 ];
 
 export function giftCardTheme(key: unknown): GiftCardTheme {

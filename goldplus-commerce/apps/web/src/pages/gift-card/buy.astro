@@ -84,6 +84,33 @@ if (Astro.request.method === 'POST') {
 }
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 
+// Which occasions come first today: read when the page opens (the calendar and the owner's time-boxed adjustments,
+// Kampala time), so a season starting or ending needs no deploy. The order is fixed for this visit: nothing moves
+// while the buyer is choosing. Without the API, the everyday order.
+type OccasionOrder = { featured: string[]; more: string[]; labels: Record<string, 'Today' | 'Coming up'> };
+let occasions: OccasionOrder = {
+  featured: ['gold', 'birthday', 'thanks', 'celebrate', 'love', 'anniversary'],
+  more: GIFT_CARD_THEMES.map((t) => t.key).filter((k) => !['gold', 'birthday', 'thanks', 'celebrate', 'love', 'anniversary'].includes(k)),
+  labels: {},
+};
+try {
+  // ?on= previews a day; the API honours it only outside production.
+  const on = Astro.url.searchParams.get('on');
+  const res = await fetch(`${apiBase}/commerce/gift-cards/occasions${on && /^\d{4}-\d{2}-\d{2}$/.test(on) ? `?on=${on}` : ''}`, { headers: apiHeaders({ Accept: 'application/json' }, readClientAddress(Astro)), signal: AbortSignal.timeout(2500) });
+  const json: any = res.ok ? await res.json().catch(() => null) : null;
+  const known = (k: unknown) => GIFT_CARD_THEMES.some((t) => t.key === k);
+  if (json?.success && Array.isArray(json.data?.featured) && json.data.featured.every(known)) {
+    occasions = { featured: json.data.featured, more: (json.data.more ?? []).filter(known), labels: json.data.labels ?? {} };
+    // Anything the storefront draws that the API did not list still shows (never lost from the full list).
+    for (const t of GIFT_CARD_THEMES) if (!occasions.featured.includes(t.key) && !occasions.more.includes(t.key)) occasions.more.push(t.key);
+  }
+} catch { /* the everyday order */ }
+// The buyer's choice is always visible: one outside the first six (a link, a returned form) shows beside them.
+const chosenOutside = !occasions.featured.includes(v.theme);
+const firstView = chosenOutside ? [...occasions.featured, v.theme] : occasions.featured;
+const moreView = occasions.more.filter((k) => !firstView.includes(k));
+const themeOf = (k: string) => giftCardTheme(k);
+
 const ORDER = ['amountPreset', 'amountOther', 'recipientName', 'recipientPhone', 'message', 'deliverOn', 'buyerName', 'buyerPhone'];
 const firstError = ORDER.find((k) => errors[k]) ?? null;
 const field = 'mt-1 w-full min-h-12 rounded-xl border px-3.5 py-3 text-base outline-none focus:ring-2 focus:ring-brand-primaryInk';
@@ -102,13 +129,13 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
   title="Send a gift card | GoldPlus"
   description="Send a GoldPlus gift card to anyone in Uganda in a minute. Pay with Mobile Money or card; they get a text, open their card and scratch to reveal the code."
 >
-  <div class="mx-auto max-w-6xl px-4 pb-32 pt-6 sm:py-12 lg:pb-14" data-gift-card-buy data-no-totop>
+  <div class="mx-auto max-w-6xl px-4 pb-32 pt-6 sm:py-12 lg:pb-14" data-gift-card-buy data-no-totop data-fresh={Astro.request.method === 'GET' && !Astro.url.search ? '1' : undefined}>
+    <p class="mb-4 hidden items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700" data-draft-note>
+      <span>We kept what you started on this phone.</span>
+      <button type="button" class="font-bold underline" data-draft-clear>Start over</button>
+    </p>
     <h1 class="text-2xl font-black tracking-tight text-gray-900 sm:text-4xl">Send a gift card</h1>
-    <ol class="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-700" aria-label="How it works">
-      <li class="rounded-full bg-slate-100 px-3 py-1.5">1. Choose and pay</li>
-      <li class="rounded-full bg-slate-100 px-3 py-1.5">2. We text them</li>
-      <li class="rounded-full bg-slate-100 px-3 py-1.5">3. They scratch and shop</li>
-    </ol>
+    <p class="mt-1.5 text-sm text-slate-600">Choose a card, pay with Mobile Money or card, and we text it to them. They scratch it to reveal the code.</p>
 
     {problem && <p role="alert" class="mt-5 max-w-2xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{problem}</p>}
 
@@ -124,12 +151,45 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
 
       <form method="POST" action="/gift-card/buy" id="gift-form" class="space-y-7" novalidate>
         <fieldset>
+          <legend class="text-lg font-black text-gray-900">Choose an occasion</legend>
+          <p class="mt-1 text-sm text-slate-600" data-chosen-note hidden></p>
+          <div class="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-6 lg:grid-cols-3 xl:grid-cols-6" data-occasions-first>
+            {firstView.map((k) => (
+              <label class="relative cursor-pointer text-center" data-occasion={k}>
+                <input type="radio" name="theme" value={k} checked={v.theme === k} class="peer sr-only" />
+                <span class="block aspect-[1.586/1] rounded-xl ring-offset-2 transition peer-checked:ring-4 peer-checked:ring-brand-primaryInk peer-focus-visible:ring-4 peer-focus-visible:ring-sky-500" style={`background:${themeOf(k).background};background-size:100% auto,cover;background-position:center,center`} aria-hidden="true"></span>
+                {occasions.labels[k] && <span class="absolute left-1 top-1 rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-gray-900 shadow">{occasions.labels[k]}</span>}
+                {chosenOutside && k === v.theme && <span class="absolute left-1 top-1 rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-gray-900 shadow">Your choice</span>}
+                <span class="mt-1 block text-xs font-bold leading-tight text-gray-900">{themeOf(k).label}</span>
+              </label>
+            ))}
+          </div>
+          {moreView.length > 0 && (
+            <details class="group mt-3" data-occasions-more>
+              <summary class="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-sm font-black text-gray-900 [&::-webkit-details-marker]:hidden">
+                <span class="group-open:hidden">View all occasions</span><span class="hidden group-open:inline">Show fewer occasions</span>
+                <span aria-hidden="true" class="transition group-open:rotate-180">▾</span>
+              </summary>
+              <div class="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-6 lg:grid-cols-3 xl:grid-cols-6">
+                {moreView.map((k) => (
+                  <label class="relative cursor-pointer text-center" data-occasion={k}>
+                    <input type="radio" name="theme" value={k} checked={v.theme === k} class="peer sr-only" />
+                    <span class="block aspect-[1.586/1] rounded-xl ring-offset-2 transition peer-checked:ring-4 peer-checked:ring-brand-primaryInk peer-focus-visible:ring-4 peer-focus-visible:ring-sky-500" style={`background:${themeOf(k).background};background-size:100% auto,cover;background-position:center,center`} aria-hidden="true"></span>
+                    <span class="mt-1 block text-xs font-bold leading-tight text-gray-900">{themeOf(k).label}</span>
+                  </label>
+                ))}
+              </div>
+            </details>
+          )}
+        </fieldset>
+
+        <fieldset>
           <legend class="text-lg font-black text-gray-900">How much?</legend>
           <div class="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-5">
             {PRESETS.map((a) => (
               <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-1 text-center text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-sky-500">
                 <input type="radio" name="amountPreset" value={String(a)} checked={v.amountPreset === String(a)} class="sr-only" />
-                {`${a / 1000}k`}<span class="sr-only"> ({formatUgx(a)})</span>
+                {a.toLocaleString('en-US')}<span class="sr-only"> Uganda shillings</span>
               </label>
             ))}
             <label class="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-1 text-sm font-black has-[:checked]:border-brand-primaryInk has-[:checked]:bg-brand-primary/20 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-sky-500">
@@ -137,11 +197,11 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
               Other
             </label>
           </div>
-          <p class="mt-2 text-xs text-slate-500">{`In UGX: ${PRESETS[0] / 1000}k = ${formatUgx(PRESETS[0])}.`}</p>
+          <p class="mt-2 text-xs text-slate-500">Amounts in UGX.</p>
           <div class={v.amountPreset === 'other' || errors.amountOther ? '' : 'js-hide'} data-other-box>
             <label class="mt-3 block">
               <span class={label}>Amount (UGX)</span>
-              <input name="amountOther" inputmode="numeric" autocomplete="off" value={v.amountOther} placeholder={`${MIN.toLocaleString('en-US')} to ${MAX.toLocaleString('en-US')}`} class={`${field} ${border('amountOther')}`} autofocus={firstError === 'amountOther'} />
+              <input name="amountOther" enterkeyhint="next" inputmode="numeric" autocomplete="off" value={v.amountOther} placeholder={`${MIN.toLocaleString('en-US')} to ${MAX.toLocaleString('en-US')}`} class={`${field} ${border('amountOther')}`} autofocus={firstError === 'amountOther'} />
             </label>
             <p class={errClass('amountOther')} data-err="amountOther">{errors['amountOther'] ?? ''}</p>
           </div>
@@ -152,13 +212,13 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
           <legend class="text-lg font-black text-gray-900">Who is it for?</legend>
           <label class="mt-3 block">
             <span class={label}>Their name</span>
-            <input name="recipientName" required autocomplete="off" value={v.recipientName} maxlength="60" class={`${field} ${border('recipientName')}`} autofocus={firstError === 'recipientName'} />
+            <input name="recipientName" enterkeyhint="next" required autocomplete="off" value={v.recipientName} maxlength="60" class={`${field} ${border('recipientName')}`} autofocus={firstError === 'recipientName'} />
           </label>
           <p class={errClass('recipientName')} data-err="recipientName">{errors['recipientName'] ?? ''}</p>
           <label class="mt-3 block" data-recipient-phone>
             <span class={label}>Their mobile number <span class={`font-normal text-slate-500 ${toMe ? '' : 'hidden'}`} data-optional>(optional)</span></span>
             <span class="mt-1 flex gap-2">
-              <input name="recipientPhone" type="tel" inputmode="tel" autocomplete="off" value={v.recipientPhone} placeholder="0772 123456" class={`${field} mt-0 ${border('recipientPhone')}`} autofocus={firstError === 'recipientPhone'} />
+              <input name="recipientPhone" enterkeyhint="next" type="tel" inputmode="tel" autocomplete="off" value={v.recipientPhone} placeholder="0772 123456" class={`${field} mt-0 ${border('recipientPhone')}`} autofocus={firstError === 'recipientPhone'} />
               <button type="button" class="hidden min-h-12 shrink-0 items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-xs font-black uppercase tracking-wider text-gray-900" data-pick-contact aria-label="Pick their name and number from your contacts">Contacts</button>
             </span>
           </label>
@@ -169,19 +229,11 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
           </label>
         </fieldset>
 
+
         <fieldset>
-          <legend class="text-lg font-black text-gray-900">Design and message</legend>
-          <div class="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-6 lg:grid-cols-3 xl:grid-cols-6">
-            {GIFT_CARD_THEMES.map((t) => (
-              <label class="cursor-pointer text-center">
-                <input type="radio" name="theme" value={t.key} checked={v.theme === t.key} class="peer sr-only" />
-                <span class="block aspect-[1.586/1] rounded-xl ring-offset-2 transition peer-checked:ring-4 peer-checked:ring-brand-primaryInk peer-focus-visible:ring-4 peer-focus-visible:ring-sky-500" style={`background:${t.background}`} aria-hidden="true"></span>
-                <span class="mt-1 block text-xs font-bold text-gray-900">{t.label}</span>
-              </label>
-            ))}
-          </div>
-          <label class="mt-4 block">
-            <span class={label}>A short message <span class="font-normal text-slate-500">(optional)</span></span>
+          <legend class="text-lg font-black text-gray-900">Your message</legend>
+          <label class="mt-3 block">
+            <span class={label}>A short message <span class="font-normal text-slate-500">(optional; ideas below)</span></span>
             <textarea name="message" rows="2" maxlength="100" placeholder={theme.suggestions[0]} class={`${field} resize-none ${border('message')}`} autofocus={firstError === 'message'}>{v.message}</textarea>
           </label>
           <div class="mt-2 flex flex-wrap gap-2" data-suggestions aria-label="Message ideas">
@@ -217,12 +269,12 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
           <legend class="text-lg font-black text-gray-900">You</legend>
           <label class="mt-3 block">
             <span class={label}>Your name <span class="font-normal text-slate-500">(on the card as "From")</span></span>
-            <input name="buyerName" required autocomplete="name" value={v.buyerName} maxlength="40" class={`${field} ${border('buyerName')}`} autofocus={firstError === 'buyerName'} />
+            <input name="buyerName" enterkeyhint="next" required autocomplete="name" value={v.buyerName} maxlength="40" class={`${field} ${border('buyerName')}`} autofocus={firstError === 'buyerName'} />
           </label>
           <p class={errClass('buyerName')} data-err="buyerName">{errors['buyerName'] ?? ''}</p>
           <label class="mt-3 block">
             <span class={label}>Your mobile number <span class="font-normal text-slate-500">(for your receipt)</span></span>
-            <input name="buyerPhone" type="tel" inputmode="tel" required autocomplete="tel-national" value={v.buyerPhone} placeholder="0772 123456" class={`${field} ${border('buyerPhone')}`} autofocus={firstError === 'buyerPhone'} />
+            <input name="buyerPhone" enterkeyhint="done" type="tel" inputmode="tel" required autocomplete="tel-national" value={v.buyerPhone} placeholder="0772 123456" class={`${field} ${border('buyerPhone')}`} autofocus={firstError === 'buyerPhone'} />
           </label>
           <p class={errClass('buyerPhone')} data-err="buyerPhone">{errors['buyerPhone'] ?? ''}</p>
         </fieldset>
@@ -239,7 +291,7 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
   </div>
 
   {/* Always in reach on a phone: what you are paying and the button. Hidden while the form's own button shows. */}
-  <div class="fixed inset-x-0 bottom-0 z-40 hidden border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_-12px_rgba(0,0,0,.25)] backdrop-blur lg:hidden" data-pay-bar>
+  <div class="fixed inset-x-0 bottom-0 z-40 hidden border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_-12px_rgba(0,0,0,.25)] backdrop-blur lg:hidden" style="padding-bottom:max(0.75rem, env(safe-area-inset-bottom))" data-pay-bar>
     <div class="mx-auto flex max-w-xl items-center gap-3">
       <button type="button" class="h-10 w-16 shrink-0 rounded-lg shadow ring-1 ring-black/10" style={`background:${theme.background}`} data-bar-thumb aria-label="See the card"></button>
       <div class="min-w-0 flex-1">
@@ -413,6 +465,19 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
     form.querySelectorAll<HTMLButtonElement>('button[type="submit"]').forEach((b) => { b.disabled = true; b.textContent = 'Opening payment…'; });
     document.querySelector<HTMLButtonElement>('[data-pay-bar] button')?.setAttribute('disabled', '');
   });
+  // The keyboard's Next goes to the next box (Enter in a phone form otherwise submits it from the first field);
+  // only the last box (your number) sends the form.
+  form?.addEventListener('keydown', (e) => {
+    const t = e.target as HTMLInputElement;
+    if (e.key !== 'Enter' || t.tagName !== 'INPUT' || !['text', 'tel', 'date', ''].includes(t.type) && t.inputMode !== 'numeric') return;
+    if (t.name === 'buyerPhone') return;
+    e.preventDefault();
+    // The page order: amount, their name and number, the message, then you.
+    const order = ['amountOther', 'recipientName', 'recipientPhone', 'message', 'buyerName', 'buyerPhone'];
+    const visible = order.map((n) => el<HTMLInputElement>(n)).filter((i): i is HTMLInputElement => Boolean(i && i.offsetParent !== null));
+    visible[visible.indexOf(t) + 1]?.focus();
+  });
+
   // A choice that has a box opens it, ready to type.
   form?.querySelector('[data-other-amount]')?.addEventListener('change', () => setTimeout(() => el<HTMLInputElement>('amountOther')?.focus(), 0));
   form?.querySelectorAll<HTMLInputElement>('input[name="when"]').forEach((r) => r.addEventListener('change', () => { if (r.value === 'date') setTimeout(() => el<HTMLInputElement>('deliverOn')?.focus(), 0); }));
@@ -440,6 +505,65 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
 
   // The card in the bar opens the full preview at the top.
   document.querySelector('[data-bar-thumb]')?.addEventListener('click', () => face?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+
+  // ── The occasion chosen stays visible, wherever it sits ──────────────────────────────────────────────────────
+  const more = form?.querySelector<HTMLDetailsElement>('[data-occasions-more]');
+  const chosenNote = form?.querySelector<HTMLElement>('[data-chosen-note]');
+  function showChosen() {
+    const key = checked('theme');
+    const inMore = Boolean(more?.querySelector(`input[name="theme"][value="${CSS.escape(key)}"]`));
+    const t = GIFT_CARD_THEMES.find((x) => x.key === key);
+    if (chosenNote) {
+      chosenNote.hidden = !inMore || !t;
+      if (t) chosenNote.innerHTML = '';
+      if (inMore && t) {
+        chosenNote.append('Your choice: ');
+        const b = document.createElement('strong'); b.textContent = t.label; chosenNote.append(b);
+        chosenNote.append(more?.open ? '' : ' (under View all occasions)');
+      }
+    }
+  }
+  form?.addEventListener('change', (e) => { if ((e.target as HTMLInputElement).name === 'theme') showChosen(); });
+  more?.addEventListener('toggle', showChosen);
+
+  // ── A draft kept on this phone: occasion, amount, names, message and timing (never phone numbers) ─────────────
+  // Restored only on a plain visit (not over a link's choices or a returned form); dropped once a card is paid.
+  const DRAFT = 'gp_gift_draft_v1';
+  const KEEP = ['amountPreset', 'amountOther', 'theme', 'recipientName', 'message', 'buyerName', 'sendToMe', 'when', 'deliverOn'];
+  let saveTimer = 0;
+  function saveDraft() {
+    if (!form) return;
+    const data: Record<string, string> = { savedAt: String(Date.now()) };
+    for (const k of KEEP) data[k] = k === 'sendToMe' ? (el<HTMLInputElement>('sendToMe')?.checked ? '1' : '') : ['amountPreset', 'theme', 'when'].includes(k) ? checked(k) : val(k);
+    try { localStorage.setItem(DRAFT, JSON.stringify(data)); } catch { /* private mode: nothing kept */ }
+  }
+  form?.addEventListener('input', () => { clearTimeout(saveTimer); saveTimer = window.setTimeout(saveDraft, 400); });
+  form?.addEventListener('change', () => { clearTimeout(saveTimer); saveTimer = window.setTimeout(saveDraft, 100); });
+  function restoreDraft() {
+    if (!form || !document.querySelector('[data-gift-card-buy][data-fresh]')) return;
+    let d: Record<string, string> | null = null;
+    try { d = JSON.parse(localStorage.getItem(DRAFT) ?? 'null'); } catch { d = null; }
+    if (!d || Date.now() - Number(d.savedAt ?? 0) > 30 * 86_400_000) return;
+    const meaningful = d.recipientName || d.message || d.buyerName || d.amountOther;
+    if (!meaningful) return;
+    for (const k of ['amountPreset', 'theme', 'when']) {
+      const r = form.querySelector<HTMLInputElement>(`input[name="${k}"][value="${CSS.escape(d[k] ?? '')}"]`);
+      // The occasion is kept even if its season has ended: it is still in the full list.
+      if (r) r.checked = true;
+    }
+    for (const k of ['amountOther', 'recipientName', 'message', 'buyerName', 'deliverOn']) { const i = el<HTMLInputElement>(k); if (i && d[k]) i.value = d[k]; }
+    const me = el<HTMLInputElement>('sendToMe'); if (me) me.checked = d.sendToMe === '1';
+    const chosen = more?.querySelector(`input[name="theme"]:checked`);
+    if (chosen && more) more.open = true;
+    const note = document.querySelector<HTMLElement>('[data-draft-note]');
+    note?.classList.remove('hidden'); note?.classList.add('flex');
+  }
+  document.querySelector('[data-draft-clear]')?.addEventListener('click', () => {
+    try { localStorage.removeItem(DRAFT); } catch { /* nothing kept */ }
+    location.replace(location.pathname);
+  });
+  restoreDraft();
+  showChosen();
 
   // The bottom bar shows while the form's own pay button is off screen.
   const bar = document.querySelector<HTMLElement>('[data-pay-bar]');
