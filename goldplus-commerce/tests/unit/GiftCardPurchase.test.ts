@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   GIFT_CARD_MESSAGE_MAX, checkGiftCardPurchase, giftCardPurchaseReference, isGiftCardPurchaseReference, kampalaToday, maskPhone, scheduledSendDue, unsafeGiftText,
 } from '../../apps/api/src/domain/credit/GiftCardPurchase';
-import { GIFT_CARD_PHOTOS_PER_DAY, GiftCardPurchaseUseCases, ONLINE_GIFT_CARD_ISSUER_ID } from '../../apps/api/src/application/use-cases/credit/GiftCardPurchaseUseCases';
+import { GIFT_CARD_PHOTOS_PER_DAY, GIFT_CARD_PHOTOS_PER_VISITOR_PER_DAY, GiftCardPurchaseUseCases, ONLINE_GIFT_CARD_ISSUER_ID } from '../../apps/api/src/application/use-cases/credit/GiftCardPurchaseUseCases';
 import type { GiftCardPurchaseRecord } from '../../apps/api/src/application/ports/IGiftCardPurchaseRepository';
 import { smsText, emailCopy, CUSTOMER_TRANSACTIONAL_TEMPLATES } from '../../apps/api/src/application/notifications/CustomerMessages';
 import { classifyPublicEndpoint } from '../../apps/api/src/domain/security/PublicEndpointPolicy';
@@ -138,7 +138,8 @@ describe('gift card messages (0199)', () => {
 // ── The use cases, against an in-memory repository and a scripted Pesapal ──────────────────────────────
 function harness(opts: { ipnId?: string | null; buyerActivity?: { started: number; paidUgx: number } } = {}) {
   let paidToday = 0;
-  const photos = new Map<string, { image: Buffer; attached: boolean; at: Date }>();
+  const photos = new Map<string, { image: Buffer; attached: boolean; at: Date; uploaderKey: string | null }>();
+  let photoSeq = 0;
   let photoClock = () => NOW;
   let extraPhotosToday = 0;
   const rows = new Map<string, GiftCardPurchaseRecord>();
@@ -186,15 +187,20 @@ function harness(opts: { ipnId?: string | null; buyerActivity?: { started: numbe
     },
     faceByCodeHash: async (hash: string) => { const c = cards.find((x) => `h:${x.code}` === hash); const p = c ? rows.get(c.purchaseId) : null; return p ? { theme: p.theme, fromName: p.fromName, toName: p.recipientName, message: p.message, originalUgx: p.amountUgx, photoId: p.photoId ?? null } : null; },
     recent: async () => [],
-    savePhoto: async (image: Buffer) => { const id = `${String(photos.size + 1).padStart(8, '0')}-0000-4000-8000-000000000000`; photos.set(id, { image, attached: false, at: photoClock() }); return id; },
+    savePhoto: async (image: Buffer, _w: number, _h: number, uploaderKey: string | null) => { const id = `${String(++photoSeq).padStart(8, '0')}-0000-4000-8000-000000000000`; photos.set(id, { image, attached: false, at: photoClock(), uploaderKey }); return id; },
     photoImage: async (id: string, unclaimedAfter: Date) => { const ph = photos.get(id); return ph && (ph.attached || ph.at > unclaimedAfter) ? ph.image : null; },
-    photosSince: async (since: Date) => [...photos.values()].filter((ph) => ph.at > since).length + extraPhotosToday,
-    deleteStalePhotos: async (unclaimedBefore: Date, endedBefore: Date) => {
+    photosSince: async (since: Date, uploaderKey?: string) => [...photos.values()].filter((ph) => ph.at > since && (!uploaderKey || ph.uploaderKey === uploaderKey)).length + (uploaderKey ? 0 : extraPhotosToday),
+    deleteStalePhotos: async (unclaimedBefore: Date, endedBefore: Date, cardDoneBefore: Date) => {
       let n = 0;
       for (const [id, ph] of photos) if (!ph.attached && ph.at < unclaimedBefore) { photos.delete(id); n++; }
       for (const p of rows.values()) if (p.photoId && ['abandoned', 'failed', 'refunded'].includes(p.status) && (p as any).endedAt < endedBefore) { photos.delete(p.photoId); p.photoId = null; n++; }
+      for (const p of rows.values()) {
+        const card = cards.find((c) => c.id === p.instrumentId);
+        if (p.photoId && card && (card.status === 'void' || card.balance <= 0) && (card as any).lastMovedAt < cardDoneBefore) { photos.delete(p.photoId); p.photoId = null; n++; }
+      }
       return n;
     },
+    purchaseIdByCodeHash: async (hash: string) => cards.find((c) => `h:${c.code}` === hash)?.purchaseId ?? null,
     removePhoto: async (purchaseId: string) => { const p = rows.get(purchaseId); if (!p?.photoId) return false; photos.delete(p.photoId); p.photoId = null; return true; },
     markRefunded: async (id: string, _n: string, o?: any) => { const p = rows.get(id)!; if (!['paid', 'issued', 'review'].includes(p.status) || (o?.unissuedOnly && p.instrumentId)) return false; p.status = 'refunded'; return true; },
   };
@@ -441,7 +447,7 @@ describe('buying a gift card online (0199)', () => {
 describe('a photo on the card (0201)', () => {
   it('is re-encoded, claimed by exactly one purchase, and shown back on the buyer’s status', async () => {
     const h = harness();
-    const up = await h.uc.uploadPhoto(Buffer.from('camera bytes'));
+    const up = await h.uc.uploadPhoto(Buffer.from('camera bytes'), 'visitor-a');
     expect(up.ok).toBe(true);
     if (!up.ok) return;
     expect(String(await h.uc.photoImage(up.photoId))).toBe('jpeg:camera bytes'); // what is stored is the re-encoded copy
@@ -458,11 +464,11 @@ describe('a photo on the card (0201)', () => {
 
   it('refuses what is not a photo or too small to print, and a made-up id; the card works without one', async () => {
     const h = harness();
-    expect(await h.uc.uploadPhoto(Buffer.from('not a photo'))).toMatchObject({ ok: false, message: expect.stringContaining('JPEG or PNG') });
+    expect(await h.uc.uploadPhoto(Buffer.from('not a photo'), null)).toMatchObject({ ok: false, message: expect.stringContaining('JPEG or PNG') });
     // The image library failing to load only turns photos off; the card still sells.
-    expect(await h.uc.uploadPhoto(Buffer.from('no sharp'))).toMatchObject({ ok: false, message: expect.stringContaining('The card works without one') });
-    expect(await h.uc.uploadPhoto(Buffer.from('tiny'))).toMatchObject({ ok: false, message: expect.stringContaining('too small') });
-    expect(await h.uc.uploadPhoto(Buffer.alloc(0))).toMatchObject({ ok: false });
+    expect(await h.uc.uploadPhoto(Buffer.from('no sharp'), null)).toMatchObject({ ok: false, message: expect.stringContaining('The card works without one') });
+    expect(await h.uc.uploadPhoto(Buffer.from('tiny'), null)).toMatchObject({ ok: false, message: expect.stringContaining('too small') });
+    expect(await h.uc.uploadPhoto(Buffer.alloc(0), null)).toMatchObject({ ok: false });
     expect(checkGiftCardPurchase(form({ photoId: '../etc/passwd' }), NOW)).toMatchObject({ ok: false, errors: { photo: expect.any(String) } });
     expect(await h.uc.photoImage('../etc/passwd')).toBeNull();
     const r = await h.uc.start(form({ photoId: '' }), NOW);
@@ -471,8 +477,8 @@ describe('a photo on the card (0201)', () => {
 
   it('an unclaimed photo is deleted by the sweep; staff can take one off a card', async () => {
     const h = harness();
-    const kept = await h.uc.uploadPhoto(Buffer.from('a'));
-    const stray = await h.uc.uploadPhoto(Buffer.from('b'));
+    const kept = await h.uc.uploadPhoto(Buffer.from('a'), null);
+    const stray = await h.uc.uploadPhoto(Buffer.from('b'), null);
     if (!kept.ok || !stray.ok) throw new Error('upload');
     const r = await h.uc.start(form({ photoId: kept.photoId }), NOW);
     if (!r.ok) throw new Error('start');
@@ -494,16 +500,16 @@ describe('a photo on the card (0201)', () => {
   it('the shop takes at most 400 photos a day (the upload needs no account); above that the card sells without one', async () => {
     const h = harness();
     h.setExtraPhotosToday(GIFT_CARD_PHOTOS_PER_DAY - 1);
-    expect((await h.uc.uploadPhoto(Buffer.from('a'), NOW)).ok).toBe(true);
-    expect(await h.uc.uploadPhoto(Buffer.from('b'), NOW)).toMatchObject({ ok: false, message: expect.stringContaining('The card works without one') });
+    expect((await h.uc.uploadPhoto(Buffer.from('a'), null, NOW)).ok).toBe(true);
+    expect(await h.uc.uploadPhoto(Buffer.from('b'), null, NOW)).toMatchObject({ ok: false, message: expect.stringContaining('The card works without one') });
   });
 
   it('an unclaimed upload stops showing when it can no longer be put on a card (two days), so a kept draft notices', async () => {
     const h = harness();
     h.setPhotoClock(() => new Date(NOW.getTime() - 2 * 86_400_000 - 60_000));
-    const old = await h.uc.uploadPhoto(Buffer.from('old'));
+    const old = await h.uc.uploadPhoto(Buffer.from('old'), null);
     h.setPhotoClock(() => NOW);
-    const fresh = await h.uc.uploadPhoto(Buffer.from('fresh'));
+    const fresh = await h.uc.uploadPhoto(Buffer.from('fresh'), null);
     if (!old.ok || !fresh.ok) throw new Error('upload');
     expect(await h.uc.photoImage(old.photoId, NOW)).toBeNull();
     expect(await h.uc.photoImage(fresh.photoId, NOW)).not.toBeNull();
@@ -512,8 +518,8 @@ describe('a photo on the card (0201)', () => {
 
   it('the photo of a purchase that ended unpaid goes 30 days after it ended; a paid card keeps its photo', async () => {
     const h = harness();
-    const a = await h.uc.uploadPhoto(Buffer.from('a'));
-    const b = await h.uc.uploadPhoto(Buffer.from('b'));
+    const a = await h.uc.uploadPhoto(Buffer.from('a'), null);
+    const b = await h.uc.uploadPhoto(Buffer.from('b'), null);
     if (!a.ok || !b.ok) throw new Error('upload');
     const r1 = await h.uc.start(form({ photoId: a.photoId }), NOW);
     const r2 = await h.uc.start(form({ photoId: b.photoId, buyerPhone: '0701 999888' }), NOW);
@@ -523,5 +529,51 @@ describe('a photo on the card (0201)', () => {
     expect(h.byRef(r1.reference)!.photoId).toBeNull();
     expect(h.photos.has(a.photoId)).toBe(false);
     expect(h.byRef(r2.reference)!.photoId).toBe(b.photoId);
+  });
+
+  it('one visitor may add 20 photos a day; another visitor is not affected', async () => {
+    const h = harness();
+    for (let i = 0; i < GIFT_CARD_PHOTOS_PER_VISITOR_PER_DAY; i++) expect((await h.uc.uploadPhoto(Buffer.from(`p${i}`), 'visitor-a', NOW)).ok).toBe(true);
+    expect(await h.uc.uploadPhoto(Buffer.from('one more'), 'visitor-a', NOW)).toMatchObject({ ok: false, message: expect.stringContaining('one phone in a day') });
+    expect((await h.uc.uploadPhoto(Buffer.from('other'), 'visitor-b', NOW)).ok).toBe(true);
+    // The next day the first visitor can add photos again.
+    expect((await h.uc.uploadPhoto(Buffer.from('tomorrow'), 'visitor-a', new Date(NOW.getTime() + 86_400_000 + 60_000))).ok).toBe(true);
+  });
+
+  it('the person the card is for removes its photo with the card’s code; a wrong code removes nothing', async () => {
+    const h = harness();
+    const up = await h.uc.uploadPhoto(Buffer.from('a'), null);
+    if (!up.ok) throw new Error('upload');
+    const r = await h.uc.start(form({ photoId: up.photoId }), NOW);
+    if (!r.ok) throw new Error('start');
+    h.setStatus(h.paidStatus(r.reference));
+    await h.uc.settle({ trackingId: `T-${r.reference}`, reference: r.reference, source: 'ipn' }, NOW);
+    const code = h.cards[0].code!;
+    expect(await h.uc.removePhotoByCode('GPGC-AAAA-BBBB-CCCC')).toMatchObject({ ok: false, message: expect.stringContaining('not right') });
+    expect(h.byRef(r.reference)!.photoId).toBe(up.photoId);
+    expect(await h.uc.removePhotoByCode(code)).toMatchObject({ ok: true });
+    expect(h.byRef(r.reference)!.photoId).toBeNull();
+    expect(h.photos.has(up.photoId)).toBe(false);
+    expect(await h.uc.removePhotoByCode(code)).toMatchObject({ ok: false, message: 'This card has no photo.' });
+  });
+
+  it('a card used up, cancelled or expired keeps its photo for 90 days after its last movement, then loses it', async () => {
+    const h = harness();
+    const up = await h.uc.uploadPhoto(Buffer.from('a'), null);
+    if (!up.ok) throw new Error('upload');
+    const r = await h.uc.start(form({ photoId: up.photoId }), NOW);
+    if (!r.ok) throw new Error('start');
+    h.setStatus(h.paidStatus(r.reference));
+    await h.uc.settle({ trackingId: `T-${r.reference}`, reference: r.reference, source: 'ipn' }, NOW);
+    Object.assign(h.cards[0], { balance: 0, lastMovedAt: NOW });
+    await h.uc.sweep(new Date(NOW.getTime() + 89 * 86_400_000));
+    expect(h.byRef(r.reference)!.photoId).toBe(up.photoId); // still within 90 days
+    await h.uc.sweep(new Date(NOW.getTime() + 91 * 86_400_000));
+    expect(h.byRef(r.reference)!.photoId).toBeNull();
+  });
+
+  it('removing a photo is a lookup by a secret (code or reference): the tight budget, never the global one', () => {
+    expect(classifyPublicEndpoint('POST', '/commerce/gift-cards/photo/remove-by-code')).toBe('order-lookup');
+    expect(classifyPublicEndpoint('POST', '/commerce/gift-cards/purchase/GC-0123456789/remove-photo')).toBe('order-lookup');
   });
 });

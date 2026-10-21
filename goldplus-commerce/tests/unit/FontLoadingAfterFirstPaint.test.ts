@@ -49,6 +49,9 @@ describe('web fonts load after the first paint', () => {
   it('the metric-matched fallbacks stay inline and cover Linux/Android metric twins', () => {
     const global = read('apps/web/src/styles/global.css');
     expect(global).toMatch(/'Plus Jakarta Sans Fallback'[^}]*local\('Liberation Sans'\)/);
+    // Gift cards (0201): Montserrat's metric twin for every weight the card uses, and the card asks for it.
+    for (const w of [500, 600, 700, 800]) expect(global).toMatch(new RegExp(`'Montserrat Fallback'; font-style: normal; font-weight: ${w};[^}]*size-adjust`));
+    expect(read('apps/web/src/components/GiftCardFace.astro')).toContain("font-family: 'Montserrat', 'Montserrat Fallback'");
     for (const f of ['apps/web/src/components/GpNav.astro', 'apps/web/src/components/hero/HeroSlider.astro']) {
       expect((read(f).match(/font-family:'Poppins Fallback'/g) ?? []).length, f).toBe(3);
     }

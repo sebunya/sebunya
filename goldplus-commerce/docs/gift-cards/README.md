@@ -10,7 +10,9 @@ How the card looks, what a buyer can put on it, and what the shop keeps. Code: `
 - **Colours:** GoldPlus green `#96CC06`, black and white, with two light greys for paper folds in the illustrations. A unit
   test fails if an illustration uses any other colour, or if it contains text or a linked picture.
 - **Type:** Montserrat, self-hosted (`apps/web/public/fonts/montserrat-*-var.woff2`, all weights in one variable file
-  per subset). The share images load it before drawing; the browser check is recorded in the evidence run.
+  per subset). Like every site font it arrives after first paint (faces.css); until then the card uses
+  'Montserrat Fallback' in `global.css`, Arial sized to Montserrat's measured width and height per weight, so the swap
+  does not move the card. The share images load Montserrat before drawing.
 - **Logo:** the original wordmark, never redrawn. Black on light, white or green on black. Never white text on green.
 - **One structure for all 14 occasions:**
   - a brand area (the logo);
@@ -55,12 +57,24 @@ ticks it.
 - An upload can be put on a card for 2 days. Its link stops working when that window closes, so a saved draft notices.
 - An upload nothing claimed is deleted after 3 days.
 - The photo of a purchase that ended unpaid or refunded is deleted 30 days after it ended.
+- The photo of a card that is used up, cancelled or expired is deleted 90 days after its last movement.
 - A privacy erasure deletes the photos of that person's purchases.
-- Staff can remove a photo in Admin › Gift cards › Bought online. The removal is audited.
+- Database backups can still hold a copy; they are for restoring the shop and are never used to show a photo.
+
+**Who can remove it:**
+- The person the card is for, from their card (`/gift-card/open`): the card's code is the proof.
+- The buyer, from their purchase page (`/gift-card/bought`): the purchase reference is the proof.
+- Staff, in Admin › Gift cards › Bought online. Staff removals are audited.
+
+Every removal has one confirming tap and works without JavaScript. The privacy policy (version 1.3, "Gift cards: notes and
+photos") says all of this in customer words; change the two together.
 
 **Limits:**
 - 10 uploads a minute per visitor (the `issue-report` family).
-- 400 photos a day across the whole shop. Above that the card still sells, without a photo.
+- 20 photos a day per visitor, counted by a peppered hash of the rate-limit key (`gift_card_photos.uploader_key`),
+  never by a stored address. Our own server calls count only against the shop-wide limit.
+- 400 photos a day across the whole shop. Above either daily limit the card still sells, without a photo.
+- Removing a photo by code or reference is a lookup by a secret, on the tight `order-lookup` budget.
 
 **sharp is a native module.** It loads on the first photo, not when the API starts, so a missing binary would only
 turn photos off. The CI job `api-image` builds the production image and runs a photo through it.

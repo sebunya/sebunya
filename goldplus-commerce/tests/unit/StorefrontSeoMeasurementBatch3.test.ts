@@ -89,7 +89,7 @@ describe('the service worker never keeps a signed-in snapshot', () => {
 describe('policy versions move when the policy does', () => {
   it('returns, privacy and cookies carry their material-change versions and dates', () => {
     expect(policyBySlug('returns')).toMatchObject({ version: '1.1', effectiveDate: '2026-09-01' });
-    expect(policyBySlug('privacy')).toMatchObject({ version: '1.2', effectiveDate: '2026-10-14' });
+    expect(policyBySlug('privacy')).toMatchObject({ version: '1.3', effectiveDate: '2026-10-21' }); // 1.3: gift card notes and photos
     expect(policyBySlug('cookies')).toMatchObject({ version: '1.1', effectiveDate: '2026-09-19' });
     expect(policyBySlug('terms')).toMatchObject({ version: '1.0', effectiveDate: '2026-08-13' });
     expect(policyBySlug('warranty')).toMatchObject({ version: '1.0', effectiveDate: '2026-08-13' });

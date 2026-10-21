@@ -1,5 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { clientKey, isInternalCall } from '../clientAddress';
+import { piiHasher } from '../../../infrastructure/security/PiiHashingService';
 import { GIFT_CARD_PHOTO_MAX_BYTES } from '../../../application/use-cases/credit/GiftCardPurchaseUseCases';
 import { isGiftCardPurchaseReference } from '../../../domain/credit/GiftCardPurchase';
 import { z } from 'zod';
@@ -387,9 +389,34 @@ routes.post('/gift-cards/photos', bodyLimit({
 }), async (c) => {
   c.header('Cache-Control', 'no-store');
   const bytes = Buffer.from(await c.req.arrayBuffer());
-  const result = await registry.giftCardPurchaseUseCases.uploadPhoto(bytes);
+  // Who uploads, for the per-visitor daily ceiling: a peppered hash of the rate-limit key, never the address itself.
+  // Our own server calls (no forwarded address) count only against the shop-wide ceiling.
+  const uploaderKey = isInternalCall(c) ? null : piiHasher.hashName(clientKey(c));
+  const result = await registry.giftCardPurchaseUseCases.uploadPhoto(bytes, uploaderKey);
   if (!result.ok) return c.json({ success: false, error: { code: 'PHOTO_REFUSED', message: result.message } }, 400);
   return c.json({ success: true, data: { photoId: result.photoId } });
+});
+
+/**
+ * 0201: the person the card is for takes the photo off it. The code is the proof, as it is for spending the card, and
+ * a guess at it is counted against the same tight lookup budget as opening one.
+ */
+routes.post('/gift-cards/photo/remove-by-code', async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const body = await c.req.json().catch(() => null);
+  const normalized = normalizeCreditCode(body?.code);
+  if (!normalized) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'That code is not right. Check each character, or call us.' } }, 404);
+  const result = await registry.giftCardPurchaseUseCases.removePhotoByCode(normalized.code);
+  if (!result.ok) return c.json({ success: false, error: { code: 'NOT_REMOVED', message: result.message } }, result.purchaseId ? 409 : 404);
+  return c.json({ success: true, data: { message: result.message } });
+});
+
+/** 0201: the buyer takes the photo off the card they bought (the purchase's unguessable reference is the proof). */
+routes.post('/gift-cards/purchase/:reference/remove-photo', async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const result = await registry.giftCardPurchaseUseCases.removePhoto(c.req.param('reference'));
+  if (!result.ok) return c.json({ success: false, error: { code: 'NOT_REMOVED', message: result.message } }, result.purchaseId ? 409 : 404);
+  return c.json({ success: true, data: { message: result.message } });
 });
 
 /**

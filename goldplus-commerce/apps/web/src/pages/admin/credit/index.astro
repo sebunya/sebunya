@@ -260,7 +260,8 @@ const prefillReturn = (Astro.url.searchParams.get('return') ?? '').toUpperCase()
                 {isPhotoId(p.photoId) && (
                   <form method="POST" class="mt-1 flex items-center gap-2"><input type="hidden" name="intent" value="remove-photo" /><input type="hidden" name="reference" value={p.reference} />
                     <a href={`/gift-card/photo/${p.photoId}`} target="_blank" rel="noopener"><img src={`/gift-card/photo/${p.photoId}`} alt="Photo on the card" width="40" height="40" loading="lazy" class="h-10 w-10 rounded object-cover ring-1 ring-black/10" /></a>
-                    <button class="min-h-9 rounded-full border px-2 text-[11px] font-black uppercase" title="Deletes the photo; the card shows its occasion picture instead">Remove photo</button></form>
+                    <details class="text-[11px]"><summary class="cursor-pointer font-black uppercase underline">Remove photo</summary>
+                      <button class="mt-1 min-h-9 rounded-full border border-red-300 px-2 text-[11px] font-black uppercase text-red-800" title="Deletes the photo; the card shows its occasion picture instead">Yes, delete it</button></details></form>
                 )}
               </td>
               <td class="text-xs">{p.paymentMethod ?? ''}<span class="block text-gray-500">{p.confirmationCode ?? ''}</span></td>

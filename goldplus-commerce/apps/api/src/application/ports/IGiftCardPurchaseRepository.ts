@@ -74,16 +74,19 @@ export interface IGiftCardPurchaseRepository {
   create(input: Omit<GiftCardPurchaseRecord, 'id' | 'status' | 'orderTrackingId' | 'redirectUrl' | 'providerStatus' | 'confirmationCode' | 'paymentMethod' | 'instrumentId' | 'cardLast4' | 'textStatus' | 'createdAt' | 'paidAt' | 'issuedAt'>): Promise<GiftCardPurchaseRecord>;
   byReference(reference: string): Promise<GiftCardPurchaseRecord | null>;
   /** 0201: a processed photo, kept until a purchase claims it (or three days pass). */
-  savePhoto(image: Buffer, width: number, height: number): Promise<string>;
+  savePhoto(image: Buffer, width: number, height: number, uploaderKey: string | null): Promise<string>;
   /** The photo's JPEG bytes, or null: unknown, removed, or an unclaimed upload older than `unclaimedAfter`. */
   photoImage(id: string, unclaimedAfter: Date): Promise<Buffer | null>;
-  /** Photos uploaded since `since`, claimed or not (the shop-wide daily ceiling). */
-  photosSince(since: Date): Promise<number>;
+  /** Photos uploaded since `since`, claimed or not: shop-wide, or by one uploader (the daily ceilings). */
+  photosSince(since: Date, uploaderKey?: string): Promise<number>;
   /**
-   * Photos no purchase claimed, uploaded before `unclaimedBefore`; and photos of purchases that ended unpaid or
-   * refunded before `endedBefore` (their card never exists or no longer counts, so its picture is not kept).
+   * Photos no purchase claimed, uploaded before `unclaimedBefore`; photos of purchases that ended unpaid or
+   * refunded before `endedBefore`; and photos of cards that were used up, cancelled or expired before `cardDoneBefore`
+   * (the picture is kept while the card can still be opened and spent, not for ever).
    */
-  deleteStalePhotos(unclaimedBefore: Date, endedBefore: Date): Promise<number>;
+  deleteStalePhotos(unclaimedBefore: Date, endedBefore: Date, cardDoneBefore: Date): Promise<number>;
+  /** The purchase whose issued card has this code hash (the holder of the code is the person it is for). */
+  purchaseIdByCodeHash(codeHash: string): Promise<string | null>;
   /** Staff: take the photo off a purchase (and delete it). */
   removePhoto(purchaseId: string): Promise<boolean>;
   byTrackingId(trackingId: string): Promise<GiftCardPurchaseRecord | null>;

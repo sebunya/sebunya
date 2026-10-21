@@ -108,4 +108,6 @@ export const giftCardPhotos = pgTable('gift_card_photos', {
   height: integer('height').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   attachedAt: timestamp('attached_at', { withTimezone: true }),
+  /** HMAC of the uploader's rate-limit key (the per-visitor daily ceiling), never an address. */
+  uploaderKey: varchar('uploader_key', { length: 64 }),
 });

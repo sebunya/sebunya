@@ -2,6 +2,7 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import GiftCardFace from '../../components/GiftCardFace.astro';
 import { giftCardPhotoUrl } from '../../lib/giftCardPhoto';
+import GiftCardPhotoRemove from '../../components/GiftCardPhotoRemove.astro';
 import { apiBase } from '../../lib/api';
 import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
 import { formatUgx } from '../../lib/money';
@@ -21,9 +22,25 @@ type Opened = {
 let opened: Opened | null = null;
 let problem = '';
 let typed = '';
+let photoNotice: string | null = null;
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   typed = String(form.get('code') ?? '').trim().slice(0, 40);
+  // 0201: the person the card is for takes the photo off it, then sees their card again. The code is the proof.
+  if (form.get('intent') === 'remove-photo') {
+    try {
+      const res = await fetch(`${apiBase}/commerce/gift-cards/photo/remove-by-code`, {
+        method: 'POST',
+        headers: apiHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }, readClientAddress(Astro)),
+        body: JSON.stringify({ code: typed }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      photoNotice = res.ok ? 'The photo is removed. Your card shows its occasion picture instead.'
+        : res.status === 409 ? 'This card has no photo.' : 'We could not remove the photo just now. Please try again, or call us.';
+    } catch {
+      photoNotice = 'We could not remove the photo just now. Please try again, or call us.';
+    }
+  }
   try {
     const res = await fetch(`${apiBase}/commerce/gift-cards/open`, {
       method: 'POST',
@@ -79,6 +96,8 @@ const shareSource = opened ? {
         </h1>
         <div class="mt-6">
           <GiftCardFace theme={opened.face?.theme} amountUgx={opened.balanceUgx} toName={opened.face?.toName} fromName={opened.face?.fromName ?? 'GoldPlus'} message={opened.face?.message} photoUrl={photoUrl} masked={opened.usable ? null : opened.masked} />
+          {photoNotice && <p class="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900" role="status">{photoNotice}</p>}
+          {photoUrl && opened.code && <GiftCardPhotoRemove whose="your" fields={{ code: opened.code }} />}
         </div>
 
         {/* Share your gift: optional, secondary, and available after the card is spent too. */}

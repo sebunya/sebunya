@@ -682,6 +682,27 @@ async function giftCardPurchaseProofs(): Promise<void> {
     check('their card shows the photo, and the share panel offers it (off until chosen)', [opened3.body.includes(`/gift-card/photo/${photoId}`), /data-share-opt="photo"/.test(opened3.body), /data-share-opt="photo" checked/.test(opened3.body)], [true, true, false]);
   } else note('the code was already sent and scrubbed; the open page with a photo is proved by the unit suite');
   if (E2E_GIFT_PHOTO_OUT) writeFileSync(E2E_GIFT_PHOTO_OUT, JSON.stringify({ code: code3?.code ?? null, reference: s3[0]?.merchantReference ?? null, photoId }));
+
+  // The person it is for can take the photo off their card (the code is the proof); the buyer can too (the reference).
+  if (code3?.code) {
+    const removed = await postForm(new Jar(), '/gift-card/open', { intent: 'remove-photo', code: String(code3.code) });
+    check('the person it is for removes the photo from their card, and sees the card without it',
+      [removed.status, /The photo is removed/.test(removed.body), removed.body.includes(`/gift-card/photo/${photoId}`)], [200, true, false]);
+    check('the photo is gone from the shop', (await fetch(`${WEB}/gift-card/photo/${photoId}`)).status, 404);
+  }
+  await resetStub();
+  const up2 = await fetch(`${WEB}/gift-card/photo`, { method: 'POST', headers: { 'content-type': 'image/jpeg', origin: WEB }, body: camera });
+  const photo2 = String(((await up2.json().catch(() => null)) as any)?.data?.photoId ?? '');
+  const buyer2 = new Jar();
+  check('a second card with a photo is bought', (await postForm(buyer2, '/gift-card/buy', { ...giftForm, buyerPhone: '0700000917', photoId: photo2 })).status, 303);
+  const s4 = (await stubSubmissions()) as Array<{ merchantReference: string; orderTrackingId: string }>;
+  const ref4 = s4[0]?.merchantReference ?? '';
+  await fetch(`${STUB}/__stub/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderTrackingId: s4[0]?.orderTrackingId, status: 'COMPLETED' }) });
+  await fetch(`${process.env.E2E_API_BASE}/commerce/payments/pesapal/ipn?OrderTrackingId=${encodeURIComponent(s4[0]?.orderTrackingId ?? '')}&OrderMerchantReference=${encodeURIComponent(ref4)}&OrderNotificationType=IPNCHANGE`);
+  const buyerRemove = await postForm(buyer2, `/gift-card/bought?ref=${encodeURIComponent(ref4)}`, { intent: 'remove-photo' });
+  check('the buyer removes it from their page (and a refresh cannot repeat it: post, redirect, get)', [buyerRemove.status, (buyerRemove.location ?? '').endsWith(`ref=${ref4}&photo=removed`)], [303, true]);
+  const after = await get(buyer2, buyerRemove.location ?? `/gift-card/bought?ref=${encodeURIComponent(ref4)}`); // where the browser lands
+  check('…the page then says so, the card has no photo, and the purchase keeps everything else', [/The photo is removed/.test(after.body), after.body.includes(`/gift-card/photo/${photo2}`), (await purchaseByBuyer('+256700000917'))?.photo_id ?? null, (await purchaseByBuyer('+256700000917'))?.status], [true, false, null, 'issued']);
 }
 
 /**
