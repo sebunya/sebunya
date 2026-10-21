@@ -13,7 +13,9 @@ type Status = {
   reference: string; status: 'awaiting_payment' | 'paid' | 'issued' | 'failed' | 'review' | 'refunded'; amountUgx: number;
   recipientFirstName: string; theme: string; fromName: string; message: string | null; recipientPhoneMasked: string; buyerPhoneMasked: string; sendTo: 'recipient' | 'buyer'; deliverOn: string | null;
   textStatus: 'sent' | 'sending' | 'failed' | 'not_sent' | null;
+  photoId?: string | null;
 };
+const PHOTO_ID = /^[0-9a-f-]{36}$/i;
 const ref = String(Astro.url.searchParams.get('ref') ?? '').trim().toUpperCase().slice(0, 20);
 const cancelled = Astro.url.searchParams.get('cancelled') === '1';
 let s: Status | null = null;
@@ -38,6 +40,7 @@ if (/^GC-[0-9A-Z]{10}$/.test(ref)) {
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 const day = (iso: string) => new Date(`${iso}T09:00:00+03:00`).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', weekday: 'long', day: 'numeric', month: 'long' });
 const waiting = s?.status === 'awaiting_payment' && !cancelled;
+const photoUrl = s?.photoId && PHOTO_ID.test(s.photoId) ? `/gift-card/photo/${s.photoId}` : null;
 ---
 <BaseLayout title="Your gift card | GoldPlus" description="Where your GoldPlus gift card purchase stands." robotsMeta="noindex,nofollow">
   {waiting && <meta slot="head" http-equiv="refresh" content="10" />}
@@ -70,7 +73,7 @@ const waiting = s?.status === 'awaiting_payment' && !cancelled;
     {s && (s.status === 'paid' || s.status === 'issued') && (
       <>
         <h1 class="text-3xl font-black tracking-tight text-gray-900">Thank you, it is paid</h1>
-        <div class="mt-6"><GiftCardFace theme={s.theme} amountUgx={s.amountUgx} toName={s.recipientFirstName} fromName={s.fromName} message={s.message} masked="GPGC-••••-••••-••••" /></div>
+        <div class="mt-6"><GiftCardFace theme={s.theme} amountUgx={s.amountUgx} toName={s.recipientFirstName} fromName={s.fromName} message={s.message} photoUrl={photoUrl} /></div>
         <div class="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5" role="status">
           <p class="text-sm font-bold text-gray-900">Gift card for {s.recipientFirstName}</p>
           <p class="mt-1 text-2xl font-black tabular-nums text-gray-900">{formatUgx(s.amountUgx)}</p>

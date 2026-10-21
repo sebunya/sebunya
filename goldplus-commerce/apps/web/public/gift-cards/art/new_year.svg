@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="A firework burst over a curling ribbon">
+  <!-- New Year: a firework burst of lines (no year) over a curling green ribbon. Drawn for a black field. -->
+  <g stroke="#FFFFFF" stroke-width="6" stroke-linecap="round">
+    <line x1="100" y1="78" x2="100" y2="28"/><line x1="100" y1="78" x2="136" y2="42"/><line x1="100" y1="78" x2="150" y2="78"/>
+    <line x1="100" y1="78" x2="136" y2="114"/><line x1="100" y1="78" x2="64" y2="114"/><line x1="100" y1="78" x2="50" y2="78"/><line x1="100" y1="78" x2="64" y2="42"/>
+  </g>
+  <g fill="#96CC06"><circle cx="100" cy="20" r="8"/><circle cx="142" cy="36" r="8"/><circle cx="158" cy="78" r="8"/><circle cx="142" cy="120" r="8"/><circle cx="58" cy="120" r="8"/><circle cx="42" cy="78" r="8"/><circle cx="58" cy="36" r="8"/></g>
+  <circle cx="100" cy="78" r="10" fill="#96CC06"/>
+  <path d="M22 176 C52 140 76 186 104 156 C130 128 152 176 182 146" fill="none" stroke="#96CC06" stroke-width="14" stroke-linecap="round"/>
+</svg>

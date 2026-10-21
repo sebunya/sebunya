@@ -1,5 +1,5 @@
 import type { IPesaPalClient } from '../../ports/IPesaPalClient';
-import type { GiftCardOutboxMessage, GiftCardPurchaseRecord, IGiftCardPurchaseRepository } from '../../ports/IGiftCardPurchaseRepository';
+import type { GiftCardOutboxMessage, GiftCardPurchaseRecord, IGiftCardPhotoProcessor, IGiftCardPurchaseRepository } from '../../ports/IGiftCardPurchaseRepository';
 import type { ICreditRepository } from '../../ports/ICreditRepository';
 import type { CreditCodeTools } from './CreditUseCases';
 import { newCreditCode } from '../../../domain/credit/CreditInstrument';
@@ -56,7 +56,14 @@ export interface GiftCardPublicStatus {
   sendTo: 'recipient' | 'buyer';
   deliverOn: string | null;
   textStatus: 'sent' | 'sending' | 'failed' | 'not_sent' | null;
+  /** 0201: the buyer's photo on the card, when there is one. */
+  photoId: string | null;
 }
+
+/** 0201: what a phone may send as a gift card photo (it crops to a 1080 px square first; this is the ceiling). */
+export const GIFT_CARD_PHOTO_MAX_BYTES = 6 * 1024 * 1024;
+/** An uploaded photo no purchase claims is deleted after this long. */
+const UNCLAIMED_PHOTO_MS = 3 * 86_400_000;
 
 const PART_SPENT = 'Part of this card has been spent or is reserved by an order, so the payment cannot be refunded in full here. Settle it with the buyer and refund the rest from the Pesapal dashboard.';
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? '';
@@ -72,7 +79,36 @@ export class GiftCardPurchaseUseCases {
     private readonly tools: CreditCodeTools & { referenceIndexes(): number[]; normalizePhone(raw: string): string },
     private readonly config: () => GiftCardPaymentConfig,
     private readonly log: (event: string, detail: Record<string, unknown>) => void = () => undefined,
+    private readonly photos: IGiftCardPhotoProcessor | null = null,
   ) {}
+
+  /**
+   * 0201: the buyer's optional photo. Re-encoded (a square JPEG without metadata, so no location leaves the phone)
+   * and kept until a purchase claims it; unclaimed photos are deleted by the sweep after three days.
+   */
+  async uploadPhoto(bytes: Buffer): Promise<{ ok: true; photoId: string } | { ok: false; message: string }> {
+    if (!this.photos) return { ok: false, message: 'Photos are not available right now. The card works without one.' };
+    if (bytes.length === 0 || bytes.length > GIFT_CARD_PHOTO_MAX_BYTES) return { ok: false, message: 'Choose a photo smaller than 6 MB.' };
+    try {
+      const p = await this.photos.process(bytes);
+      return { ok: true, photoId: await this.repo.savePhoto(p.image, p.width, p.height) };
+    } catch (err) {
+      const m = String((err as Error)?.message ?? err);
+      if (m === 'PHOTO_TOO_SMALL') return { ok: false, message: 'That photo is too small to print on a card. Choose a bigger one.' };
+      this.log('gift_card_photo_refused', { error: m.slice(0, 120) });
+      return { ok: false, message: 'That file is not a photo we can use. Choose a JPEG, PNG or HEIC photo.' };
+    }
+  }
+  photoImage(photoId: string) {
+    return /^[0-9a-f-]{36}$/i.test(photoId) ? this.repo.photoImage(photoId.toLowerCase()) : Promise.resolve(null);
+  }
+  /** Staff: take a photo off a card (it is deleted; the card stays as it was otherwise). */
+  async removePhoto(reference: string): Promise<{ ok: boolean; message: string; purchaseId?: string }> {
+    const p = isGiftCardPurchaseReference(reference) ? await this.repo.byReference(reference) : null;
+    if (!p) return { ok: false, message: 'No gift card purchase has that reference.' };
+    if (!(await this.repo.removePhoto(p.id))) return { ok: false, message: 'This card has no photo.', purchaseId: p.id };
+    return { ok: true, message: 'The photo is deleted. The card shows its occasion picture instead.', purchaseId: p.id };
+  }
 
   async start(input: GiftCardPurchaseRequest & { buyerUserId?: string | null }, now = new Date()): Promise<StartGiftCardResult> {
     const checked = checkGiftCardPurchase(input, now);
@@ -97,13 +133,17 @@ export class GiftCardPurchaseUseCases {
     let purchase: GiftCardPurchaseRecord | null = null;
     for (let attempt = 0; attempt < 3 && !purchase; attempt++) {
       try {
+        // photoId is claimed inside create's transaction (PHOTO_UNAVAILABLE when it is gone or already used).
         purchase = await this.repo.create({
           reference: giftCardPurchaseReference(this.tools.referenceIndexes()), amountUgx: v.amountUgx,
           buyerName: v.buyerName, buyerPhone, buyerEmail: v.buyerEmail, buyerUserId: input.buyerUserId ?? null,
           fromName: v.fromName, recipientName: v.recipientName, recipientPhone: v.recipientPhone ? this.tools.normalizePhone(v.recipientPhone) : null,
-          sendTo: v.sendTo, message: v.message, theme: v.theme, deliverOn: v.deliverOn,
+          sendTo: v.sendTo, message: v.message, theme: v.theme, deliverOn: v.deliverOn, photoId: v.photoId,
         });
       } catch (err) {
+        if (String((err as Error)?.message) === 'PHOTO_UNAVAILABLE') {
+          return { ok: false, code: 'INVALID', errors: { photo: 'Your photo expired. Add it again, or remove it to send the card without one.' } };
+        }
         if (!/gift_card_purchases_reference_uq|duplicate key/i.test(String((err as Error)?.message ?? err))) throw err;
       }
     }
@@ -200,6 +240,7 @@ export class GiftCardPurchaseUseCases {
       sendTo: p.sendTo,
       deliverOn: p.deliverOn,
       textStatus: p.textStatus,
+      photoId: p.photoId,
     };
   }
 
@@ -219,6 +260,7 @@ export class GiftCardPurchaseUseCases {
     for (const p of await this.repo.paidNotIssued(100)) {
       if (await this.deliverIfDue(p, now).catch((err) => { this.log('gift_card_issue_failed', { reference: p.reference, error: String(err) }); return false; })) issued += 1;
     }
+    await this.repo.deleteStalePhotos(new Date(now.getTime() - UNCLAIMED_PHOTO_MS)).catch((err) => this.log('gift_card_photo_sweep_failed', { error: String(err) }));
     return { polled, abandoned, issued };
   }
 

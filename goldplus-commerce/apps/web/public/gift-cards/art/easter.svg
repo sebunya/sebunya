@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="An egg with a new shoot growing from it">
+  <!-- Easter: renewal, a new shoot rising from an opened egg. Drawn for a green field. -->
+  <path d="M100 26 C100 52 100 70 100 96" stroke="#000000" stroke-width="6" stroke-linecap="round" fill="none"/>
+  <path d="M100 66 C80 66 64 54 62 34 C82 34 98 46 100 66 Z" fill="#000000"/>
+  <path d="M100 52 C118 52 132 40 134 22 C116 22 102 34 100 52 Z" fill="#FFFFFF" stroke="#000000" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M46 116 C46 160 70 184 100 184 C130 184 154 160 154 116 Z" fill="#FFFFFF" stroke="#000000" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M46 116 L62 100 L76 114 L90 98 L104 114 L118 98 L132 114 L144 100 L154 116" fill="none" stroke="#000000" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M58 146 H142" stroke="#000000" stroke-width="5" opacity=".2"/>
+</svg>

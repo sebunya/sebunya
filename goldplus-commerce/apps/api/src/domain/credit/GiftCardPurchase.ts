@@ -22,7 +22,8 @@ export const GIFT_CARD_SCHEDULED_SEND_HOUR_EAT = 9;
 export const GIFT_CARD_DAILY_STARTS_PER_BUYER = 6;
 export const GIFT_CARD_DAILY_UGX_PER_BUYER = 1_000_000;
 
-export const GIFT_CARD_MESSAGE_MAX = 100;
+/** The note on the card (0199's column is varchar(160)). It is shown on the card, never in the text message. */
+export const GIFT_CARD_MESSAGE_MAX = 160;
 export const GIFT_CARD_FROM_MAX = 40;
 
 export type GiftCardSendTo = 'recipient' | 'buyer';
@@ -44,6 +45,8 @@ export interface GiftCardPurchaseRequest {
   buyerEmail: unknown;
   deliverOn: unknown;
   theme?: unknown;
+  /** 0201: the id the photo upload handed back, or empty. */
+  photoId?: unknown;
 }
 
 export interface CleanGiftCardPurchase {
@@ -60,9 +63,10 @@ export interface CleanGiftCardPurchase {
   /** YYYY-MM-DD in Kampala, or null to send as soon as it is paid. */
   deliverOn: string | null;
   theme: GiftCardTheme;
+  photoId: string | null;
 }
 
-export type GiftCardField = 'amountUgx' | 'recipientName' | 'recipientPhone' | 'sendTo' | 'message' | 'fromName' | 'buyerName' | 'buyerPhone' | 'buyerEmail' | 'deliverOn';
+export type GiftCardField = 'amountUgx' | 'recipientName' | 'recipientPhone' | 'sendTo' | 'message' | 'fromName' | 'buyerName' | 'buyerPhone' | 'buyerEmail' | 'deliverOn' | 'photo';
 
 // Control characters (a newline would let a message forge a second line of our SMS) become spaces.
 const controlChars = (v: string) => Array.from(v, (ch) => (ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? ' ' : ch)).join('');
@@ -161,6 +165,9 @@ export function checkGiftCardPurchase(
     else deliverOn = deliverRaw > today ? deliverRaw : null;
   }
 
+  const photoRaw = typeof input.photoId === 'string' ? input.photoId.trim().toLowerCase() : '';
+  if (photoRaw && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(photoRaw)) errors.photo = 'Add the photo again, or remove it.';
+
   if (Object.keys(errors).length > 0) return { ok: false, errors };
   return {
     ok: true,
@@ -169,6 +176,7 @@ export function checkGiftCardPurchase(
       fromName, buyerName, buyerPhone, buyerEmail: buyerEmail || null, deliverOn,
       // An unknown theme is not the buyer's mistake to fix: the card simply takes the GoldPlus look.
       theme: isGiftCardTheme(input.theme) ? input.theme : 'gold',
+      photoId: photoRaw || null,
     },
   };
 }

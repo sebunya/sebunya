@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  checkGiftCardPurchase, giftCardPurchaseReference, isGiftCardPurchaseReference, kampalaToday, maskPhone, scheduledSendDue, unsafeGiftText,
+  GIFT_CARD_MESSAGE_MAX, checkGiftCardPurchase, giftCardPurchaseReference, isGiftCardPurchaseReference, kampalaToday, maskPhone, scheduledSendDue, unsafeGiftText,
 } from '../../apps/api/src/domain/credit/GiftCardPurchase';
 import { GiftCardPurchaseUseCases, ONLINE_GIFT_CARD_ISSUER_ID } from '../../apps/api/src/application/use-cases/credit/GiftCardPurchaseUseCases';
 import type { GiftCardPurchaseRecord } from '../../apps/api/src/application/ports/IGiftCardPurchaseRepository';
@@ -41,7 +41,10 @@ describe('gift card purchase rules (0199)', () => {
     }
     for (const fine of ['Happy 30th birthday!', 'Congrats on the new job, 2026 is yours', 'Merry Christmas from all of us']) expect(unsafeGiftText(fine)).toBe(false);
     expect(checkGiftCardPurchase(form({ fromName: 'Call 0772123456' }), NOW).ok).toBe(false);
-    expect(checkGiftCardPurchase(form({ message: 'x'.repeat(101) }), NOW).ok).toBe(false);
+    // 160 characters: the same limit in the form, here and in the column; one more is refused, never cut.
+    expect(checkGiftCardPurchase(form({ message: 'x'.repeat(160) }), NOW).ok).toBe(true);
+    expect(checkGiftCardPurchase(form({ message: 'x'.repeat(161) }), NOW).ok).toBe(false);
+    expect(GIFT_CARD_MESSAGE_MAX).toBe(160);
   });
 
   it('schedules within 90 days, never in the past, and not when the code comes to the buyer', () => {
@@ -88,9 +91,11 @@ describe('gift card purchase rules (0199)', () => {
 });
 
 describe('gift card messages (0199)', () => {
-  it('the recipient reads who it is from, the message and the code; the buyer’s receipt never carries the code', () => {
+  it('the recipient reads who it is from and the code, and that a note waits on the card; the buyer’s receipt never carries the code', () => {
     const received = smsText('GIFT_CARD_RECEIVED', { fromName: 'Rob', giftMessage: 'Happy birthday!', valueUgx: 50_000, creditCode: 'GPGC-AAAA-BBBB-CCCC' } as never)!;
-    expect(received).toContain('Rob sent you a gift card of UGX 50,000: "Happy birthday!"');
+    expect(received).toContain('Rob sent you a gift card of UGX 50,000, with a note for you on the card.');
+    expect(received).not.toContain('Happy birthday');
+    expect(smsText('GIFT_CARD_RECEIVED', { fromName: 'Rob', giftMessage: null, valueUgx: 50_000, creditCode: 'GPGC-AAAA-BBBB-CCCC' } as never)).toContain('gift card of UGX 50,000. Open it');
     expect(received).toContain('GPGC-AAAA-BBBB-CCCC');
     // The card opens from a link whose #fragment carries the code (never sent to a server).
     expect(received).toContain('/gift-card/open#GPGC-AAAA-BBBB-CCCC');
@@ -103,9 +108,9 @@ describe('gift card messages (0199)', () => {
     expect(CUSTOMER_TRANSACTIONAL_TEMPLATES).toEqual(expect.arrayContaining(['GIFT_CARD_RECEIVED', 'GIFT_CARD_PAID']));
   });
 
-  it('an emoji in the message shows on the card but not in the SMS (one emoji would triple its parts)', () => {
+  it('an emoji in the name or note never reaches the SMS (one emoji would triple its parts); the note is on the card', () => {
     const t = smsText('GIFT_CARD_RECEIVED', { fromName: 'Rob 😊', giftMessage: 'Happy birthday! 🎂', valueUgx: 50_000, creditCode: 'GPGC-AAAA-BBBB-CCCC' } as never)!;
-    expect(t).toContain('Rob sent you a gift card of UGX 50,000: "Happy birthday!"');
+    expect(t).toContain('Rob sent you a gift card of UGX 50,000, with a note for you');
     expect(/[\u{1F300}-\u{1FAFF}]/u.test(t)).toBe(false);
   });
 
@@ -121,9 +126,11 @@ describe('gift card messages (0199)', () => {
     expect(texts).toHaveLength(2);
     for (const t of texts) expect([...t].filter((c) => !GSM.includes(c))).toEqual([]);
     expect(texts[0]).toContain('07xx xxx 222');
-    // Two parts at most for the receipt; the code text fits three even with a full 100-character message.
+    // Two parts at most for the receipt; the code text is the same length whatever the note says (it is not in it).
     expect(texts[0].length).toBeLessThanOrEqual(306);
-    const long = smsText('GIFT_CARD_RECEIVED', { fromName: 'x'.repeat(40), giftMessage: 'y'.repeat(100), valueUgx: 500_000, creditCode: 'GPGC-AAAA-BBBB-CCCC' } as never)!;
+    const long = smsText('GIFT_CARD_RECEIVED', { fromName: 'x'.repeat(40), giftMessage: 'y'.repeat(160), valueUgx: 500_000, creditCode: 'GPGC-AAAA-BBBB-CCCC' } as never)!;
+    const short = smsText('GIFT_CARD_RECEIVED', { fromName: 'x'.repeat(40), giftMessage: 'y', valueUgx: 500_000, creditCode: 'GPGC-AAAA-BBBB-CCCC' } as never)!;
+    expect(long).toBe(short);
     expect(long.length).toBeLessThanOrEqual(459);
   });
 });
@@ -131,6 +138,7 @@ describe('gift card messages (0199)', () => {
 // ── The use cases, against an in-memory repository and a scripted Pesapal ──────────────────────────────
 function harness(opts: { ipnId?: string | null; buyerActivity?: { started: number; paidUgx: number } } = {}) {
   let paidToday = 0;
+  const photos = new Map<string, { image: Buffer; attached: boolean }>();
   const rows = new Map<string, GiftCardPurchaseRecord>();
   const outbox: Array<{ template: string; phone: string; data: Record<string, unknown>; key: string }> = [];
   const cards: Array<{ id: string; code?: string; purchaseId: string; issuedBy: string; reason: string; recipientPhone: string | null; status: string; balance: number; held: number; initial: number; ledger: any[] }> = [];
@@ -140,7 +148,7 @@ function harness(opts: { ipnId?: string | null; buyerActivity?: { started: numbe
   const byRef = (r: string) => [...rows.values()].find((p) => p.reference === r) ?? null;
   const copy = (p: GiftCardPurchaseRecord | null) => (p ? { ...p } : null);
   const repo = {
-    create: async (i: any) => { const p: GiftCardPurchaseRecord = { ...i, id: `p${++seq}`, textStatus: null, status: 'awaiting_payment', orderTrackingId: null, redirectUrl: null, providerStatus: null, confirmationCode: null, paymentMethod: null, instrumentId: null, cardLast4: null, createdAt: new Date(NOW), paidAt: null, issuedAt: null }; rows.set(p.id, p); return { ...p }; },
+    create: async (i: any) => { if (i.photoId) { const ph = photos.get(i.photoId); if (!ph || ph.attached) throw new Error('PHOTO_UNAVAILABLE'); ph.attached = true; } const p: GiftCardPurchaseRecord = { ...i, id: `p${++seq}`, textStatus: null, status: 'awaiting_payment', orderTrackingId: null, redirectUrl: null, providerStatus: null, confirmationCode: null, paymentMethod: null, instrumentId: null, cardLast4: null, createdAt: new Date(NOW), paidAt: null, issuedAt: null }; rows.set(p.id, p); return { ...p }; },
     byReference: async (r: string) => copy(byRef(r)),
     byTrackingId: async (t: string) => copy([...rows.values()].find((p) => p.orderTrackingId === t) ?? null),
     recordStarted: async (id: string, t: string, u: string) => { const p = rows.get(id)!; if (!p.orderTrackingId) Object.assign(p, { orderTrackingId: t, redirectUrl: u }); },
@@ -174,8 +182,12 @@ function harness(opts: { ipnId?: string | null; buyerActivity?: { started: numbe
       outbox.push({ template: i.newCard.message.template, phone: i.newCard.message.phone, data: i.newCard.message.data, key: i.newCard.message.idempotencyKey });
       return { result: 'reissued', instrumentId: id };
     },
-    faceByCodeHash: async (hash: string) => { const c = cards.find((x) => `h:${x.code}` === hash); const p = c ? rows.get(c.purchaseId) : null; return p ? { theme: p.theme, fromName: p.fromName, toName: p.recipientName, message: p.message } : null; },
+    faceByCodeHash: async (hash: string) => { const c = cards.find((x) => `h:${x.code}` === hash); const p = c ? rows.get(c.purchaseId) : null; return p ? { theme: p.theme, fromName: p.fromName, toName: p.recipientName, message: p.message, originalUgx: p.amountUgx, photoId: p.photoId ?? null } : null; },
     recent: async () => [],
+    savePhoto: async (image: Buffer) => { const id = `0000000${photos.size + 1}-0000-4000-8000-000000000000`.slice(-36); photos.set(id, { image, attached: false }); return id; },
+    photoImage: async (id: string) => photos.get(id)?.image ?? null,
+    deleteStalePhotos: async () => { let n = 0; for (const [id, ph] of photos) if (!ph.attached) { photos.delete(id); n++; } return n; },
+    removePhoto: async (purchaseId: string) => { const p = rows.get(purchaseId); if (!p?.photoId) return false; photos.delete(p.photoId); p.photoId = null; return true; },
     markRefunded: async (id: string, _n: string, o?: any) => { const p = rows.get(id)!; if (!['paid', 'issued', 'review'].includes(p.status) || (o?.unissuedOnly && p.instrumentId)) return false; p.status = 'refunded'; return true; },
   };
   const credit = {
@@ -192,9 +204,11 @@ function harness(opts: { ipnId?: string | null; buyerActivity?: { started: numbe
   const uc = new GiftCardPurchaseUseCases(repo as any, credit as any, pesapal as any, {
     hash: (c: string) => `h:${c}`, randomIndexes: () => Array.from({ length: 11 }, () => (idx++) % 32), referenceIndexes: () => Array.from({ length: 10 }, () => (idx++) % 32),
     normalizePhone: (p: string) => `+256${p.replace(/\D/g, '').slice(-9)}`,
-  }, () => ({ ipnId: opts.ipnId === undefined ? 'ipn-1' : opts.ipnId, callbackUrl: 'https://api/cb', resultPageUrl: 'https://shop/gift-card/bought', dailyShopCapUgx: 1_000_000 }));
+  }, () => ({ ipnId: opts.ipnId === undefined ? 'ipn-1' : opts.ipnId, callbackUrl: 'https://api/cb', resultPageUrl: 'https://shop/gift-card/bought', dailyShopCapUgx: 1_000_000 }), undefined, {
+    process: async (b: Buffer) => { if (b.toString() === 'not a photo') throw new Error('PHOTO_NOT_AN_IMAGE'); if (b.toString() === 'tiny') throw new Error('PHOTO_TOO_SMALL'); return { image: Buffer.from(`jpeg:${b}`), width: 1080, height: 1080 }; },
+  });
   const paidStatus = (ref: string, amount = 50_000) => ({ order_tracking_id: `T-${ref}`, merchant_reference: ref, amount, currency: 'UGX', status_code: 1, payment_status_description: 'Completed', confirmation_code: 'MTN123', payment_method: 'MTN' });
-  return { uc, rows, outbox, cards, pesapalCalls, setStatus: (s: any) => { pesapalStatus = s; }, paidStatus, byRef, setPaidToday: (n: number) => { paidToday = n; } };
+  return { uc, rows, outbox, cards, photos, pesapalCalls, setStatus: (s: any) => { pesapalStatus = s; }, paidStatus, byRef, setPaidToday: (n: number) => { paidToday = n; } };
 }
 
 describe('buying a gift card online (0199)', () => {
@@ -288,7 +302,7 @@ describe('buying a gift card online (0199)', () => {
     if (!r.ok) throw new Error('start');
     h.setStatus(h.paidStatus(r.reference));
     const s = await h.uc.publicStatus(r.reference, NOW);
-    expect(s).toEqual({ reference: r.reference, status: 'issued', amountUgx: 50_000, recipientFirstName: 'Sarah', theme: 'gold', fromName: 'Rob', message: 'Happy birthday!', recipientPhoneMasked: '07•• ••• 222', buyerPhoneMasked: '07•• ••• 444', sendTo: 'recipient', deliverOn: null, textStatus: null });
+    expect(s).toEqual({ reference: r.reference, status: 'issued', amountUgx: 50_000, recipientFirstName: 'Sarah', theme: 'gold', fromName: 'Rob', message: 'Happy birthday!', recipientPhoneMasked: '07•• ••• 222', buyerPhoneMasked: '07•• ••• 444', sendTo: 'recipient', deliverOn: null, textStatus: null, photoId: null });
     expect(await h.uc.publicStatus('GP-202610-ABC', NOW)).toBeNull();
   });
 
@@ -299,7 +313,7 @@ describe('buying a gift card online (0199)', () => {
     h.setStatus(h.paidStatus(r.reference));
     await h.uc.settle({ trackingId: `T-${r.reference}`, reference: r.reference, source: 'ipn' }, NOW);
     const code = String(h.outbox.find((m) => m.template === 'GIFT_CARD_RECEIVED')!.data.creditCode);
-    expect(await h.uc.faceForCode(code)).toEqual({ theme: 'love', fromName: 'Rob', toName: 'Sarah Nakato', message: 'Happy birthday!' });
+    expect(await h.uc.faceForCode(code)).toEqual({ theme: 'love', fromName: 'Rob', toName: 'Sarah Nakato', message: 'Happy birthday!', originalUgx: 50_000, photoId: null });
     expect(await h.uc.faceForCode('GPGC-0000-0000-0000')).toBeNull();
   });
 
@@ -407,5 +421,55 @@ describe('buying a gift card online (0199)', () => {
     const day = await h.uc.sweep(new Date(NOW.getTime() + 25 * 3_600_000));
     expect(day.polled).toBe(1);
     expect(h.byRef(r.reference)?.status).toBe('failed');
+  });
+});
+
+describe('a photo on the card (0201)', () => {
+  it('is re-encoded, claimed by exactly one purchase, and shown back on the buyer’s status', async () => {
+    const h = harness();
+    const up = await h.uc.uploadPhoto(Buffer.from('camera bytes'));
+    expect(up.ok).toBe(true);
+    if (!up.ok) return;
+    expect(String(await h.uc.photoImage(up.photoId))).toBe('jpeg:camera bytes'); // what is stored is the re-encoded copy
+    const r = await h.uc.start(form({ photoId: up.photoId }), NOW);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(h.byRef(r.reference)!.photoId).toBe(up.photoId);
+    h.setStatus(h.paidStatus(r.reference));
+    expect((await h.uc.publicStatus(r.reference, NOW))!.photoId).toBe(up.photoId);
+    // The same photo cannot ride a second purchase.
+    const again = await h.uc.start(form({ photoId: up.photoId, buyerPhone: '0701 999888' }), NOW);
+    expect(again).toMatchObject({ ok: false, code: 'INVALID', errors: { photo: expect.stringContaining('Add it again') } });
+  });
+
+  it('refuses what is not a photo or too small to print, and a made-up id; the card works without one', async () => {
+    const h = harness();
+    expect(await h.uc.uploadPhoto(Buffer.from('not a photo'))).toMatchObject({ ok: false, message: expect.stringContaining('JPEG, PNG or HEIC') });
+    expect(await h.uc.uploadPhoto(Buffer.from('tiny'))).toMatchObject({ ok: false, message: expect.stringContaining('too small') });
+    expect(await h.uc.uploadPhoto(Buffer.alloc(0))).toMatchObject({ ok: false });
+    expect(checkGiftCardPurchase(form({ photoId: '../etc/passwd' }), NOW)).toMatchObject({ ok: false, errors: { photo: expect.any(String) } });
+    expect(await h.uc.photoImage('../etc/passwd')).toBeNull();
+    const r = await h.uc.start(form({ photoId: '' }), NOW);
+    expect(r.ok).toBe(true);
+  });
+
+  it('an unclaimed photo is deleted by the sweep; staff can take one off a card', async () => {
+    const h = harness();
+    const kept = await h.uc.uploadPhoto(Buffer.from('a'));
+    const stray = await h.uc.uploadPhoto(Buffer.from('b'));
+    if (!kept.ok || !stray.ok) throw new Error('upload');
+    const r = await h.uc.start(form({ photoId: kept.photoId }), NOW);
+    if (!r.ok) throw new Error('start');
+    await h.uc.sweep(NOW);
+    expect(h.photos.has(stray.photoId)).toBe(false);
+    expect(h.photos.has(kept.photoId)).toBe(true);
+    expect(await h.uc.removePhoto(r.reference)).toMatchObject({ ok: true });
+    expect(await h.uc.removePhoto(r.reference)).toMatchObject({ ok: false, message: 'This card has no photo.' });
+    expect(h.byRef(r.reference)!.photoId).toBeNull();
+    expect(await h.uc.photoImage(kept.photoId)).toBeNull();
+  });
+
+  it('an upload is a human form on the abuse budget, not the global one', () => {
+    expect(classifyPublicEndpoint('POST', '/commerce/gift-cards/photos')).toBe('issue-report');
   });
 });

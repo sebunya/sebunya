@@ -13,6 +13,7 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
   let raw: any; let repo: any; let outbox: any;
   const tag = Date.now().toString(36).toUpperCase().slice(-6);
   const purchaseIds: string[] = [];
+  const photoIds: string[] = [];
   const instrumentIds: string[] = [];
   let n = 0;
   const ref = () => `GC-${tag}${String(++n).padStart(10 - tag.length, '0')}`.slice(0, 13);
@@ -20,7 +21,7 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
   const create = async (over: Record<string, unknown> = {}) => {
     const p = await repo.create({
       reference: ref(), amountUgx: 50_000, buyerName: 'Robert S', buyerPhone: '+256701333444', buyerEmail: null, buyerUserId: null,
-      fromName: 'Rob', recipientName: 'Sarah N', recipientPhone: '+256772111222', sendTo: 'recipient', message: 'Happy birthday!', theme: 'birthday', deliverOn: null, ...over,
+      fromName: 'Rob', recipientName: 'Sarah N', recipientPhone: '+256772111222', sendTo: 'recipient', message: 'Happy birthday!', theme: 'birthday', deliverOn: null, photoId: null, ...over,
     });
     purchaseIds.push(p.id);
     return p;
@@ -46,6 +47,7 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     await raw`delete from outbox_events where idempotency_key like ${'gift-card-%'} and related_entity_id = any(${[...purchaseIds, ...instrumentIds]})`;
     await raw`delete from notification_attempts where related_entity = 'credit_instrument' and related_entity_id = any(${instrumentIds})`;
     await raw`delete from gift_card_purchases where id = any(${purchaseIds})`;
+    await raw`delete from gift_card_photos where id = any(${photoIds})`;
     await raw.begin(async (t: any) => {
       await t`set local goldplus.credit_maintenance = 'on'`;
       await t`delete from credit_ledger where instrument_id = any(${instrumentIds})`;
@@ -89,7 +91,7 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     await expect(raw`update gift_card_purchases set instrument_id = null where id = ${p.id}`).rejects.toThrow(/gift_card_purchases_issued_chk/);
     // The open page finds the card's face by its code's hash.
     expect(await repo.faceByCodeHash(`h-${tag}-${winners[0] === a ? `GPGC-AAAA-BBBB-${tag.slice(0, 4)}` : `GPGC-CCCC-DDDD-${tag.slice(0, 4)}`}`))
-      .toEqual({ theme: 'birthday', fromName: 'Rob', toName: 'Sarah N', message: 'Happy birthday!', originalUgx: 50000 });
+      .toEqual({ theme: 'birthday', fromName: 'Rob', toName: 'Sarah N', message: 'Happy birthday!', originalUgx: 50000, photoId: null });
     expect(await repo.faceByCodeHash('no-such-hash')).toBeNull();
   });
 
@@ -176,5 +178,40 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     await expect(create({ amountUgx: 600_000 })).rejects.toThrow(/gift_card_purchases_amount_chk/);
     await expect(create({ recipientPhone: null })).rejects.toThrow(/gift_card_purchases_recipient_phone_chk/);
     await expect(create({ theme: 'neon' })).rejects.toThrow(/gift_card_purchases_theme_chk/);
+  });
+
+  it('0201: a photo is stored as bytes, claimed by exactly one purchase in the same transaction, and removable', async () => {
+    const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(2048, 7), Buffer.from([0xff, 0xd9])]);
+    const id = await repo.savePhoto(jpeg, 1080, 1080);
+    photoIds.push(id);
+    expect(Buffer.compare(await repo.photoImage(id), jpeg)).toBe(0); // bytea round trip, byte for byte
+    const p = await create({ photoId: id });
+    expect(p.photoId).toBe(id);
+    // A second purchase cannot take the same photo, and is not written at all (one transaction).
+    const before = (await raw`select count(*)::int as n from gift_card_purchases where photo_id = ${id}`)[0].n;
+    await expect(create({ photoId: id })).rejects.toThrow('PHOTO_UNAVAILABLE');
+    expect((await raw`select count(*)::int as n from gift_card_purchases where photo_id = ${id}`)[0].n).toBe(before);
+    // An unclaimed photo older than the cut-off is swept; a claimed one never is.
+    const stray = await repo.savePhoto(jpeg, 1080, 1080);
+    photoIds.push(stray);
+    await raw`update gift_card_photos set created_at = now() - interval '4 days' where id = any(${[id, stray]})`;
+    await repo.deleteStalePhotos(new Date(Date.now() - 3 * 86_400_000));
+    expect(await repo.photoImage(stray)).toBeNull();
+    expect(await repo.photoImage(id)).not.toBeNull();
+    // A photo older than two days cannot be claimed (the form asks for it again).
+    const old = await repo.savePhoto(jpeg, 1080, 1080);
+    photoIds.push(old);
+    await raw`update gift_card_photos set created_at = now() - interval '3 days' where id = ${old}`;
+    await expect(create({ photoId: old })).rejects.toThrow('PHOTO_UNAVAILABLE');
+    // Staff remove it: gone from the card and from the table.
+    expect(await repo.removePhoto(p.id)).toBe(true);
+    expect((await repo.byReference(p.reference)).photoId).toBeNull();
+    expect(await repo.photoImage(id)).toBeNull();
+    expect(await repo.removePhoto(p.id)).toBe(false);
+  });
+
+  it('0201: the database refuses an oversized or tiny photo', async () => {
+    await expect(repo.savePhoto(Buffer.alloc(1_600_000, 1), 1080, 1080)).rejects.toThrow(/gift_card_photos_size_chk/);
+    await expect(repo.savePhoto(Buffer.alloc(100, 1), 100, 100)).rejects.toThrow(/gift_card_photos_size_chk/);
   });
 });

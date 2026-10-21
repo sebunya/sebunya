@@ -87,6 +87,12 @@ if (Astro.request.method === 'POST') {
       const res = await fetch(`${apiBase}/admin/credit/purchases/${encodeURIComponent(reference)}/refund`, { method: 'POST', headers, body: JSON.stringify({ reason: String(form.get('reason') ?? '') }) });
       const json: any = await res.json().catch(() => null);
       notice = res.ok && json?.success ? { kind: 'success', text: json.data.message } : { kind: 'error', text: stepUpHint(json, res, 'Nothing was refunded.') };
+    } else if (intent === 'remove-photo') {
+      // 0201: the buyer's photo comes off the card (deleted); the card and its money are not touched.
+      const reference = String(form.get('reference') ?? '');
+      const res = await fetch(`${apiBase}/admin/credit/purchases/${encodeURIComponent(reference)}/remove-photo`, { method: 'POST', headers, body: '{}' });
+      const json: any = await res.json().catch(() => null);
+      notice = res.ok && json?.success ? { kind: 'success', text: json.data.message } : { kind: 'error', text: stepUpHint(json, res, 'The photo was not removed.') };
     } else if (intent === 'approve' || intent === 'void' || intent === 'adjust') {
       const res = await fetch(`${apiBase}/admin/credit/${encodeURIComponent(id)}/${intent}`, { method: 'POST', headers, body: JSON.stringify({ note: String(form.get('note') ?? ''), amountUgx: Number(form.get('amountUgx')) }) });
       const json: any = await res.json().catch(() => null);
@@ -120,6 +126,7 @@ try {
 } catch { loadFailed = true; }
 // 0199: gift cards customers bought online.
 let purchases: any[] = [];
+const isPhotoId = (id: unknown) => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id);
 try {
   const pr = await fetch(`${apiBase}/admin/credit/purchases`, { headers });
   const pj: any = await pr.json().catch(() => null);
@@ -249,7 +256,13 @@ const prefillReturn = (Astro.url.searchParams.get('return') ?? '').toUpperCase()
               <td>{PURCHASE[p.status] ?? p.status}{p.status === 'paid' && p.deliverOn ? ` (${p.deliverOn})` : ''}{p.status === 'review' && p.providerStatus ? <span class="block text-xs text-red-700">{p.providerStatus}</span> : ''}{p.status === 'issued' && p.textStatus ? <span class={`block text-xs ${p.textStatus === 'failed' ? 'font-black text-red-700' : 'text-gray-500'}`}>{TEXT[p.textStatus]}</span> : ''}</td>
               <td class="text-right tabular-nums">{formatUgx(p.amountUgx)}</td>
               <td class="pl-4 text-xs">{p.buyerName}<span class="block text-gray-500">{p.buyerPhone}</span></td>
-              <td class="text-xs">{p.recipientName}<span class="block text-gray-500">{p.sendTo === 'buyer' ? 'code to buyer' : p.recipientPhone}</span></td>
+              <td class="text-xs">{p.recipientName}<span class="block text-gray-500">{p.sendTo === 'buyer' ? 'code to buyer' : p.recipientPhone}</span>
+                {isPhotoId(p.photoId) && (
+                  <form method="POST" class="mt-1 flex items-center gap-2"><input type="hidden" name="intent" value="remove-photo" /><input type="hidden" name="reference" value={p.reference} />
+                    <a href={`/gift-card/photo/${p.photoId}`} target="_blank" rel="noopener"><img src={`/gift-card/photo/${p.photoId}`} alt="Photo on the card" width="40" height="40" loading="lazy" class="h-10 w-10 rounded object-cover ring-1 ring-black/10" /></a>
+                    <button class="min-h-9 rounded-full border px-2 text-[11px] font-black uppercase" title="Deletes the photo; the card shows its occasion picture instead">Remove photo</button></form>
+                )}
+              </td>
               <td class="text-xs">{p.paymentMethod ?? ''}<span class="block text-gray-500">{p.confirmationCode ?? ''}</span></td>
               <td class="text-xs">{fmt(p.createdAt)}</td>
               <td class="space-y-2">

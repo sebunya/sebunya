@@ -80,6 +80,7 @@ import { CreditExpiryRemindersUseCase, IssueCreditUseCase, ManageCreditUseCases,
 import { creditCodeHash, creditRandomIndexes } from './credit/CreditCodeCrypto';
 import { DrizzleCreditRepository } from './credit/DrizzleCreditRepository';
 import { DrizzleGiftCardPurchaseRepository } from './credit/DrizzleGiftCardPurchaseRepository';
+import { SharpGiftCardPhotoProcessor } from './credit/SharpGiftCardPhotoProcessor';
 import { GiftCardPurchaseUseCases } from '../application/use-cases/credit/GiftCardPurchaseUseCases';
 import { GiftCardOccasionUseCases } from '../application/use-cases/credit/GiftCardOccasionUseCases';
 import { DrizzleOccasionSettingsRepository } from './credit/DrizzleOccasionSettingsRepository';
@@ -2840,6 +2841,7 @@ export class Registry {
       dailyShopCapUgx: Number(process.env.GIFT_CARD_DAILY_SHOP_CAP_UGX) > 0 ? Number(process.env.GIFT_CARD_DAILY_SHOP_CAP_UGX) : 5_000_000,
     }),
     (event, detail) => logger.info({ event, ...detail }, `[gift-card] ${event}`),
+    new SharpGiftCardPhotoProcessor(),
   );
   /** 0196: an order paid entirely by store credit / a gift card, settled through the same doors as Pesapal. */
   public readonly settleByStoreCreditUseCase = new SettleByStoreCreditUseCase(this.orderRepo, this.orderTransitionService, this.reconcileOrderPaymentUseCase, this.settlePaymentUseCase);

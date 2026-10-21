@@ -23,7 +23,9 @@ describe('web fonts load after the first paint', () => {
   it('faces.css declares every brand weight with font-display: swap, and each file exists', () => {
     const css = read('apps/web/public/fonts/faces.css');
     const faces = css.match(/@font-face\s*\{[^}]*\}/g) ?? [];
-    expect(faces).toHaveLength(8);
+    expect(faces).toHaveLength(10);
+    // Montserrat (the brand book face, for gift cards): one variable file per subset, every weight in it.
+    expect(css.match(/font-family: 'Montserrat';[^}]*font-weight: 100 900;/g)).toHaveLength(2);
     for (const w of ['400', '500', '600', '700', '800']) expect(css).toMatch(new RegExp(`'Plus Jakarta Sans';[^}]*font-weight: ${w};`));
     for (const w of ['400', '600', '700']) expect(css).toMatch(new RegExp(`'Poppins';[^}]*font-weight:${w};`));
     for (const face of faces) {

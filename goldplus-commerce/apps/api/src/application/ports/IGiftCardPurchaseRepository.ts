@@ -8,6 +8,13 @@ export interface GiftCardFace {
   message: string | null;
   /** What the card was worth when given (never the balance): the holder may choose to show it when sharing. */
   originalUgx: number;
+  /** 0201: the buyer's photo, when there is one. */
+  photoId: string | null;
+}
+
+/** 0201: turns whatever a phone sent into a safe square JPEG (no metadata), or refuses it. */
+export interface IGiftCardPhotoProcessor {
+  process(input: Buffer): Promise<{ image: Buffer; width: number; height: number }>;
 }
 
 /** 0199: a gift card bought online (domain/credit/GiftCardPurchase.ts). */
@@ -33,6 +40,8 @@ export interface GiftCardPurchaseRecord {
   confirmationCode: string | null;
   paymentMethod: string | null;
   instrumentId: string | null;
+  /** 0201: the buyer's photo, when they added one (and staff have not removed it). */
+  photoId: string | null;
   /** The issued card's last four, when issued. */
   cardLast4: string | null;
   /**
@@ -58,8 +67,20 @@ export interface GiftCardOutboxMessage {
 }
 
 export interface IGiftCardPurchaseRepository {
+  /**
+   * The purchase, and (when photoId is given) its photo claimed in the same transaction. Throws PHOTO_UNAVAILABLE
+   * when that photo does not exist, is already on another purchase, or is older than two days.
+   */
   create(input: Omit<GiftCardPurchaseRecord, 'id' | 'status' | 'orderTrackingId' | 'redirectUrl' | 'providerStatus' | 'confirmationCode' | 'paymentMethod' | 'instrumentId' | 'cardLast4' | 'textStatus' | 'createdAt' | 'paidAt' | 'issuedAt'>): Promise<GiftCardPurchaseRecord>;
   byReference(reference: string): Promise<GiftCardPurchaseRecord | null>;
+  /** 0201: a processed photo, kept until a purchase claims it (or three days pass). */
+  savePhoto(image: Buffer, width: number, height: number): Promise<string>;
+  /** The photo's JPEG bytes, or null (unknown, or removed). */
+  photoImage(id: string): Promise<Buffer | null>;
+  /** Photos no purchase claimed, older than `olderThan`. */
+  deleteStalePhotos(olderThan: Date): Promise<number>;
+  /** Staff: take the photo off a purchase (and delete it). */
+  removePhoto(purchaseId: string): Promise<boolean>;
   byTrackingId(trackingId: string): Promise<GiftCardPurchaseRecord | null>;
   /** The provider transaction opened for this purchase (once; a second call changes nothing). */
   recordStarted(id: string, trackingId: string, redirectUrl: string): Promise<void>;

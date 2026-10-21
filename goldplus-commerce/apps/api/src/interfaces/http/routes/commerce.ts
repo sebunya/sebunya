@@ -1,4 +1,6 @@
 import { Hono, type Context } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
+import { GIFT_CARD_PHOTO_MAX_BYTES } from '../../../application/use-cases/credit/GiftCardPurchaseUseCases';
 import { isGiftCardPurchaseReference } from '../../../domain/credit/GiftCardPurchase';
 import { z } from 'zod';
 import { Registry } from '../../../infrastructure/Registry';
@@ -352,7 +354,7 @@ routes.post('/gift-cards/purchase', async (c) => {
   const result = await registry.giftCardPurchaseUseCases.start({
     amountUgx: body.amountUgx, recipientName: body.recipientName, recipientPhone: body.recipientPhone, sendTo: body.sendTo,
     message: body.message, fromName: body.fromName, buyerName: body.buyerName, buyerPhone: body.buyerPhone, buyerEmail: body.buyerEmail,
-    deliverOn: body.deliverOn, theme: body.theme, buyerUserId: ((c as Context).get('userId') as string | undefined) ?? null,
+    deliverOn: body.deliverOn, theme: body.theme, photoId: body.photoId, buyerUserId: ((c as Context).get('userId') as string | undefined) ?? null,
   });
   if (result.ok) return c.json({ success: true, data: { reference: result.reference, redirectUrl: result.redirectUrl } });
   if (result.code === 'INVALID') return c.json({ success: false, error: { code: 'INVALID', message: 'Check the highlighted fields.', fields: result.errors } }, 400);
@@ -373,6 +375,33 @@ routes.post('/gift-cards/open', async (c) => {
   // A card staff issued has no face; its original value still lets the holder share "a GoldPlus gift" with an amount.
   const originalUgx = face?.originalUgx ?? (normalized ? (await registry.creditRepo.findByCodeHash(creditCodeHash(normalized.code)))?.initialValueUgx ?? null : null);
   return c.json({ success: true, data: { ...checked, code: normalized?.code ?? null, face, originalUgx } });
+});
+
+/**
+ * 0201: the buyer's optional photo (raw image bytes; the phone has already cropped it). Re-encoded without metadata
+ * and kept until a purchase claims it. Answers the id the purchase form sends back.
+ */
+routes.post('/gift-cards/photos', bodyLimit({
+  maxSize: GIFT_CARD_PHOTO_MAX_BYTES,
+  onError: (c) => c.json({ success: false, error: { code: 'TOO_LARGE', message: 'Choose a photo smaller than 6 MB.' } }, 413),
+}), async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const bytes = Buffer.from(await c.req.arrayBuffer());
+  const result = await registry.giftCardPurchaseUseCases.uploadPhoto(bytes);
+  if (!result.ok) return c.json({ success: false, error: { code: 'PHOTO_REFUSED', message: result.message } }, 400);
+  return c.json({ success: true, data: { photoId: result.photoId } });
+});
+
+/**
+ * 0201: a gift card's photo. Its id is a random UUID that only the buyer (their reference) and the holder of the
+ * code (the card) are shown, so the id is the permission; never indexed, never cached by a shared cache.
+ */
+routes.get('/gift-cards/photos/:id', async (c) => {
+  const image = await registry.giftCardPurchaseUseCases.photoImage(c.req.param('id'));
+  if (!image) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No such photo.' } }, 404);
+  return c.body(new Uint8Array(image), 200, {
+    'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=3600', 'X-Robots-Tag': 'noindex', 'X-Content-Type-Options': 'nosniff',
+  });
 });
 
 /** 0200: the occasions in the order the buy page shows them today (Kampala). Public: it is the calendar, nothing more. */

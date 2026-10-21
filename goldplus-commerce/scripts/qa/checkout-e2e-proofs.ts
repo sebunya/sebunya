@@ -13,6 +13,10 @@
  * requests. A driver that called the API directly would prove nothing about it.
  */
 import { randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { writeFileSync } from 'node:fs';
+/** Where the photo proof leaves its card's code and reference for a screenshot run (local only; never in CI). */
+const E2E_GIFT_PHOTO_OUT = process.env.E2E_GIFT_PHOTO_OUT ?? '';
 import { and, eq } from 'drizzle-orm';
 import { db, client } from '../../apps/api/src/infrastructure/db/client';
 import { orders, checkoutIdempotency, checkoutSideEffects } from '../../apps/api/src/infrastructure/db/schema/commerce';
@@ -590,8 +594,9 @@ async function giftCardPurchaseProofs(): Promise<void> {
       coalesce(payload->>'message', (payload #>> '{}')::jsonb->>'message') as m from outbox_events where idempotency_key in (${`gift-card-paid:${bought?.id}`}, ${`gift-card-received:${bought?.id}`}) order by template`));
   check('two texts: the buyer’s receipt and the code to them', texts.map((t) => [t.template, t.phone]), [['GIFT_CARD_PAID', buyerE164], ['GIFT_CARD_RECEIVED', '+256772000912']]);
   check('the receipt never carries a code', /GPGC/.test(String(texts[0]?.m ?? '')), false);
-  const coded = /Rob Harness sent you a gift card of UGX 75,000: "Happy birthday, Sarah!" Open it: \S+\/gift-card\/open#GPGC-\S+ Code: GPGC-|Gift card \/ store credit code \(removed once handled\)/.test(String(texts[1]?.m ?? ''));
-  check('their text names who it is from, the message, the link to open it and the code (or it was sent and scrubbed)', coded, true);
+  const coded = /Rob Harness sent you a gift card of UGX 75,000, with a note for you on the card\. Open it: \S+\/gift-card\/open#GPGC-\S+ Code: GPGC-|Gift card \/ store credit code \(removed once handled\)/.test(String(texts[1]?.m ?? ''));
+  check('their text names who it is from, says a note waits on the card, and has the link and the code (or it was sent and scrubbed)', coded, true);
+  check('the note itself is not in the text (it is on the card, in full)', /Happy birthday, Sarah/.test(String(texts[1]?.m ?? '')), false);
   const [codeRow] = rowsOf(await db.execute(sql`select coalesce(payload->>'creditCode', (payload #>> '{}')::jsonb->>'creditCode') as code from outbox_events where idempotency_key = ${`gift-card-received:${bought?.id}`}`));
   if (codeRow?.code) {
     // What their phone does with the link: the page posts the code from the #fragment and shows the card to scratch.
@@ -639,6 +644,44 @@ async function giftCardPurchaseProofs(): Promise<void> {
   check('they are sent to pay', me.status, 303);
   const meRow = await purchaseByBuyer('+256700000914');
   check('the code will come to the buyer, on the Eid card chosen out of season', [meRow?.send_to, meRow?.recipient_phone ?? null, meRow?.from_name, meRow?.theme], ['buyer', null, 'Rob Harness', 'eid']);
+
+  // -- 19. A photo on the card (0201) -------------------------------------------------
+  console.log('\n--- 19. a photo on the card: re-encoded without its metadata, claimed once, shown to them and the buyer');
+  await resetStub();
+  const sharp = createRequire(new URL('../../apps/api/package.json', import.meta.url))('sharp') as typeof import('sharp');
+  const camera = await sharp({ create: { width: 1600, height: 1200, channels: 3, background: { r: 150, g: 204, b: 6 } } })
+    .jpeg().withExif({ IFD0: { ImageDescription: 'harness-secret-location', Make: 'HarnessCam' } }).toBuffer();
+  check('the test photo carries metadata to strip', camera.includes(Buffer.from('harness-secret-location')), true);
+  const up = await fetch(`${WEB}/gift-card/photo`, { method: 'POST', headers: { 'content-type': 'image/jpeg', origin: WEB }, body: camera });
+  const upJson: any = await up.json().catch(() => null);
+  const photoId = String(upJson?.data?.photoId ?? '');
+  check('the shop takes the photo through its own address', [up.status, /^[0-9a-f-]{36}$/.test(photoId)], [200, true]);
+  const served = await fetch(`${WEB}/gift-card/photo/${photoId}`);
+  const servedBytes = Buffer.from(await served.arrayBuffer());
+  const servedMeta = await sharp(servedBytes).metadata();
+  check('it is served as a square JPEG of at most 1080 px, not indexed', [served.status, served.headers.get('content-type'), servedMeta.width, servedMeta.height, served.headers.get('x-robots-tag')], [200, 'image/jpeg', 1080, 1080, 'noindex']);
+  check('with every piece of metadata gone (no camera, no location)', [servedMeta.exif ?? null, servedBytes.includes(Buffer.from('harness-secret-location')), servedBytes.includes(Buffer.from('HarnessCam'))], [null, false, false]);
+  const notPhoto = await fetch(`${WEB}/gift-card/photo`, { method: 'POST', headers: { 'content-type': 'image/jpeg', origin: WEB }, body: Buffer.from('<?php echo 1; ?>') });
+  check('something that is not a photo is refused', notPhoto.status, 400);
+  const photoJar = new Jar();
+  const withPhoto = await postForm(photoJar, '/gift-card/buy', { ...giftForm, buyerPhone: '0700000915', photoId, theme: 'love' });
+  check('the buyer is sent to pay', withPhoto.status, 303);
+  const pRow = await purchaseByBuyer('+256700000915');
+  check('the purchase holds the photo', pRow?.photo_id, photoId);
+  const reuse = await postForm(new Jar(), '/gift-card/buy', { ...giftForm, buyerPhone: '0700000916', photoId });
+  check('the same photo cannot ride a second purchase: the form says so, nothing is charged', [reuse.status, /Your photo expired/.test(reuse.body), (await stubSubmissions()).length], [200, true, 1]);
+  const s3 = (await stubSubmissions()) as Array<{ merchantReference: string; orderTrackingId: string }>;
+  await fetch(`${STUB}/__stub/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderTrackingId: s3[0]?.orderTrackingId, status: 'COMPLETED' }) });
+  await fetch(`${process.env.E2E_API_BASE}/commerce/payments/pesapal/ipn?OrderTrackingId=${encodeURIComponent(s3[0]?.orderTrackingId ?? '')}&OrderMerchantReference=${encodeURIComponent(s3[0]?.merchantReference ?? '')}&OrderNotificationType=IPNCHANGE`);
+  const boughtPhoto = await get(photoJar, `/gift-card/bought?ref=${encodeURIComponent(s3[0]?.merchantReference ?? '')}`);
+  check('the buyer’s page shows the card with the photo', boughtPhoto.body.includes(`/gift-card/photo/${photoId}`) && /gcf-has-photo/.test(boughtPhoto.body), true);
+  const p3 = await purchaseByBuyer('+256700000915');
+  const [code3] = rowsOf(await db.execute(sql`select coalesce(payload->>'creditCode', (payload #>> '{}')::jsonb->>'creditCode') as code from outbox_events where idempotency_key = ${`gift-card-received:${p3?.id}`}`));
+  if (code3?.code) {
+    const opened3 = await postForm(new Jar(), '/gift-card/open', { code: String(code3.code) });
+    check('their card shows the photo, and the share panel offers it (off until chosen)', [opened3.body.includes(`/gift-card/photo/${photoId}`), /data-share-opt="photo"/.test(opened3.body), /data-share-opt="photo" checked/.test(opened3.body)], [true, true, false]);
+  } else note('the code was already sent and scrubbed; the open page with a photo is proved by the unit suite');
+  if (E2E_GIFT_PHOTO_OUT) writeFileSync(E2E_GIFT_PHOTO_OUT, JSON.stringify({ code: code3?.code ?? null, reference: s3[0]?.merchantReference ?? null, photoId }));
 }
 
 /**

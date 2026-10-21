@@ -1,4 +1,4 @@
-import { giftCardTheme, type GiftCardTheme } from './giftCardThemes';
+import { BRAND, giftCardTheme, logoUrl } from './giftCardThemes';
 
 /**
  * "Share your gift" (2026-10-21): a picture of the gift for the recipient to post, drawn from scratch on a canvas.
@@ -15,6 +15,8 @@ export interface ShareContent {
   message?: string;
   /** The ORIGINAL value of the gift; never the balance. */
   originalUgx?: number;
+  /** 0201: the sender's photo (a same-site URL), only when the recipient chose to show it. */
+  photoUrl?: string;
 }
 
 export type ShareSize = 'square' | 'story';
@@ -24,17 +26,19 @@ export const SHARE_SIZES: Record<ShareSize, { w: number; h: number; label: strin
 };
 
 /** The fields the share panel may pass on, and nothing else (also what the tests check). */
-export const PERMITTED_SHARE_FIELDS = ['occasion', 'recipientName', 'senderName', 'message', 'originalUgx'] as const;
+export const PERMITTED_SHARE_FIELDS = ['occasion', 'recipientName', 'senderName', 'message', 'originalUgx', 'photoUrl'] as const;
 
 /** Build the content from the recipient's choices: only switched-on fields, only from the permitted list. */
-export function shareContent(source: { occasion: string; recipientName?: string | null; senderName?: string | null; message?: string | null; originalUgx?: number | null },
-  choose: { recipientName: boolean; senderName: boolean; message: boolean; amount: boolean }, messageOverride?: string | null): ShareContent {
+export function shareContent(source: { occasion: string; recipientName?: string | null; senderName?: string | null; message?: string | null; originalUgx?: number | null; photoUrl?: string | null },
+  choose: { recipientName: boolean; senderName: boolean; message: boolean; amount: boolean; photo?: boolean }, messageOverride?: string | null): ShareContent {
   const out: ShareContent = { occasion: giftCardTheme(source.occasion).key };
   if (choose.recipientName && source.recipientName) out.recipientName = source.recipientName.trim().slice(0, 60);
   if (choose.senderName && source.senderName) out.senderName = source.senderName.trim().slice(0, 60);
   const message = (messageOverride ?? source.message ?? '').trim();
   if (choose.message && message) out.message = message.slice(0, 200);
   if (choose.amount && Number.isFinite(source.originalUgx) && (source.originalUgx ?? 0) > 0) out.originalUgx = Math.round(source.originalUgx!);
+  // Only the shop's own photo address (a same-site picture keeps the canvas exportable; nothing else is fetched).
+  if (choose.photo && source.photoUrl && /^\/gift-card\/photo\/[0-9a-f-]{36}$/i.test(source.photoUrl)) out.photoUrl = source.photoUrl;
   return out;
 }
 
@@ -57,14 +61,9 @@ export function shareFileName(occasion: string, size: ShareSize): string {
   return `goldplus-gift-${giftCardTheme(occasion).key.replace(/_/g, '-')}-${size}.png`;
 }
 
-// ── Reading a theme's art: its gradient colours and its motif (the same strings the card is drawn with) ─────────
-export function themeArt(t: GiftCardTheme): { from: string; to: string; motif: string | null; glow: boolean } {
-  const g = /linear-gradient\(135deg,\s*(#[0-9A-Fa-f]{6})\s+0%,\s*(#[0-9A-Fa-f]{6})\s+100%\)/.exec(t.background);
-  const m = /url\("(data:image\/svg\+xml,[^"]+)"\)/.exec(t.background);
-  return { from: g?.[1] ?? '#0A0A0A', to: g?.[2] ?? '#1C1C1C', motif: m ? m[1] : null, glow: t.background.includes('radial-gradient') };
-}
-
 const ugx = (n: number) => `UGX ${Math.round(n).toLocaleString('en-US')}`;
+const FONT = 'Montserrat, "Plus Jakarta Sans", Arial, sans-serif';
+const font = (weight: number, px: number) => `${weight} ${Math.round(px)}px ${FONT}`;
 
 /** Words into lines that fit `maxWidth` (an over-long word is broken, never shrunk). */
 export function wrapLines(ctx: Pick<CanvasRenderingContext2D, 'measureText'>, text: string, maxWidth: number): string[] {
@@ -86,31 +85,62 @@ export function wrapLines(ctx: Pick<CanvasRenderingContext2D, 'measureText'>, te
   return lines;
 }
 
-interface Layout {
-  margin: number; top: number; bottom: number; logoH: number; headline: number; label: number; name: number;
-  message: number; messageMaxLines: number; from: number; amount: number; footer: number; gap: number;
+/**
+ * The greeting's lines: its own preferred breaks (\n), a soft hyphen used only when a word will not fit, and the
+ * size stepped down (to a floor) until the longest line fits. The note is never shrunk; the greeting may be.
+ */
+export function greetingLines(ctx: Pick<CanvasRenderingContext2D, 'measureText' | 'font'>, headline: string, maxWidth: number, px: number, weight = 800): { lines: string[]; px: number } {
+  for (let size = px; size >= px * 0.62; size -= 2) {
+    ctx.font = font(weight, size);
+    const lines = headline.split('\n').flatMap((l) => {
+      const plain = l.replace(/\u00ad/g, '');
+      if (ctx.measureText(plain).width <= maxWidth || !l.includes('\u00ad')) return wrapLines(ctx, plain, maxWidth);
+      const [a, b] = l.split('\u00ad');
+      return [`${a}-`, b];
+    });
+    if (lines.every((l) => ctx.measureText(l).width <= maxWidth)) return { lines, px: size };
+  }
+  ctx.font = font(weight, px * 0.62);
+  return { lines: wrapLines(ctx, headline.replace(/\u00ad/g, '').replace(/\n/g, ' '), maxWidth), px: px * 0.62 };
 }
-const LAYOUTS: Record<ShareSize, Layout> = {
-  // Square: comfortable 96 px margins; the stack is centred between the logo and the footer.
-  square: { margin: 96, top: 96, bottom: 96, logoH: 64, headline: 92, label: 30, name: 84, message: 50, messageMaxLines: 5, from: 54, amount: 44, footer: 30, gap: 40 },
-  // Story / Status: the top and bottom ~14% stay clear (the apps put their own controls there).
-  story: { margin: 110, top: 290, bottom: 300, logoH: 78, headline: 118, label: 36, name: 104, message: 60, messageMaxLines: 7, from: 64, amount: 52, footer: 34, gap: 56 },
-};
 
-/** Does the message fit this size without shrinking? (If not, the panel offers an editable excerpt.) */
+/**
+ * Two compositions on the card's own system (brand area, greeting, the person and the note, the illustration in its
+ * own area, the information band):
+ *  - square: the words on the left, the illustration (or photo) in its column on the right, the band across the foot;
+ *  - story: the illustration (or photo) above, the words below, the band at the foot; the top 250 px and bottom 280 px
+ *    hold no words (the apps draw their own controls there).
+ */
+interface Layout { margin: number; logoH: number; greeting: number; label: number; name: number; note: number; band: number; bandText: number; amount: number; noteMaxLines: number; noteWidth: number }
+const LAYOUTS: Record<ShareSize, Layout> = {
+  square: { margin: 80, logoH: 50, greeting: 80, label: 24, name: 52, note: 33, band: 156, bandText: 34, amount: 44, noteMaxLines: 7, noteWidth: 1080 * 0.56 - 80 - 24 },
+  story: { margin: 96, logoH: 62, greeting: 112, label: 30, name: 68, note: 44, band: 150, bandText: 40, amount: 56, noteMaxLines: 6, noteWidth: 1080 - 96 * 2 },
+};
+const STORY_SAFE_TOP = 250;
+const STORY_SAFE_BOTTOM = 280;
+
+/** Does the note fit this size without shrinking? (If not, the panel offers an editable excerpt.) */
 export function messageFits(ctx: CanvasRenderingContext2D, message: string, size: ShareSize): boolean {
   const L = LAYOUTS[size];
-  ctx.font = `italic 600 ${L.message}px "Plus Jakarta Sans", sans-serif`;
-  return wrapLines(ctx, `“${message}”`, SHARE_SIZES[size].w - L.margin * 2).length <= L.messageMaxLines;
+  ctx.font = font(500, L.note);
+  return wrapLines(ctx, message, L.noteWidth).length <= L.noteMaxLines;
 }
 
 const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = src; });
 
+/** The fonts the picture is drawn in, loaded before drawing (a canvas does not wait for them). */
+export async function loadShareFonts(): Promise<boolean> {
+  const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+  if (!fonts) return false;
+  await Promise.all([500, 600, 700, 800].map((wt) => fonts.load(`${wt} 40px Montserrat`).catch(() => undefined)));
+  return fonts.check('800 40px Montserrat');
+}
+
 /**
- * Draw the share image. Resolves when drawn; rejects if the art or logo cannot load (the panel offers a retry and
- * never falls back to sharing a link).
+ * Draw the share image. Resolves when drawn; rejects if the art, logo or photo cannot load (the panel offers a retry
+ * and never falls back to sharing a link).
  */
-export async function drawShareImage(canvas: HTMLCanvasElement, content: ShareContent, size: ShareSize, logoUrl: string): Promise<void> {
+export async function drawShareImage(canvas: HTMLCanvasElement, content: ShareContent, size: ShareSize): Promise<void> {
   const { w, h } = SHARE_SIZES[size];
   const L = LAYOUTS[size];
   canvas.width = w;
@@ -118,100 +148,120 @@ export async function drawShareImage(canvas: HTMLCanvasElement, content: ShareCo
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('NO_CANVAS');
   const t = giftCardTheme(content.occasion);
-  const art = themeArt(t);
-  const light = t.ink === 'light';
-  const ink = light ? '#FFFFFF' : '#1C1C1C';
-  const soft = light ? 'rgba(255,255,255,.78)' : 'rgba(28,28,28,.72)';
-  await document.fonts?.load?.(`800 40px "Plus Jakarta Sans"`).catch(() => undefined);
-  await document.fonts?.load?.(`italic 600 40px "Plus Jakarta Sans"`).catch(() => undefined);
+  const dark = t.variant === 'dark';
+  const ink = dark ? BRAND.white : BRAND.black;
+  const soft = dark ? 'rgba(255,255,255,.62)' : 'rgba(0,0,0,.56)';
+  await loadShareFonts();
+  const [logo, picture] = await Promise.all([loadImage(logoUrl(t.logo)), loadImage(content.photoUrl ?? t.art)]);
+  const isPhoto = Boolean(content.photoUrl);
 
-  // Background: the card's own gradient and motif, laid out for this canvas (not a stretched card).
-  const g = ctx.createLinearGradient(0, 0, w, h);
-  g.addColorStop(0, art.from);
-  g.addColorStop(1, art.to);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, w, h);
-  if (art.glow) {
-    const r = ctx.createRadialGradient(w, 0, 0, w, 0, w * 0.9);
-    r.addColorStop(0, 'rgba(147,213,0,.38)');
-    r.addColorStop(1, 'rgba(147,213,0,0)');
-    ctx.fillStyle = r;
-    ctx.fillRect(0, 0, w, h);
-  }
-  if (art.motif) {
-    const motif = await loadImage(art.motif);
-    const tile = size === 'square' ? 420 : 480;
-    for (let y = 0; y < h; y += tile) for (let x = 0; x < w; x += tile) ctx.drawImage(motif, x, y, tile, tile);
-  }
-
-  // The logo, in the card's ink.
-  const logo = await loadImage(logoUrl);
-  const logoW = (logo.naturalWidth / logo.naturalHeight) * L.logoH;
-  const off = document.createElement('canvas');
-  off.width = Math.ceil(logoW);
-  off.height = L.logoH;
-  const octx = off.getContext('2d')!;
-  octx.drawImage(logo, 0, 0, logoW, L.logoH);
-  octx.globalCompositeOperation = 'source-in';
-  octx.fillStyle = ink;
-  octx.fillRect(0, 0, off.width, off.height);
-  ctx.drawImage(off, L.margin, L.top);
-
-  // The stack: headline, then whatever was chosen; empty parts take no space.
-  const maxW = w - L.margin * 2;
-  type Block = { h: number; draw: (y: number) => void };
-  const blocks: Block[] = [];
-  const text = (s: string, font: string, color: string, y: number, align: CanvasTextAlign = 'left') => {
-    ctx.font = font; ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'top';
-    ctx.fillText(s, align === 'center' ? w / 2 : L.margin, y);
+  const text = (s: string, f: string, color: string, x: number, y: number, align: CanvasTextAlign = 'left') => {
+    ctx.font = f; ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(s, x, y);
   };
-  ctx.font = `800 ${L.headline}px "Plus Jakarta Sans", sans-serif`;
-  const headLines = wrapLines(ctx, t.headline, maxW);
-  blocks.push({ h: headLines.length * L.headline * 1.08, draw: (y) => headLines.forEach((l, i) => text(l, `800 ${L.headline}px "Plus Jakarta Sans", sans-serif`, ink, y + i * L.headline * 1.08)) });
-  if (content.recipientName) {
-    ctx.font = `800 ${L.name}px "Plus Jakarta Sans", sans-serif`;
-    const lines = wrapLines(ctx, content.recipientName, maxW).slice(0, 2);
-    blocks.push({ h: L.label * 1.5 + lines.length * L.name * 1.08, draw: (y) => {
-      text('FOR', `800 ${L.label}px "Plus Jakarta Sans", sans-serif`, soft, y);
-      lines.forEach((l, i) => text(l, `800 ${L.name}px "Plus Jakarta Sans", sans-serif`, ink, y + L.label * 1.5 + i * L.name * 1.08));
-    } });
-  }
-  if (content.message) {
-    ctx.font = `italic 600 ${L.message}px "Plus Jakarta Sans", sans-serif`;
-    const lines = wrapLines(ctx, `“${content.message}”`, maxW);
-    if (lines.length > L.messageMaxLines) throw new Error('MESSAGE_TOO_LONG'); // the panel asks for an excerpt first
-    blocks.push({ h: lines.length * L.message * 1.32, draw: (y) => lines.forEach((l, i) => text(l, `italic 600 ${L.message}px "Plus Jakarta Sans", sans-serif`, ink, y + i * L.message * 1.32)) });
-  }
-  if (content.senderName) {
-    ctx.font = `800 ${L.from}px "Plus Jakarta Sans", sans-serif`;
-    const line = wrapLines(ctx, content.senderName, maxW)[0] ?? '';
-    blocks.push({ h: L.label * 1.5 + L.from * 1.1, draw: (y) => {
-      text('FROM', `800 ${L.label}px "Plus Jakarta Sans", sans-serif`, soft, y);
-      text(line, `800 ${L.from}px "Plus Jakarta Sans", sans-serif`, ink, y + L.label * 1.5);
-    } });
-  }
-  if (content.originalUgx) {
-    const label = ugx(content.originalUgx);
-    blocks.push({ h: L.amount * 1.9, draw: (y) => {
-      ctx.font = `800 ${L.amount}px "Plus Jakarta Sans", sans-serif`;
-      const pw = ctx.measureText(label).width + L.amount * 1.2;
-      const ph = L.amount * 1.7;
-      ctx.fillStyle = t.accent;
-      ctx.beginPath();
-      ctx.roundRect(L.margin, y, pw, ph, ph / 2);
-      ctx.fill();
-      ctx.fillStyle = t.accentInk; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-      ctx.fillText(label, L.margin + L.amount * 0.6, y + ph / 2 + 2);
-    } });
-  }
-  const areaTop = L.top + L.logoH + L.gap;
-  const areaBottom = h - L.bottom - L.footer * 2;
-  const total = blocks.reduce((s, b) => s + b.h, 0) + L.gap * (blocks.length - 1);
-  let y = areaTop + Math.max(0, (areaBottom - areaTop - total) / 2);
-  for (const b of blocks) { b.draw(y); y += b.h + L.gap; }
+  ctx.fillStyle = dark ? BRAND.black : BRAND.white;
+  ctx.fillRect(0, 0, w, h);
 
-  // A discreet footer.
-  text('shopgoldplus.com', `700 ${L.footer}px "Plus Jakarta Sans", sans-serif`, soft, h - L.bottom - L.footer, 'left');
+  // ── The band: From and the amount when chosen; otherwise the shop's name, so the picture is always complete.
+  const bandTop = size === 'story' ? h - STORY_SAFE_BOTTOM - L.band : h - L.band;
+  ctx.fillStyle = dark ? BRAND.green : BRAND.black;
+  ctx.fillRect(0, bandTop, w, h - bandTop);
+  const bandInk = dark ? BRAND.black : BRAND.white;
+  const bandSoft = dark ? 'rgba(0,0,0,.66)' : 'rgba(255,255,255,.66)';
+  const bandMid = bandTop + L.band / 2 + L.bandText * 0.36;
+  let leftEnd = L.margin;
+  if (content.senderName || !content.originalUgx) {
+    const label = content.senderName ? 'FROM' : 'A GOLDPLUS GIFT CARD';
+    ctx.font = font(600, L.label); ctx.letterSpacing = `${L.label * 0.16}px`;
+    text(label, font(600, L.label), bandSoft, L.margin, bandMid);
+    leftEnd = L.margin + ctx.measureText(label).width + L.label * 0.9;
+    ctx.letterSpacing = '0px';
+  }
+  if (content.originalUgx) text(ugx(content.originalUgx), font(800, L.amount), dark ? BRAND.black : BRAND.green, w - L.margin, bandMid + (L.amount - L.bandText) * 0.36, 'right');
+  else if (!content.senderName) text('shopgoldplus.com', font(700, L.bandText * 0.8), bandInk, w - L.margin, bandMid, 'right');
+  if (content.senderName) {
+    ctx.font = font(700, L.bandText);
+    const room = (content.originalUgx ? w * 0.58 : w - L.margin) - leftEnd;
+    let name = content.senderName;
+    while (name.length > 1 && ctx.measureText(name).width > room) name = name.slice(0, -1);
+    text(name === content.senderName ? name : `${name.trimEnd()}…`, font(700, L.bandText), bandInk, leftEnd, bandMid);
+  }
+
+  // ── The art area: the illustration (or the photo, never under any words).
+  const drawPicture = (x: number, y: number, side: number) => {
+    if (isPhoto) {
+      // The square the sender chose, set in the green field with softened corners.
+      const s = Math.min(picture.naturalWidth, picture.naturalHeight);
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(x, y, side, side, side * 0.035);
+      ctx.clip();
+      ctx.drawImage(picture, (picture.naturalWidth - s) / 2, (picture.naturalHeight - s) / 2, s, s, x, y, side, side);
+      ctx.restore();
+    } else ctx.drawImage(picture, x, y, side, side);
+  };
+
+  // ── The words.
+  const drawWords = (x: number, top: number, bottom: number, width: number, greetingPx: number) => {
+    const lh = (px: number, k: number) => px * k;
+    // Brand area and greeting from the top; the person and the note from the bottom, grouped.
+    const logoW = (logo.naturalWidth / logo.naturalHeight) * L.logoH;
+    ctx.drawImage(logo, x, top, logoW, L.logoH);
+    ctx.font = font(500, L.note);
+    const note = content.message ? wrapLines(ctx, content.message, width) : [];
+    if (note.length > L.noteMaxLines) throw new Error('MESSAGE_TOO_LONG'); // the panel asks for an excerpt first
+    ctx.font = font(700, L.name);
+    const names = content.recipientName ? wrapLines(ctx, content.recipientName, width).slice(0, 2) : [];
+    // Nothing personal chosen: the greeting itself fills the words area, larger and set down by the band.
+    const alone = !note.length && !names.length && size === 'square';
+    const g = greetingLines(ctx, t.headline, width, alone ? greetingPx * 1.3 : greetingPx);
+    let gy = alone ? bottom - (g.lines.length - 1) * lh(g.px, 1.04) : top + L.logoH + g.px * 1.25;
+    for (const line of g.lines) { text(line, font(800, g.px), ink, x, gy); gy += lh(g.px, 1.04); }
+    const greetingBottom = gy - lh(g.px, 1.04) + g.px * 0.25;
+    let y = bottom;
+    const noteLh = lh(L.note, 1.42);
+    for (let i = note.length - 1; i >= 0; i--) { text(note[i], font(500, L.note), dark ? 'rgba(255,255,255,.9)' : 'rgba(0,0,0,.86)', x, y); y -= noteLh; }
+    if (note.length) y -= L.note * 0.5;
+    for (let i = names.length - 1; i >= 0; i--) { text(names[i], font(700, L.name), ink, x, y); y -= lh(L.name, 1.16); }
+    if (names.length) {
+      ctx.letterSpacing = `${L.label * 0.16}px`;
+      text('TO', font(600, L.label), soft, x, y + L.name * 0.12 - L.label * 0.2);
+      ctx.letterSpacing = '0px';
+      y -= L.label * 1.4;
+    }
+    return { greetingBottom, groupTop: y };
+  };
+
+  if (size === 'square') {
+    const colX = Math.round(w * 0.56);
+    if (!dark || isPhoto) { ctx.fillStyle = BRAND.green; ctx.fillRect(colX, 0, w - colX, bandTop); }
+    const side = isPhoto ? w - colX - 96 : Math.round((w - colX) * 0.84);
+    const px = colX + (w - colX - side) / 2;
+    // Dark: the illustration stands on the band (as on the card); light: centred in its green field.
+    const py = isPhoto ? (bandTop - side) / 2 : dark ? bandTop - side - 4 : (bandTop - side) / 2;
+    drawPicture(px, py, side);
+    drawWords(L.margin, L.margin, bandTop - L.margin * 0.75, colX - L.margin - 24, L.greeting);
+    return;
+  }
+
+  // Story: words first (measured from the band up), then the art takes the space above them.
+  const width = w - L.margin * 2;
+  ctx.font = font(500, L.note);
+  const noteLines = content.message ? wrapLines(ctx, content.message, width).length : 0;
+  ctx.font = font(700, L.name);
+  const nameLines = content.recipientName ? Math.min(2, wrapLines(ctx, content.recipientName, width).length) : 0;
+  const g = greetingLines(ctx, t.headline, width, L.greeting);
+  const groupH = (noteLines ? noteLines * L.note * 1.42 + L.note * 0.5 : 0) + (nameLines ? nameLines * L.name * 1.16 + L.label * 1.4 : 0);
+  const wordsH = L.logoH + g.px * 0.25 + g.lines.length * g.px * 1.04 + (groupH ? 64 + groupH : 0);
+  const wordsBottom = bandTop - 72;
+  const wordsTop = wordsBottom - wordsH;
+  const artBottom = wordsTop - 72;
+  if (!dark || isPhoto) { ctx.fillStyle = BRAND.green; ctx.fillRect(0, 0, w, artBottom + 24); }
+  const room = artBottom - STORY_SAFE_TOP;
+  const side = Math.max(260, Math.min(isPhoto ? 720 : 640, room - 40));
+  const py = isPhoto ? STORY_SAFE_TOP + (room - side) / 2 : dark ? artBottom - side : STORY_SAFE_TOP + (room - side) / 2 + 12;
+  drawPicture((w - side) / 2, py, side);
+  drawWords(L.margin, wordsTop, wordsBottom, width, L.greeting);
 }
 
 export function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {

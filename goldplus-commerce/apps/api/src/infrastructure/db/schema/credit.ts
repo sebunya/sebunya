@@ -1,4 +1,4 @@
-import { bigint, check, date, index, jsonb, pgTable, smallint, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { bigint, check, customType, date, index, integer, jsonb, pgTable, smallint, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -76,6 +76,8 @@ export const giftCardPurchases = pgTable('gift_card_purchases', {
   confirmationCode: varchar('confirmation_code', { length: 120 }),
   paymentMethod: varchar('payment_method', { length: 60 }),
   instrumentId: uuid('instrument_id').references(() => creditInstruments.id),
+  /** 0201: the buyer's optional photo. */
+  photoId: uuid('photo_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   paidAt: timestamp('paid_at', { withTimezone: true }),
   issuedAt: timestamp('issued_at', { withTimezone: true }),
@@ -94,4 +96,16 @@ export const giftCardOccasionSettings = pgTable('gift_card_occasion_settings', {
   settings: jsonb('settings').default({}).notNull(),
   updatedBy: uuid('updated_by'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType() { return 'bytea'; } });
+
+/** 0201: an optional photo on a gift card bought online: a re-encoded square JPEG without metadata. */
+export const giftCardPhotos = pgTable('gift_card_photos', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  image: bytea('image').notNull(),
+  width: integer('width').notNull(),
+  height: integer('height').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  attachedAt: timestamp('attached_at', { withTimezone: true }),
 });

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="A wrapped gift with a green ribbon">
+  <!-- A gift for you: a wrapped box and a confident green bow; the ribbon runs off the bottom edge, into the card's green band. Drawn for a black field. -->
+  <rect x="34" y="92" width="132" height="108" fill="#FFFFFF"/>
+  <rect x="26" y="68" width="148" height="30" rx="4" fill="#FFFFFF"/>
+  <rect x="26" y="98" width="148" height="7" fill="#CFCFCF"/>
+  <rect x="86" y="68" width="28" height="132" fill="#96CC06"/>
+  <path d="M100 66 C78 28 34 24 34 50 C34 72 72 76 100 66 Z" fill="#96CC06" stroke="#000000" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M100 66 C122 28 166 24 166 50 C166 72 128 76 100 66 Z" fill="#96CC06" stroke="#000000" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M94 62 C80 44 54 40 54 52 C54 62 76 64 94 62 Z" fill="#000000"/>
+  <path d="M106 62 C120 44 146 40 146 52 C146 62 124 64 106 62 Z" fill="#000000"/>
+  <rect x="88" y="52" width="24" height="20" rx="6" fill="#96CC06" stroke="#000000" stroke-width="6"/>
+</svg>

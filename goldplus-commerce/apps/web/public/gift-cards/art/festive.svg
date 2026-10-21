@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="A star above a ribbon bow">
+  <!-- Season's greetings: an open star above a ribbon bow, for every festive season. Drawn for a green field. -->
+  <path d="M100 14 L121 62 L174 66 L134 100 L146 152 L100 125 L54 152 L66 100 L26 66 L79 62 Z" fill="#FFFFFF" stroke="#000000" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M100 52 L108 72 L130 74 L113 88 L118 110 L100 99 L82 110 L87 88 L70 74 L92 72 Z" fill="#000000"/>
+  <path d="M100 168 C82 146 56 146 56 160 C56 172 82 174 100 168 Z M100 168 C118 146 144 146 144 160 C144 172 118 174 100 168 Z" fill="#000000"/>
+  <path d="M96 170 L84 194 M104 170 L116 194" stroke="#000000" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="100" cy="168" r="8" fill="#FFFFFF" stroke="#000000" stroke-width="5"/>
+</svg>

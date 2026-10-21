@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="A crescent moon and a hanging lantern">
+  <!-- Eid: a crescent and a lantern in balance. Drawn for a black field. -->
+  <path d="M78 22 A70 70 0 1 0 128 146 A56 56 0 1 1 78 22 Z" fill="#96CC06"/>
+  <line x1="148" y1="0" x2="148" y2="56" stroke="#FFFFFF" stroke-width="4"/>
+  <path d="M136 56 H160 L166 70 H130 Z" fill="#FFFFFF"/>
+  <path d="M128 70 H168 L176 92 V136 L168 156 H128 L120 136 V92 Z" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M148 80 C160 96 160 124 148 144 C136 124 136 96 148 80 Z" fill="#96CC06"/>
+  <path d="M134 156 H162 L156 170 H140 Z" fill="#FFFFFF"/>
+</svg>
