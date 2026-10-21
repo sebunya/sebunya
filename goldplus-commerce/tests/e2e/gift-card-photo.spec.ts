@@ -50,6 +50,26 @@ test('a buyer adds a photo, places it, and it stays on the card through an occas
   await expect(face).not.toHaveClass(/gcf-has-photo/);
 });
 
+test('two fingers pinch to zoom the photo (touch screens)', async ({ page, browserName }, testInfo) => {
+  // Real touch input is sent through Chromium's DevTools protocol; the phone project (Pixel 7) runs it in CI.
+  test.skip(browserName !== 'chromium' || !testInfo.project.use.hasTouch, 'a pinch needs a touch screen (Chromium)');
+  await page.goto('/gift-card/buy?theme=birthday');
+  await page.locator('[data-photo-add] input[type=file]').setInputFiles(PHOTO);
+  await expect(page.locator('[data-photo-crop]')).toBeVisible();
+  await expect(page.locator('[data-photo-zoom]')).toHaveValue('1');
+  const box = (await page.locator('[data-photo-frame]').boundingBox())!;
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  const fingers = (apart: number) => [{ x: cx - apart, y: cy, id: 0 }, { x: cx + apart, y: cy, id: 1 }];
+  // Real touch input (the same path a phone takes): two fingers down, spreading apart, lifted.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: fingers(20) });
+  for (const apart of [28, 36, 44, 52]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: fingers(apart) });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  // Fingers 2.6 times further apart: the photo is about 2.6 times closer (the slider follows the pinch).
+  await expect.poll(async () => Number(await page.locator('[data-photo-zoom]').inputValue())).toBeGreaterThan(2.2);
+});
+
 test('a drawing or animation is refused on the phone with a clear message, and nothing is uploaded', async ({ page }) => {
   let uploads = 0;
   page.on('request', (r) => { if (r.method() === 'POST' && r.url().endsWith('/gift-card/photo')) uploads += 1; });

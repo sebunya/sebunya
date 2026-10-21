@@ -56,7 +56,7 @@ export const LEGAL_POLICIES: LegalPolicy[] = [
     title: 'Privacy policy',
     version: '1.3',
     status: 'in_force',
-    effectiveDate: '2026-10-21',
+    effectiveDate: '2026-10-22',
     summary: 'How GoldPlus handles customer information, chats with Goldie, gift card notes and photos, and how connected Google account data is used and protected.',
   },
   {

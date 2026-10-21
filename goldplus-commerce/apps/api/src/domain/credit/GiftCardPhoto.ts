@@ -1,9 +1,13 @@
 /**
  * 0201: the optional photo on a gift card bought online. Every rule about it lives here, so the use cases, the
- * repository, the privacy policy (/privacy, "Gift cards: notes and photos") and the docs read one source.
+ * repository, the privacy policy (/privacy, "Gift cards: notes and photos") and the docs read one source. The sizes
+ * and the id shape are shared with the phone's cropper (@goldplus/shared, gift-cards/giftPhoto) and re-exported here.
  *
  * Pure: no database, no clock of its own (every cut-off is computed from the `now` the caller passes).
  */
+import { GIFT_CARD_PHOTO_MAX_BYTES, GIFT_CARD_PHOTO_MAX_SIDE, GIFT_CARD_PHOTO_MIN_SIDE, isGiftCardPhotoId } from '@goldplus/shared';
+
+export { GIFT_CARD_PHOTO_MAX_BYTES, GIFT_CARD_PHOTO_MAX_SIDE, GIFT_CARD_PHOTO_MIN_SIDE, isGiftCardPhotoId };
 
 /**
  * How long a photo is kept, in days. The privacy policy states these numbers in words and a unit test holds the two
@@ -24,11 +28,6 @@ export const GIFT_CARD_PHOTOS_PER_DAY = 400;
 /** …and from one visitor in 24 hours, so one person cannot use up the shop's allowance and shut real buyers out. */
 export const GIFT_CARD_PHOTOS_PER_VISITOR_PER_DAY = 20;
 
-/** What a phone may send (it crops to a 1080 px square first; this is only the ceiling for the request body). */
-export const GIFT_CARD_PHOTO_MAX_BYTES = 6 * 1024 * 1024;
-/** The stored photo: a square of at most this many pixels a side, and never less than the smallest printable one. */
-export const GIFT_CARD_PHOTO_MAX_SIDE = 1080;
-export const GIFT_CARD_PHOTO_MIN_SIDE = 200;
 /**
  * The largest picture the API will decode. Decoding costs memory outside the JavaScript heap (about 3 bytes a pixel,
  * before any working copies) in an API container limited to 512 MB, so a 40-megapixel image sent on purpose could
@@ -42,13 +41,6 @@ export const GIFT_CARD_PHOTO_STORED_MAX_BYTES = 1_400_000;
 export type GiftCardPhotoRefusal =
   | 'empty' | 'too_large' | 'not_an_image' | 'too_small' | 'too_detailed'
   | 'visitor_daily_limit' | 'shop_daily_limit' | 'unavailable';
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** A photo id is the random UUID the database gave it; anything else is never looked up. */
-export function isGiftCardPhotoId(value: unknown): value is string {
-  return typeof value === 'string' && UUID.test(value);
-}
 
 const DAY_MS = 86_400_000;
 

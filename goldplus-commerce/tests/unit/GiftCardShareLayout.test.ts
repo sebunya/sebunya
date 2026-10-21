@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  SHARE_SIZES, STORY_SAFE_BOTTOM, STORY_SAFE_TOP, layoutShareImage, shareContent, type ShareContent, type ShareOp, type ShareSize,
+  SHARE_SIZES, STORY_SAFE_BOTTOM, STORY_SAFE_TOP, layoutShareImage, messageFits, pictureNote, shareContent, type ShareContent, type ShareOp,
+  type ShareSize,
 } from '../../apps/web/src/lib/giftCardShare';
 import { GIFT_CARD_THEMES } from '../../apps/web/src/lib/giftCardThemes';
 
@@ -143,5 +144,34 @@ describe('the share picture’s layout (every occasion, both sizes)', () => {
       const drawn = texts(layoutShareImage(content, size, measurer()).ops).map((o) => o.text).join(' | ');
       expect(drawn).not.toMatch(/GPGC|12,000|12000|#|\+256|772111222/);
     }
+  });
+});
+
+describe('the note on the share picture (the panel’s shorter-message box)', () => {
+  // The crowded Valentine's card: beside a long name, this note cannot be drawn whole on the square.
+  const rest = { occasion: 'valentine', recipientName: 'Sarah Nakato Namubiru Kizza Nalubega Mukasa Nantongo', senderName: 'Daniel Okello', originalUgx: 100_000 };
+  const long = 'Supercalifragilistic expialidocious '.repeat(5).trim();
+
+  it('a note that fits is drawn whole, and nothing is asked', () => {
+    expect(pictureNote(measurer(), FULL.message!, 'square', { occasion: 'birthday' }, null))
+      .toEqual({ askShorter: false, shorter: null, stillTooLong: false, message: FULL.message });
+  });
+
+  it('a note that does not fit asks for a shorter one, which starts as the whole note; until it fits there is no note', () => {
+    expect(messageFits(measurer(), long, 'square', rest)).toBe(false);
+    expect(pictureNote(measurer(), long, 'square', rest, null)).toEqual({ askShorter: true, shorter: long, stillTooLong: true, message: null });
+  });
+
+  it('the shorter message is drawn once it fits (trimmed), never a cut of the whole note', () => {
+    expect(pictureNote(measurer(), long, 'square', rest, '  With all my love.  '))
+      .toEqual({ askShorter: true, shorter: '  With all my love.  ', stillTooLong: false, message: 'With all my love.' });
+  });
+
+  it('a box cleared to write afresh stays clear: no "too long" warning, no note, and the whole note does not come back', () => {
+    expect(pictureNote(measurer(), long, 'square', rest, '')).toEqual({ askShorter: true, shorter: '', stillTooLong: false, message: null });
+  });
+
+  it('not showing the note asks nothing and draws none', () => {
+    expect(pictureNote(measurer(), null, 'square', rest, 'kept for later')).toEqual({ askShorter: false, shorter: 'kept for later', stillTooLong: false, message: null });
   });
 });

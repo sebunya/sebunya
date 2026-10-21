@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRequire } from 'node:module';
-import { SharpGiftCardPhotoProcessor } from '../../apps/api/src/infrastructure/credit/SharpGiftCardPhotoProcessor';
+import { SharpGiftCardPhotoProcessor, takingTurns } from '../../apps/api/src/infrastructure/credit/SharpGiftCardPhotoProcessor';
 import { GIFT_CARD_PHOTO_MAX_INPUT_PIXELS, GIFT_CARD_PHOTO_STORED_MAX_BYTES } from '../../apps/api/src/domain/credit/GiftCardPhoto';
 
 // The real image library, on real pictures: what a phone sends is what this sees.
@@ -61,5 +61,44 @@ describe('gift card photo processing (0201, real sharp)', () => {
     const photo = await sharp({ create: { width: 900, height: 900, channels: 3, background: '#000000' } }).jpeg().toBuffer();
     const results = await Promise.all(Array.from({ length: 7 }, () => processor.process(photo)));
     expect(results.every((r) => r.ok)).toBe(true);
+  });
+});
+
+describe('two photos at a time (the memory guard’s queue)', () => {
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+  it('never runs more than its limit, even when a newcomer arrives the moment one finishes; waiters go in order', async () => {
+    const inTurn = takingTurns(2);
+    let active = 0;
+    let peak = 0;
+    const order: number[] = [];
+    const finish: Array<() => void> = [];
+    const job = (n: number) => inTurn(() => new Promise<void>((resolve) => {
+      active += 1;
+      peak = Math.max(peak, active);
+      order.push(n);
+      finish.push(() => { active -= 1; resolve(); });
+    }));
+    const all = [job(1), job(2), job(3)];
+    await flush();
+    expect(active).toBe(2);
+    // The first finishes, and in the same moment another photo arrives. A queue that lets its count drop and rise
+    // again admits the newcomer beside the one it just woke: three at once (this was the case before 2026-10-22).
+    finish.shift()!();
+    all.push(Promise.resolve().then(() => job(4)));
+    await flush();
+    expect(peak).toBe(2);
+    while (finish.length) { finish.shift()!(); await flush(); }
+    await Promise.all(all);
+    expect(peak).toBe(2);
+    expect(order).toEqual([1, 2, 3, 4]);
+  });
+
+  it('a piece of work that fails still gives its place to the next', async () => {
+    const inTurn = takingTurns(1);
+    const failed = inTurn(() => Promise.reject(new Error('broken photo')));
+    const next = inTurn(async () => 'next');
+    await expect(failed).rejects.toThrow('broken photo');
+    await expect(next).resolves.toBe('next');
   });
 });

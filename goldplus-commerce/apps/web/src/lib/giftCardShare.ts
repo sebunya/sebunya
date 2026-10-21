@@ -295,6 +295,33 @@ export function messageFits(ctx: ShareMeasure, message: string, size: ShareSize,
   return shareContentFits(ctx, { ...rest, message }, size);
 }
 
+/** What the share panel does with the note (pictureNote). */
+export interface PictureNote {
+  /** The whole note does not fit beside the other chosen details: the panel asks for a shorter one for the picture. */
+  askShorter: boolean;
+  /** The shorter message's text: it starts as the whole note the first time it is asked for, then is the person's own. */
+  shorter: string | null;
+  /** The shorter message is written but still does not fit (an empty one is not "too long": it is not written yet). */
+  stillTooLong: boolean;
+  /** The words drawn: the whole note, the shorter one once it fits, or none (null) until then. Never a silent cut. */
+  message: string | null;
+}
+
+/**
+ * The note on the share picture, decided before anything is drawn. `note` is the card's note when the person chose
+ * to show it (else null); `shorter` is what they have written in the shorter-message box, or null before it was ever
+ * shown.
+ */
+export function pictureNote(ctx: ShareMeasure, note: string | null, size: ShareSize, rest: Omit<ShareContent, 'message'>, shorter: string | null): PictureNote {
+  const whole = note?.trim() ?? '';
+  if (!whole) return { askShorter: false, shorter, stillTooLong: false, message: null };
+  if (messageFits(ctx, whole, size, rest)) return { askShorter: false, shorter, stillTooLong: false, message: whole };
+  const draft = shorter ?? whole;
+  const words = draft.trim();
+  const fits = words.length > 0 && messageFits(ctx, words, size, rest);
+  return { askShorter: true, shorter: draft, stillTooLong: words.length > 0 && !fits, message: fits ? words : null };
+}
+
 const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = src; });
 
 /** The fonts the picture is drawn in, loaded before drawing (a canvas does not wait for them). */

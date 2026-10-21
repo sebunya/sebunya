@@ -8,7 +8,7 @@ How the card looks, what a buyer can put on it, and what the shop keeps. Migrati
 | Concern | Rules (pure) | Use case | Storage / adapters |
 |---|---|---|---|
 | Buying, paying, issuing | `domain/credit/GiftCardPurchase.ts` | `GiftCardPurchaseUseCases` | `DrizzleGiftCardPurchaseRepository` |
-| The photo | `domain/credit/GiftCardPhoto.ts` (limits, retention, cut-offs) | `GiftCardPhotoUseCases` | `DrizzleGiftCardPhotoRepository`, `SharpGiftCardPhotoProcessor` |
+| The photo | `domain/credit/GiftCardPhoto.ts` (limits, retention, cut-offs); its sizes and id shape are shared with the cropper (`packages/shared/src/gift-cards/giftPhoto.ts`) | `GiftCardPhotoUseCases` | `DrizzleGiftCardPhotoRepository`, `SharpGiftCardPhotoProcessor` |
 | The words (note, names) | `packages/shared/src/gift-cards/giftText.ts`, shared by the API and the buy page | | |
 
 On the storefront: `lib/giftCardThemes.ts` (the 14 occasions), `components/GiftCardFace.astro` with
@@ -60,7 +60,8 @@ never depends on the note, and nothing from the buyer can forge a line in a mess
 3. The API re-encodes it with sharp: a square of at most 1080 px, every piece of metadata (location, camera) removed,
    and quality stepped down if needed to fit the 1.5 MB column. A picture declaring more than 2048 x 2048 pixels is
    refused from its header, before it is decoded: the API container has 512 MB and decoding happens outside the
-   JavaScript heap. At most two photos are processed at a time per API process, and libvips keeps no cache.
+   JavaScript heap. At most two photos are processed at a time per API process (a finished one hands its place straight to the next
+   waiting, so a newcomer can never make it three), and libvips keeps no cache.
 4. It is stored in `gift_card_photos` and claimed by one purchase, in the purchase's own transaction. A photo already
    on one of the same buyer's purchases (same phone) is copied for the new one, so trying again after a failed or
    cancelled payment keeps the photo; another buyer cannot use it.
@@ -109,6 +110,8 @@ and bottom 280 px kept clear of words.
 
 The layout is computed before anything is painted and reports whether the chosen content fits: no two blocks of
 words touch, no words touch the picture, and story words stay out of the apps' zones. When it does not fit, the panel
-asks for a shorter message for the picture; the note itself is never cut or shrunk. A name too long for two lines is
+asks for a shorter message for the picture (`pictureNote`): the box starts as the whole note once, then is the
+recipient's own (cleared to write afresh, it stays clear), and until it fits the picture carries no note. The note
+itself is never cut or shrunk. A name too long for two lines is
 set smaller rather than cut; the From line is cut only with an ellipsis, at a whole character.
 `tests/unit/GiftCardShareLayout.test.ts` checks this for all 14 occasions, both sizes and long content.

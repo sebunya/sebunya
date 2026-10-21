@@ -7,9 +7,11 @@
  *
  * zoom 1: the photo's shorter side just fills the square. zoom 3: three times closer.
  */
+import { GIFT_CARD_PHOTO_MAX_SIDE, GIFT_CARD_PHOTO_MIN_SIDE } from '@goldplus/shared/src/gift-cards/giftPhoto';
+
 export const CROP_ZOOM = Object.freeze({ min: 1, max: 3 });
 /** The upload: a square of at most this many pixels a side, and never fewer (the API's smallest printable photo). */
-export const CROP_OUTPUT = Object.freeze({ max: 1080, min: 200 });
+export const CROP_OUTPUT = Object.freeze({ max: GIFT_CARD_PHOTO_MAX_SIDE, min: GIFT_CARD_PHOTO_MIN_SIDE });
 
 export interface PhotoCrop {
   /** The photo's natural size. */

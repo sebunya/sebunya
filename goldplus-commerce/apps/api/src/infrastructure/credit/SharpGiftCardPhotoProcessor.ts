@@ -28,27 +28,35 @@ const loadSharp = () => (loaded ??= import('sharp').then((m) => {
 
 const QUALITIES = [84, 74, 64, 54];
 const FORMATS = ['jpeg', 'png', 'webp', 'heif', 'avif'];
-const MAX_AT_ONCE = 2;
 
-/** At most MAX_AT_ONCE photos at a time; the rest wait their turn (uploads are rate-limited, so the queue stays short). */
-let running = 0;
-const waiting: Array<() => void> = [];
-async function oneAtATime<T>(work: () => Promise<T>): Promise<T> {
-  if (running >= MAX_AT_ONCE) await new Promise<void>((resolve) => waiting.push(resolve));
-  running += 1;
-  try {
-    return await work();
-  } finally {
-    running -= 1;
-    waiting.shift()?.();
-  }
+/**
+ * At most `max` pieces of work at once; the rest wait their turn, in order. A finished piece hands its place straight
+ * to the next one waiting (the count never drops and rises again), so a newcomer arriving in that moment cannot slip
+ * in beside it and make it max + 1.
+ */
+export function takingTurns(max: number) {
+  let running = 0;
+  const waiting: Array<() => void> = [];
+  return async function inTurn<T>(work: () => Promise<T>): Promise<T> {
+    if (running < max) running += 1;
+    else await new Promise<void>((resolve) => waiting.push(resolve));
+    try {
+      return await work();
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else running -= 1;
+    }
+  };
 }
+/** Two photos at a time in a process (uploads are rate-limited, so the queue stays short). */
+const inTurn = takingTurns(2);
 
 export class SharpGiftCardPhotoProcessor implements IGiftCardPhotoProcessor {
   async process(input: Buffer): ReturnType<IGiftCardPhotoProcessor['process']> {
     let sharp: Sharp;
     try { sharp = await loadSharp(); } catch { loaded = null; return { ok: false, reason: 'unavailable' }; }
-    return oneAtATime(async () => {
+    return inTurn(async () => {
       // The header only: format and declared size, before a single pixel is decoded.
       let meta;
       try { meta = await sharp(input, { limitInputPixels: false, failOn: 'error' }).metadata(); } catch { return { ok: false, reason: 'not_an_image' } as const; }
