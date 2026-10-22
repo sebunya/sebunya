@@ -32,6 +32,7 @@ import { categoryHasUniqueCopy, shopCrawlDirective } from '../lib/crawlPolicy';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { offerPriceUgx } from '../lib/offerPrice';
+import { chargedPriceUgx } from '../lib/productStructuredData';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../lib/storefrontDiscount';
 import { fetchApprovedCatalogueWithStatus } from '../lib/catalogue';
 import { isListableProduct } from '../lib/product-discovery';
@@ -153,11 +154,14 @@ if (personalOrderEligible && leadParam !== null) {
     // The standard order is always a fine answer.
   }
 }
-const facetedProducts = applyShopFacets(filteredProducts, facetSelection);
-const shopFacets = buildShopFacets(filteredProducts, facetSelection);
+// The price the card shows (the sale price while a campaign runs) is what the price filter and sort use.
+const shopDiscount = await getStorefrontDiscount();
+const shopPrice = (p: ProductPublicDto) => chargedPriceUgx(p, shopDiscount);
+const facetedProducts = applyShopFacets(filteredProducts, facetSelection, shopPrice);
+const shopFacets = buildShopFacets(filteredProducts, facetSelection, shopPrice);
 const facetsChosen = hasShopFacets(facetSelection);
-const standardLead = sortDiscoveryProducts(facetedProducts, sort, taxonomy)[0]?.categoryName;
-const products = sortDiscoveryProducts(facetedProducts, sort, taxonomy, preferredCategories);
+const standardLead = sortDiscoveryProducts(facetedProducts, sort, taxonomy, [], shopPrice)[0]?.categoryName;
+const products = sortDiscoveryProducts(facetedProducts, sort, taxonomy, preferredCategories, shopPrice);
 // Said plainly, and only when it actually changed what is on top.
 const personalLead = preferredCategories.length > 0 && products[0] && products[0].categoryName !== standardLead ? products[0].categoryName : '';
 if (personalLead) Astro.response.headers.set('Cache-Control', 'private, no-store');
@@ -265,7 +269,6 @@ const activeFilters = [
 const onlyCategoryFilter = Boolean(category) && !search && !subcategory && sort === 'default' && !facetsChosen;
 
 // The same campaign the cards render, so the ItemList offer says what the card says.
-const shopDiscount = await getStorefrontDiscount();
 const shopCampaignRunning = shopDiscount.active && shopDiscount.percentBps > 0;
 const shopItemList = {
   '@context': 'https://schema.org',
