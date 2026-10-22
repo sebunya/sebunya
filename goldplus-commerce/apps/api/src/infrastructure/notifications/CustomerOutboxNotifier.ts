@@ -56,6 +56,9 @@ export function customerOutboxValues(input: CustomerOutboxInput): typeof outboxE
       // message was logged against no order (found tracing GP-202610-951E39E8's receipt, 2026-10-16).
       relatedEntity: input.relatedEntity,
       relatedEntityId: input.relatedEntityId,
+      // The router decides dry-run from the PAYLOAD (it never reads the row column), so the
+      // CUSTOMER_ORDER_MESSAGES_LIVE=false switch did nothing until it travelled here too (2026-10-22).
+      dryRunOnly: input.dryRunOnly === true,
     } as never,
     idempotencyKey: input.idempotencyKey,
     status: 'pending',

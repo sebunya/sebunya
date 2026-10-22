@@ -42,6 +42,22 @@ suite('outbox events that carry a verification code (real PostgreSQL)', () => {
 
   const otp = { kind: 'phone_verification', message: 'Your GoldPlus verification code is 482913. It expires in 10 minutes.', code: '482913', customerPhone: '+256772000000' };
 
+  it('a retry after a partly sent message keeps the payload an object (a string payload became an array, losing the phone)', async () => {
+    const msg = { customerPhone: '+256772000111', customerEmail: 'a@b.test', message: 'Payment received.' };
+    // How CustomerOutboxNotifier stores it: a jsonb STRING.
+    const [row] = await raw`
+      insert into outbox_events (event_type, payload, status, is_processed, idempotency_key, worker_id, lease_expires_at)
+      values ('CUSTOMER_ORDER_MESSAGE', ${raw.json(JSON.stringify(msg))}, 'processing', false, ${`${tag}-str`}, ${WORKER}, now() + interval '5 minutes')
+      returning id`;
+    ids.push(row.id);
+    expect(await repo.recordFailure(row.id, 'sms down', new Date(), { sentTargets: ['email'] })).toBe(true);
+    const [t] = await raw`select jsonb_typeof(payload) as t from outbox_events where id = ${row.id}`;
+    expect(t.t).toBe('object');
+    const p = await payloadOf(row.id);
+    expect(p.customerPhone).toBe('+256772000111');
+    expect(p._sentTargets).toEqual(['email']);
+  });
+
   it('a sent verification event keeps no code', async () => {
     const id = await leased('PHONE_VERIFICATION_REQUESTED', otp);
     expect(await repo.markProcessed(id)).toBe(true);

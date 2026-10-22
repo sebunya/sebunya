@@ -199,8 +199,10 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         attemptCount: sql`${outboxEvents.attemptCount} + 1`,
         workerId: null,
         leaseExpiresAt: null,
-        // Merged into the jsonb payload; no schema change.
-        ...(sent ? { payload: sql`coalesce(${outboxEvents.payload}, '{}'::jsonb) || ${pgJsonb(sent)}` } : {}),
+        // Merged into the jsonb payload; no schema change. Into its OBJECT form: some writers store the payload as a
+        // jsonb string, and string || object is an ARRAY, which the next attempt read as a payload with no phone
+        // or email, so the target that failed was never retried (2026-10-22).
+        ...(sent ? { payload: sql`coalesce(${payloadObject()}, '{}'::jsonb) || ${pgJsonb(sent)}` } : {}),
       })
       .where(and(eq(outboxEvents.id, eventId), eq(outboxEvents.workerId, this.workerId)))
       .returning({ id: outboxEvents.id });
