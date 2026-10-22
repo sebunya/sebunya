@@ -593,7 +593,10 @@ describe('provider reversal is read against the refund ledger', () => {
     const { output, orderTransition, settled } = await runReversal(0);
     expect(output.status).toBe('completed');
     expect(output.message).toMatch(/ALREADY_COMPLETED/);
-    expect(orderTransition.transition).not.toHaveBeenCalled();
+    // The order move is re-asserted under the SAME idempotency key (2026-10-22): free when it already happened,
+    // and what keeps a late payment on a cancelled order in review on every replay. Still no new provider call.
+    expect(orderTransition.transition).toHaveBeenCalledTimes(1);
+    expect(orderTransition.transition).toHaveBeenCalledWith('order-123', 'processing', expect.objectContaining({ idempotencyKey: 'pesapal:completed:track-123' }));
     expect(settled).toEqual([]);
   });
 
