@@ -2183,6 +2183,8 @@ export class Registry {
       const charge = orderChargeUgx(q);
       return {
         feeUgx: charge,
+        // Paid to the carrier at the parcel office: the order charges 0, and the page says what is paid there.
+        paidAtCollectionUgx: q.kind === 'bus_shipment' && q.shipment.chargedAt === 'collection' ? q.feeUgx : null,
         // Checkout re-decides the free-delivery waiver on the post-promotion
         // goods total, which it only knows after pricing; these let it do that
         // without a second quote.

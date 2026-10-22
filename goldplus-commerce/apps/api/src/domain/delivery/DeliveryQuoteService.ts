@@ -291,6 +291,9 @@ export function applyFreeDeliveryThreshold(
   input: { thresholdUgx: number | null; basisUgx: number },
 ): FulfilmentQuote {
   if (quote.kind === 'unavailable') return quote;
+  // Paid to the carrier at the parcel office, not to us: the shop cannot waive it, and "qualifies for free delivery"
+  // beside "you pay the conductor when you collect it" contradicted itself (2026-10-22).
+  if (quote.kind === 'bus_shipment' && quote.shipment.chargedAt === 'collection') return quote;
   const threshold = input.thresholdUgx;
   if (threshold === null || !Number.isFinite(threshold) || threshold <= 0) return quote;
   if (!(input.basisUgx >= threshold) || quote.feeUgx === 0) return quote;
