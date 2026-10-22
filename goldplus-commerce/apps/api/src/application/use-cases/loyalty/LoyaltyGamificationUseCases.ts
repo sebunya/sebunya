@@ -1,5 +1,6 @@
 import { ILoyaltyRepository } from '../../ports/ILoyaltyRepository';
 import { ILoyaltyCompletionRepository } from '../../ports/ILoyaltyCompletion';
+import { normaliseReferralCode, type ReferralHoldReason, type ReferralSource } from '../../../domain/loyalty/Referral';
 
 type Fail = { ok: false; code: string; message: string };
 const fail = (code: string, message: string): Fail => ({ ok: false, code, message });
@@ -42,10 +43,14 @@ export interface ILoyaltyReferralRepository {
   getOrCreateCode(userId: string): Promise<string>;
   findReferrerByCode(code: string): Promise<{ userId: string; phone: string | null } | null>;
   userPhone(userId: string): Promise<string | null>;
-  recordReferral(input: { code: string; referrerUserId: string; refereeUserId: string }): Promise<'recorded' | 'duplicate'>;
+  recordReferral(input: { code: string; referrerUserId: string; refereeUserId: string; source?: ReferralSource }): Promise<'recorded' | 'duplicate'>;
   findPendingByReferee(refereeUserId: string): Promise<{ id: string; code: string; referrerUserId: string } | null>;
-  markAwarded(id: string, referrerEntryId: string, refereeEntryId: string, qualifyingOrderId: string): Promise<void>;
-  markRejected(id: string, reason: string): Promise<void>;
+  /** 0202: one referral by id, for a person deciding a held one. */
+  findById?(id: string): Promise<{ id: string; status: string; referrerUserId: string; refereeUserId: string; qualifyingOrderId: string | null } | null>;
+  markAwarded(id: string, referrerEntryId: string, refereeEntryId: string, qualifyingOrderId: string, decidedBy?: string | null): Promise<void>;
+  /** 0202: waits for a person; the order it would pay on is kept so a release pays on it. */
+  markHeld?(id: string, reason: ReferralHoldReason, qualifyingOrderId: string): Promise<void>;
+  markRejected(id: string, reason: string, decidedBy?: string | null): Promise<void>;
   countAwardedForReferrer(referrerUserId: string, sinceDays: number): Promise<number>;
   countDeliveredRetailOrders(userId: string): Promise<number>;
   /**
@@ -53,7 +58,7 @@ export interface ILoyaltyReferralRepository {
    * their own orders? Optional so older fakes type.
    */
   orderUsesReferrerPhone?(orderId: string, referrerUserId: string): Promise<boolean>;
-  listForReferrer(referrerUserId: string): Promise<Array<{ status: string; createdAt: Date }>>;
+  listForReferrer(referrerUserId: string): Promise<Array<{ status: string; createdAt: Date; friendName?: string | null; friendHasOrdered?: boolean; rejectionReason?: string | null }>>;
 }
 
 /**
@@ -175,11 +180,13 @@ export class RecordReferralUseCase {
     private readonly referrals: ILoyaltyReferralRepository,
   ) {}
 
-  async execute(input: { refereeUserId: string; code: string }): Promise<{ ok: true; status: 'recorded' } | Fail> {
+  async execute(input: { refereeUserId: string; code: string; source?: ReferralSource }): Promise<{ ok: true; status: 'recorded' } | Fail> {
     const config = await this.completion.getProgrammeConfig();
     if (!config.enabled || config.killSwitch) return fail('PROGRAMME_DISABLED', 'Programme inactive.');
     if (config.referralReferrerPoints === null) return fail('REFERRALS_OFF', 'Referral rewards are not configured.');
-    const code = input.code.trim().toUpperCase();
+    // "gp 4k7-m2q" is GP4K7M2Q: a pasted or spoken code with a space used to be dropped without a word.
+    const code = normaliseReferralCode(input.code);
+    if (!code) return fail('CODE_NOT_FOUND', 'That referral code does not exist.');
     const referrer = await this.referrals.findReferrerByCode(code);
     if (!referrer) return fail('CODE_NOT_FOUND', 'That referral code does not exist.');
     if (referrer.userId === input.refereeUserId) return fail('SELF_REFERRAL', 'You cannot refer yourself.');
@@ -193,7 +200,12 @@ export class RecordReferralUseCase {
       });
       return fail('SELF_REFERRAL', 'Referrer and referee share a phone number.');
     }
-    const outcome = await this.referrals.recordReferral({ code, referrerUserId: referrer.userId, refereeUserId: input.refereeUserId });
+    // A code added after sign-up (another device, Google sign-up, forgot) is for a NEW customer only: once a first
+    // order is delivered, there is nothing left to introduce.
+    if ((await this.referrals.countDeliveredRetailOrders(input.refereeUserId)) > 0) {
+      return fail('ALREADY_A_CUSTOMER', 'This account already has a delivered order.');
+    }
+    const outcome = await this.referrals.recordReferral({ code, referrerUserId: referrer.userId, refereeUserId: input.refereeUserId, source: input.source ?? 'typed' });
     if (outcome === 'duplicate') return fail('ALREADY_REFERRED', 'This account has already been referred.');
     return { ok: true, status: 'recorded' };
   }
@@ -224,9 +236,11 @@ export class QualifyReferralOnDeliveryUseCase {
     }
     const referral = await this.referrals.findPendingByReferee(input.refereeUserId);
     if (!referral) return { ok: true, status: 'none' };
-    // First delivered retail order only — the count includes the one that just landed.
+    // A pending referral has never paid, and a code is accepted only before the friend's first delivery
+    // (RecordReferral), so the first delivery that reaches here pays. It used to need the count to be EXACTLY 1: a
+    // first delivery this was not run for (the order earned no points, a paused budget) left it pending for good.
     const delivered = await this.referrals.countDeliveredRetailOrders(input.refereeUserId);
-    if (delivered !== 1) return { ok: true, status: 'none' };
+    if (delivered < 1) return { ok: true, status: 'none' };
     const awardedThisMonth = await this.referrals.countAwardedForReferrer(referral.referrerUserId, 30);
     if (awardedThisMonth >= QualifyReferralOnDeliveryUseCase.MONTHLY_AWARD_CAP) {
       await this.completion.recordFraudSignal({
@@ -235,6 +249,7 @@ export class QualifyReferralOnDeliveryUseCase {
         signalType: 'REFERRAL_MONTHLY_CAP',
         details: { referralId: referral.id, awardedThisMonth },
       });
+      await this.referrals.markHeld?.(referral.id, 'MONTHLY_LIMIT', input.orderId);
       return { ok: true, status: 'held' };
     }
     // Registration refuses a phone already on an account, so the same-phone check at registration can hardly ever
@@ -247,8 +262,23 @@ export class QualifyReferralOnDeliveryUseCase {
         signalType: 'REFERRAL_ORDER_TO_REFERRER_PHONE',
         details: { referralId: referral.id, orderId: input.orderId, refereeUserId: input.refereeUserId },
       });
+      await this.referrals.markHeld?.(referral.id, 'ORDER_TO_REFERRER_PHONE', input.orderId);
       return { ok: true, status: 'held' };
     }
+    return this.award(referral, input.refereeUserId, input.orderId, config, null);
+  }
+
+  /** Pays both sides, once (ledger idempotency keys), and tells them. Also the path a person's release takes. */
+  async award(
+    referral: { id: string; referrerUserId: string },
+    refereeUserId: string,
+    orderId: string,
+    config: { referralReferrerPoints: number | null; referralRefereePoints: number | null },
+    decidedBy: string | null,
+  ): Promise<{ ok: true; status: 'awarded'; referrerUserId: string }> {
+    const input = { refereeUserId, orderId };
+    const referrerPoints = config.referralReferrerPoints ?? 0;
+    const refereePoints = config.referralRefereePoints ?? 0;
     const referrerAccount = await this.loyalty.getOrCreateAccount(referral.referrerUserId);
     const refereeAccount = await this.loyalty.getOrCreateAccount(input.refereeUserId);
     const append = async (accountId: string, points: number, side: 'referrer' | 'referee') => {
@@ -271,13 +301,46 @@ export class QualifyReferralOnDeliveryUseCase {
         throw error;
       }
     };
-    const referrerEntryId = await append(referrerAccount.id, config.referralReferrerPoints, 'referrer');
-    const refereeEntryId = await append(refereeAccount.id, config.referralRefereePoints, 'referee');
-    await this.referrals.markAwarded(referral.id, referrerEntryId ?? '', refereeEntryId ?? '', input.orderId);
+    const referrerEntryId = await append(referrerAccount.id, referrerPoints, 'referrer');
+    const refereeEntryId = await append(refereeAccount.id, refereePoints, 'referee');
+    await this.referrals.markAwarded(referral.id, referrerEntryId ?? '', refereeEntryId ?? '', input.orderId, decidedBy);
     await this.gamification.awardBadgeByKey(referral.referrerUserId, 'referrer');
-    await this.notify({ userId: referral.referrerUserId, points: config.referralReferrerPoints, kind: 'referrer', referralId: referral.id }).catch(() => undefined);
-    await this.notify({ userId: input.refereeUserId, points: config.referralRefereePoints, kind: 'referee', referralId: referral.id }).catch(() => undefined);
+    await this.notify({ userId: referral.referrerUserId, points: referrerPoints, kind: 'referrer', referralId: referral.id }).catch(() => undefined);
+    await this.notify({ userId: input.refereeUserId, points: refereePoints, kind: 'referee', referralId: referral.id }).catch(() => undefined);
     return { ok: true, status: 'awarded', referrerUserId: referral.referrerUserId };
+  }
+}
+
+/**
+ * A person decides a HELD referral (0202). Before, a held referral stayed 'pending' and the friend's next delivery
+ * made it look like a second order, so it could never pay, and nothing let a person pay it either. Release pays both
+ * sides on the order it was held on; refuse records the reason. Either way the decision is audited by the route.
+ */
+export class DecideHeldReferralUseCase {
+  constructor(
+    private readonly completion: ILoyaltyCompletionRepository,
+    private readonly referrals: ILoyaltyReferralRepository,
+    private readonly qualify: QualifyReferralOnDeliveryUseCase,
+  ) {}
+
+  async execute(input: { referralId: string; decision: 'release' | 'refuse'; actorId: string; reason?: string }): Promise<
+    | { ok: true; status: 'awarded' | 'rejected'; referrerUserId: string }
+    | Fail
+  > {
+    const r = this.referrals.findById ? await this.referrals.findById(input.referralId) : null;
+    if (!r) return fail('NOT_FOUND', 'Referral not found.');
+    if (r.status !== 'held') return fail('NOT_HELD', `This referral is ${r.status}, not waiting for a decision.`);
+    if (input.decision === 'refuse') {
+      const reason = (input.reason ?? '').trim();
+      if (reason.length < 3) return fail('REASON_REQUIRED', 'Say why the referral is refused.');
+      await this.referrals.markRejected(r.id, `REFUSED: ${reason}`, input.actorId);
+      return { ok: true, status: 'rejected', referrerUserId: r.referrerUserId };
+    }
+    const config = await this.completion.getProgrammeConfig();
+    if (!config.enabled || config.killSwitch) return fail('PROGRAMME_DISABLED', 'The programme is paused; nothing can be paid now.');
+    if (config.referralReferrerPoints === null || config.referralRefereePoints === null) return fail('REFERRALS_OFF', 'Referral points are not set.');
+    if (!r.qualifyingOrderId) return fail('NOT_FOUND', 'The order this referral was held on is not recorded.');
+    return this.qualify.award(r, r.refereeUserId, r.qualifyingOrderId, config, input.actorId);
   }
 }
 

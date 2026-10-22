@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, integer, boolean, timestamp, uniqueIndex, index, check, bigint, jsonb, date } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, char, integer, boolean, timestamp, uniqueIndex, index, check, bigint, jsonb, date } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './identity';
 import { orders } from './commerce';
@@ -93,16 +93,35 @@ export const loyaltyReferrals = pgTable('loyalty_referrals', {
   code: varchar('code', { length: 12 }).notNull(),
   referrerUserId: uuid('referrer_user_id').notNull(),
   refereeUserId: uuid('referee_user_id').notNull(),
-  status: varchar('status', { length: 12 }).default('pending').notNull(), // pending|awarded|rejected
+  status: varchar('status', { length: 12 }).default('pending').notNull(), // pending|held|awarded|rejected (held: 0202)
   qualifyingOrderId: uuid('qualifying_order_id'),
   referrerEntryId: uuid('referrer_entry_id'),
   refereeEntryId: uuid('referee_entry_id'),
   rejectionReason: varchar('rejection_reason', { length: 120 }),
+  /** 0202: how the code arrived (link | typed | social | account). */
+  source: varchar('source', { length: 12 }).default('typed').notNull(),
+  /** 0202: why a held referral waits for a person. */
+  heldReason: varchar('held_reason', { length: 60 }),
+  decidedBy: uuid('decided_by'),
+  decidedAt: timestamp('decided_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   refereeIdx: uniqueIndex('loyalty_referrals_referee_uq').on(table.refereeUserId),
   referrerIdx: index('loyalty_referrals_referrer_idx').on(table.referrerUserId),
+}));
+
+/** 0202: invite link opens, one row per code and browser (a random id's hash; no personal data). */
+export const loyaltyReferralVisits = pgTable('loyalty_referral_visits', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  code: varchar('code', { length: 12 }).notNull(),
+  visitorHash: char('visitor_hash', { length: 64 }).notNull(),
+  how: varchar('how', { length: 12 }).default('link').notNull(),
+  opens: integer('opens').default(1).notNull(),
+  firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).defaultNow().notNull(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  codeVisitorIdx: uniqueIndex('loyalty_referral_visits_code_visitor_uq').on(table.code, table.visitorHash),
 }));
 
 export const loyaltyRules = pgTable('loyalty_rules', {

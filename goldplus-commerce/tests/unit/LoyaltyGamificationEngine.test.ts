@@ -6,6 +6,7 @@ import {
   EvaluateGamificationForUserUseCase,
   CatchUpMissionAwardsUseCase,
   QualifyReferralOnDeliveryUseCase,
+  DecideHeldReferralUseCase,
   RecordReferralUseCase,
   ActiveMission,
 } from '../../apps/api/src/application/use-cases/loyalty/LoyaltyGamificationUseCases';
@@ -154,6 +155,15 @@ class FakeReferrals {
     const row = this.rows.find((r) => r.id === id);
     if (row) row.status = 'rejected';
   }
+  heldOn = new Map<string, { reason: string; orderId: string }>();
+  async markHeld(id: string, reason: string, orderId: string) {
+    const row = this.rows.find((r) => r.id === id);
+    if (row && row.status === 'pending') { row.status = 'held'; this.heldOn.set(id, { reason, orderId }); }
+  }
+  async findById(id: string) {
+    const row = this.rows.find((r) => r.id === id);
+    return row ? { ...row, qualifyingOrderId: this.heldOn.get(id)?.orderId ?? null } : null;
+  }
   async countAwardedForReferrer(referrerUserId: string) {
     return this.rows.filter((r) => r.referrerUserId === referrerUserId && r.status === 'awarded').length;
   }
@@ -290,13 +300,27 @@ describe('referrals', () => {
     delete (referrals as any).orderUsesReferrerPhone;
   });
 
-  it('pays nothing on the referee SECOND delivery', async () => {
+  it('a referral its first delivery did not settle (that order earned no points) pays on the next one, once (2026-10-22)', async () => {
     const code = await referrals.getOrCreateCode('r1');
     await new RecordReferralUseCase(completion as any, referrals as any).execute({ refereeUserId: 'newbie', code });
     referrals.deliveredCounts.set('newbie', 2);
     const uc = new QualifyReferralOnDeliveryUseCase(ledger as any, completion as any, referrals as any, gamification as any, async () => undefined);
-    expect(await uc.execute({ orderId: 'o2', refereeUserId: 'newbie' })).toMatchObject({ ok: true, status: 'none' });
-    expect(ledger.entries).toHaveLength(0);
+    expect(await uc.execute({ orderId: 'o2', refereeUserId: 'newbie' })).toMatchObject({ ok: true, status: 'awarded' });
+    expect(await uc.execute({ orderId: 'o3', refereeUserId: 'newbie' })).toMatchObject({ ok: true, status: 'none' });
+    expect(ledger.entries).toHaveLength(2);
+  });
+
+  it('a code added later is refused for a customer whose first order was already delivered', async () => {
+    const code = await referrals.getOrCreateCode('r1');
+    referrals.deliveredCounts.set('old-customer', 1);
+    expect(await new RecordReferralUseCase(completion as any, referrals as any).execute({ refereeUserId: 'old-customer', code, source: 'account' }))
+      .toMatchObject({ ok: false, code: 'ALREADY_A_CUSTOMER' });
+  });
+
+  it('a code typed with spaces, dashes or lower case is the same code', async () => {
+    const code = await referrals.getOrCreateCode('r1');
+    const typed = ` ${code.slice(0, 3).toLowerCase()}-${code.slice(3)} `;
+    expect(await new RecordReferralUseCase(completion as any, referrals as any).execute({ refereeUserId: 'spaced', code: typed })).toEqual({ ok: true, status: 'recorded' });
   });
 
   it('holds a referrer past the monthly cap and raises a fraud signal instead of paying', async () => {
@@ -310,6 +334,17 @@ describe('referrals', () => {
     expect(await uc.execute({ orderId: 'o1', refereeUserId: 'fresh' })).toMatchObject({ ok: true, status: 'held' });
     expect(ledger.entries).toHaveLength(0);
     expect(completion.fraudSignals.map((s) => s.signalType)).toContain('REFERRAL_MONTHLY_CAP');
+    // Held is a state now: the friend's next delivery does not pay it by itself, a person decides.
+    const row = referrals.rows.find((r) => r.refereeUserId === 'fresh')!;
+    expect(row.status).toBe('held');
+    referrals.deliveredCounts.set('fresh', 2);
+    expect(await uc.execute({ orderId: 'o2', refereeUserId: 'fresh' })).toMatchObject({ ok: true, status: 'none' });
+    expect(ledger.entries).toHaveLength(0);
+    const decide = new DecideHeldReferralUseCase(completion as any, referrals as any, uc);
+    expect(await decide.execute({ referralId: row.id, decision: 'refuse', actorId: 'admin' })).toMatchObject({ ok: false, code: 'REASON_REQUIRED' });
+    expect(await decide.execute({ referralId: row.id, decision: 'release', actorId: 'admin' })).toMatchObject({ ok: true, status: 'awarded', referrerUserId: 'ring' });
+    expect(ledger.entries).toHaveLength(2);
+    expect(await decide.execute({ referralId: row.id, decision: 'release', actorId: 'admin' })).toMatchObject({ ok: false, code: 'NOT_HELD' });
   });
 });
 

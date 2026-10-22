@@ -104,7 +104,8 @@ describe('event wiring', () => {
   it('hangs gamification off DELIVERY, the verified completion event', () => {
     expect(registry).toContain("awardBadgeByKey(source.userId, 'first_order')");
     expect(registry).toContain('evaluateGamificationForUserUseCase.execute({ userId: source.userId })');
-    expect(registry).toContain('qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: source.userId })');
+    // On every paid retail delivery, not only one that earned points (2026-10-22).
+    expect(registry).toContain('qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: orderSource.userId })');
   });
 
   it('never lets a gamification failure fail the order transition', () => {

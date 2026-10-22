@@ -57,6 +57,7 @@ export const CHANNEL_LABELS: Record<string, string> = {
   organic_search: 'Organic search',
   organic_social: 'Organic social',
   ai_assistant: 'AI assistants',
+  friend_referral: 'Invited by a customer',
   referral: 'Referral',
   direct: 'Direct',
   other_paid: 'Other paid',

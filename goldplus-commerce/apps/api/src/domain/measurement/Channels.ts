@@ -3,7 +3,7 @@
  * utm medium/source, then the referrer. Deterministic and pure; the same
  * inputs always give the same channel. "direct" means no evidence, not "no ad".
  */
-export const CHANNELS = ['paid_search', 'paid_social', 'display', 'affiliate', 'email', 'sms', 'whatsapp', 'organic_search', 'organic_social', 'ai_assistant', 'referral', 'direct', 'other_paid', 'other'] as const;
+export const CHANNELS = ['paid_search', 'paid_social', 'display', 'affiliate', 'email', 'sms', 'whatsapp', 'organic_search', 'organic_social', 'ai_assistant', 'friend_referral', 'referral', 'direct', 'other_paid', 'other'] as const;
 export type Channel = typeof CHANNELS[number];
 
 /**
@@ -40,6 +40,9 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   if (/^affiliate/.test(med)) return 'affiliate';
   if (/^e-?mail/.test(med)) return 'email';
   if (/^sms/.test(med)) return 'sms';
+  // A customer's invite link (/r/<code>, 2026-10-22) tags its landing utm_medium=friend: the friend arrives from
+  // WhatsApp or SMS with no referrer, which used to read as direct.
+  if (med === 'friend') return 'friend_referral';
   if (src === 'whatsapp' || med === 'whatsapp') return 'whatsapp';
   if (/^(organic|seo)$/.test(med)) return 'organic_search';
   if (/^(social|social[_-]?organic)$/.test(med)) return 'organic_social';

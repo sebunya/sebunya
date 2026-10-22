@@ -122,7 +122,7 @@ if (src?.phoneVerification) {
 if (src?.referral?.referrer) {
   earnWays.push({
     label: "Introduce a friend",
-    detail: `You earn when their first order is delivered${src.referral.referee ? `, and they start with ${src.referral.referee} points` : ""}. Not before.`,
+    detail: `You earn when their first order is delivered${src.referral.referee ? `, and they get ${src.referral.referee} points too` : ""}. Not before. Send your link: there is no code to type.`,
     points: `${src.referral.referrer} pts`,
   });
   if (src.referral.bonus) {

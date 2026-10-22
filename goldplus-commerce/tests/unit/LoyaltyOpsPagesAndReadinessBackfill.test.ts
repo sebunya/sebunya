@@ -12,7 +12,7 @@ const campaignRoute = read('apps/api/src/interfaces/http/routes/admin/campaigns.
 
 describe('loyalty operations pages', () => {
   const pages: Array<[string, string]> = [
-    ['referrals', '/admin/loyalty/referrals`'],
+    ['referrals', '/admin/loyalty/referrals?'],
     ['fraud', '/admin/loyalty/fraud-signals`'],
     ['draws', '"/admin/loyalty/draws"'],
     ['adjustments', '/admin/loyalty/adjust`'],

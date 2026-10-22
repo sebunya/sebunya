@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { customerSessionMiddleware } from '../middleware/customerSession';
+import { normaliseReferralCode, referralRefusalWords, referralStage, REFERRAL_STAGE_WORDS, type ReferralStatus } from '../../../domain/loyalty/Referral';
 import { Registry } from '../../../infrastructure/Registry';
 import { ListMyOrdersUseCase, GetMyOrderUseCase } from '../../../application/use-cases/orders/CustomerOrderUseCases';
 import {
@@ -452,13 +453,20 @@ routes.get('/referral', async (c) => {
   const userId = c.get('userId') as string;
   const registry = Registry.getInstance();
   const config = await registry.loyaltyCompletionRepo.getProgrammeConfig();
-  if (!config.enabled || config.referralReferrerPoints === null) {
+  // The kill switch too: a card shown while the programme is halted handed out codes that then failed (2026-10-22).
+  if (!config.enabled || config.killSwitch || config.referralReferrerPoints === null) {
     return c.json({ success: true, data: { active: false } });
   }
-  const [code, referrals] = await Promise.all([
+  const [code, referrals, mine] = await Promise.all([
     registry.loyaltyReferralRepo.getOrCreateCode(userId),
     registry.loyaltyReferralRepo.listForReferrer(userId),
+    registry.loyaltyReferralRepo.referralOf(userId),
   ]);
+  const invites = referrals.map((r) => {
+    const stage = referralStage({ status: r.status as ReferralStatus, friendHasOrdered: r.friendHasOrdered === true });
+    return { name: r.friendName ?? 'A friend', stage, words: REFERRAL_STAGE_WORDS[stage], since: r.createdAt.toISOString() };
+  });
+  const count = (stage: string) => invites.filter((i) => i.stage === stage).length;
   return c.json({
     success: true,
     data: {
@@ -466,11 +474,33 @@ routes.get('/referral', async (c) => {
       code,
       referrerPoints: config.referralReferrerPoints,
       refereePoints: config.referralRefereePoints,
-      referred: referrals.length,
-      awarded: referrals.filter((r) => r.status === 'awarded').length,
-      pending: referrals.filter((r) => r.status === 'pending').length,
+      // Every number below adds up to `invited` (the old "signed up" count included refused ones on top).
+      invited: invites.length,
+      joined: count('joined'),
+      ordered: count('ordered'),
+      awarded: count('rewarded'),
+      checking: count('checking'),
+      notCounted: count('not_counted'),
+      invites: invites.slice(0, 50),
+      // Whether THIS customer can still add a friend's code (no code yet, nothing delivered yet).
+      canAddFriendCode: !mine && (await registry.loyaltyReferralRepo.countDeliveredRetailOrders(userId)) === 0,
+      // Back-compat for older pages: referred / pending.
+      referred: invites.length,
+      pending: count('joined') + count('ordered'),
     },
   });
+});
+
+// A friend's code added after sign-up: another device, Google or Facebook sign-up, or they forgot (2026-10-22).
+routes.post('/referral/code', async (c) => {
+  const userId = c.get('userId') as string;
+  const body = await c.req.json().catch(() => null);
+  const code = normaliseReferralCode(body?.code);
+  const source = body?.source === 'social' ? 'social' : body?.source === 'link' ? 'link' : 'account';
+  if (!code) return c.json({ success: false, error: { code: 'CODE_NOT_FOUND', message: referralRefusalWords('CODE_NOT_FOUND') } }, 400);
+  const out = await Registry.getInstance().recordReferralUseCase.execute({ refereeUserId: userId, code, source });
+  if (!out.ok) return c.json({ success: false, error: { code: out.code, message: referralRefusalWords(out.code) } }, 409);
+  return c.json({ success: true, data: { applied: true } });
 });
 
 // ── Gamification (0087): birthday opt-in. Set-once (correction goes through

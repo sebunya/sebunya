@@ -94,7 +94,7 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
     slideKey: 'referral', position: 3, enabled: true, theme: 'loyalty', tint: 'c', media: 'stage',
     kicker: 'Welcome back',
     headline: 'Introduce a friend. <em>You both earn points</em>',
-    subcopy: 'Someone you know has been sold a fake. Send them here. They start with points, and you earn more when their first order is delivered.',
+    subcopy: 'Someone you know has been sold a fake. Send them here. When their first order is delivered, you both get points.',
     ctaLabel: 'Get your link', ctaUrl: '/account/rewards#refer',
     finePrint: 'Points land when their first order is delivered',
     imageUrl: P('goldplus-digital-display-power-bank-gp-p07'),

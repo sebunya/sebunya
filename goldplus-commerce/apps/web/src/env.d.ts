@@ -44,6 +44,8 @@ declare namespace App {
      * component reads this one value. null = no area known; undefined = not a document request.
      */
     gpDeliverTo?: import('./lib/deliveryPlace').DeliveryPlace | null;
+    /** A friend's invite was just added to (or refused for) this account: the one-time note to show (lib/referralInvite). */
+    gpInviteNote?: string | null;
     /**
      * This response's script nonce (lib/contentSecurityPolicy). Every INLINE
      * executable script a template writes carries nonce={Astro.locals.cspNonce};

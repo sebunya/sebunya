@@ -344,6 +344,7 @@ import {
   CatchUpMissionAwardsUseCase,
   QualifyReferralOnDeliveryUseCase,
   RecordReferralUseCase,
+  DecideHeldReferralUseCase,
 } from '../application/use-cases/loyalty/LoyaltyGamificationUseCases';
 import { DrizzleBirthdayUserSource, DrizzleLoyaltyReferralRepository } from './db/repositories/DrizzleLoyaltyReferralRepository';
 import {
@@ -1891,6 +1892,8 @@ export class Registry {
         data: { points, source: kind === 'referrer' ? 'referral' : 'referral_welcome' },
       }),
   );
+  /** 0202: a person releases or refuses a held referral. */
+  public readonly decideHeldReferralUseCase = new DecideHeldReferralUseCase(this.loyaltyIssuanceCompletion, this.loyaltyReferralRepo, this.qualifyReferralOnDeliveryUseCase);
   public readonly awardBirthdayPointsUseCase = new AwardBirthdayPointsUseCase(
     this.loyaltyRepo,
     this.loyaltyIssuanceCompletion,
@@ -3662,7 +3665,9 @@ export class Registry {
         // PART M: earn confirmation when points VEST, not when the order is
         // placed. Enqueued only when an earn actually landed for this order.
         const earn = await this.loyaltyCompletionRepo.findEarnEntryForOrder(orderId).catch(() => null);
-        const source = earn ? await this.orderRepo.findLoyaltyEarnSource(orderId).catch(() => null) : null;
+        // A paid retail order by a customer, whether or not it earned points (a paused budget, a zero earn).
+        const orderSource = await this.orderRepo.findLoyaltyEarnSource(orderId).catch(() => null);
+        const source = earn ? orderSource : null;
         if (earn && source) {
           await this.loyaltyOutboxNotifier
             .enqueue({
@@ -3680,16 +3685,22 @@ export class Registry {
         if (source) {
           await this.gamificationRepo.awardBadgeByKey(source.userId, 'first_order').catch(() => undefined);
           await this.evaluateGamificationForUserUseCase.execute({ userId: source.userId }).catch(() => undefined);
-          const referral = await this.qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: source.userId }).catch(() => undefined);
-          // An awarded referral is the referrer's completion event (REFERRAL_COUNT, 0174).
-          if (referral?.ok && referral.status === 'awarded' && referral.referrerUserId) {
-            await this.evaluateGamificationForUserUseCase.execute({ userId: referral.referrerUserId }).catch(() => undefined);
-          }
+
           // 0088: a delivered order grants ONE scratch card. Idempotent on the
           // order id, so a replayed transition never mints a second card.
           await this.grantDrawTokenUseCase
             .execute({ trigger: 'order_delivered', userId: source.userId, sourceType: 'order', sourceId: orderId })
             .catch(() => undefined);
+        }
+        // Referral qualification on EVERY paid retail delivery, not only one that earned points (2026-10-22): a
+        // friend's first delivery that earned nothing used to skip it, and the referral then stayed pending forever.
+        if (orderSource) {
+          const referral = await this.qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: orderSource.userId })
+            .catch((err: unknown) => { logger.error({ orderId, err: err instanceof Error ? err.message : String(err) }, 'referral qualification failed'); return undefined; });
+          // An awarded referral is the referrer's completion event (REFERRAL_COUNT, 0174).
+          if (referral?.ok && referral.status === 'awarded' && referral.referrerUserId) {
+            await this.evaluateGamificationForUserUseCase.execute({ userId: referral.referrerUserId }).catch(() => undefined);
+          }
         }
       }
       if (toStatus === 'processing' && ctx.paymentStatus === 'paid') {

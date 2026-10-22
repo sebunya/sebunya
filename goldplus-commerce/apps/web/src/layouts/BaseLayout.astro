@@ -14,6 +14,7 @@ import { DEFAULT_HOMEPAGE_CONTENT, xHandleFromSocials, jpegRendition } from '@go
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { resolveMeasurementConfig } from '../lib/measurement';
 import DeclarativeActions from '../components/DeclarativeActions.astro';
+import { inviteNoteWords } from '../lib/referralInvite';
 
 // Business/contact info — admin-editable, DB-backed (falls back to DEFAULT).
 const biz = await getBusinessInfo();
@@ -278,6 +279,15 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
     <div id="main" tabindex="-1"></div>
 
     <main class="flex-grow flex flex-col">
+      {(() => {
+        // A friend's invite was just added to this account, or could not be (lib/referralInvite): said once.
+        const invite = inviteNoteWords(Astro.locals.gpInviteNote ?? null);
+        return invite ? (
+          <div class={`mx-auto mt-4 w-full max-w-3xl px-4 text-sm`} role="status" data-invite-note>
+            <p class={`rounded-xl border px-4 py-3 ${invite.kind === 'success' ? 'border-green-200 bg-green-50 text-green-900' : 'border-slate-200 bg-slate-50 text-slate-800'}`}>{invite.text}</p>
+          </div>
+        ) : null;
+      })()}
       <slot />
     </main>
 

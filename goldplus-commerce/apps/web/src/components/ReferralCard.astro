@@ -1,21 +1,30 @@
 ---
 /**
- * The customer's invite card: their code, a copyable invite link, WhatsApp
- * sharing and how their referrals stand. Shown on Points and on Rewards (where
- * the site banner's "Get your link" lands, next to the Friends & Family
- * mission). `#refer` is its anchor. Data: GET /account/referral.
+ * The customer's invite card (rework 2026-10-22): one short link (/r/<code>), the ways people actually share it
+ * (the phone's share sheet, WhatsApp, SMS, copy), and where each friend stands. Shown on Points and on Rewards
+ * (where the site banner's "Get your link" lands, next to the Friends & Family mission). `#refer` is its anchor.
+ * Data: GET /account/referral. A new customer who arrived without a code can add a friend's here.
  */
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { ordinalWord } from '../lib/ordinalWord';
 
+interface Invite { name: string; stage: 'joined' | 'ordered' | 'rewarded' | 'checking' | 'not_counted'; words: string; since: string }
 interface Props {
   referral: {
     code: string;
     referrerPoints: number;
     refereePoints: number | null;
-    referred: number;
+    invited?: number;
+    joined?: number;
+    ordered?: number;
     awarded: number;
-    pending: number;
+    checking?: number;
+    notCounted?: number;
+    invites?: Invite[];
+    canAddFriendCode?: boolean;
+    // Older API shape.
+    referred?: number;
+    pending?: number;
   };
   /** The active Friends & Family mission, when one pays a bonus. */
   bonus?: { friends: number; points: number } | null;
@@ -24,58 +33,109 @@ interface Props {
 }
 
 const { referral, bonus = null, bonusPaid = false } = Astro.props;
-const shareUrl = `${SITE_ORIGIN}/register?ref=${referral.code}`;
-const whatsappText = `Get genuine electronics from GoldPlus. Use my code ${referral.code} when you sign up: ${shareUrl}`;
+const link = (via: string) => `${SITE_ORIGIN}/r/${referral.code}?via=${via}`;
+const points = (n: number) => n.toLocaleString('en-UG');
+const message = (via: string) =>
+  `I shop for genuine electronics at GoldPlus. Join with my invite${referral.refereePoints ? ` and get ${points(referral.refereePoints)} points after your first delivery` : ''}: ${link(via)}`;
 const bonusLeft = bonus ? Math.max(0, bonus.friends - referral.awarded) : 0;
+const invites = referral.invites ?? [];
+const inProgress = (referral.joined ?? 0) + (referral.ordered ?? 0) + (referral.checking ?? 0);
+const STAGE_STYLE: Record<Invite['stage'], string> = {
+  joined: 'bg-gray-50 text-brand-charcoal border-brand-borderGrey',
+  ordered: 'bg-blue-50 text-blue-900 border-blue-200',
+  rewarded: 'bg-green-50 text-green-900 border-green-200',
+  checking: 'bg-amber-50 text-amber-900 border-amber-200',
+  not_counted: 'bg-gray-50 text-brand-mutedGrey border-brand-borderGrey',
+};
 ---
 
 <section id="refer" class="scroll-mt-24 bg-white border border-brand-borderGrey rounded-2xl p-6" data-referral-card>
-  <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Introduce a friend</h2>
+  <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Invite a friend</h2>
   <p class="text-sm text-brand-charcoal leading-relaxed">
-    Share your code. You earn <strong>{referral.referrerPoints.toLocaleString('en-UG')} points</strong> when their first
-    order is delivered{referral.refereePoints ? <>, and they start with <strong>{referral.refereePoints.toLocaleString('en-UG')} points</strong></> : null}.
-    Nothing is paid before that delivery.
+    Send your link. When your friend's first order is delivered, you get <strong>{points(referral.referrerPoints)} points</strong>{referral.refereePoints ? <> and they get <strong>{points(referral.refereePoints)} points</strong></> : null}.
+    They do not need to type anything: the link remembers your invite.
   </p>
   {bonus && (
     <p class="mt-2 text-sm text-brand-charcoal leading-relaxed" data-referral-bonus>
       {bonusPaid ? (
-        <>You have earned the Friends &amp; Family bonus. Every friend you introduce still earns you {referral.referrerPoints.toLocaleString('en-UG')} points.</>
+        <>You have earned the Friends &amp; Family bonus. Every friend you invite still earns you {points(referral.referrerPoints)} points.</>
       ) : bonusLeft > 0 ? (
-        <>When your {ordinalWord(bonus.friends)} friend's first order is delivered, you also get a one-off bonus of <strong>{bonus.points.toLocaleString('en-UG')} points</strong>. {bonusLeft === 1 ? 'One more to go.' : `${bonusLeft} more to go.`}</>
+        <>When your {ordinalWord(bonus.friends)} friend's first order is delivered, you also get a one-off bonus of <strong>{points(bonus.points)} points</strong>. {bonusLeft === 1 ? 'One more to go.' : `${bonusLeft} more to go.`}</>
       ) : (
-        <>You have introduced enough friends for the one-off bonus of <strong>{bonus.points.toLocaleString('en-UG')} points</strong>. It is added to your points automatically.</>
+        <>You have invited enough friends for the one-off bonus of <strong>{points(bonus.points)} points</strong>. It is added to your points automatically.</>
       )}
     </p>
   )}
-  <div class="mt-4 flex flex-wrap items-center gap-3">
-    <code class="rounded-xl border border-brand-borderGrey bg-gray-50 px-4 py-2.5 text-base font-black tracking-widest text-brand-charcoal" data-referral-code>{referral.code}</code>
-    <button type="button" class="min-h-11 rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white" data-copy-referral data-share-url={shareUrl}>Copy invite link</button>
-    <a class="min-h-11 inline-flex items-center rounded-full border border-brand-borderGrey px-5 py-2.5 text-xs font-black uppercase tracking-wider text-brand-charcoal" href={`https://wa.me/?text=${encodeURIComponent(whatsappText)}`} target="_blank" rel="noopener noreferrer">Share on WhatsApp</a>
-    <span class="text-xs text-brand-mutedGrey" data-copy-status role="status" aria-live="polite"></span>
+
+  <div class="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+    <button type="button" hidden class="col-span-2 min-h-11 rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white" data-share-referral data-share-text={message('share')} >Share my link</button>
+    <a class="min-h-11 inline-flex items-center justify-center rounded-full bg-[#1F7A43] px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white" href={`https://wa.me/?text=${encodeURIComponent(message('whatsapp'))}`} target="_blank" rel="noopener noreferrer">WhatsApp</a>
+    <a class="min-h-11 inline-flex items-center justify-center rounded-full border border-brand-borderGrey px-5 py-2.5 text-xs font-black uppercase tracking-wider text-brand-charcoal" href={`sms:?&body=${encodeURIComponent(message('sms'))}`}>SMS</a>
+    <button type="button" class="col-span-2 sm:col-span-1 min-h-11 rounded-full border border-brand-borderGrey px-5 py-2.5 text-xs font-black uppercase tracking-wider text-brand-charcoal" data-copy-referral data-share-url={link('copy')}>Copy link</button>
   </div>
-  <p class="mt-3 text-xs text-brand-mutedGrey">
-    {referral.referred.toLocaleString('en-UG')} signed up with your code · {referral.awarded.toLocaleString('en-UG')} delivered and paid out · {referral.pending.toLocaleString('en-UG')} waiting on a first delivery.
+  <p class="mt-2 text-xs text-brand-mutedGrey">
+    Your code, if a friend asks: <code class="font-black tracking-widest text-brand-charcoal" data-referral-code>{referral.code}</code>
+    <span class="ml-2" data-copy-status role="status" aria-live="polite"></span>
   </p>
+
+  {invites.length > 0 ? (
+    <div class="mt-5" data-referral-invites>
+      <p class="text-xs font-bold text-brand-charcoal mb-2">
+        {points(referral.awarded)} paid · {points(inProgress)} on the way{(referral.notCounted ?? 0) > 0 ? ` · ${points(referral.notCounted ?? 0)} not counted` : ''}
+      </p>
+      <ul class="space-y-2">
+        {invites.map((i) => (
+          <li class="flex items-center justify-between gap-3 text-sm">
+            <span class="font-bold text-brand-charcoal truncate">{i.name}</span>
+            <span class={`shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-bold ${STAGE_STYLE[i.stage]}`}>{i.words}</span>
+          </li>
+        ))}
+      </ul>
+      {(referral.notCounted ?? 0) > 0 && (
+        <p class="mt-2 text-xs text-brand-mutedGrey">"Not counted" means the order was refunded, or our team could not confirm it was a new customer.</p>
+      )}
+    </div>
+  ) : (
+    <p class="mt-4 text-xs text-brand-mutedGrey">No friends have joined with your link yet. When they do, you will see each one here.</p>
+  )}
+
+  {referral.canAddFriendCode && (
+    <form method="POST" action="/account/invite-code" class="mt-5 border-t border-brand-borderGrey pt-4 flex flex-wrap items-end gap-2" data-add-friend-code>
+      <input type="hidden" name="returnTo" value={Astro.url.pathname} />
+      <label class="flex-1 min-w-[10rem] text-xs font-bold text-brand-charcoal">
+        A friend invited you? Add their code
+        <input name="code" required maxlength="20" autocomplete="off" placeholder="GPXXXXXX" class="mt-1 w-full rounded-xl border border-brand-borderGrey px-3 py-2.5 text-sm font-bold uppercase tracking-widest" />
+      </label>
+      <button type="submit" class="min-h-11 rounded-full border border-brand-charcoal px-5 py-2.5 text-xs font-black uppercase tracking-wider text-brand-charcoal">Add</button>
+    </form>
+  )}
 </section>
 
-{/* Referral copy — plain progressive enhancement, no framework (single-digit KB budget). */}
+{/* Share and copy: plain progressive enhancement, no framework (single-digit KB budget). */}
 <script nonce={Astro.locals.cspNonce} is:inline>
   (function () {
-    var btn = document.querySelector('[data-copy-referral]');
-    if (!btn) return;
     var status = document.querySelector('[data-copy-status]');
-    btn.addEventListener('click', function () {
-      var url = btn.getAttribute('data-share-url') || '';
-      var done = function (msg) {
-        if (status) {
-          status.textContent = msg;
-          setTimeout(function () { status.textContent = ''; }, 4000);
-        }
-      };
+    var say = function (msg) {
+      if (!status) return;
+      status.textContent = msg;
+      setTimeout(function () { status.textContent = ''; }, 4000);
+    };
+    var share = document.querySelector('[data-share-referral]');
+    if (share && navigator.share) {
+      share.hidden = false;
+      share.addEventListener('click', function () {
+        // The text already ends with the link: passing url too printed it twice in WhatsApp and SMS.
+        navigator.share({ text: share.getAttribute('data-share-text') || '' }).catch(function () {});
+      });
+    }
+    var copy = document.querySelector('[data-copy-referral]');
+    if (!copy) return;
+    copy.addEventListener('click', function () {
+      var url = copy.getAttribute('data-share-url') || '';
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).then(function () { done('Invite link copied.'); }, function () { done(url); });
+        navigator.clipboard.writeText(url).then(function () { say('Link copied.'); }, function () { say(url); });
       } else {
-        done(url);
+        say(url);
       }
     });
   })();

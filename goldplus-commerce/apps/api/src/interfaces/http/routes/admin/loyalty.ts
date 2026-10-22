@@ -461,10 +461,35 @@ routes.put('/draws/:id/budget', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
   });
 });
 
-// 0087: referral oversight — the ring/self-referral fraud surface.
+// 0087 / 0202: referral oversight — the funnel (link opens → joined → ordered → paid), the list with held referrals
+// first, and the decision a person makes on a held one.
 routes.get('/referrals', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
-  const rows = await Registry.getInstance().loyaltyCompletionRepo.adminReferrals();
-  return c.json({ success: true, data: rows });
+  const registry = Registry.getInstance();
+  const status = c.req.query('status') ?? null;
+  const days = Number(c.req.query('days') ?? 30);
+  const [rows, funnel] = await Promise.all([
+    registry.loyaltyReferralRepo.adminList(status),
+    registry.loyaltyReferralRepo.funnel(Number.isFinite(days) ? days : 30),
+  ]);
+  return c.json({ success: true, data: { rows, funnel } });
+});
+
+routes.post('/referrals/:id/decision', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const body = await c.req.json().catch(() => null);
+  const decision = body?.decision === 'release' ? 'release' : body?.decision === 'refuse' ? 'refuse' : null;
+  if (!decision) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'decision must be release or refuse.' } } satisfies ApiResponse<never>, 400);
+  const actorId = (c.get('user') as any).id as string;
+  const id = String(c.req.param('id') ?? '');
+  const out = await registry.decideHeldReferralUseCase.execute({ referralId: id, decision, actorId, reason: typeof body?.reason === 'string' ? body.reason.slice(0, 100) : undefined });
+  if (!out.ok) return c.json({ success: false, error: { code: out.code, message: out.message } } satisfies ApiResponse<never>, out.code === 'NOT_FOUND' ? 404 : 409);
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId, action: decision === 'release' ? 'LOYALTY_REFERRAL_RELEASED' : 'LOYALTY_REFERRAL_REFUSED', entity: 'loyalty_referral', entityId: id,
+    previousState: { status: 'held' }, newState: { status: out.status, reason: body?.reason ?? null },
+  });
+  // A released referral is the referrer's completion event (Friends & Family), as on delivery.
+  if (out.status === 'awarded') await registry.evaluateGamificationForUserUseCase.execute({ userId: out.referrerUserId }).catch(() => undefined);
+  return c.json({ success: true, data: out });
 });
 
 routes.get('/fraud-signals', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
