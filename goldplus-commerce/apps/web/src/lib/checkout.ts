@@ -90,7 +90,17 @@ export function prepareCheckoutPayload(formData: FormData, cartItems: CartItem[]
         deliveryArea = manualDeliveryAreaLine(loc.rawAddressText, manualDistrict);
         const rawDetails = String(formData.get('deliveryAddress') || '').trim();
         deliveryAddress = rawDetails || deliveryArea;
-        deliveryLocation = manualDistrict ? { district: manualDistrict, displayLabel: deliveryArea.slice(0, 200) } : null;
+        // A pin given with the written directions (a pasted map link, "use my location") rides along: the quote panel
+        // priced from it, and dropping it here charged an unconfirmed fee and lost the rider's map link (2026-10-22).
+        const pin = typeof loc.gpsLat === 'number' && typeof loc.gpsLng === 'number' && Number.isFinite(loc.gpsLat) && Number.isFinite(loc.gpsLng)
+          ? {
+              gpsLat: loc.gpsLat,
+              gpsLng: loc.gpsLng,
+              ...(typeof loc.gpsAccuracyM === 'number' ? { gpsAccuracyM: loc.gpsAccuracyM } : {}),
+              ...(loc.gpsSource === 'device' || loc.gpsSource === 'pasted_link' || loc.gpsSource === 'map_place' ? { gpsSource: loc.gpsSource } : {}),
+            }
+          : null;
+        deliveryLocation = manualDistrict || pin ? { district: manualDistrict, displayLabel: deliveryArea.slice(0, 200), ...(pin ?? {}) } : null;
         return {
           customerDetails: {
             name: (formData.get('name') as string) || '',
