@@ -131,7 +131,7 @@ export class CareDeskUseCases {
 
   list(f: { status?: 'open' | 'done' | 'cancelled'; kind?: CareTaskKind; limit?: number }) { return this.repo.list({ ...f, limit: Math.min(f.limit ?? 100, 300) }); }
   get(id: string) { return this.repo.get(id); }
-  lastTitled(prefix: string) { return this.repo.lastTitled(prefix); }
+  lastTitled(prefix: string, opts?: { exact?: boolean }) { return this.repo.lastTitled(prefix, opts); }
   async resolve(id: string, status: 'done' | 'cancelled', resolvedBy: string, resolution: string | null) {
     return this.repo.resolve(id, { status, resolvedBy, resolution: resolution ? text(resolution).slice(0, 1000) : null });
   }
