@@ -211,16 +211,29 @@ export class StartPesaPalPaymentUseCase {
       },
     });
 
-    // 6. Update local attempt record with transaction parameters
-    await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, {
-      status: 'pending',
-      orderTrackingId: pesapalResponse.order_tracking_id,
-      redirectUrl: pesapalResponse.redirect_url,
-    });
+    // 6. Update local attempt record with transaction parameters.
+    // First writer wins: two Pay taps submit this attempt twice and get two tracking ids; the second write used to
+    // replace the first, so a payment on the page the customer actually saw could match nothing here (2026-10-22).
+    // The loser hands back the winner's page instead, so every browser pays on the transaction we track.
+    let submitted = { orderTrackingId: pesapalResponse.order_tracking_id, redirectUrl: pesapalResponse.redirect_url };
+    if (this.paymentRepo.recordFirstSubmission) {
+      const won = await this.paymentRepo.recordFirstSubmission(attempt.id, submitted);
+      if (!won) {
+        const stored = (await this.paymentRepo.findAttemptsByOrderId(order.id).catch(() => [])).find((a) => a.id === attempt!.id);
+        if (stored?.orderTrackingId && stored.redirectUrl) submitted = { orderTrackingId: stored.orderTrackingId, redirectUrl: stored.redirectUrl };
+      }
+      await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, { status: 'pending' });
+    } else {
+      await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, {
+        status: 'pending',
+        orderTrackingId: pesapalResponse.order_tracking_id,
+        redirectUrl: pesapalResponse.redirect_url,
+      });
+    }
 
     return {
-      redirectUrl: pesapalResponse.redirect_url,
-      orderTrackingId: pesapalResponse.order_tracking_id,
+      redirectUrl: submitted.redirectUrl,
+      orderTrackingId: submitted.orderTrackingId,
       // The stored reference, not the local one, so caller and row cannot drift.
       merchantReference: attempt.merchantReference,
     };

@@ -68,6 +68,15 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
     return row ? rowToPaymentAttempt(row) : null;
   }
 
+  async recordFirstSubmission(id: string, submission: { orderTrackingId: string; redirectUrl: string }): Promise<{ orderTrackingId: string; redirectUrl: string } | null> {
+    const [row] = await db
+      .update(paymentAttempts)
+      .set({ orderTrackingId: submission.orderTrackingId, redirectUrl: submission.redirectUrl, updatedAt: new Date() })
+      .where(and(eq(paymentAttempts.id, id), isNull(paymentAttempts.orderTrackingId)))
+      .returning({ orderTrackingId: paymentAttempts.orderTrackingId, redirectUrl: paymentAttempts.redirectUrl });
+    return row?.orderTrackingId ? { orderTrackingId: row.orderTrackingId, redirectUrl: row.redirectUrl ?? submission.redirectUrl } : null;
+  }
+
   async updatePaymentAttemptStatus(id: string, update: {
     /** Omitted: only the timestamps are stamped and the current status stands. */
     status?: string;
