@@ -139,7 +139,7 @@ describeIf('store credit and gift cards (real PostgreSQL)', () => {
     expect(await balance(card.id)).toBe(40_000);
     const ref = await orderNumberOf(o);
     expect(await repo.returnToCardForOrder(ref, 70_000, staffA, 'Too much')).toMatchObject({ ok: false });
-    expect(await repo.returnToCardForOrder(ref, 15_000, staffA, 'Charger returned')).toMatchObject({ ok: true, leftUgx: 45_000 });
+    expect(await repo.returnToCardForOrder(ref, 15_000, staffA, 'Charger returned')).toMatchObject({ ok: true, leftUgx: 45_000, refundedSoFarUgx: 15_000 });
     expect(await balance(card.id)).toBe(55_000);
     expect(await repo.releaseOrReturnForOrder(o, 'Order cancelled', new Date())).toEqual({ released: 0, returned: 45_000 });
     expect(await repo.releaseOrReturnForOrder(o, 'Order cancelled', new Date())).toEqual({ released: 0, returned: 0 });

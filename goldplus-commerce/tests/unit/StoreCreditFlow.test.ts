@@ -135,12 +135,16 @@ describe('store credit flow (gap #17)', () => {
     expect(shares[1]).toBe(3_333);
 
     const back: number[] = [];
-    const m = new ManageCreditUseCases({ returnToCardForOrder: async () => ({ ok: true, instrumentId: 'c', leftUgx: 50_000, orderId: 'o1', orderTotalUgx: 250_000 }) } as any, tools,
+    // The repository reports everything the order has had back so far (card + cash): the share sent to loyalty is
+    // that running total, so a second 25,000 return on a 250,000 order is 20%, not another 10% (2026-10-22).
+    let soFar = 0;
+    const m = new ManageCreditUseCases({ returnToCardForOrder: async (_r: string, amount: number) => { soFar += amount; return { ok: true, instrumentId: 'c', leftUgx: 50_000, orderId: 'o1', orderTotalUgx: 250_000, refundedSoFarUgx: soFar }; } } as any, tools,
       { execute: async (i) => { back.push(i.refundedShareBps); } });
     expect(await m.returnToCard('gp-202610-abcd', 25_000, 'staff', 'Charger returned')).toMatchObject({ ok: true });
-    expect(back).toEqual([1_000]);
+    expect(await m.returnToCard('gp-202610-abcd', 25_000, 'staff', 'Cable returned')).toMatchObject({ ok: true });
+    expect(back).toEqual([1_000, 2_000]);
     expect(await m.returnToCard('nonsense', 25_000, 'staff', 'Charger returned')).toMatchObject({ ok: false });
-    expect(back).toHaveLength(1);
+    expect(back).toHaveLength(2);
   });
 
   it('a cancelled order says where the card money went, and who refunds the rest', async () => {

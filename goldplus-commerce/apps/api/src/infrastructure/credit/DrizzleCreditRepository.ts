@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { PROVIDER_ACCEPTED_STATUS } from '../db/repositories/DrizzleRefundLedgerRepository';
 import { db } from '../db/client';
 import { guardedMeasurementWrite, recordCardReturn } from '../measurement/BusinessEventWriter';
 import type { CreditInstrumentView, CreditLedgerRow, ICreditRepository } from '../../application/ports/ICreditRepository';
@@ -223,7 +224,7 @@ export class DrizzleCreditRepository implements ICreditRepository {
     });
   }
 
-  async returnToCardForOrder(orderNumber: string, amountUgx: number, actorId: string, note: string): Promise<{ ok: true; instrumentId: string; leftUgx: number; orderId: string; orderTotalUgx: number } | { ok: false; message: string }> {
+  async returnToCardForOrder(orderNumber: string, amountUgx: number, actorId: string, note: string): Promise<{ ok: true; instrumentId: string; leftUgx: number; orderId: string; orderTotalUgx: number; refundedSoFarUgx: number } | { ok: false; message: string }> {
     if (!Number.isInteger(amountUgx) || amountUgx <= 0) return { ok: false, message: 'Enter a whole amount above zero.' };
     return db.transaction(async (tx) => {
       const [h] = rowsOf(await tx.execute(sql`
@@ -236,7 +237,13 @@ export class DrizzleCreditRepository implements ICreditRepository {
       const [ret] = rowsOf(await tx.execute(sql`insert into credit_ledger (instrument_id, type, amount_ugx, order_id, actor_id, note)
                            values (${h.instrument_id}, 'RETURN', ${amountUgx}, ${h.order_id}, ${actorId}, ${note}) returning id`));
       await guardedMeasurementWrite(tx as never, String(h.order_id), 'credit_return', (sp) => recordCardReturn(sp, String(ret.id), new Date()));
-      return { ok: true as const, instrumentId: String(h.instrument_id), leftUgx: left - amountUgx, orderId: String(h.order_id), orderTotalUgx: Number(h.total_amount) };
+      // Everything the order has had back so far, card and cash together: loyalty claws back by the running share, so a
+      // second return passing only its own slice took back nothing (2026-10-22).
+      const [back] = rowsOf(await tx.execute(sql`
+        select (select coalesce(sum(amount_ugx), 0) from credit_ledger where order_id = ${h.order_id} and type = 'RETURN')
+             + (select coalesce(sum(r.amount_ugx), 0) from payment_refunds r join payment_attempts a on a.id = r.payment_attempt_id
+                 where a.order_id = ${h.order_id} and (r.status = 'settled' or (r.status = 'requested' and r.provider_status = ${PROVIDER_ACCEPTED_STATUS}))) as back`));
+      return { ok: true as const, instrumentId: String(h.instrument_id), leftUgx: left - amountUgx, orderId: String(h.order_id), orderTotalUgx: Number(h.total_amount), refundedSoFarUgx: Number(back?.back ?? amountUgx) };
     });
   }
 }

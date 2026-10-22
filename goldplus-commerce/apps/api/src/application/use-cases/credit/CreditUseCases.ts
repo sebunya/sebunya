@@ -125,7 +125,7 @@ export class ManageCreditUseCases {
     if (result.ok && this.refundLoyalty && result.orderTotalUgx > 0) {
       // Isolated like the cash path: the money is already back on the card; points can be corrected by hand.
       await this.refundLoyalty
-        .execute({ orderId: result.orderId, refundedShareBps: Math.floor((amountUgx * 10_000) / result.orderTotalUgx), reason: 'Item given back to the gift card' })
+        .execute({ orderId: result.orderId, refundedShareBps: Math.min(10_000, Math.floor((result.refundedSoFarUgx * 10_000) / result.orderTotalUgx)), reason: 'Item given back to the gift card' })
         .catch(() => undefined);
     }
     return result;
