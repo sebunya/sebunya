@@ -201,6 +201,14 @@ export const carePushStore = {
 };
 
 /**
+ * Long enough for a whole turn: each model call may take 60 s (UPSTREAM_TIMEOUT_MS in the web) and a turn can make
+ * several with tool rounds between. At 45 s a slow answer was thrown away, the customer got the holding line and a
+ * task, and the web still finished and paid for the answer nobody sent (2026-10-22 review). Stays inside the
+ * three-minute recovery window with the burst wait (10 s at most) and the send (10 s).
+ */
+export const GOLDIE_BRAIN_TIMEOUT_MS = 140_000;
+
+/**
  * Goldie's brain lives in the web container (router, model, catalogue). The API
  * asks it for one turn over the internal network, with the internal key.
  */
@@ -212,7 +220,7 @@ export class HttpGoldieBrain implements IGoldieBrain {
     if (key.length < 32) return null;
     try {
       const res = await this.fetchImpl(`${this.origin}/api/internal/goldie/turn`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goldplus-internal-key': key }, body: JSON.stringify(input), signal: AbortSignal.timeout(45_000),
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goldplus-internal-key': key }, body: JSON.stringify(input), signal: AbortSignal.timeout(GOLDIE_BRAIN_TIMEOUT_MS),
       });
       const json = (await res.json().catch(() => null)) as { success?: boolean; data?: Awaited<ReturnType<IGoldieBrain['turn']>> } | null;
       return res.ok && json?.success ? json.data ?? null : null;

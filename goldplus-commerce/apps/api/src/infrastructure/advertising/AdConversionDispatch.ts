@@ -100,6 +100,18 @@ export async function fanOutAdConversions(event: CanonicalTelemetryEvent): Promi
   }
 }
 
+/**
+ * A claimed row is renewed just before its send, and only while its deadline is still no later than the one this worker
+ * wrote. Another worker can claim it only after that deadline has passed, and writes a later one; a finished or
+ * retrying row is no longer 'processing'. false: the row is not this worker's to send.
+ */
+export async function renewAdConversionLease(id: string, claimedUntil: Date): Promise<boolean> {
+  const won = await db.update(outboxEvents).set({ nextAttemptAt: new Date(Date.now() + LEASE_MS) })
+    .where(and(eq(outboxEvents.id, id), eq(outboxEvents.isProcessed, false), eq(outboxEvents.status, 'processing'), lte(outboxEvents.nextAttemptAt, claimedUntil)))
+    .returning({ id: outboxEvents.id });
+  return won.length > 0;
+}
+
 /** Postback platforms have no token: they are live with ids alone. */
 export async function processAdConversionBatch(): Promise<{ claimed: number; sent: number; retried: number; deadLettered: number; skipped: number }> {
   const now = new Date();
@@ -108,14 +120,20 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
     .orderBy(outboxEvents.nextAttemptAt).limit(BATCH).for('update', { skipLocked: true });
   const out = { claimed: 0, sent: 0, retried: 0, deadLettered: 0, skipped: 0 };
   if (candidates.length === 0) return out;
-  const rows = await db.update(outboxEvents).set({ status: 'processing', nextAttemptAt: new Date(now.getTime() + LEASE_MS) })
+  // The claim is this deadline: every claimed row carries it, and renewing one row leaves the others on it.
+  const claimedUntil = new Date(now.getTime() + LEASE_MS);
+  const rows = await db.update(outboxEvents).set({ status: 'processing', nextAttemptAt: claimedUntil })
     .where(and(inArray(outboxEvents.id, candidates.map((c) => c.id)), eq(outboxEvents.isProcessed, false), lte(outboxEvents.nextAttemptAt, now)))
     .returning();
   out.claimed = rows.length;
   const vault = IntegrationCredentialVault.fromEnv();
   const live = new Map((await repo.active()).map((p) => [p.platform, p]));
 
+  // Fifty sends of up to 10 s each, plus the lookups, can outlive the five-minute lease; the other replica then claims
+  // the rows still waiting and both send them (2026-10-22 review). So each row is renewed just before its send, and
+  // only while the deadline is still ours: a row another worker has taken is left to it.
   for (const row of rows) {
+    if (!(await renewAdConversionLease(row.id, claimedUntil))) continue;
     const raw = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
     const { platform, event } = raw as { platform: string; event: CanonicalTelemetryEvent };
     const dest = live.get(platform);

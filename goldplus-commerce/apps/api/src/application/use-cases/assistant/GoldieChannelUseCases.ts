@@ -160,7 +160,7 @@ export class GoldieChannelUseCases {
     const s = this.settings();
     if (!s.enabled) return 0;
     const t = this.now().getTime();
-    // Three minutes: longer than a live turn can take (brain 45 s, send 10 s, alerts), so recovery never answers a
+    // Three minutes: longer than a live turn can take (burst wait up to 10 s, brain 140 s, send 10 s), so recovery never answers a
     // message the live path is still answering.
     const pending = await this.archive.pendingWhatsApp(new Date(t - 180_000), new Date(t - 23 * 3600_000), limit);
     let answered = 0;
