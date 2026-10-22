@@ -47,27 +47,36 @@ async function audit(auditRepo: IAuditRepository, actorId: string, action: strin
  * delivery), the order is first confirmed into 'processing' and then
  * dispatched. Two ledgered, legal hops; the state machine is not widened.
  * Returns what happened, so the operator can be told.
+ *
+ * A PAID order can be unconfirmed too: a late payment waiting for the owner's
+ * review, a payment recorded by hand, a payment that met a lifecycle conflict.
+ * It used to be skipped here ("not cash on delivery"), so the rider delivered
+ * it, the task said Delivered, and the order stayed 'received' with no way left
+ * to say delivered (owner, 2026-10-22). It is confirmed the same way, as paid,
+ * with no payment switch; the state machine still refuses an unpaid online
+ * order that was not confirmed as cash on delivery.
  */
 export async function mirrorOrderDispatched(
   orderTransitions: IOrderTransitionPort,
   orderId: string,
-  ctx: { actorId: string; note: string; cashOnDelivery: boolean },
+  ctx: { actorId: string; note: string; cashOnDelivery: boolean; /** The order is paid: it may be confirmed without a COD confirmation. */ paid?: boolean },
 ): Promise<'dispatched' | 'skipped'> {
   const base = { actorId: ctx.actorId, actorType: 'administrator' as const, source: 'fulfilment' as const };
   try {
     await orderTransitions.transition(orderId, 'dispatched', { ...base, reasonCode: 'dispatch_recorded', note: ctx.note });
     return 'dispatched';
   } catch {
-    if (!ctx.cashOnDelivery) return 'skipped';
+    // Not dispatchable as it stands: confirm it first, but only with payment cleared (paid, or COD confirmed).
+    if (!ctx.cashOnDelivery && !ctx.paid) return 'skipped';
   }
   try {
-    await orderTransitions.transition(orderId, 'processing', {
+    await orderTransitions.transition(orderId, 'processing', ctx.cashOnDelivery ? {
       ...base,
       reasonCode: 'cod_dispatch_confirmed',
       note: `Cash on delivery confirmed at dispatch. ${ctx.note}`,
       // The operator confirmed cash on delivery at dispatch: an online order that was never paid becomes COD here.
       switchToPayOnDelivery: true,
-    });
+    } : { ...base, reasonCode: 'dispatch_confirmed', note: `Confirmed at dispatch (already paid). ${ctx.note}` });
     await orderTransitions.transition(orderId, 'dispatched', { ...base, reasonCode: 'dispatch_recorded', note: ctx.note });
     return 'dispatched';
   } catch {
@@ -219,6 +228,7 @@ export class RecordDispatchUseCase {
         actorId: input.actorId,
         note: `Dispatch ${dispatch.dispatchReference} recorded`,
         cashOnDelivery: guard.paymentPolicy === 'CASH_ON_DELIVERY',
+        paid: guard.paymentPolicy === 'PAID',
       });
     }
 

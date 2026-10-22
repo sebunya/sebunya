@@ -303,6 +303,14 @@ describe('a cash-on-delivery order follows its task to dispatched (COD mirror)',
     expect(p.state.hops).toEqual([]);
   });
 
+  it('a PAID order still at received is confirmed (no payment switch), then dispatched (owner, 2026-10-22)', async () => {
+    const p = port('received', 'paid');
+    expect(await mirrorOrderDispatched(p as never, 'o-1', { actorId: 'a', note: 'x', cashOnDelivery: false, paid: true })).toBe('dispatched');
+    expect(p.state.hops).toEqual(['received->processing', 'processing->dispatched']);
+    expect(p.transition.mock.calls[1][2]).toMatchObject({ reasonCode: 'dispatch_confirmed' });
+    expect(p.transition.mock.calls[1][2]).not.toHaveProperty('switchToPayOnDelivery');
+  });
+
   it('a cancelled order is never revived', async () => {
     const p = port('cancelled');
     expect(await mirrorOrderDispatched(p as never, 'o-1', { actorId: 'a', note: 'x', cashOnDelivery: true })).toBe('skipped');

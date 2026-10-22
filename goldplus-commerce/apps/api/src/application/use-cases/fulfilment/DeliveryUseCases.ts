@@ -203,6 +203,7 @@ export class RecordDeliveryUseCase {
             actorId: input.actorId,
             note: `Catch-up before recording attempt ${attempt}`,
             cashOnDelivery: snapshot.paymentStatus !== 'paid',
+            paid: snapshot.paymentStatus === 'paid',
           });
           if (caughtUp === 'dispatched') {
             try {
@@ -240,6 +241,54 @@ export class RecordDeliveryUseCase {
       newState: { attempt, outcome: input.outcome, completed, deliveredQuantity, returnedQuantity, orderTransition },
     });
     return { ok: true, delivery, completed, orderTransition };
+  }
+}
+
+/**
+ * Brings an order up to a delivery the rider already made: the task says Delivered (with a delivered attempt on
+ * record) but the order does not. That was every paid order delivered while it still read 'received' or
+ * 'awaiting review' (owner, 2026-10-22): the task finished, and nothing on the order page could reach 'delivered'
+ * afterwards. The same legal, ledgered hops as the delivery itself (confirm, dispatch, delivered); a closed order
+ * (completed, cancelled) is left alone and said so.
+ */
+export class CompleteOrderForDeliveredTaskUseCase {
+  constructor(
+    private readonly tasks: IFulfilmentRepository,
+    private readonly deliveries: IFulfilmentDeliveryRepository,
+    private readonly audit: IAuditRepository,
+    private readonly orderTransitions: IOrderTransitionPort,
+    private readonly orders: { findById(id: string): Promise<{ orderStatus: string } | null> },
+  ) {}
+
+  async execute(input: { orderId: string; actorId: string }): Promise<
+    | { ok: true; orderStatus: 'delivered'; changed: boolean }
+    | { ok: false; code: 'NOT_FOUND' | 'NOT_DELIVERED' | 'ORDER_CLOSED' | 'REFUSED'; message: string }
+  > {
+    const order = await this.orders.findById(input.orderId);
+    const task = order ? await this.tasks.findByOrderId(input.orderId) : null;
+    if (!order || !task) return { ok: false, code: 'NOT_FOUND', message: 'Order or its fulfilment task not found.' };
+    if (order.orderStatus === 'delivered') return { ok: true, orderStatus: 'delivered', changed: false };
+    const delivered = task.status === 'DELIVERED' && (await this.deliveries.listByTask(task.id)).some((a) => a.deliveredAt !== null);
+    if (!delivered) return { ok: false, code: 'NOT_DELIVERED', message: 'No delivery is recorded for this order yet. Record it on the fulfilment task\'s Delivery page.' };
+    if (['completed', 'cancelled', 'failed'].includes(order.orderStatus)) {
+      return { ok: false, code: 'ORDER_CLOSED', message: `The order is ${order.orderStatus}, so it is not changed.` };
+    }
+    const base = { actorId: input.actorId, actorType: 'administrator' as const, source: 'fulfilment' as const, reasonCode: 'delivery_outcome', note: 'Delivered by the rider (recorded on the task); order brought up to date' };
+    try {
+      if (order.orderStatus !== 'dispatched') {
+        const caught = await mirrorOrderDispatched(this.orderTransitions, input.orderId, { actorId: input.actorId, note: 'Catch-up for a recorded delivery', cashOnDelivery: task.paymentStatus !== 'paid', paid: task.paymentStatus === 'paid' });
+        if (caught !== 'dispatched') throw new Error('not dispatched');
+      }
+      await this.orderTransitions.transition(input.orderId, 'delivered', base);
+    } catch (err) {
+      const why = err instanceof Error && err.message !== 'not dispatched' ? ` ${err.message}` : '';
+      return { ok: false, code: 'REFUSED', message: `The order could not be moved to delivered.${why}` };
+    }
+    await new CreateAuditLogUseCase(this.audit).execute({
+      actorId: input.actorId, action: 'ORDER_DELIVERED_CATCH_UP', entity: 'order', entityId: input.orderId,
+      previousState: { status: order.orderStatus }, newState: { status: 'delivered', taskId: task.id },
+    });
+    return { ok: true, orderStatus: 'delivered', changed: true };
   }
 }
 

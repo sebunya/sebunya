@@ -708,6 +708,7 @@ import { DrizzleFulfilmentDeliveryRepository } from './db/repositories/DrizzleFu
 import { DrizzleFulfilmentReportRepository } from './db/repositories/DrizzleFulfilmentReportRepository';
 import {
   GetDeliveryHistoryUseCase,
+  CompleteOrderForDeliveredTaskUseCase,
   RecordDeliveryUseCase,
   GetFulfilmentReportUseCase,
 } from '../application/use-cases/fulfilment/DeliveryUseCases';
@@ -1538,6 +1539,9 @@ export class Registry {
   public readonly fulfilmentDeliveryRepo = new DrizzleFulfilmentDeliveryRepository();
   public readonly fulfilmentReportRepo = new DrizzleFulfilmentReportRepository();
   public readonly getDeliveryHistoryUseCase = new GetDeliveryHistoryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo);
+  public readonly completeOrderForDeliveredTaskUseCase = new CompleteOrderForDeliveredTaskUseCase(
+    this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo, this.orderTransitionService, { findById: (id: string) => this.orderRepo.findById(id) },
+  );
   public readonly recordDeliveryUseCase = new RecordDeliveryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo, this.orderTransitionService, {
     // 0189: the quote capture learns the outcome. actual_minutes is dispatch → handover (one outbound leg + last
     // mile), which is the only duration the shop observes; MODEL.md PART 4 states the comparison basis.

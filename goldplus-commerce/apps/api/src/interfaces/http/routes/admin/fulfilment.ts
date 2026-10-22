@@ -537,6 +537,16 @@ routes.post('/:id/delivery', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), as
   return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
 });
 
+// The rider delivered (task Delivered) but the order never followed: bring the order up to date (2026-10-22).
+routes.post('/by-order/:orderId/complete-delivered', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const orderId = String(c.req.param('orderId') ?? '');
+  if (!TASK_ID.test(orderId)) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found.' } } satisfies ApiResponse<never>, 404);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().completeOrderForDeliveredTaskUseCase.execute({ orderId, actorId });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, result.code === 'NOT_FOUND' ? 404 : 409);
+  return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
+});
+
 // --- F2: SLA escalation (evaluate + summary) ---
 
 routes.get('/sla/summary', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
