@@ -555,17 +555,25 @@ if (!token) {
     if (refreshedEl) refreshedEl.textContent = `Refreshing…`;
 
     try {
-      const [overviewRes, matchRes] = await Promise.all([
-        fetch('/api/admin/measurement/overview', { credentials: 'same-origin' }),
-        fetch('/api/admin/measurement/match-quality?days=7', { credentials: 'same-origin' }),
-      ]);
-
+      // One quiet retry before saying anything: a busy moment (the other admin pages loading, a rate limit) is not an
+      // outage. What finally fails is named honestly: "API unreachable" only when nothing answered at all.
+      const getJson = async (url: string) => {
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const res = await fetch(url, { credentials: 'same-origin' });
+            const body = await res.json().catch(() => null);
+            if (res.ok && body?.success) return body;
+            if (attempt >= 1) throw Object.assign(new Error(`status ${res.status}`), { status: res.status });
+          } catch (e) {
+            if ((e as { status?: number }).status !== undefined || attempt >= 1) throw e;
+          }
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+      };
       const [overview, matchQuality] = await Promise.all([
-        overviewRes.json(),
-        matchRes.json(),
+        getJson('/api/admin/measurement/overview'),
+        getJson('/api/admin/measurement/match-quality?days=7').catch(() => null),
       ]);
-
-      if (!overview.success) throw new Error('Overview API failed');
 
       const d = overview.data;
 
@@ -637,7 +645,8 @@ if (!token) {
     } catch (err) {
       if (statusPill && statusText) {
         statusPill.className = 'status-pill status-error';
-        statusText.textContent = 'Unable to load dashboard — API unreachable';
+        const status = (err as { status?: number })?.status;
+        statusText.textContent = status ? `Unable to load the dashboard (the API answered ${status}). Try Refresh.` : 'Unable to load dashboard — API unreachable';
       }
       if (refreshedEl) refreshedEl.textContent = 'Failed to refresh';
       console.error('[MCT Dashboard] Load error:', err);
