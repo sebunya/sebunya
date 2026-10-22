@@ -132,7 +132,12 @@ export class ApplyRefundConsequencesUseCase {
     },
   ): Promise<RefundConsequencesResult> {
     const refundedUgx = this.refundLedger ? await this.refundLedger.getRefundedTotalUgx(attempt.id) : 0;
-    const reading = readRefund(refundedUgx, attempt.amount);
+    // A gift card / store credit paid part of this order: the cash attempt is only part of what it cost, so even all
+    // of the cash back is a PARTIAL refund of the order. Read against the cash alone it was 'total', which cancelled
+    // the order and also returned the card's share (an out-of-stock item refunded = the rest of the order lost, or
+    // shipped with the card money given back; 2026-10-22). Cancelling such an order stays a person's decision.
+    const credit = this.storeCreditOf ? await this.storeCreditOf(attempt.orderId).catch(() => 0) : 0;
+    const reading: RefundReading = credit > 0 && refundedUgx > 0 ? 'partial' : readRefund(refundedUgx, attempt.amount);
 
     if (attempt.amount > 0 && (await this.otherAttemptsNetUgx(attempt.id, attempt.orderId)) >= attempt.amount) {
       // A second payment going back. The attempt records it; the order stays paid and keeps its stock and points.
@@ -151,7 +156,6 @@ export class ApplyRefundConsequencesUseCase {
       if (attempt.amount > 0) {
         // The order never moves on a partial refund, so the lifecycle
         // subscriber never sees it: claw back the refunded share here.
-        const credit = this.storeCreditOf ? await this.storeCreditOf(attempt.orderId).catch(() => 0) : 0;
         await this.applyRefundToLoyalty(attempt.orderId, Math.floor((refundedUgx * 10_000) / (attempt.amount + Math.max(0, credit))), 'Partial refund');
       }
       return { reading, refundedUgx };
