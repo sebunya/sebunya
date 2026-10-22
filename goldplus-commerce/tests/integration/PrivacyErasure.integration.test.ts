@@ -161,11 +161,13 @@ suite('privacy erasure (real PostgreSQL)', () => {
   it('0199: gift cards bought online, as buyer and as the person it was for, are exported and erased', async () => {
     const buyer = await seedCustomer('gb');
     const friend = await seedCustomer('gr');
-    const [p] = await raw`insert into gift_card_purchases (reference, amount_ugx, buyer_name, buyer_phone, buyer_user_id, from_name, recipient_name, recipient_phone, send_to, message, status, confirmation_code)
-              values (${`GC-P${tag}`.slice(0, 13)}, 50000, 'Jane Buyer', ${`+256${buyer.phone.slice(1)}`}, ${buyer.userId}, 'Jane', 'Friend Name', ${`+256${friend.phone.slice(1)}`}, 'recipient', 'Happy day', 'paid', 'MTN9') returning id`;
+    // 0201: with a photo on the card; it is a picture of people, so it goes with the names.
+    const [photo] = await raw`insert into gift_card_photos (image, width, height, attached_at) values (${Buffer.alloc(4096, 9)}, 1080, 1080, now()) returning id`;
+    const [p] = await raw`insert into gift_card_purchases (reference, amount_ugx, buyer_name, buyer_phone, buyer_user_id, from_name, recipient_name, recipient_phone, send_to, message, status, confirmation_code, photo_id)
+              values (${`GC-P${tag}`.slice(0, 13)}, 50000, 'Jane Buyer', ${`+256${buyer.phone.slice(1)}`}, ${buyer.userId}, 'Jane', 'Friend Name', ${`+256${friend.phone.slice(1)}`}, 'recipient', 'Happy day', 'paid', 'MTN9', ${photo.id}) returning id`;
     purchaseIds.push(p.id);
     const asBuyer = await exporter.collect(buyer.userId);
-    expect(asBuyer.sections.giftCardsBoughtOnline).toEqual([expect.objectContaining({ you: 'bought it', yourName: 'Jane Buyer', forName: 'Friend Name', message: 'Happy day' })]);
+    expect(asBuyer.sections.giftCardsBoughtOnline).toEqual([expect.objectContaining({ you: 'bought it', yourName: 'Jane Buyer', forName: 'Friend Name', message: 'Happy day', photoOnCard: true })]);
     const asFriend = await exporter.collect(friend.userId);
     expect(asFriend.sections.giftCardsBoughtOnline).toEqual([expect.objectContaining({ you: 'received it', from: 'Jane', amountUgx: 50000 })]);
     expect(JSON.stringify(asFriend.sections.giftCardsBoughtOnline)).not.toContain('Jane Buyer');
@@ -174,6 +176,8 @@ suite('privacy erasure (real PostgreSQL)', () => {
     let [row] = await raw`select buyer_name, buyer_phone, buyer_user_id, from_name, message, recipient_name, confirmation_code from gift_card_purchases where id = ${p.id}`;
     expect(row).toMatchObject({ buyer_phone: '', buyer_user_id: null, message: null, recipient_name: 'Friend Name', confirmation_code: 'MTN9' });
     expect(row.buyer_name).not.toBe('Jane Buyer');
+    expect((await raw`select count(*)::int as n from gift_card_photos where id = ${photo.id}`)[0].n).toBe(0);
+    expect((await raw`select photo_id from gift_card_purchases where id = ${p.id}`)[0].photo_id).toBeNull();
     expect((await eraser.erase({ userId: friend.userId, kind: 'ANONYMISE_HISTORY', requestId: friend.requestId, actorId: friend.userId, reason: 'test' })).completed).toBe(true);
     [row] = await raw`select recipient_name, recipient_phone, confirmation_code from gift_card_purchases where id = ${p.id}`;
     expect(row).toMatchObject({ recipient_phone: '', confirmation_code: 'MTN9' });

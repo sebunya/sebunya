@@ -7,6 +7,10 @@ export default defineConfig({
       // Existing suites only ever did `import type` from the shared package, so it
       // was erased at transform time and never actually resolved. Tests that import
       // real values (the Control Centre registry) need a genuine path.
+      // A storefront module imports one shared file directly (gift card text rules), keeping the rest of the
+      // package out of the browser bundle; the sub-path must resolve here as it does in the website build.
+      // (Listed first: the bare name below would otherwise claim the sub-path too.)
+      '@goldplus/shared/src': path.resolve(__dirname, 'packages/shared/src'),
       '@goldplus/shared': path.resolve(__dirname, 'packages/shared/src/index.ts'),
       // ioredis is a dependency of apps/api, not of the workspace root, so the
       // root-level vitest run cannot resolve it from a test file. The Redis

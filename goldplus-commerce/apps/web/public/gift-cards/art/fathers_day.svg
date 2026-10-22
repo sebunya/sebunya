@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="A folded-paper bow on a green band">
+  <!-- Father's Day: a crisp folded-paper bow on a green band (paper folds, no tie or moustache). Drawn for a black field. -->
+  <rect x="0" y="100" width="200" height="30" fill="#96CC06"/>
+  <path d="M100 112 L34 62 L42 150 Z" fill="#FFFFFF"/>
+  <path d="M100 112 L42 150 L64 112 Z" fill="#CFCFCF"/>
+  <path d="M100 112 L166 62 L158 150 Z" fill="#FFFFFF"/>
+  <path d="M100 112 L158 150 L136 112 Z" fill="#CFCFCF"/>
+  <path d="M92 118 L70 182 L90 172 L98 188 Z" fill="#FFFFFF"/>
+  <path d="M108 118 L130 182 L110 172 L102 188 Z" fill="#CFCFCF"/>
+  <rect x="86" y="98" width="28" height="28" rx="3" fill="#96CC06" stroke="#000000" stroke-width="6"/>
+</svg>

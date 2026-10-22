@@ -292,9 +292,9 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
       if (d.toBuyer) {
         return `${SHOP_NAME}: your gift card of ${formatUgx(d.valueUgx)} for ${gsmPlain(String(d.recipientName ?? ''))} is ready. Send them this link to open it: ${giftCardOpenUrl(d.creditCode)} Code: ${d.creditCode}. Anyone with the code can spend it, so share it only with them.`;
       }
-      // The card page shows the buyer's words exactly (emoji and all); the SMS carries a plain copy, because one
-      // emoji turns the whole text into UCS-2 and triples its parts.
-      return `${SHOP_NAME}: ${gsmPlain(String(d.fromName ?? '')) || 'Someone'} sent you a gift card of ${formatUgx(d.valueUgx)}${gsmPlain(String(d.giftMessage ?? '')) ? `: "${gsmPlain(String(d.giftMessage ?? ''))}"` : '.'} Open it: ${giftCardOpenUrl(d.creditCode)} Code: ${d.creditCode}. Spend it on shopgoldplus.com or in our shop. Keep it safe: anyone with the code can spend it.`;
+      // The note (up to 160 characters, emoji and all) is on the card itself, exactly as written; the text only says
+      // there is one, so its length stays the same whatever the buyer wrote and nothing of it is cut or stripped.
+      return `${SHOP_NAME}: ${gsmPlain(String(d.fromName ?? '')) || 'Someone'} sent you a gift card of ${formatUgx(d.valueUgx)}${String(d.giftMessage ?? '').trim() ? ', with a note for you on the card.' : '.'} Open it: ${giftCardOpenUrl(d.creditCode)} Code: ${d.creditCode}. Spend it on shopgoldplus.com or in our shop. Keep it safe: anyone with the code can spend it.`;
     case 'GIFT_CARD_PAID':
       // 0199: to the buyer when the code goes to someone else. Never the code.
       return d.deliverOnWords

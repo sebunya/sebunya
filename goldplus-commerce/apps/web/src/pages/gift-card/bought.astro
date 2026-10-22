@@ -4,6 +4,8 @@ import { apiBase } from '../../lib/api';
 import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
 import { formatUgx } from '../../lib/money';
 import GiftCardFace from '../../components/GiftCardFace.astro';
+import { giftCardPhotoUrl } from '../../lib/giftCardPhoto';
+import GiftCardPhotoRemove from '../../components/GiftCardPhotoRemove.astro';
 
 /**
  * Where a gift card purchase stands (0199). Pesapal returns the buyer here (through the API, which settles first).
@@ -13,9 +15,26 @@ type Status = {
   reference: string; status: 'awaiting_payment' | 'paid' | 'issued' | 'failed' | 'review' | 'refunded'; amountUgx: number;
   recipientFirstName: string; theme: string; fromName: string; message: string | null; recipientPhoneMasked: string; buyerPhoneMasked: string; sendTo: 'recipient' | 'buyer'; deliverOn: string | null;
   textStatus: 'sent' | 'sending' | 'failed' | 'not_sent' | null;
+  photoId?: string | null;
 };
 const ref = String(Astro.url.searchParams.get('ref') ?? '').trim().toUpperCase().slice(0, 20);
 const cancelled = Astro.url.searchParams.get('cancelled') === '1';
+// 0201: the buyer takes the photo off the card (post/redirect/get, so a refresh never repeats it).
+if (Astro.request.method === 'POST' && /^GC-[0-9A-Z]{10}$/.test(ref)) {
+  const form = await Astro.request.formData().catch(() => null);
+  if (form?.get('intent') === 'remove-photo') {
+    let outcome = 'failed';
+    try {
+      const res = await fetch(`${apiBase}/commerce/gift-cards/purchase/${encodeURIComponent(ref)}/remove-photo`, {
+        method: 'POST', headers: apiHeaders({ Accept: 'application/json' }, readClientAddress(Astro)), signal: AbortSignal.timeout(10_000),
+      });
+      // An unknown reference gets no photo notice: the page itself says the purchase was not found.
+      outcome = res.ok ? 'removed' : res.status === 409 ? 'none' : res.status === 404 ? '' : 'failed';
+    } catch { /* outcome stays failed */ }
+    return Astro.redirect(`/gift-card/bought?ref=${encodeURIComponent(ref)}${outcome ? `&photo=${outcome}` : ''}`, 303);
+  }
+}
+const photoNotice = ({ removed: 'The photo is removed. The card shows its occasion picture instead.', none: 'This card has no photo.', failed: 'We could not remove the photo just now. Please try again, or call us.' } as Record<string, string>)[Astro.url.searchParams.get('photo') ?? ''] ?? null;
 let s: Status | null = null;
 let unreachable = false;
 if (/^GC-[0-9A-Z]{10}$/.test(ref)) {
@@ -38,6 +57,7 @@ if (/^GC-[0-9A-Z]{10}$/.test(ref)) {
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 const day = (iso: string) => new Date(`${iso}T09:00:00+03:00`).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', weekday: 'long', day: 'numeric', month: 'long' });
 const waiting = s?.status === 'awaiting_payment' && !cancelled;
+const photoUrl = giftCardPhotoUrl(s?.photoId);
 ---
 <BaseLayout title="Your gift card | GoldPlus" description="Where your GoldPlus gift card purchase stands." robotsMeta="noindex,nofollow">
   {waiting && <meta slot="head" http-equiv="refresh" content="10" />}
@@ -70,7 +90,9 @@ const waiting = s?.status === 'awaiting_payment' && !cancelled;
     {s && (s.status === 'paid' || s.status === 'issued') && (
       <>
         <h1 class="text-3xl font-black tracking-tight text-gray-900">Thank you, it is paid</h1>
-        <div class="mt-6"><GiftCardFace theme={s.theme} amountUgx={s.amountUgx} toName={s.recipientFirstName} fromName={s.fromName} message={s.message} masked="GPGC-••••-••••-••••" /></div>
+        <div class="mt-6"><GiftCardFace theme={s.theme} amountUgx={s.amountUgx} toName={s.recipientFirstName} fromName={s.fromName} message={s.message} photoUrl={photoUrl} /></div>
+        {photoNotice && <p class="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900" role="status">{photoNotice}</p>}
+        {photoUrl && <GiftCardPhotoRemove whose="their" />}
         <div class="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5" role="status">
           <p class="text-sm font-bold text-gray-900">Gift card for {s.recipientFirstName}</p>
           <p class="mt-1 text-2xl font-black tabular-nums text-gray-900">{formatUgx(s.amountUgx)}</p>

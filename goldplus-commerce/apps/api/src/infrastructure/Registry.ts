@@ -81,6 +81,10 @@ import { CreditExpiryRemindersUseCase, IssueCreditUseCase, ManageCreditUseCases,
 import { creditCodeHash, creditRandomIndexes } from './credit/CreditCodeCrypto';
 import { DrizzleCreditRepository } from './credit/DrizzleCreditRepository';
 import { DrizzleGiftCardPurchaseRepository } from './credit/DrizzleGiftCardPurchaseRepository';
+import { SharpGiftCardPhotoProcessor } from './credit/SharpGiftCardPhotoProcessor';
+import { DrizzleGiftCardPhotoRepository } from './credit/DrizzleGiftCardPhotoRepository';
+import { piiHasher } from './security/PiiHashingService';
+import { GiftCardPhotoUseCases } from '../application/use-cases/credit/GiftCardPhotoUseCases';
 import { GiftCardPurchaseUseCases } from '../application/use-cases/credit/GiftCardPurchaseUseCases';
 import { GiftCardOccasionUseCases } from '../application/use-cases/credit/GiftCardOccasionUseCases';
 import { DrizzleOccasionSettingsRepository } from './credit/DrizzleOccasionSettingsRepository';
@@ -2855,6 +2859,13 @@ export class Registry {
       dailyShopCapUgx: Number(process.env.GIFT_CARD_DAILY_SHOP_CAP_UGX) > 0 ? Number(process.env.GIFT_CARD_DAILY_SHOP_CAP_UGX) : 5_000_000,
     }),
     (event, detail) => logger.info({ event, ...detail }, `[gift-card] ${event}`),
+  );
+  /** 0201: the optional photo on a gift card bought online (upload, serving, removal, retention). */
+  public readonly giftCardPhotoUseCases = new GiftCardPhotoUseCases(
+    new DrizzleGiftCardPhotoRepository(),
+    new SharpGiftCardPhotoProcessor(),
+    { hashCode: creditCodeHash, visitorKey: (raw) => piiHasher.hashName(raw) },
+    (event, detail) => logger.info({ event, ...detail }, `[gift-card-photo] ${event}`),
   );
   /** 0196: an order paid entirely by store credit / a gift card, settled through the same doors as Pesapal. */
   public readonly settleByStoreCreditUseCase = new SettleByStoreCreditUseCase(this.orderRepo, this.orderTransitionService, this.reconcileOrderPaymentUseCase, this.settlePaymentUseCase);

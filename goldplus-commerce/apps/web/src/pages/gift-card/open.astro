@@ -1,6 +1,8 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import GiftCardFace from '../../components/GiftCardFace.astro';
+import { giftCardPhotoUrl } from '../../lib/giftCardPhoto';
+import GiftCardPhotoRemove from '../../components/GiftCardPhotoRemove.astro';
 import { apiBase } from '../../lib/api';
 import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
 import { formatUgx } from '../../lib/money';
@@ -14,15 +16,31 @@ import { formatUgx } from '../../lib/money';
  */
 type Opened = {
   kind: 'gift_card' | 'store_credit'; masked: string; balanceUgx: number; usable: boolean; reason: string | null; code: string | null;
-  face: { theme: string; fromName: string; toName: string; message: string | null; originalUgx?: number } | null;
+  face: { theme: string; fromName: string; toName: string; message: string | null; originalUgx?: number; photoId?: string | null } | null;
   originalUgx?: number | null;
 };
 let opened: Opened | null = null;
 let problem = '';
 let typed = '';
+let photoNotice: string | null = null;
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   typed = String(form.get('code') ?? '').trim().slice(0, 40);
+  // 0201: the person the card is for takes the photo off it, then sees their card again. The code is the proof.
+  if (form.get('intent') === 'remove-photo') {
+    try {
+      const res = await fetch(`${apiBase}/commerce/gift-cards/photo/remove-by-code`, {
+        method: 'POST',
+        headers: apiHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }, readClientAddress(Astro)),
+        body: JSON.stringify({ code: typed }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      photoNotice = res.ok ? 'The photo is removed. Your card shows its occasion picture instead.'
+        : res.status === 409 ? 'This card has no photo.' : 'We could not remove the photo just now. Please try again, or call us.';
+    } catch {
+      photoNotice = 'We could not remove the photo just now. Please try again, or call us.';
+    }
+  }
   try {
     const res = await fetch(`${apiBase}/commerce/gift-cards/open`, {
       method: 'POST',
@@ -42,6 +60,7 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
 // No address of this page ever goes to another site. NOT 'no-referrer': with it the browser sends `Origin: null` on
 // this page's own form, and the storefront's cross-site guard refuses it (seen in a real browser, 2026-10-21).
 Astro.response.headers.set('Referrer-Policy', 'same-origin');
+const photoUrl = giftCardPhotoUrl(opened?.face?.photoId);
 const kindWord = opened?.kind === 'store_credit' ? 'store credit' : 'gift card';
 // What "Share your gift" may use: an explicit list of permitted fields, built here and nothing more. The code, the
 // balance, the private link and anything about payment never enter it (the share script reads only this).
@@ -51,6 +70,7 @@ const shareSource = opened ? {
   senderName: opened.face?.fromName ?? null,
   message: opened.face?.message ?? null,
   originalUgx: opened.originalUgx ?? opened.face?.originalUgx ?? null,
+  photoUrl,
 } : null;
 ---
 <BaseLayout title="A GoldPlus gift card for you" description="Someone sent you a GoldPlus gift card. Open it, scratch to reveal your code, and spend it on shopgoldplus.com or in our shop in Kampala." robotsMeta="noindex,nofollow">
@@ -75,7 +95,9 @@ const shareSource = opened ? {
           {opened.face ? `${opened.face.fromName} sent you a gift` : `Your GoldPlus ${kindWord}`}
         </h1>
         <div class="mt-6">
-          <GiftCardFace theme={opened.face?.theme} amountUgx={opened.balanceUgx} toName={opened.face?.toName} fromName={opened.face?.fromName ?? 'GoldPlus'} message={opened.face?.message} masked={opened.usable ? null : opened.masked} />
+          <GiftCardFace theme={opened.face?.theme} amountUgx={opened.balanceUgx} toName={opened.face?.toName} fromName={opened.face?.fromName ?? 'GoldPlus'} message={opened.face?.message} photoUrl={photoUrl} masked={opened.usable ? null : opened.masked} />
+          {photoNotice && <p class="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900" role="status">{photoNotice}</p>}
+          {photoUrl && opened.code && <GiftCardPhotoRemove whose="your" fields={{ code: opened.code }} />}
         </div>
 
         {/* Share your gift: optional, secondary, and available after the card is spent too. */}
@@ -98,6 +120,7 @@ const shareSource = opened ? {
             <div class="space-y-4">
               <fieldset class="space-y-2" data-share-options>
                 <legend class="text-sm font-bold text-gray-900">Show on the picture</legend>
+                {shareSource?.photoUrl && <label class="flex items-center gap-3 text-sm"><input type="checkbox" class="h-5 w-5 accent-[#456B00]" data-share-opt="photo" />The photo</label>}
                 {shareSource?.message && <label class="flex items-center gap-3 text-sm"><input type="checkbox" class="h-5 w-5 accent-[#456B00]" data-share-opt="message" />The personal message</label>}
                 {shareSource?.recipientName && <label class="flex items-center gap-3 text-sm"><input type="checkbox" class="h-5 w-5 accent-[#456B00]" data-share-opt="recipientName" />My name ({shareSource.recipientName})</label>}
                 {shareSource?.senderName && <label class="flex items-center gap-3 text-sm"><input type="checkbox" class="h-5 w-5 accent-[#456B00]" data-share-opt="senderName" />Who it is from ({shareSource.senderName})</label>}
@@ -277,7 +300,7 @@ const shareSource = opened ? {
 </script>
 
 <script>
-  import { PUBLIC_BUY_URL, canvasToBlob, captionSuggestions, drawShareImage, messageFits, shareContent, shareFileName, type ShareSize } from '../../lib/giftCardShare';
+  import { PUBLIC_BUY_URL, canvasToBlob, captionSuggestions, drawShareImage, loadShareFonts, pictureNote, shareContent, shareFileName, type ShareSize } from '../../lib/giftCardShare';
 
   // "Share your gift". Reads ONLY #gc-share-source (the permitted fields the page wrote), never the card's code,
   // balance or link. Nothing is posted anywhere: the picture is made here and handed to the phone's own share menu.
@@ -294,6 +317,7 @@ const shareSource = opened ? {
       senderName: typeof raw.senderName === 'string' ? raw.senderName : null,
       message: typeof raw.message === 'string' ? raw.message : null,
       originalUgx: typeof raw.originalUgx === 'number' ? raw.originalUgx : null,
+      photoUrl: typeof raw.photoUrl === 'string' ? raw.photoUrl : null,
     };
     const canvas = panel.querySelector<HTMLCanvasElement>('[data-share-canvas]')!;
     const status = panel.querySelector<HTMLElement>('[data-share-status]')!;
@@ -312,6 +336,7 @@ const shareSource = opened ? {
     let blob: Blob | null = null;
     let timer = 0;
     let run = 0;
+    let shorterStarted = false;
 
     // Captions: the occasion's own, then the general thank-yous. Never the private message, no tags, no hashtags.
     const chips = panel.querySelector<HTMLElement>('[data-share-captions]')!;
@@ -330,27 +355,21 @@ const shareSource = opened ? {
       status.textContent = '';
       retry.classList.add('hidden');
       nativeBtn.disabled = true; saveBtn.disabled = true; file = null; blob = null;
-      // A message too long for this size is never cut or shrunk: the recipient writes a shorter one for the picture.
-      let messageForPicture: string | null = null;
-      if (choice('message') && source.message) {
-        const ctx = canvas.getContext('2d')!;
-        const fits = messageFits(ctx, source.message, size());
-        excerptBox.classList.toggle('hidden', fits);
-        if (!fits) {
-          if (!excerpt.value) excerpt.value = source.message;
-          const ok = messageFits(ctx, excerpt.value.trim(), size()) && excerpt.value.trim().length > 0;
-          excerptWarn.classList.toggle('hidden', ok);
-          messageForPicture = ok ? excerpt.value.trim() : null;
-        }
-      } else excerptBox.classList.add('hidden');
-      const content = shareContent(source, {
-        recipientName: choice('recipientName'), senderName: choice('senderName'),
-        // In whole, when it fits; otherwise only the recipient's own shorter version (never a silent cut).
-        message: choice('message') && (excerptBox.classList.contains('hidden') || messageForPicture !== null),
-        amount: choice('amount'),
-      }, messageForPicture);
+      // Measured in the face it is drawn in (Montserrat), so "fits" means fits.
+      await loadShareFonts();
+      if (mine !== run) return;
+      // A message too long for this size (beside the other chosen details) is never cut or shrunk: the recipient
+      // writes a shorter one for the picture. It starts as the whole note once; after that it is theirs (cleared to
+      // write afresh, it stays clear).
+      const picked = { recipientName: choice('recipientName'), senderName: choice('senderName'), amount: choice('amount'), photo: choice('photo') };
+      const rest = shareContent(source, { ...picked, message: false });
+      const note = pictureNote(canvas.getContext('2d')!, choice('message') ? source.message : null, size(), rest, shorterStarted ? excerpt.value : null);
+      if (note.askShorter && !shorterStarted) { excerpt.value = note.shorter ?? ''; shorterStarted = true; }
+      excerptBox.classList.toggle('hidden', !note.askShorter);
+      excerptWarn.classList.toggle('hidden', !note.stillTooLong);
+      const content = shareContent(source, { ...picked, message: note.message !== null }, note.message);
       try {
-        await drawShareImage(canvas, content, size(), '/goldplus-logo-header-desktop-150x43.svg');
+        await drawShareImage(canvas, content, size());
         const b = await canvasToBlob(canvas);
         if (mine !== run) return; // a newer choice is being drawn
         blob = b;

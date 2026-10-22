@@ -1,5 +1,9 @@
 import { Hono, type Context } from 'hono';
 import { hashVisitToken } from '../../../application/use-cases/identity/ExperienceProfileUseCases';
+import { bodyLimit } from 'hono/body-limit';
+import { clientKey, isInternalCall } from '../clientAddress';
+import { GIFT_CARD_PHOTO_MAX_BYTES, type GiftCardPhotoRefusal } from '../../../domain/credit/GiftCardPhoto';
+import { GIFT_CARD_PHOTO_REFUSAL_WORDS, type RemoveGiftCardPhotoResult } from '../../../application/use-cases/credit/GiftCardPhotoUseCases';
 import { isGiftCardPurchaseReference } from '../../../domain/credit/GiftCardPurchase';
 import { z } from 'zod';
 import { Registry } from '../../../infrastructure/Registry';
@@ -380,7 +384,7 @@ routes.post('/gift-cards/purchase', async (c) => {
   const result = await registry.giftCardPurchaseUseCases.start({
     amountUgx: body.amountUgx, recipientName: body.recipientName, recipientPhone: body.recipientPhone, sendTo: body.sendTo,
     message: body.message, fromName: body.fromName, buyerName: body.buyerName, buyerPhone: body.buyerPhone, buyerEmail: body.buyerEmail,
-    deliverOn: body.deliverOn, theme: body.theme, buyerUserId: ((c as Context).get('userId') as string | undefined) ?? null,
+    deliverOn: body.deliverOn, theme: body.theme, photoId: body.photoId, buyerUserId: ((c as Context).get('userId') as string | undefined) ?? null,
   });
   if (result.ok) return c.json({ success: true, data: { reference: result.reference, redirectUrl: result.redirectUrl } });
   if (result.code === 'INVALID') return c.json({ success: false, error: { code: 'INVALID', message: 'Check the highlighted fields.', fields: result.errors } }, 400);
@@ -401,6 +405,63 @@ routes.post('/gift-cards/open', async (c) => {
   // A card staff issued has no face; its original value still lets the holder share "a GoldPlus gift" with an amount.
   const originalUgx = face?.originalUgx ?? (normalized ? (await registry.creditRepo.findByCodeHash(creditCodeHash(normalized.code)))?.initialValueUgx ?? null : null);
   return c.json({ success: true, data: { ...checked, code: normalized?.code ?? null, face, originalUgx } });
+});
+
+/** 0201: each photo refusal's HTTP status (the words come with it; the storefront shows them as they are). */
+const PHOTO_REFUSAL_STATUS: Record<GiftCardPhotoRefusal, 400 | 413 | 429 | 503> = {
+  empty: 400, not_an_image: 400, too_small: 400, too_detailed: 400, too_large: 413,
+  visitor_daily_limit: 429, shop_daily_limit: 429, unavailable: 503,
+};
+const removedPhotoResponse = (c: Context, result: RemoveGiftCardPhotoResult) => (result.ok
+  ? c.json({ success: true, data: { message: result.message } })
+  : c.json({ success: false, error: { code: result.reason === 'no_photo' ? 'NO_PHOTO' : 'NOT_FOUND', message: result.message } }, result.reason === 'no_photo' ? 409 : 404));
+
+/**
+ * 0201: the buyer's optional photo (raw image bytes; the phone has already cropped it). Re-encoded without metadata
+ * and kept until a purchase claims it. Answers the id the purchase form sends back.
+ */
+routes.post('/gift-cards/photos', bodyLimit({
+  maxSize: GIFT_CARD_PHOTO_MAX_BYTES,
+  onError: (c) => c.json({ success: false, error: { code: 'TOO_LARGE', message: GIFT_CARD_PHOTO_REFUSAL_WORDS.too_large } }, 413),
+}), async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const bytes = Buffer.from(await c.req.arrayBuffer());
+  // The uploader for the per-visitor daily ceiling (hashed in the use case). Our own server calls carry no visitor.
+  const result = await registry.giftCardPhotoUseCases.upload(bytes, isInternalCall(c) ? null : clientKey(c));
+  if (!result.ok) return c.json({ success: false, error: { code: 'PHOTO_REFUSED', reason: result.reason, message: result.message } }, PHOTO_REFUSAL_STATUS[result.reason]);
+  return c.json({ success: true, data: { photoId: result.photoId } });
+});
+
+/**
+ * 0201: the person the card is for takes the photo off it. The code is the proof, as it is for spending the card, and
+ * a guess at it is counted against the same tight lookup budget as opening one.
+ */
+routes.post('/gift-cards/photo/remove-by-code', async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const body = await c.req.json().catch(() => null);
+  const normalized = normalizeCreditCode(body?.code);
+  if (!normalized) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'That code is not right. Check each character, or call us.' } }, 404);
+  return removedPhotoResponse(c, await registry.giftCardPhotoUseCases.removeByCode(normalized.code));
+});
+
+/** 0201: the buyer takes the photo off the card they bought (the purchase's unguessable reference is the proof). */
+routes.post('/gift-cards/purchase/:reference/remove-photo', async (c) => {
+  c.header('Cache-Control', 'no-store');
+  return removedPhotoResponse(c, await registry.giftCardPhotoUseCases.removeByReference(c.req.param('reference')));
+});
+
+/**
+ * 0201: a gift card's photo. Its id is a random UUID that only the buyer (their reference) and the holder of the
+ * code (the card) are shown, so the id is the permission; never indexed, never cached by a shared cache.
+ */
+routes.get('/gift-cards/photos/:id', async (c) => {
+  const image = await registry.giftCardPhotoUseCases.image(c.req.param('id'));
+  if (!image) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No such photo.' } }, 404);
+  // A view of the stored bytes, not a copy (a Node Buffer's store is an ArrayBuffer; the type only says "like").
+  return c.body(new Uint8Array(image.buffer as ArrayBuffer, image.byteOffset, image.byteLength), 200, {
+    'Content-Type': 'image/jpeg', 'Content-Length': String(image.byteLength),
+    'Cache-Control': 'private, max-age=3600', 'X-Robots-Tag': 'noindex', 'X-Content-Type-Options': 'nosniff',
+  });
 });
 
 /** 0200: the occasions in the order the buy page shows them today (Kampala). Public: it is the calendar, nothing more. */

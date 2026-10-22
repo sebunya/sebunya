@@ -1,0 +1,15 @@
+Fonts served by shopgoldplus.com
+
+Every font below is licensed under the SIL Open Font License, Version 1.1 (https://openfontlicense.org).
+Each file also carries its copyright and licence in its own metadata; the lines here are copied from those files.
+
+Montserrat (fonts/montserrat-latin-var.woff2, fonts/montserrat-latin-ext-var.woff2), version 9.000
+  Copyright 2011 The Montserrat Project Authors (https://github.com/JulietaUla/Montserrat)
+
+Plus Jakarta Sans (fonts/plus-jakarta-sans-*-latin.woff2), version 2.071
+  Copyright 2020 The Plus Jakarta Sans Project Authors (https://github.com/tokotype/PlusJakartaSans)
+
+Poppins (hero/fonts/poppins-*.woff2), version 4.004
+  Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins)
+
+The files are subsets prepared by Google Fonts; they are served unmodified and are not sold on their own.

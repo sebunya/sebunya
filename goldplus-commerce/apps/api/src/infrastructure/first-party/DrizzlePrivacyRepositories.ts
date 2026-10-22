@@ -291,7 +291,7 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
     // 0199: gift cards bought online, by them or for them (never the code; the buyer's own details only to the buyer).
     const giftPurchases = rows(await db.execute(sql`
       select reference, amount_ugx, status, created_at, paid_at, issued_at, deliver_on, send_to, from_name, message, recipient_name, recipient_phone,
-             buyer_name, buyer_phone, buyer_email, payment_method,
+             buyer_name, buyer_phone, buyer_email, payment_method, (photo_id is not null) as has_photo,
              (buyer_user_id = ${userId}::uuid or ${plain.phoneDigits.length ? phoneIn(sql.raw('buyer_phone'), plain.phoneDigits) : sql`false`}) as as_buyer
         from gift_card_purchases
        where buyer_user_id = ${userId}::uuid
@@ -368,7 +368,7 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
       giftCardsBoughtOnline: giftPurchases.map((g) => ({
         reference: g.reference, amountUgx: Number(g.amount_ugx), status: g.status, createdAt: iso(g.created_at), paidAt: iso(g.paid_at), cardTextedAt: iso(g.issued_at),
         sendOn: g.deliver_on ? String(g.deliver_on instanceof Date ? g.deliver_on.toISOString().slice(0, 10) : g.deliver_on).slice(0, 10) : null,
-        from: g.from_name, message: g.message, forName: g.recipient_name, forPhone: g.recipient_phone || null,
+        from: g.from_name, message: g.message, forName: g.recipient_name, forPhone: g.recipient_phone || null, photoOnCard: Boolean(g.has_photo),
         ...(g.as_buyer ? { you: 'bought it', yourName: g.buyer_name, yourPhone: g.buyer_phone, yourEmail: g.buyer_email ?? null, paidWith: g.payment_method ?? null } : { you: 'received it' }),
       })),
       goldieChats: goldieConversations.map((c) => ({
@@ -615,6 +615,9 @@ export class DrizzlePersonalDataEraser implements IPersonalDataEraser {
         }
         const purchaseIds = [...new Set([...asBuyer, ...asRecipient])];
         if (purchaseIds.length) {
+          // 0201: the photo on the card is of people; it goes with the names. (photo_id is ON DELETE SET NULL.)
+          counts.giftCardPhotos = affected(await exec.execute(sql`
+            delete from gift_card_photos where id in (select photo_id from gift_card_purchases where id in (${uuidList(purchaseIds)}) and photo_id is not null)`));
           await exec.execute(sql`
             update outbox_events set payload = ${OUTBOX_OBJECT} - 'customerPhone' - 'customerEmail' - 'customerName' - 'recipientName'
              where related_entity = 'gift_card_purchase' and related_entity_id in (${uuidList(purchaseIds)}) and ${OUTBOX_IS_OBJECT}`);

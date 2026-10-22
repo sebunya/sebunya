@@ -83,6 +83,20 @@ routes.post('/purchases/:reference/redirect', requirePermissions([PERMISSIONS.PA
   return c.json({ success: true, data: result });
 });
 
+/** 0201: take the buyer's photo off a card (moderation, or the buyer asked). The card itself is not touched. */
+routes.post('/purchases/:reference/remove-photo', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), async (c) => {
+  const user = c.get('user') as { id: string };
+  const reference = c.req.param('reference') ?? '';
+  const result = await Registry.getInstance().giftCardPhotoUseCases.removeByReference(reference);
+  if (result.ok) {
+    await Registry.getInstance().createAuditLogUseCase.execute({
+      actorId: user.id, action: 'GIFT_CARD_PHOTO_REMOVED', entity: 'gift_card_purchase', entityId: result.purchaseId, newState: { reference },
+    }).catch(() => undefined);
+  }
+  if (!result.ok) return c.json({ success: false, error: { code: 'NOT_REMOVED', message: result.message } } satisfies ApiResponse<never>, 400);
+  return c.json({ success: true, data: result });
+});
+
 /** The buyer's money goes back through Pesapal; the card (if issued and untouched) is cancelled first. */
 routes.post('/purchases/:reference/refund', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), requireStepUp('payment_refund'), async (c) => {
   const body = await c.req.json().catch(() => null);
