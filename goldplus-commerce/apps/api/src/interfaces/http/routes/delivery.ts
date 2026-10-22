@@ -151,7 +151,9 @@ routes.post('/quote', async (c) => {
     // Business info: the one authority for the cutoff hour and closed days.
     cutoff: biz ? businessCutoffCountdown({ now, cutoffHour: biz.sameDayCutoffHour, closedDays: biz.closedDays }) : null,
     // Gap analysis #4: the dispatch DATE, and an arrival window only where one is measured (contract 4 and 10).
-    promise: biz
+    // Only where we actually deliver: under "we can't reach this area" or "we don't know where this is" a line
+    // saying "dispatched today" was a promise we could not keep (2026-10-22).
+    promise: biz && (outcome.quote.kind !== 'unavailable' || hasFee)
       ? deliveryPromise({ now, cutoffHour: biz.sameDayCutoffHour, closedDays: biz.closedDays, window: presented.window, deliveryHoursText: biz.deliveryHours ?? null })
       : null,
     // The SAME threshold the quote waived the fee on (the zone's own when its

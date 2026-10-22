@@ -11,7 +11,10 @@ const clean = (v: unknown, max: number): string | null => {
 
 // `src`: the utm_source of the click (tells networks sharing `clickid` apart).
 // `fbc`: Meta's click id, built in the browser from the landing URL's fbclid (lib/attribution).
-const CLICK_KEYS = new Set(['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik', 'msclkid', 'ScCid', 'clickid', 'click_id', 'src', 'fbc']);
+// `gad_campaignid` / `gad_source` / `gp_net`: which Google campaign and network (YouTube, Search, Shopping, PMax) the
+// click came from, sent with a Google click since 2026-10-17. Dropped here until 2026-10-22, so the sales-by-campaign
+// report (googleAdSales) read NULL for every order.
+const CLICK_KEYS = new Set(['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik', 'msclkid', 'ScCid', 'clickid', 'click_id', 'src', 'fbc', 'gad_campaignid', 'gad_source', 'gp_net']);
 /** Only known click-id keys, short printable values; null when none. */
 function cleanClickIds(v: unknown): Record<string, string> | null {
   if (!v || typeof v !== 'object') return null;

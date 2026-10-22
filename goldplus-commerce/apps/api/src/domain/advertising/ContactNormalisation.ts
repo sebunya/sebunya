@@ -23,6 +23,8 @@ export function phoneDigitsE164(phone?: string | null): string | null {
   const d = String(phone ?? '').replace(/\D/g, '').replace(/^00/, '');
   if (/^0\d{9}$/.test(d)) return `256${d.slice(1)}`;
   if (/^256\d{9}$/.test(d)) return d;
+  // "+256 0772 …": the national 0 typed after the country code (stored as typed at checkout).
+  if (/^2560\d{9}$/.test(d)) return `256${d.slice(4)}`;
   if (/^7\d{8}$/.test(d)) return `256${d}`;
   return d.length >= 10 && d.length <= 15 && !d.startsWith('0') ? d : null;
 }

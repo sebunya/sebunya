@@ -14,7 +14,8 @@ type Row = Record<string, unknown>;
 const rows = (r: unknown): Row[] => (Array.isArray(r) ? (r as Row[]) : ((r as { rows?: Row[] })?.rows ?? []));
 
 /** Orders that may still receive a pin: placed, not yet handed over, in the last fortnight. Matched on the full number. */
-const OPEN_STATUSES = ['received', 'pending_payment', 'pending_owner_review', 'processing', 'dispatched'];
+// delivery_failed: the rider could not find the place and the order goes out again; that is exactly when a pin helps.
+const OPEN_STATUSES = ['received', 'pending_payment', 'pending_owner_review', 'processing', 'dispatched', 'delivery_failed'];
 
 export class DrizzleLocationPinRepository implements ILocationPinRepository {
   constructor(private readonly config: DeliveryConfigReader = new DeliveryConfigReader()) {}
