@@ -264,3 +264,32 @@ describe('the reset code message', () => {
     expect(classifyTemplate('PASSWORD_RESET_CODE')).toBe('TRANSACTIONAL');
   });
 });
+
+describe('one place cannot use up a customer\'s reset codes (2026-10-22)', () => {
+  it('a fourth request from the same place is refused without writing a code; the customer\'s own place still gets one', async () => {
+    const { MemoryFailureLockout } = await import('../../apps/api/src/application/ports/FailureLockoutStore');
+    const h = harness();
+    let now = T0;
+    const placeStore = new MemoryFailureLockout();
+    const identity = {
+      createOtp: async (i: any) => { h.rows.push({ id: `p-${h.rows.length}`, attempts: 0, consumedAt: null, createdAt: now, ...i }); },
+      lastOtpIssuedAt: async () => null,
+      otpCountSince: async (_u: string, since: Date) => h.rows.filter((r) => r.createdAt >= since).length,
+    };
+    const sent: string[] = [];
+    const request = new RequestSmsPasswordResetUseCase(
+      { findByPhone: async () => USER } as any, identity as any,
+      { sendResetCode: async (i: any) => { sent.push(i.code); return { status: 'SENT' as const }; } } as any,
+      sha, () => '123456', () => now, placeStore,
+    );
+    for (let i = 0; i < 3; i++) { now = new Date(now.getTime() + 61_000); await request.execute({ phone: '0772123456', ip: '41.210.1.1' }); }
+    expect(sent).toHaveLength(3);
+    now = new Date(now.getTime() + 61_000);
+    await request.execute({ phone: '0772123456', ip: '41.210.1.1' });
+    expect(sent).toHaveLength(3);
+    expect(h.rows).toHaveLength(3); // the refused request wrote nothing against the customer's budget
+    now = new Date(now.getTime() + 61_000);
+    await request.execute({ phone: '0772123456', ip: '102.85.9.9' });
+    expect(sent).toHaveLength(4);
+  });
+});

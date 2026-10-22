@@ -1,3 +1,4 @@
+import { RedisFailureLockout } from './security/RedisFailureLockout';
 import { ReholdStockOnLatePaymentUseCase } from '../application/use-cases/payments/ReholdStockOnLatePaymentUseCase';
 import { cancelRefundUpdate } from '../application/notifications/CustomerMessages';
 import './logging/appLoggerBinding';
@@ -2581,6 +2582,9 @@ export class Registry {
     new SmsResetCodeDelivery(this.smsAdapter, this.recordNotificationAttemptUseCase),
     otpHash,
     otpRandom,
+    undefined,
+    // Shared by both replicas: one place's share of a customer's daily reset codes.
+    new RedisFailureLockout('sms-reset-place'),
   );
   public readonly resetPasswordWithSmsCodeUseCase = new ResetPasswordWithSmsCodeUseCase(
     this.userRepo,

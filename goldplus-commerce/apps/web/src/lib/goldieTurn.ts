@@ -205,6 +205,7 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
     inFlight += 1;
     const reservationId = admission.reservationId!;
     let settled = false;
+    let usageSoFar: (() => import('./assistant').Usage) | null = null;
     try {
       const ctx = await shopperContext(input.who);
       meta.nextAction = ctx?.nextBestAction ?? null;
@@ -224,7 +225,7 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
       // "welcome back", "still after that power bank?"), so the answer is never replayed to another customer.
       let personal = input.channel !== 'web' || mood.mood !== 'neutral' || (!!ctx && (!!ctx.firstName || ctx.visits >= 2 || ctx.hasOrdered
         || ctx.topCategories.length > 0 || ctx.recentlyViewed.length > 0 || ctx.pastTopics.length > 0 || !!ctx.nextBestAction));
-      for await (const ev of runAssistant(modelTurns, { apiKey: input.apiKey, model: admission.model, effort: admission.effort, maxOutputTokens: admission.maxOutputTokens, maxToolRounds: admission.maxToolRounds, signal: input.signal, shopperNote: note, care: input.care })) {
+      for await (const ev of runAssistant(modelTurns, { apiKey: input.apiKey, model: admission.model, effort: admission.effort, maxOutputTokens: admission.maxOutputTokens, maxToolRounds: admission.maxToolRounds, signal: input.signal, shopperNote: note, care: input.care, onUsageProbe: (probe) => { usageSoFar = probe; } })) {
         if (ev.type === 'text') answerText += ev.text;
         // Products are held until the answer is written, then only the ones it names are shown (the search's other
         // results would sit under a recommendation of a different product).
@@ -245,9 +246,19 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
         }
         yield ev;
       }
-      if (!settled) { /* caller aborted mid-turn: the reservation ages into UNKNOWN and keeps counting */ }
     } finally {
       inFlight = Math.max(0, inFlight - 1);
+      // The shopper left mid-answer (the stream's reader stopped, so this finally is where we are). Keeping the whole
+      // reservation (every round at full size) counted 5-10x what a turn costs: ~430 abandoned answers a month would
+      // switch the paid layer off (2026-10-22). Settled instead on what the provider reported, plus one round's full
+      // output (the round in flight never reports its output): never under-counted. Nothing reported yet: the
+      // reservation stays, as before.
+      if (!settled) {
+        const u = usageSoFar ? (usageSoFar as () => import('./assistant').Usage)() : null;
+        if (u && u.inputTokens > 0) {
+          await settle({ reservationId, model: admission.model, providerRequestId: null, outcome: 'ABORTED', usage: { ...u, outputTokens: u.outputTokens + admission.maxOutputTokens } }).catch(() => undefined);
+        }
+      }
     }
   }
   return { kind: 'run', meta, run };

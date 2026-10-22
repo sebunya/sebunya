@@ -288,6 +288,12 @@ export interface AssistantOptions {
   shopperNote?: string;
   /** Who is asking, for the care tools (session token, address). Without it a care tool answers as for a guest. */
   care?: CareContext;
+  /**
+   * Handed a probe of what the provider has reported so far, the round in flight included (its input is known from
+   * message_start). The caller reads it when a turn ends without 'done' or 'error' (the shopper closed the chat), so
+   * the budget is settled on real usage instead of keeping the whole multi-round reservation.
+   */
+  onUsageProbe?: (probe: () => Usage) => void;
 }
 
 /** One request to the Messages API. Isolated so a later SDK swap touches only this function. */
@@ -399,6 +405,14 @@ export async function* runAssistant(turns: ChatTurn[], options: AssistantOptions
   const add = (u: Usage) => { usage.inputTokens += u.inputTokens; usage.outputTokens += u.outputTokens; usage.cacheReadTokens += u.cacheReadTokens; usage.cacheWriteTokens += u.cacheWriteTokens; };
   const done = (outcome: 'ANSWERED' | 'REFUSAL' | 'MAX_TOKENS' | 'TOOL_CAP'): AssistantEvent => ({ type: 'done', usage: { ...usage }, providerRequestId, outcome });
 
+  let current: TurnState | null = null;
+  options.onUsageProbe?.(() => ({
+    inputTokens: usage.inputTokens + (current?.usage.inputTokens ?? 0),
+    outputTokens: usage.outputTokens + (current?.usage.outputTokens ?? 0),
+    cacheReadTokens: usage.cacheReadTokens + (current?.usage.cacheReadTokens ?? 0),
+    cacheWriteTokens: usage.cacheWriteTokens + (current?.usage.cacheWriteTokens ?? 0),
+  }));
+
   let wrote = false; let lastChar = '';
   for (let round = 0; round <= maxRounds; round += 1) {
     let res: Response;
@@ -419,6 +433,7 @@ export async function* runAssistant(turns: ChatTurn[], options: AssistantOptions
     }
     const blocks: ContentBlock[] = [];
     const state: TurnState = { stopReason: null, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, providerRequestId: null };
+    current = state;
     try {
       // Text from a later round (after a tool call) is a new sentence: never glue it to the last one ("more.You").
       let first = true;
@@ -438,6 +453,7 @@ export async function* runAssistant(turns: ChatTurn[], options: AssistantOptions
     }
     billed = true;
     add(state.usage);
+    current = null;
     providerRequestId = providerRequestId ?? state.providerRequestId;
     const toolUses = blocks.filter((b) => b.type === 'tool_use');
     if (state.stopReason === 'refusal') { yield { type: 'text', text: HANDOFF }; yield done('REFUSAL'); return; }
