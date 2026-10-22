@@ -42,7 +42,7 @@ async function loadSharp(): Promise<SharpFn | null> {
 }
 
 /**
- * One photo at a time in a process. A camera photo (24-45 MP) is decoded again for each of the 12 renditions and the
+ * One photo at a time in a process. A camera photo (24-45 MP) is decoded for the renditions and again for the
  * metadata strip, outside the JavaScript heap, in an API container limited to 512 MB that also serves checkout; two
  * uploads at once could take a replica down (2026-10-22 review). A finished one hands its place straight to the next.
  */
@@ -114,6 +114,11 @@ export class SharpVariantGenerator implements IMediaVariantGenerator {
       const sourceWidth = (quarterTurn ? meta.height : meta.width) ?? null;
       const sourceHeight = (quarterTurn ? meta.width : meta.height) ?? null;
       const variants: MediaVariantRecord[] = [];
+      // Decoded ONCE: upright and no wider than the largest rendition, as raw pixels. Each of the 12 renditions used to
+      // decode the full camera photo again (up to 50 MP); now they resize this copy (2048 px wide at most).
+      const largest = Math.max(...PURPOSE_WIDTHS.map((p) => p.width));
+      const base = await sharp(args.buffer, DECODE_LIMITS).rotate().resize({ width: largest, withoutEnlargement: true }).raw().toBuffer({ resolveWithObject: true });
+      const fromBase = () => sharp(base.data, { raw: { width: base.info.width, height: base.info.height, channels: base.info.channels } });
 
       for (const { purpose, width: purposeWidth } of PURPOSE_WIDTHS) {
         let width = purposeWidth;
@@ -127,7 +132,7 @@ export class SharpVariantGenerator implements IMediaVariantGenerator {
           else continue;
         }
         for (const { format, ext } of FORMATS) {
-          const pipeline = sharp(args.buffer, DECODE_LIMITS).rotate().resize({ width, withoutEnlargement: true });
+          const pipeline = fromBase().resize({ width, withoutEnlargement: true });
           const output =
             format === 'avif'
               ? await pipeline.avif({ quality: 55 }).toBuffer({ resolveWithObject: true })

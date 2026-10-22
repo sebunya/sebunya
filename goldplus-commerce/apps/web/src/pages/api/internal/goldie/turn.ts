@@ -54,7 +54,9 @@ export const POST: APIRoute = async ({ request }) => {
     channel, turns, requestId, page: null, principalHash: principal, addressHash: null,
     who: { visitToken: null, userId: null, fpClientId: null, verifiedPhone: phone },
     care: { bearer: null, clientAddress: null, site: SITE_ORIGIN, verifiedPhone: phone, channel, conversationKey: typeof b.conversationKey === 'string' ? b.conversationKey.slice(0, 128) : null, customerName: typeof b.name === 'string' ? b.name.slice(0, 80) : null },
-    apiKey: String(process.env.ANTHROPIC_API_KEY),
+    // The API gives up after GOLDIE_BRAIN_TIMEOUT_MS and sends its holding line: the turn stops with it (and its
+    // budget reservation is settled), rather than running on to an answer nobody will send.
+    apiKey: String(process.env.ANTHROPIC_API_KEY), signal: request.signal,
   });
   if (prepared.kind === 'refused') {
     // A busy or rate-limited moment still gets a human answer on the channel, never silence.
