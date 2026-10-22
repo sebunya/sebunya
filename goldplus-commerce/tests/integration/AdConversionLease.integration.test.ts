@@ -35,19 +35,15 @@ suite('ad conversion lease (real PostgreSQL)', () => {
   const deadline = async (id: string) => new Date((await raw`select next_attempt_at from outbox_events where id = ${id}`)[0].next_attempt_at).getTime();
 
   it('renews a row only while it carries this worker\'s deadline', async () => {
-    const claimedUntil = new Date(Date.now() + 5 * 60_000);
+    // Whole seconds: the app's driver binds a Date without its milliseconds (drizzle 0.29 on postgres.js), so the claim
+    // it writes and the deadline it compares are both whole seconds. A deadline written here with milliseconds would be
+    // later than the one the app compares with.
+    const claimedUntil = new Date(Math.floor((Date.now() + 5 * 60_000) / 1000) * 1000);
     const ours = await row('ours', { status: 'processing', nextAttemptAt: claimedUntil });
-    const renewed = await D.renewAdConversionLease(ours, claimedUntil);
-    if (!renewed) {
-      const { db } = await import('../../apps/api/src/infrastructure/db/client');
-      const { outboxEvents } = await import('../../apps/api/src/infrastructure/db/schema');
-      const { eq, sql } = await import('drizzle-orm');
-      const seen = await db.select().from(outboxEvents).where(eq(outboxEvents.id, ours));
-      const rawRow = (await raw`select status, is_processed, next_attempt_at::text as t, current_database() as d from outbox_events where id = ${ours}`)[0];
-      const drizzleDb = await db.execute(sql`select current_database() as d, now()::text as n`).catch((e: Error) => e.message);
-      throw new Error(`renew refused. raw: ${JSON.stringify(rawRow)} | drizzle sees: ${JSON.stringify(seen.map((r) => ({ status: r.status, isProcessed: r.isProcessed, next: r.nextAttemptAt })))} | drizzle db: ${JSON.stringify(drizzleDb)} | claimed ${claimedUntil.toISOString()}`);
-    }
-    expect(await deadline(ours)).toBeGreaterThanOrEqual(claimedUntil.getTime() - 1000);
+    expect(await D.renewAdConversionLease(ours, claimedUntil)).toBe(true);
+    expect(await deadline(ours)).toBeGreaterThanOrEqual(claimedUntil.getTime());
+    // Written by the app: whole seconds, as the comment above says.
+    expect((await deadline(ours)) % 1000).toBe(0);
 
     // The lease ran out and another worker claimed it: its deadline is there now, so this worker leaves the row.
     const taken = await row('taken', { status: 'processing', nextAttemptAt: new Date(Date.now() + 7 * 60_000) });
