@@ -32,11 +32,32 @@ async function loadSharp(): Promise<SharpFn | null> {
   if (sharpModule !== undefined) return sharpModule;
   try {
     sharpModule = (await import('sharp')).default;
+    // Every upload is new: libvips' cache would only hold the decoded photo's memory (outside the JS heap).
+    sharpModule.cache(false);
   } catch (err) {
     sharpModule = null;
     logger.warn({ err: (err as Error).message }, '[SharpVariantGenerator] sharp unavailable — storing originals only');
   }
   return sharpModule;
+}
+
+/**
+ * One photo at a time in a process. A camera photo (24-45 MP) is decoded again for each of the 12 renditions and the
+ * metadata strip, outside the JavaScript heap, in an API container limited to 512 MB that also serves checkout; two
+ * uploads at once could take a replica down (2026-10-22 review). A finished one hands its place straight to the next.
+ */
+let photoRunning = false;
+const photoWaiting: Array<() => void> = [];
+async function onePhotoAtATime<T>(work: () => Promise<T>): Promise<T> {
+  if (!photoRunning) photoRunning = true;
+  else await new Promise<void>((resolve) => photoWaiting.push(resolve));
+  try {
+    return await work();
+  } finally {
+    const next = photoWaiting.shift();
+    if (next) next();
+    else photoRunning = false;
+  }
 }
 
 export class SharpVariantGenerator implements IMediaVariantGenerator {
@@ -47,7 +68,11 @@ export class SharpVariantGenerator implements IMediaVariantGenerator {
    * orientation into the pixels first, and the ICC profile is kept so colours
    * do not shift. GIF (animation) and AVIF pass through unchanged.
    */
-  async stripMetadata(buffer: Buffer, mime: string): Promise<Buffer | null> {
+  stripMetadata(buffer: Buffer, mime: string): Promise<Buffer | null> {
+    return onePhotoAtATime(() => this.stripMetadataNow(buffer, mime));
+  }
+
+  private async stripMetadataNow(buffer: Buffer, mime: string): Promise<Buffer | null> {
     const format = mime === 'image/jpeg' ? 'jpeg' : mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : null;
     if (!format) return null;
     const sharp = await loadSharp();
@@ -65,7 +90,11 @@ export class SharpVariantGenerator implements IMediaVariantGenerator {
     }
   }
 
-  async generate(args: {
+  generate(args: Parameters<SharpVariantGenerator['generateNow']>[0]): Promise<{ width: number | null; height: number | null; variants: MediaVariantRecord[] }> {
+    return onePhotoAtATime(() => this.generateNow(args));
+  }
+
+  private async generateNow(args: {
     buffer: Buffer;
     mime: string;
     checksum: string;
