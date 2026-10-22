@@ -35,11 +35,15 @@ suite('ad conversion lease (real PostgreSQL)', () => {
   const deadline = async (id: string) => new Date((await raw`select next_attempt_at from outbox_events where id = ${id}`)[0].next_attempt_at).getTime();
 
   it('renews a row only while it carries this worker\'s deadline', async () => {
-    const claimedUntil = new Date(Date.now() + 5 * 60_000);
+    // Whole seconds: the app's driver binds a Date without its milliseconds (drizzle 0.29 on postgres.js), so the claim
+    // it writes and the deadline it compares are both whole seconds. A deadline written here with milliseconds would be
+    // later than the one the app compares with.
+    const claimedUntil = new Date(Math.floor((Date.now() + 5 * 60_000) / 1000) * 1000);
     const ours = await row('ours', { status: 'processing', nextAttemptAt: claimedUntil });
-    const stored = (await raw`select next_attempt_at::text as t, ${claimedUntil}::timestamptz::text as sent from outbox_events where id = ${ours}`)[0];
-    expect(await D.renewAdConversionLease(ours, claimedUntil), `stored ${stored.t}, claimed ${claimedUntil.toISOString()} (${stored.sent})`).toBe(true);
-    expect(await deadline(ours)).toBeGreaterThanOrEqual(claimedUntil.getTime() - 1000);
+    expect(await D.renewAdConversionLease(ours, claimedUntil)).toBe(true);
+    expect(await deadline(ours)).toBeGreaterThanOrEqual(claimedUntil.getTime());
+    // Written by the app: whole seconds, as the comment above says.
+    expect((await deadline(ours)) % 1000).toBe(0);
 
     // The lease ran out and another worker claimed it: its deadline is there now, so this worker leaves the row.
     const taken = await row('taken', { status: 'processing', nextAttemptAt: new Date(Date.now() + 7 * 60_000) });
