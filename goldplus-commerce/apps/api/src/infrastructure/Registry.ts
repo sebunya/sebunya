@@ -3543,6 +3543,8 @@ export class Registry {
         customerName: order.customerName,
         orderNumber: order.orderNumber,
         totalUgx: order.totalUgx,
+        // What is still to pay (the total less any gift card / store credit): the payment reminder asks for this.
+        amountDueUgx: order.amountDueUgx,
         // 0196: the gift card / store credit part, so payment messages and the receipt name the split.
         ...(order.storeCreditAppliedUgx > 0 ? {
           storeCreditAppliedUgx: order.storeCreditAppliedUgx,

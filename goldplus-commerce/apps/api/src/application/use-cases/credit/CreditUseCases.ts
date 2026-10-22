@@ -1,3 +1,4 @@
+import { isQuietHours } from '../../notifications/QuietHours';
 import { formatUgx } from '../../notifications/CustomerMessages';
 import type { CreditInstrumentView, ICreditRepository } from '../../ports/ICreditRepository';
 import { checkIssue, maskCreditCode, newCreditCode, normalizeCreditCode, type CreditKind } from '../../../domain/credit/CreditInstrument';
@@ -162,6 +163,7 @@ export class NotifyCardUsedUseCase {
 export class CreditExpiryRemindersUseCase {
   constructor(private readonly repo: ICreditRepository, private readonly sender: CreditNoticeSender) {}
   async execute(now: Date): Promise<{ due: number; sent: number }> {
+    if (isQuietHours(now)) return { due: 0, sent: 0 }; // held until 08:00 Kampala
     const due = await this.repo.expiringSoon(now, new Date(now.getTime() + 7 * 86_400_000), 200);
     let sent = 0;
     for (const c of due) {

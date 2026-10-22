@@ -56,7 +56,7 @@ describe('SendReviewRemindersUseCase', () => {
       { findDue: async () => ['a', 'b', 'c'] },
       async (id) => { if (id === 'b') throw new Error('db'); sent.push(id); },
     );
-    expect(await uc.execute(new Date())).toEqual({ due: 3, enqueued: 2, failed: 1 });
+    expect(await uc.execute(new Date('2026-10-19T09:00:00Z'))).toEqual({ due: 3, enqueued: 2, failed: 1 }); // noon Kampala
     expect(sent).toEqual(['a', 'c']);
   });
 
