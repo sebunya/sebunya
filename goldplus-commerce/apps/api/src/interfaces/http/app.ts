@@ -400,6 +400,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/measurement-delivery',
   '/advertising',
   '/account',
+  '/referrals',
   '/account/behavioural-interventions',
   '/account/consent-operating',
   '/account/surveys',
