@@ -6,6 +6,7 @@ import { normalisePhoneUg } from '../../apps/api/src/infrastructure/advertising/
 import { classifyPublicEndpoint } from '../../apps/api/src/domain/security/PublicEndpointPolicy';
 import { budgetedFormPath } from '../../apps/web/src/lib/publicFormLimiter';
 import { planTermsImport } from '../../apps/api/src/domain/quotes/BulkTermsImport';
+import { trustedEventTime } from '../../apps/api/src/application/use-cases/telemetry/TrackBrowserTelemetryEventUseCase';
 
 const read = (p: string) => readFileSync(resolve(__dirname, '../..', p), 'utf8');
 
@@ -48,5 +49,17 @@ describe('2026-10-22 review: small fixes', () => {
     expect(page).toMatch(/product\.retailPriceUgx/);
     expect(page).toMatch(/product\.availability\?\.kind/);
     expect(page).not.toMatch(/product\.stockStatus \|\| 'out_of_stock'/);
+  });
+
+  it('an admin sign-out from another site does not revoke every device (origin checked, as the customer one is)', () => {
+    expect(read('apps/web/src/pages/admin/logout.ts')).toMatch(/if \(token && checkRequestOrigin\(request,/);
+  });
+
+  it('a browser event time from a wrong phone clock is replaced by the time we received it (ad platforms drop it)', () => {
+    const now = Date.parse('2026-10-22T09:00:00Z');
+    const nowS = now / 1000;
+    expect(trustedEventTime(nowS - 120, now)).toBe(nowS - 120); // a two-minute-old beacon keeps its time
+    expect(trustedEventTime(nowS + 86_400, now)).toBe(nowS); // a day in the future
+    expect(trustedEventTime(nowS - 30 * 86_400, now)).toBe(nowS); // a month old
   });
 });

@@ -43,4 +43,11 @@ describe('bundles (gap #9)', () => {
     expect(admin).toContain('A bundle applies automatically, so it cannot have a coupon code.');
     expect(readFileSync(new URL('../../apps/web/src/pages/products/[slug].astro', import.meta.url), 'utf8')).toContain('data-bundle-add=');
   });
+
+  it('the product page asks for bundle products three at a time (the list answers at most three ids per call)', () => {
+    const page = readFileSync(new URL('../../apps/web/src/pages/products/[slug].astro', import.meta.url), 'utf8');
+    expect(page).toContain('for (let i = 0; i < ids.length; i += 3) batches.push(ids.slice(i, i + 3));');
+    const list = readFileSync(new URL('../../apps/api/src/application/use-cases/products/ListPublicProductsUseCase.ts', import.meta.url), 'utf8');
+    expect(list).toContain('opts.ids.slice(0, 3)'); // if this limit moves, the page's batch size must follow
+  });
 });

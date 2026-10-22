@@ -5,6 +5,19 @@ import type { CanonicalTelemetryEvent, BrowserTelemetryEvent } from '@goldplus/s
 
 const EVENT_TYPE_TELEMETRY = 'TELEMETRY_DISPATCH';
 
+/** How far a phone's clock may be from ours before its event time is replaced by the time we received it. */
+export const BROWSER_CLOCK_TOLERANCE_S = 10 * 60;
+/**
+ * The time an ad platform is told, in seconds. A phone with a wrong clock sent future or weeks-old times straight to
+ * Meta, TikTok, X and the rest; Meta refuses those (older than 7 days or in the future) and the event was
+ * dead-lettered. Only the v2 batch checked the skew; this path, the one the storefront actually uses, did not
+ * (2026-10-22). A time within ten minutes is kept; anything else becomes the moment we received it.
+ */
+export function trustedEventTime(eventTimeS: number, nowMs: number = Date.now()): number {
+  const nowS = Math.floor(nowMs / 1000);
+  return Math.abs(eventTimeS - nowS) <= BROWSER_CLOCK_TOLERANCE_S ? eventTimeS : nowS;
+}
+
 export class TrackBrowserTelemetryEventUseCase {
   async execute(
     event: BrowserTelemetryEvent,
@@ -14,6 +27,7 @@ export class TrackBrowserTelemetryEventUseCase {
   ): Promise<void> {
     const enrichedEvent: CanonicalTelemetryEvent = {
       ...event,
+      event_time: trustedEventTime(event.event_time),
       source: 'browser',
       user_data: {
         ...event.user_data,
