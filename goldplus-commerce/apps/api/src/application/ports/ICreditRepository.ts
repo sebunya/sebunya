@@ -39,6 +39,8 @@ export interface ICreditRepository {
   list(input: { limit: number; status?: string | null; kind?: CreditKind | null }): Promise<CreditInstrumentView[]>;
   forCustomer(userId: string): Promise<CreditInstrumentView[]>;
   /** An order a store credit is issued for (a refund as credit): its id, account and contact. */
+  /** Everything the order has had back (card returns + cash refunds + live credit issued for it) and its total. Optional for test doubles. */
+  refundedSoFarForOrder?(orderId: string): Promise<{ refundedUgx: number; totalUgx: number }>;
   orderForCredit(orderNumber: string): Promise<{ id: string; userId: string | null; name: string | null; phone: string | null } | null>;
   /** The card a paid order spent, with what is left on it (for the "card used" message). */
   cardSpentOnOrder(orderId: string): Promise<{ instrumentId: string; kind: CreditKind; last4: string; recipientPhone: string | null; balanceUgx: number; spentUgx: number; orderNumber: string; orderPhone: string | null } | null>;

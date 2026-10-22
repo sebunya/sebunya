@@ -2817,6 +2817,9 @@ export class Registry {
         idempotencyKey: `credit-issued:${instrumentId}`, relatedEntity: 'credit_instrument', relatedEntityId: instrumentId,
       });
     },
+  }, {
+    // A refund as credit claws back the order's points by its running refunded share, as a cash refund does.
+    execute: (input) => new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase).execute(input),
   });
   /** 0196: card messages that never carry the code (card used by someone else's order; a week before expiry). */
   private readonly creditNoticeSender = {

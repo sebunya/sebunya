@@ -26,7 +26,13 @@ const ISSUE_MESSAGES: Record<string, string> = {
 };
 
 export class IssueCreditUseCase {
-  constructor(private readonly repo: ICreditRepository, private readonly tools: CreditCodeTools, private readonly notifier: CreditIssuedNotifier | null) {}
+  constructor(
+    private readonly repo: ICreditRepository,
+    private readonly tools: CreditCodeTools,
+    private readonly notifier: CreditIssuedNotifier | null,
+    /** A refund as credit takes back the order's points like any refund (2026-10-22: it touched no loyalty at all). */
+    private readonly refundLoyalty?: { execute(input: { orderId: string; refundedShareBps: number; reason: string }): Promise<void> },
+  ) {}
 
   async execute(input: {
     kind: CreditKind; amountUgx: number; reason: string; recipientName?: string | null; recipientPhone?: string | null;
@@ -56,6 +62,14 @@ export class IssueCreditUseCase {
         let texted = false;
         if (status === 'active' && phone && this.notifier) {
           await this.notifier.send({ instrumentId: id, phone, kind: input.kind, valueUgx: input.amountUgx, code, recipientName: ((input.recipientName ?? '').trim() || forOrder?.name) ?? null }).then(() => { texted = true; }).catch(() => undefined);
+        }
+        if (status === 'active' && forOrder && this.refundLoyalty && this.repo.refundedSoFarForOrder) {
+          // Isolated: the credit exists already; points can be corrected by hand.
+          await this.repo.refundedSoFarForOrder(forOrder.id)
+            .then(({ refundedUgx, totalUgx }) => totalUgx > 0
+              ? this.refundLoyalty!.execute({ orderId: forOrder.id, refundedShareBps: Math.min(10_000, Math.floor((refundedUgx * 10_000) / totalUgx)), reason: 'Refunded as store credit' })
+              : undefined)
+            .catch(() => undefined);
         }
         return { ok: true, id, code, masked: maskCreditCode(code), status, texted };
       } catch (err) {

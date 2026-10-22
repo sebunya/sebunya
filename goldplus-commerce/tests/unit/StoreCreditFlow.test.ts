@@ -238,4 +238,19 @@ describe('store credit flow (gap #17)', () => {
     expect(texts[0]).toMatchObject({ phone: '+256772123456', recipientName: 'Amina N' });
     expect(await uc.execute({ kind: 'store_credit', amountUgx: 30_000, reason: 'Refund', orderNumber: 'GP-NOPE', actorId: 's' })).toMatchObject({ ok: false, code: 'BAD_ORDER' });
   });
+
+  it('a refund as store credit takes back the order\'s points by its running refunded share (2026-10-22)', async () => {
+    const shares: number[] = [];
+    const repo: any = {
+      orderForCredit: async () => ({ id: 'o1', userId: 'u1', name: 'Amina N', phone: '+256772123456' }),
+      issue: async () => ({ id: 'c1' }),
+      refundedSoFarForOrder: async () => ({ refundedUgx: 30_000, totalUgx: 120_000 }),
+    };
+    const uc = new IssueCreditUseCase(repo, tools, null, { execute: async (i) => { shares.push(i.refundedShareBps); } });
+    await uc.execute({ kind: 'store_credit', amountUgx: 30_000, reason: 'Refund for GP-202610-ABCD', orderNumber: 'GP-202610-ABCD', actorId: 's' });
+    expect(shares).toEqual([2_500]);
+    // A credit not linked to an order (a gift sold at the counter) touches no loyalty.
+    await uc.execute({ kind: 'gift_card', amountUgx: 30_000, reason: 'Sold at the counter', actorId: 's' });
+    expect(shares).toEqual([2_500]);
+  });
 });

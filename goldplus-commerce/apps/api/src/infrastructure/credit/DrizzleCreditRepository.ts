@@ -48,6 +48,16 @@ export async function holdStoreCreditInTx(
  * Every change to an instrument's money takes the instrument's row lock first (select … for update), so two
  * orders, an order and a void, or an order and a refund never interleave on one balance.
  */
+/**
+ * Everything an order has had back, in shillings: items returned to the gift card, cash refunded through Pesapal, and
+ * store credit issued for it (a refund as credit, still live or spent). Loyalty claws back by this running share.
+ */
+const refundedSoFarSql = (orderId: string) => sql`
+  select (select coalesce(sum(amount_ugx), 0) from credit_ledger where order_id = ${orderId} and type = 'RETURN')
+       + (select coalesce(sum(r.amount_ugx), 0) from payment_refunds r join payment_attempts a on a.id = r.payment_attempt_id
+           where a.order_id = ${orderId} and (r.status = 'settled' or (r.status = 'requested' and r.provider_status = ${PROVIDER_ACCEPTED_STATUS})))
+       + (select coalesce(sum(initial_value_ugx), 0) from credit_instruments where source_order_id = ${orderId} and status = 'active') as back`;
+
 export class DrizzleCreditRepository implements ICreditRepository {
   async issue(input: Parameters<ICreditRepository['issue']>[0]): Promise<{ id: string }> {
     return db.transaction(async (tx) => {
@@ -92,6 +102,12 @@ export class DrizzleCreditRepository implements ICreditRepository {
                            and length(regexp_replace(u.phone, '\\D', '', 'g')) >= 9
                            and right(regexp_replace(coalesce(i.recipient_phone, ''), '\\D', '', 'g'), 9) = right(regexp_replace(u.phone, '\\D', '', 'g'), 9)))
        order by i.created_at desc limit 50`)).map(view);
+  }
+
+  async refundedSoFarForOrder(orderId: string): Promise<{ refundedUgx: number; totalUgx: number }> {
+    const [back] = rowsOf(await db.execute(refundedSoFarSql(orderId)));
+    const [o] = rowsOf(await db.execute(sql`select total_amount from orders where id = ${orderId}`));
+    return { refundedUgx: Number(back?.back ?? 0), totalUgx: Number(o?.total_amount ?? 0) };
   }
 
   async orderForCredit(orderNumber: string): Promise<{ id: string; userId: string | null; name: string | null; phone: string | null } | null> {
@@ -239,10 +255,7 @@ export class DrizzleCreditRepository implements ICreditRepository {
       await guardedMeasurementWrite(tx as never, String(h.order_id), 'credit_return', (sp) => recordCardReturn(sp, String(ret.id), new Date()));
       // Everything the order has had back so far, card and cash together: loyalty claws back by the running share, so a
       // second return passing only its own slice took back nothing (2026-10-22).
-      const [back] = rowsOf(await tx.execute(sql`
-        select (select coalesce(sum(amount_ugx), 0) from credit_ledger where order_id = ${h.order_id} and type = 'RETURN')
-             + (select coalesce(sum(r.amount_ugx), 0) from payment_refunds r join payment_attempts a on a.id = r.payment_attempt_id
-                 where a.order_id = ${h.order_id} and (r.status = 'settled' or (r.status = 'requested' and r.provider_status = ${PROVIDER_ACCEPTED_STATUS}))) as back`));
+      const [back] = rowsOf(await tx.execute(refundedSoFarSql(String(h.order_id))));
       return { ok: true as const, instrumentId: String(h.instrument_id), leftUgx: left - amountUgx, orderId: String(h.order_id), orderTotalUgx: Number(h.total_amount), refundedSoFarUgx: Number(back?.back ?? amountUgx) };
     });
   }
