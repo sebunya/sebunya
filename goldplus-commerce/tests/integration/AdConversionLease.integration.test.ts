@@ -37,7 +37,8 @@ suite('ad conversion lease (real PostgreSQL)', () => {
   it('renews a row only while it carries this worker\'s deadline', async () => {
     const claimedUntil = new Date(Date.now() + 5 * 60_000);
     const ours = await row('ours', { status: 'processing', nextAttemptAt: claimedUntil });
-    expect(await D.renewAdConversionLease(ours, claimedUntil)).toBe(true);
+    const stored = (await raw`select next_attempt_at::text as t, ${claimedUntil}::timestamptz::text as sent from outbox_events where id = ${ours}`)[0];
+    expect(await D.renewAdConversionLease(ours, claimedUntil), `stored ${stored.t}, claimed ${claimedUntil.toISOString()} (${stored.sent})`).toBe(true);
     expect(await deadline(ours)).toBeGreaterThanOrEqual(claimedUntil.getTime() - 1000);
 
     // The lease ran out and another worker claimed it: its deadline is there now, so this worker leaves the row.

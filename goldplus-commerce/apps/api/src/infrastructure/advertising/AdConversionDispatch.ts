@@ -101,12 +101,13 @@ export async function fanOutAdConversions(event: CanonicalTelemetryEvent): Promi
 }
 
 /**
- * A claimed row is renewed just before its send, and only while its deadline is still the one this worker wrote.
- * false: the lease ran out and another worker took the row (its own deadline is there now), or it is finished.
+ * A claimed row is renewed just before its send, and only while its deadline is still no later than the one this worker
+ * wrote. Another worker can claim it only after that deadline has passed, and writes a later one; a finished or
+ * retrying row is no longer 'processing'. false: the row is not this worker's to send.
  */
 export async function renewAdConversionLease(id: string, claimedUntil: Date): Promise<boolean> {
   const won = await db.update(outboxEvents).set({ nextAttemptAt: new Date(Date.now() + LEASE_MS) })
-    .where(and(eq(outboxEvents.id, id), eq(outboxEvents.isProcessed, false), eq(outboxEvents.status, 'processing'), eq(outboxEvents.nextAttemptAt, claimedUntil)))
+    .where(and(eq(outboxEvents.id, id), eq(outboxEvents.isProcessed, false), eq(outboxEvents.status, 'processing'), lte(outboxEvents.nextAttemptAt, claimedUntil)))
     .returning({ id: outboxEvents.id });
   return won.length > 0;
 }
