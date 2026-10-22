@@ -100,7 +100,10 @@ export function prepareCheckoutPayload(formData: FormData, cartItems: CartItem[]
               ...(loc.gpsSource === 'device' || loc.gpsSource === 'pasted_link' || loc.gpsSource === 'map_place' ? { gpsSource: loc.gpsSource } : {}),
             }
           : null;
-        deliveryLocation = manualDistrict || pin ? { district: manualDistrict, displayLabel: deliveryArea.slice(0, 200), ...(pin ?? {}) } : null;
+        // No district picked: none is sent (the API refuses an empty one); the pin alone still reaches the order.
+        deliveryLocation = manualDistrict || pin
+          ? ({ ...(manualDistrict ? { district: manualDistrict } : {}), displayLabel: deliveryArea.slice(0, 200), ...(pin ?? {}) } as StructuredDeliveryLocation)
+          : null;
         return {
           customerDetails: {
             name: (formData.get('name') as string) || '',

@@ -428,6 +428,8 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
          deliveryAddress: [selectedAddress.areaDetails, values.deliveryAddress].filter(Boolean).join(' | '),
          // The same key the page quoted by, so the charge resolves on it too.
          deliveryLocation: { district: selectedAddress.district, areaSlug: selectedAddress.areaSlug ?? undefined },
+         // The API takes the address's own pin (the page never sees its coordinates).
+         savedAddressId: selectedAddress.id,
        };
      }
      // Owner decision 2026-10-16: always online (the server refuses pay on delivery unless switched back on).

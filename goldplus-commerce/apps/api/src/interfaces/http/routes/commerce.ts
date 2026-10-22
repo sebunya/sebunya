@@ -39,6 +39,28 @@ import { stitchInBackground } from '../../../infrastructure/first-party/stitchIn
 // Slice 3B: server-authoritative checkout input. Client prices/sku/names are
 // deliberately absent — only productId + quantity are trusted; extra fields
 // sent by older clients are stripped, never used.
+/**
+ * An order placed from a signed-in customer's saved address takes that address's pin (2026-10-22: it never did, so the
+ * rider got no map link and a learned with-pin time never applied). Only the customer's own address, only when the
+ * request carries no pin of its own; any failure leaves the location as sent.
+ */
+async function withSavedAddressPin<T extends { gpsLat?: number; district: string } | null | undefined>(
+  claims: { kind: string; principalId: string },
+  savedAddressId: string | null,
+  location: T,
+): Promise<T> {
+  if (!savedAddressId || claims.kind !== 'USER' || (location && typeof location.gpsLat === 'number')) return location;
+  const pin = await Registry.getInstance().addressRepo.pinForUser?.(claims.principalId, savedAddressId).catch(() => null);
+  if (!pin) return location;
+  return {
+    ...(location ?? { district: '' }),
+    gpsLat: pin.gpsLat, gpsLng: pin.gpsLng,
+    ...(pin.gpsAccuracyM !== null ? { gpsAccuracyM: pin.gpsAccuracyM } : {}),
+    ...(pin.gpsSource === 'device' || pin.gpsSource === 'pasted_link' || pin.gpsSource === 'map_place' ? { gpsSource: pin.gpsSource } : {}),
+    ...(pin.areaSlug && !(location as { areaSlug?: string } | null | undefined)?.areaSlug ? { areaSlug: pin.areaSlug } : {}),
+  } as T;
+}
+
 const checkoutBodySchema = z.object({
   customerDetails: z.object({
     name: z.string().trim().min(1).max(255),
@@ -48,6 +70,8 @@ const checkoutBodySchema = z.object({
     deliveryAddress: z.string().trim().min(1).max(255),
     // Collect from one of our own shops: the server checks it is an active shop collection point and charges no delivery.
     pickupPointId: z.string().uuid().nullable().optional(),
+    // The customer's own saved address the order is placed from: its pin (never shown to the browser) rides along.
+    savedAddressId: z.string().uuid().nullish(),
     deliveryLocation: z
       .object({
         // Canonicalised against the official district list. The old location
@@ -72,7 +96,10 @@ const checkoutBodySchema = z.object({
               .replace(/\s+/g, ' ')
               .replace(/\b\w/g, (ch) => ch.toUpperCase())
               .slice(0, 100);
-          }),
+          })
+          // Optional since 2026-10-22: written directions with a pin and no district picked carry only the pin (the
+          // district then comes from the typed area line, as for any order without a structured location).
+          .optional(),
         region: z.string().trim().max(100).optional(),
         areaSlug: z.string().trim().max(160).optional(),
         gpsLat: z.number().min(-2.5).max(5.5).optional(),
@@ -823,7 +850,18 @@ routes.post('/orders/create', async (c) => {
     // Derived server-side: a hidden form field would be caller-controlled.
     identity: checkoutOperationIdentity(claims, 'CREATE_ORDER', CHECKOUT_POLICY_VERSION),
     principalKey: intentPrincipalKey(claims),
-    customerDetails: body.customerDetails,
+    // A pin-only location (no district picked) carries an empty district: the order then takes it from the area
+    // line, as it does for any order without a structured location.
+    customerDetails: {
+      ...body.customerDetails,
+      deliveryLocation: await withSavedAddressPin(
+        claims,
+        body.customerDetails.savedAddressId ?? null,
+        body.customerDetails.deliveryLocation
+          ? { ...body.customerDetails.deliveryLocation, district: body.customerDetails.deliveryLocation.district ?? '' }
+          : body.customerDetails.deliveryLocation,
+      ),
+    },
     buyerType: body.buyerType,
     items: body.items,
     couponCode: body.couponCode ?? null,

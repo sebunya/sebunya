@@ -509,6 +509,21 @@ async function giftCardProofs(product: { id: string; priceUgx: number }): Promis
   check('the card is charged exactly the order total', (await cardState(full.id)).balance, 1_000_000 - Number(fullOrder?.totalAmount));
   check('and the hold is captured', (await cardState(full.id)).holds, ['captured']);
 
+  // -- 13b. Written directions with a pin and no district (2026-10-22) -------------
+  console.log('\n--- 13b. written directions with a pasted map pin, no district picked: the order is placed and keeps the pin');
+  await resetStub();
+  const pinJar = browserWithCart(product);
+  await get(pinJar, '/checkout');
+  const pinPhone = '+256700000903';
+  const pinSubmit = await postForm(pinJar, '/checkout', {
+    ...payFields, phone: pinPhone,
+    locationJson: JSON.stringify({ manual: true, rawAddressText: 'Behind the church, blue gate', gpsLat: 0.3501, gpsLng: 32.6101, gpsAccuracyM: 20, gpsSource: 'pasted_link' }),
+  });
+  if (pinSubmit.status !== 303) note(`unexpected status ${pinSubmit.status}; body excerpt: ${excerptError(pinSubmit.body)}`);
+  check('the order is placed (the customer is sent to pay)', pinSubmit.status, 303);
+  const [pinOrder] = await db.select().from(orders).where(eq(orders.customerPhone, pinPhone));
+  check('the order keeps the pin for the rider', Number((pinOrder?.deliveryLocation as { gpsLat?: number } | null)?.gpsLat), 0.3501);
+
   // -- 14. A wrong code: nothing ordered, nothing charged ----------------------
   console.log('\n--- 14. a wrong code orders nothing and charges nothing');
   await resetStub();
