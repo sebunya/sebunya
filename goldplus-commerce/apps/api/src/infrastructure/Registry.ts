@@ -204,7 +204,7 @@ import { HeroSignalsService } from './hero/HeroSignalsService';
 import { HeroTelemetryService } from './hero/HeroTelemetryService';
 import { DrizzleNavRepository } from './db/repositories/DrizzleNavRepository';
 import { NavContentService } from '../application/nav/NavContentService';
-import { resolveStorefrontDiscount } from '../application/pricing/StorefrontDiscountQuery';
+import { resolveStorefrontDiscount, storefrontPricingView } from '../application/pricing/StorefrontDiscountQuery';
 import { DrizzleBusinessInfoRepository } from './db/repositories/DrizzleBusinessInfoRepository';
 import { BusinessInfoService } from '../application/business/BusinessInfoService';
 import { DrizzleTaxonomyRepository } from './db/repositories/DrizzleTaxonomyRepository';
@@ -834,6 +834,8 @@ export class Registry {
   public readonly pricingQuoteRepo = new DrizzlePricingQuoteRepository();
   public readonly pricingCapacityRepo = new DrizzlePricingCapacityRepository();
   public readonly couponRepo = new DrizzleCouponRepository();
+  /** What the storefront may advertise: active promotions minus used-up and code-only ones (as checkout charges). */
+  public readonly storefrontPricingRepo = storefrontPricingView(this.pricingRepo, this.pricingCapacityRepo, this.couponRepo);
   public readonly reviewRepo = new DrizzleReviewRepository();
   public readonly creatorRepo = new DrizzleCreatorRepository();
   public readonly flashSaleRepo = new DrizzleFlashSaleRepository();
@@ -969,7 +971,7 @@ export class Registry {
   // Advertising operations (0154): audiences, spend import, offline conversions, catalogue feeds, checklist.
   public readonly advertisingOps = createAdvertisingOperations({
     audit: this.createAuditLogUseCase, destinations: this.advertising, feedProducts: () => this.seoGrowthRepo.feedProducts(),
-    pricingRepo: this.pricingRepo, publicApiOrigin: env.publicApiBaseUrl,
+    pricingRepo: this.storefrontPricingRepo, publicApiOrigin: env.publicApiBaseUrl,
     // Owner-defined segments reach ad platforms only through the first-party port (consent per member, hashes only).
     customSegments: () => ({ source: this.segmentAudienceSource, list: () => this.segmentRepo.list(false) }),
   });
@@ -1071,7 +1073,7 @@ export class Registry {
   public readonly deviceCatalogueUseCases = new DeviceCatalogueUseCases(this.deviceCatalogueRepo, this.auditRepo);
   public readonly batteryCompatibilityUseCases = new BatteryCompatibilityUseCases(this.batteryCompatibilityRepo, this.batteryCatalogueRepo, this.deviceCatalogueRepo, this.auditRepo);
   public readonly inventoryLedgerUseCases = new InventoryLedgerUseCases(this.inventoryLedgerRepo, this.batteryCatalogueRepo, this.auditRepo);
-  public readonly batteryFinderUseCases = new BatteryFinderUseCases(this.batteryFinderRepo, this.batteryCatalogueRepo, this.auditRepo, process.env.IDENTITY_HASH_PEPPER ?? '', this.pricingRepo);
+  public readonly batteryFinderUseCases = new BatteryFinderUseCases(this.batteryFinderRepo, this.batteryCatalogueRepo, this.auditRepo, process.env.IDENTITY_HASH_PEPPER ?? '', this.storefrontPricingRepo);
   public readonly batteryImportUseCases = new BatteryImportUseCases(
     this.batteryImportRepo,
     new XlsxSpreadsheetParser(),
@@ -1219,7 +1221,7 @@ export class Registry {
   public readonly deliveryZoneRepo = new DrizzleDeliveryZoneRepository();
   public readonly getPaymentReconciliationUseCase = new GetPaymentReconciliationUseCase(this.orderRepo, this.paymentRepo, this.pesapalPaymentRepo);
   public readonly searchDemandRepo = new DrizzleSearchDemandRepository();
-  public readonly suggestProductsUseCase = new SuggestProductsUseCase(this.productRepo, this.pricingRepo, () => this.taxonomyService.getPublicConfig());
+  public readonly suggestProductsUseCase = new SuggestProductsUseCase(this.productRepo, this.storefrontPricingRepo, () => this.taxonomyService.getPublicConfig());
   public readonly listPublishedPostsUseCase = new ListPublishedPostsUseCase(this.blogRepo);
   public readonly getPublishedPostUseCase = new GetPublishedPostUseCase(this.blogRepo);
   public readonly getPostForAdminUseCase = new GetPostForAdminUseCase(this.blogRepo);
@@ -2592,7 +2594,7 @@ export class Registry {
   // card prices — never a hand-typed deadline or figure in the slide row.
   public readonly heroContentService = new HeroContentService(
     this.heroRepo,
-    () => resolveStorefrontDiscount(this.pricingRepo),
+    () => resolveStorefrontDiscount(this.storefrontPricingRepo),
     // Same-day cutoff and closed days: business_info, the one authority the nav
     // and checkout read. Lazy, so declaration order does not matter.
     async () => {

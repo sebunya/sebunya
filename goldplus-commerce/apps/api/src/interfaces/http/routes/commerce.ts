@@ -318,7 +318,7 @@ routes.get('/storefront-copy', async (c) => {
 routes.get('/storefront-discount', async (c) => {
   // One resolver shared with the homepage hero, so the header clock, the card
   // prices and the hero sale slide can never disagree about the sale.
-  const data = await resolveStorefrontDiscount(registry.pricingRepo);
+  const data = await resolveStorefrontDiscount(registry.storefrontPricingRepo);
   return c.json({ success: true, data });
 });
 
