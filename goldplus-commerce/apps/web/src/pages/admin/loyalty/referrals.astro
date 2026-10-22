@@ -55,7 +55,7 @@ try {
 }
 
 const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleString("en-GB", { timeZone: "Africa/Kampala" }) : "—");
-const n = (v: number) => v.toLocaleString("en-UG");
+const n = (v: number) => new Intl.NumberFormat("en-UG").format(v);
 const pct = (a: number, b: number) => (b > 0 ? `${Math.round((a / b) * 100)}%` : "—");
 const HOLD: Record<string, string> = {
   MONTHLY_LIMIT: "More than 10 friends paid for this customer in 30 days",

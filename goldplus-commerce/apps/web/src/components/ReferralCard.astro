@@ -111,7 +111,8 @@ const STAGE_STYLE: Record<Invite['stage'], string> = {
   )}
 </section>
 
-{/* Share and copy: plain progressive enhancement, no framework (single-digit KB budget). */}
+{/* Share and copy: plain progressive enhancement, no framework (single-digit KB budget). The share text already
+    ends with the link, so no url is passed: passing it too printed the link twice in WhatsApp and SMS. */}
 <script nonce={Astro.locals.cspNonce} is:inline>
   (function () {
     var status = document.querySelector('[data-copy-status]');
@@ -124,7 +125,6 @@ const STAGE_STYLE: Record<Invite['stage'], string> = {
     if (share && navigator.share) {
       share.hidden = false;
       share.addEventListener('click', function () {
-        // The text already ends with the link: passing url too printed it twice in WhatsApp and SMS.
         navigator.share({ text: share.getAttribute('data-share-text') || '' }).catch(function () {});
       });
     }
