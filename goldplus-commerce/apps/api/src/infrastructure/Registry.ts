@@ -2949,7 +2949,9 @@ export class Registry {
           and not exists (
             select 1 from payment_attempts a
             where a.order_id = o.id
-              and a.status in ('pending', 'verification_pending', 'verification_failed')
+              -- 'completed': money the provider confirmed. Even if the order never moved (a crash between the
+              -- attempt write and the order transition), it is never cancelled or released by time.
+              and a.status in ('pending', 'verification_pending', 'verification_failed', 'completed')
           )
         order by o.created_at limit ${limit}`)) as unknown as Array<{
         id: string; orderNumber: string; status: string; createdAt: Date;
@@ -2971,7 +2973,9 @@ export class Registry {
           and not exists (
             select 1 from payment_attempts a
             where a.order_id = o.id
-              and a.status in ('pending', 'verification_pending', 'verification_failed')
+              -- 'completed': money the provider confirmed. Even if the order never moved (a crash between the
+              -- attempt write and the order transition), it is never cancelled or released by time.
+              and a.status in ('pending', 'verification_pending', 'verification_failed', 'completed')
           )
         order by o.created_at limit ${limit}`)) as unknown as Array<{
         id: string; orderNumber: string; createdAt: Date;

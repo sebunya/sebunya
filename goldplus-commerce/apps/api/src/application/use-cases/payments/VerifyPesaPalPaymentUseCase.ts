@@ -138,6 +138,34 @@ export class VerifyPesaPalPaymentUseCase {
         : false;
 
     if (attempt.status === 'completed' && !awaitingRefund) {
+      // The attempt says paid; the ORDER must say so too before a replay is answered "completed". Re-asserting the
+      // same transition with the same idempotency key is free when it already happened (the existing event comes
+      // back), finishes the job when a crash left it undone, and reports the conflict again when the order could
+      // not take it (cancelled before the money came). Answering from the attempt alone turned a reviewed late
+      // payment into "confirmed" on the very next callback, and left a crashed one unpaid until abandonment.
+      try {
+        await this.orderTransition.transition(attempt.orderId, 'processing', {
+          actorType: 'payment_provider',
+          source: 'payment',
+          reasonCode: 'pesapal_payment_completed',
+          paymentStatus: 'paid',
+          idempotencyKey: `pesapal:completed:${trackingId}`,
+          correlationId: reference,
+        });
+      } catch (err) {
+        if (err instanceof DomainError) {
+          return {
+            ok: true,
+            lifecycleConflict: true,
+            status: 'completed',
+            amount: attempt.amount,
+            currency: attempt.currency,
+            orderId: attempt.orderId,
+            message: `LIFECYCLE_CONFLICT: payment already completed but the order could not take it (${err.message}); left for manual review.`,
+          };
+        }
+        throw err;
+      }
       return {
         ok: true,
         status: 'completed',
