@@ -197,6 +197,20 @@ describe('ProcessOutboxBatchUseCase', () => {
     expect(attemptRepo.savedCount).toBe(1);
   });
 
+  it('an event whose lease another worker has taken is skipped, never sent a second time (2026-10-22)', async () => {
+    let sent = 0;
+    const fakeProvider: INotificationProvider = { dispatch: async () => { sent++; return { status: 'SENT', providerCode: 'OK', providerMessage: 'ok' }; } };
+    const { useCase, outbox } = setup([{ channel: 'sms', provider: fakeProvider, payload: { recipient: '0772000000', template: 'T', data: {}, relatedEntity: 'e', relatedEntityId: '1' } }]);
+    const mine = makeEvent();
+    const takenOver = makeEvent();
+    outbox.events.push(mine, takenOver);
+    (outbox as unknown as { renewLease: (id: string) => Promise<boolean> }).renewLease = async (id) => id === mine.id;
+    await useCase.execute();
+    expect(sent).toBe(1);
+    expect(mine.isProcessed).toBe(true);
+    expect(takenOver.isProcessed).toBe(false);
+  });
+
   it('Empty batch returns zero counts', async () => {
     const { useCase } = setup([]);
     const res = await useCase.execute();

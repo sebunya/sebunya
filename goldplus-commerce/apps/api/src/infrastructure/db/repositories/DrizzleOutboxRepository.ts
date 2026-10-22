@@ -87,6 +87,16 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
    * completion — so a worker whose lease had expired could still come back and
    * overwrite the outcome recorded by its successor.
    */
+  async renewLease(eventId: string, now: Date): Promise<boolean> {
+    const leaseExpiresAt = new Date(now.getTime() + LEASE_DURATION_MS);
+    const renewed = await db
+      .update(outboxEvents)
+      .set({ leaseExpiresAt, nextAttemptAt: leaseExpiresAt })
+      .where(and(eq(outboxEvents.id, eventId), eq(outboxEvents.workerId, this.workerId), eq(outboxEvents.isProcessed, false)))
+      .returning({ id: outboxEvents.id });
+    return renewed.length === 1;
+  }
+
   async claimDueBatch(
     now: Date,
     limit: number,

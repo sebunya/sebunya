@@ -115,6 +115,9 @@ export class ProcessOutboxBatchUseCase {
     }
 
     for (const event of events) {
+      // Still ours? A batch of slow sends can outlive its five-minute lease; the other replica then claims what is
+      // left and sends it. Renewing first means the late events are skipped here, never sent twice (2026-10-22).
+      if (this.outboxRepo.renewLease && !(await this.outboxRepo.renewLease(event.id, new Date()).catch(() => false))) continue;
       // Hoisted so the crash path below still knows what THIS attempt delivered.
       let sentNow: Set<string> | null = null;
       try {

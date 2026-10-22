@@ -58,6 +58,15 @@ suite('outbox events that carry a verification code (real PostgreSQL)', () => {
     expect(p._sentTargets).toEqual(['email']);
   });
 
+  it('a lease renewed before sending holds the event; one taken over by another worker is not renewed (2026-10-22)', async () => {
+    const id = await leased('CUSTOMER_ORDER_MESSAGE', { customerPhone: '+256772000222', message: 'x' });
+    expect(await repo.renewLease(id, new Date())).toBe(true);
+    const [held] = await raw`select next_attempt_at > now() + interval '4 minutes' as later from outbox_events where id = ${id}`;
+    expect(held.later).toBe(true);
+    await raw`update outbox_events set worker_id = 'the-other-replica' where id = ${id}`;
+    expect(await repo.renewLease(id, new Date())).toBe(false);
+  });
+
   it('a sent verification event keeps no code', async () => {
     const id = await leased('PHONE_VERIFICATION_REQUESTED', otp);
     expect(await repo.markProcessed(id)).toBe(true);
