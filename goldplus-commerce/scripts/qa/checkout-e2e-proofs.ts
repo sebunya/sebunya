@@ -542,6 +542,76 @@ async function giftCardProofs(product: { id: string; priceUgx: number }): Promis
   check('the code is kept on the form to correct', bad.body.includes('GPGC-AAAA-BBBB-CCCC'), true);
 
   await giftCardPurchaseProofs();
+  await referralProofs();
+}
+
+// ---------------------------------------------------------------------------
+// 0202: refer a friend through the real storefront — the short link, the welcome, nothing to type
+// ---------------------------------------------------------------------------
+
+async function signUp(jar: Jar, email: string, phone: string, referralCode = ''): Promise<Visit> {
+  return postForm(jar, '/register', { email, phone, password: 'Harness-pass-123', confirmPassword: 'Harness-pass-123', referralCode });
+}
+
+async function referralProofs(): Promise<void> {
+  console.log('\n--- 16. refer a friend: link, welcome, sign-up with nothing typed, the referrer sees them');
+  const hadConfig = rowsOf(await db.execute(sql`select count(*)::int as n from loyalty_config`))[0].n > 0;
+  if (!hadConfig) await db.execute(sql`insert into loyalty_config (enabled, kill_switch, referral_referrer_points, referral_referee_points) values (true, false, 200, 100)`);
+  else await db.execute(sql`update loyalty_config set enabled = true, kill_switch = false, referral_referrer_points = 200, referral_referee_points = 100`);
+
+  const referrer = new Jar();
+  const signedUp = await signUp(referrer, 'referrer-e2e@goldplus.test', '0700000981');
+  check('the referrer signs up', signedUp.status, 303);
+  const rewards = await get(referrer, '/account/rewards');
+  const code = rewards.body.match(/data-referral-code[^>]*>([A-Z0-9]{4,12})</)?.[1] ?? '';
+  check('their invite card shows their code', code.length >= 4, true);
+  check('the copy button carries the short /r/ link', rewards.body.includes(`/r/${code}?via=copy`), true);
+  // WhatsApp and SMS carry the link inside their own (encoded) message.
+  check('WhatsApp and SMS send the same short link', rewards.body.includes(encodeURIComponent(`/r/${code}?via=whatsapp`)) && rewards.body.includes(encodeURIComponent(`/r/${code}?via=sms`)), true);
+
+  // A link preview (WhatsApp drawing the card) is not a person.
+  const preview = await fetch(`${WEB}/r/${code}?via=whatsapp`, { headers: { 'user-agent': 'WhatsApp/2.24.1.0 A' }, redirect: 'manual' });
+  check('a link preview is redirected to the welcome', preview.status, 302);
+  const opensBefore = rowsOf(await db.execute(sql`select count(*)::int as n from loyalty_referral_visits where code = ${code}`))[0].n;
+  check('a link preview is not counted as an open', opensBefore, 0);
+
+  const friend = new Jar();
+  const opened = await get(friend, `/r/${code.toLowerCase()}?via=whatsapp`);
+  check('the friend is sent to the welcome page', opened.status, 302);
+  check('tagged as a friend\'s invite for the channel report', /^\/invite\?code=[A-Z0-9]+&utm_source=customer_invite&utm_medium=friend/.test(opened.location ?? ''), true);
+  check('the invite is remembered in this browser', friend.has('gp_ref'), true);
+  const visits = rowsOf(await db.execute(sql`select how, opens from loyalty_referral_visits where code = ${code}`));
+  check('the open is counted once, by the button used', visits.map((v) => `${v.how}:${v.opens}`).join(','), 'whatsapp:1');
+  const welcome = await get(friend, opened.location ?? '/invite');
+  check('the welcome says who invited them', welcome.status === 200 && /invited you to GoldPlus/.test(welcome.body), true);
+  check('it offers one button to join', welcome.body.includes('data-invite-join'), true);
+  const register = await get(friend, '/register');
+  check('the sign-up form is filled in from the link', register.body.includes(`value="${code}"`), true);
+
+  // The friend clears the field (as a Google sign-up would never send it): the remembered invite still counts.
+  const joined = await signUp(friend, 'friend-e2e@goldplus.test', '0700000982', '');
+  check('the friend signs up', joined.status, 303);
+  const next = await get(friend, joined.location ?? '/account');
+  check('the next page says the invite is on their account', next.body.includes('data-invite-note') && /Your friend(?:'|&#39;|&#x27;)s invite is on your account/.test(next.body), true);
+  check('the remembered invite is then forgotten', friend.has('gp_ref'), false);
+  const ref = rowsOf(await db.execute(sql`select r.status, r.source from loyalty_referrals r join users u on u.id = r.referee_user_id where u.email = 'friend-e2e@goldplus.test'`))[0];
+  check('one pending referral, from the link', `${ref?.status}/${ref?.source}`, 'pending/link');
+  const card = await get(referrer, '/account/rewards');
+  check('the referrer sees the friend joined', card.body.includes('Joined. Waiting for their first order'), true);
+
+  console.log('\n--- 17. a wrong code is explained, and a code can be added later');
+  const typo = new Jar();
+  const t = await signUp(typo, 'typo-e2e@goldplus.test', '0700000983', 'GP NOPE99');
+  const afterTypo = await get(typo, t.location ?? '/account');
+  check('a code that does not exist is explained on the next page', /invite code was not found/.test(afterTypo.body), true);
+  const added = await postForm(typo, '/account/invite-code', { code: code.toLowerCase(), returnTo: '/account/rewards' });
+  check('adding the right code later redirects back to the card', added.status === 303 && (added.location ?? '').startsWith('/account/rewards'), true);
+  const afterAdd = await get(typo, '/account/rewards');
+  check('and says it is on their account', afterAdd.body.includes('data-invite-note') && /Your friend(?:'|&#39;|&#x27;)s invite is on your account/.test(afterAdd.body), true);
+  const own = await postForm(referrer, '/account/invite-code', { code, returnTo: '/account/rewards' });
+  const afterOwn = await get(referrer, own.location ?? '/account/rewards');
+  check('their own code is refused, with the reason', /your own invite code/.test(afterOwn.body), true);
+  if (!hadConfig) await db.execute(sql`delete from loyalty_config`);
 }
 
 // ---------------------------------------------------------------------------
