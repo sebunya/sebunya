@@ -94,6 +94,9 @@ export function planTermsImport(input: string, current: CurrentTerms[]): TermsIm
       else if (/^(piece|pieces|pcs?|unit|units)$/.test(unitCell)) bulkUnit = 'piece';
       else return problem('Sold by must be carton or piece.');
     }
+    // Comma-separated with a thousands comma in a number ("50, 21,000") splits into five cells and the price read
+    // as UGX 21. Four columns at most; anything beyond is a number cut in two (2026-10-22).
+    if (c.length > 4 && c.slice(4).some((x) => x !== '')) return problem('Too many columns: write numbers without commas (21000), or paste straight from the sheet.');
     let unitsPerCarton = product.unitsPerCarton;
     if (c[2]) {
       const n = wholeNumber(c[2]);

@@ -28,7 +28,8 @@ export interface ICareDeskRepository {
   /** Runs `fn` while holding the shop-wide paging lock (both replicas), so the paging limits cannot be raced. */
   withAlertLock<R>(fn: () => Promise<R>): Promise<R>;
   /** The newest task (any status) whose title starts with `prefix`, for the health watchdog's dedupe. */
-  lastTitled(prefix: string): Promise<{ status: CareStatus; createdAt: Date } | null>;
+  /** The newest task whose title starts with `prefix` (or, with `exact`, is exactly it). */
+  lastTitled(prefix: string, opts?: { exact?: boolean }): Promise<{ status: CareStatus; createdAt: Date } | null>;
   /** Urgent open tasks nobody has taken that already paged people (health alarms excluded), with their escalation state. */
   urgentUntaken(limit: number): Promise<Array<CareTaskRow & { escalations: number; lastEscalatedAt: Date | null }>>;
   markEscalated(id: string): Promise<void>;

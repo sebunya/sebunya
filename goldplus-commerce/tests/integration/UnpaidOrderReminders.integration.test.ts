@@ -73,6 +73,28 @@ describeIf('unpaid order reminders (real PostgreSQL)', () => {
     for (const no of [tooSoon, tooOld, offline, paid, cancelled, clearing, verifying]) expect(list).not.toContain(no);
   });
 
+  it('reminds the common cases the first version missed, and still never asks for money a card covers (2026-10-22)', async () => {
+    // A payment page opened at checkout and never finished: pending, but the provider has said nothing for 2 hours.
+    const leftOnThePage = await order({ minutesAgo: 120 });
+    await raw`insert into payment_attempts (order_id, merchant_reference, amount, status, created_at)
+              values (${leftOnThePage}, ${`UR-${leftOnThePage}-stale`}, 50000, 'pending', ${new Date(now.getTime() - 120 * MIN)})`;
+    // The Mobile Money prompt was declined.
+    const declined = await order({ minutesAgo: 90, payment: 'failed' });
+    // A gift card covers the whole order (its settlement failed and left it unpaid): nothing to ask for.
+    const covered = await order({ minutesAgo: 90 });
+    await raw`update orders set store_credit_applied_ugx = total_amount where id = ${covered}`;
+    // The provider spoke about this one ten minutes ago: still clearing.
+    const justHeard = await order({ minutesAgo: 120 });
+    await raw`insert into payment_attempts (order_id, merchant_reference, amount, status, created_at, ipn_received_at)
+              values (${justHeard}, ${`UR-${justHeard}-ipn`}, 50000, 'pending', ${new Date(now.getTime() - 120 * MIN)}, ${new Date(now.getTime() - 10 * MIN)})`;
+
+    const list = await due();
+    expect(list).toContain(leftOnThePage);
+    expect(list).toContain(declined);
+    expect(list).not.toContain(covered);
+    expect(list).not.toContain(justHeard);
+  });
+
   it('skips an order the same phone followed with a newer one', async () => {
     const phone = `+2567099${tag.slice(-5)}`;
     const older = await order({ minutesAgo: 180, phone });

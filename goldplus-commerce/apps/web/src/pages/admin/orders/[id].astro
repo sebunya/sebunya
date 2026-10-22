@@ -62,6 +62,16 @@ if (Astro.request.method === 'POST') {
       } else {
         actionError = json?.error?.message || 'The refund could not be resolved.';
       }
+    } else if (action === 'complete_delivered') {
+      // The rider delivered (the task says Delivered) but the order never followed (2026-10-22).
+      const orderId = formData.get('orderId')?.toString().trim() || '';
+      const res = await fetch(`${apiBase}/admin/fulfilment/by-order/${encodeURIComponent(orderId)}/complete-delivered`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success) actionSuccess = 'The order now says delivered, matching the delivery the rider made.';
+      else actionError = json?.error?.message || 'The order could not be moved to delivered.';
     } else if (action === 'note') {
       const note = formData.get('note')?.toString().trim() || '';
       const res = await fetch(`${apiBase}/admin/orders/${id}/note`, {
@@ -107,6 +117,7 @@ let refundsLoaded = false;
 // link to a real-format stranger's number.
 let loadError: { title: string; detail: string } | null = null;
 let fulfilmentTaskId: string | null = null;
+let fulfilmentTaskStatus = '';
 // Place memory: what riders learned the last times we delivered to this customer in this area (our own records).
 let placeMemory: null | { deliveredBefore: number; riderLine: string | null; handoverPin: { lat: number; lng: number; accuracyM: number | null; orderNumber: string } | null } = null;
 
@@ -134,7 +145,7 @@ try {
       try {
         const fr = await fetch(`${apiBase}/admin/fulfilment/by-order/${encodeURIComponent(order.id)}`, { headers: { Authorization: `Bearer ${token}` } });
         const fj = fr.ok ? await fr.json().catch(() => null) : null;
-        if (fj?.success && typeof fj.data?.id === 'string') fulfilmentTaskId = fj.data.id;
+        if (fj?.success && typeof fj.data?.id === 'string') { fulfilmentTaskId = fj.data.id; fulfilmentTaskStatus = String(fj.data.status ?? ''); }
       } catch { /* the link is a convenience */ }
       try {
         const pr = await fetch(`${apiBase}/admin/orders/${encodeURIComponent(order.id)}/place-memory`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(3000) });
@@ -1033,6 +1044,16 @@ const customerHref = order?.userId ? `/admin/customers/${encodeURIComponent(orde
                 </span>
               </div>
             </div>
+
+            {/* The rider delivered but the order never followed (2026-10-22): one button brings it up to date. */}
+            {fulfilmentTaskStatus === 'DELIVERED' && !['delivered', 'completed', 'cancelled', 'failed'].includes(currentStatus) && (
+              <form method="POST" class="bg-amber-50 border border-amber-200 p-4 rounded-xl text-xs text-amber-900 space-y-3">
+                <input type="hidden" name="action" value="complete_delivered" />
+                <input type="hidden" name="orderId" value={order.id} />
+                <p class="font-medium">The rider's delivery is recorded on the fulfilment task, but this order still says <strong>{currentStatus.replace(/_/g, ' ')}</strong>.</p>
+                <button type="submit" class="w-full bg-brand-dark hover:bg-black text-white text-xs font-black py-3 rounded-xl">Mark the order delivered</button>
+              </form>
+            )}
 
             {/* Transition Controls Form */}
             {dispatchOnTask && (

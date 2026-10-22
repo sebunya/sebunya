@@ -1,4 +1,6 @@
 import type { IPricingRepository } from '../ports/IPricingRepository';
+import type { IPricingCapacityRepository } from '../ports/IPricingCapacityRepository';
+import type { ICouponRepository } from '../ports/ICouponRepository';
 
 /**
  * The ONE storefront-wide discount the shop may advertise, or nothing.
@@ -64,4 +66,29 @@ export async function resolveStorefrontDiscount(
   } catch {
     return INACTIVE_DISCOUNT;
   }
+}
+
+/**
+ * The promotions a SHOPPER WITHOUT A CODE can be charged, as checkout decides it (EvaluateCartPricingUseCase): a
+ * version whose usage limit is used up, or whose promotion has batch codes (so it needs one), is left out. Every
+ * storefront surface (header clock, card and product prices, JSON-LD, the Merchant/Meta feeds, hero, search,
+ * battery finder) reads the discount through this view, so a "first 100 orders" sale stops being advertised when the
+ * 100th order takes it, instead of showing a price the basket no longer charges (found 2026-10-22).
+ */
+export function storefrontPricingView(
+  pricing: IPricingRepository,
+  capacity: Pick<IPricingCapacityRepository, 'exhaustedVersionIds'>,
+  coupons: Pick<ICouponRepository, 'definitionsWithActiveCodes'>,
+): IPricingRepository {
+  const view: IPricingRepository = Object.create(pricing);
+  view.listActiveVersions = async (now: Date) => {
+    const listed = await pricing.listActiveVersions(now);
+    if (!listed.length) return listed;
+    const [exhausted, gated] = await Promise.all([
+      capacity.exhaustedVersionIds({ versionIds: listed.map(({ version }) => version.id), couponReferenceHash: null, now }),
+      coupons.definitionsWithActiveCodes([...new Set(listed.map(({ definition }) => definition.id))]),
+    ]);
+    return listed.filter(({ definition, version }) => !exhausted.has(version.id) && !gated.has(definition.id));
+  };
+  return view;
 }

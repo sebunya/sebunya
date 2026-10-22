@@ -55,3 +55,15 @@ describe('shop filters (gap #5)', () => {
     expect(page).toContain("const shelfChanged = 'search' in overrides || 'category' in overrides || 'subcategory' in overrides;");
   });
 });
+
+describe('the price filter and sort use the price the card shows (2026-10-22)', () => {
+  it('during a sale a 21,000 product shown at 18,900 is "Under UGX 20,000" and sorts by 18,900', async () => {
+    const { sortDiscoveryProducts } = await import('../../apps/web/src/lib/product-discovery');
+    const items = [p('a', 21_000, []), p('b', 19_500, [])];
+    const salePrice = (x: { retailPriceUgx: number }) => (x.retailPriceUgx === 21_000 ? 18_900 : x.retailPriceUgx);
+    const under = applyShopFacets(items, { price: ['under-20k'], specs: {} }, salePrice as never);
+    expect(under.map((x: any) => x.id).sort()).toEqual(['a', 'b']);
+    expect(applyShopFacets(items, { price: ['under-20k'], specs: {} }).map((x: any) => x.id)).toEqual(['b']); // regular price
+    expect(sortDiscoveryProducts(items, 'price-low-high', undefined, [], salePrice as never).map((x: any) => x.id)).toEqual(['a', 'b']);
+  });
+});

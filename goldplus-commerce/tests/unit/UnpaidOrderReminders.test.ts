@@ -50,8 +50,12 @@ describe('unpaid order reminder', () => {
 
   it('the query never reminds an order whose payment is clearing, paid, or already reminded', () => {
     const q = read('apps/api/src/infrastructure/commerce/DrizzleUnpaidOrderReminderCandidates.ts');
-    expect(q).toContain("a.status in ('pending', 'verification_pending', 'completed')");
-    expect(q).toContain("o.payment_status = 'unpaid'");
+    // A pending attempt clears only while the provider is still speaking about it (2026-10-22: every abandoned
+    // payment page used to block the reminder); declined orders are reminded too; a card-covered order never is.
+    expect(q).toContain("a.status in ('verification_pending', 'completed')");
+    expect(q).toContain("greatest(a.created_at, a.ipn_received_at, a.callback_received_at) > now() - interval '30 minutes'");
+    expect(q).toContain("o.payment_status in ('unpaid', 'failed')");
+    expect(q).toContain('o.total_amount > o.store_credit_applied_ugx');
     expect(q).toContain("':ORDER_PAYMENT_REMINDER'");
   });
 

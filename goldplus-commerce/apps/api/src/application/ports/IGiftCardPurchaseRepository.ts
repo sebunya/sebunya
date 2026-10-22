@@ -8,6 +8,19 @@ export interface GiftCardFace {
   message: string | null;
   /** What the card was worth when given (never the balance): the holder may choose to show it when sharing. */
   originalUgx: number;
+  /** 0201: the buyer's photo, when there is one. */
+  photoId: string | null;
+}
+
+/**
+ * create(): the photo the form names cannot go on this purchase (it is gone, too old to claim, or on another buyer's
+ * purchase). Nothing was written. The buyer is asked to add the photo again.
+ */
+export class GiftCardPhotoUnavailableError extends Error {
+  constructor() {
+    super('GIFT_CARD_PHOTO_UNAVAILABLE');
+    this.name = 'GiftCardPhotoUnavailableError';
+  }
 }
 
 /** 0199: a gift card bought online (domain/credit/GiftCardPurchase.ts). */
@@ -33,6 +46,8 @@ export interface GiftCardPurchaseRecord {
   confirmationCode: string | null;
   paymentMethod: string | null;
   instrumentId: string | null;
+  /** 0201: the buyer's photo, when they added one (and staff have not removed it). */
+  photoId: string | null;
   /** The issued card's last four, when issued. */
   cardLast4: string | null;
   /**
@@ -58,7 +73,17 @@ export interface GiftCardOutboxMessage {
 }
 
 export interface IGiftCardPurchaseRepository {
-  create(input: Omit<GiftCardPurchaseRecord, 'id' | 'status' | 'orderTrackingId' | 'redirectUrl' | 'providerStatus' | 'confirmationCode' | 'paymentMethod' | 'instrumentId' | 'cardLast4' | 'textStatus' | 'createdAt' | 'paidAt' | 'issuedAt'>): Promise<GiftCardPurchaseRecord>;
+  /**
+   * The purchase, and (when photoId is given) its photo, in one transaction (0201):
+   *  - an unclaimed upload made after `photoClaimableAfter` is claimed for it;
+   *  - a photo already on one of this buyer's purchases (the same phone) is copied for it, so trying again after a
+   *    failed or cancelled payment keeps the photo, and the first purchase keeps its own;
+   *  - anything else throws GiftCardPhotoUnavailableError and nothing is written.
+   */
+  create(
+    input: Omit<GiftCardPurchaseRecord, 'id' | 'status' | 'orderTrackingId' | 'redirectUrl' | 'providerStatus' | 'confirmationCode' | 'paymentMethod' | 'instrumentId' | 'cardLast4' | 'textStatus' | 'createdAt' | 'paidAt' | 'issuedAt'>,
+    opts: { photoClaimableAfter: Date },
+  ): Promise<GiftCardPurchaseRecord>;
   byReference(reference: string): Promise<GiftCardPurchaseRecord | null>;
   byTrackingId(trackingId: string): Promise<GiftCardPurchaseRecord | null>;
   /** The provider transaction opened for this purchase (once; a second call changes nothing). */
@@ -108,5 +133,13 @@ export interface IGiftCardPurchaseRepository {
    * Staff: the money goes back to the buyer. Paid/issued/review -> refunded. `unissuedOnly`: only while no card
    * exists (closes a scheduled purchase before its card can be issued).
    */
+  /**
+   * One refund request at a time per purchase: claims it (false when another request holds the claim, younger than ten
+   * minutes). A double click sent the same refund to Pesapal twice while the purchase still read 'issued' (2026-10-22).
+   * Optional so test doubles construct unchanged.
+   */
+  claimRefund?(id: string, note: string): Promise<boolean>;
+  /** Gives the claim back after a refund Pesapal did not take, so staff can try again. */
+  releaseRefundClaim?(id: string, note: string): Promise<void>;
   markRefunded(id: string, note: string, opts?: { unissuedOnly?: boolean }): Promise<boolean>;
 }

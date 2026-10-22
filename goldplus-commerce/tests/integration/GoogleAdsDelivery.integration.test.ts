@@ -161,4 +161,30 @@ suite('Google Ads conversions through the Data Manager API (real PostgreSQL)', (
     expect(await M.deliverOne(i.delivery_id, i.enqueue_generation, fetchImpl)).toBe('ACCEPTED');
     expect(JSON.parse(calls[0].init.body).events[0].userProperties).toEqual({ customerType: 'NEW' });
   });
+
+  it('Google is asked how the upload ended: a rejection after acceptance marks the delivery failed (2026-10-22)', async () => {
+    const o = await paidGoogleOrder('0772555404');
+    const i = await dueIntent(o.id, 'ad:google_ads:purchase');
+    expect(await M.deliverOne(i.delivery_id, i.enqueue_generation, recorder().fetchImpl)).toBe('ACCEPTED');
+    const [a] = await raw`select safe_response from measurement.delivery_attempt where delivery_id = ${i.delivery_id} order by attempt_no desc limit 1`;
+    expect(a.safe_response).toMatchObject({ googleRequestId: 'req-1', googleConfirmation: 'WAITING' });
+    // Old enough to ask about (Google is given two minutes first).
+    await raw`update measurement.delivery_attempt set started_at = now() - interval '5 minutes' where delivery_id = ${i.delivery_id}`;
+    const asked: string[] = [];
+    const status = (async (url: string) => {
+      asked.push(String(url));
+      return new Response(JSON.stringify({ requestStatusPerDestination: [{ requestStatus: 'FAILED', errorInfo: { errorCounts: [{ reason: 'INVALID_GCLID', recordCount: '1' }] } }] }), { status: 200 });
+    }) as any;
+    const r = await M.confirmGoogleUploads(status, 100);
+    expect(r.failed).toBeGreaterThanOrEqual(1);
+    expect(asked.some((u) => u.includes('requestStatus:retrieve?requestId=req-1'))).toBe(true);
+    const [intent] = await raw`select state, state_reason from measurement.delivery_intent where delivery_id = ${i.delivery_id}`;
+    expect(intent.state).toBe('DEAD_LETTER');
+    expect(intent.state_reason).toMatch(/GOOGLE_PROCESSING_FAILED: INVALID_GCLID: 1/);
+    // Asked once: the second sweep finds nothing waiting for it.
+    asked.length = 0;
+    await M.confirmGoogleUploads(status, 100);
+    expect(asked.some((u) => u.includes(i.delivery_id))).toBe(false);
+  });
 });
+

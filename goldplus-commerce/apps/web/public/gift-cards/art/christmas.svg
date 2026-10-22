@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="An ornament hanging from a sprig of foliage, a star above">
+  <!-- Christmas: one ornament hanging from a sprig, a small star above. Drawn for a black field. -->
+  <path d="M100 8 L105 20 L118 21 L108 29 L111 42 L100 35 L89 42 L92 29 L82 21 L95 20 Z" fill="#FFFFFF"/>
+  <path d="M100 58 C84 44 60 44 46 56 C62 66 84 66 100 58 Z" fill="#96CC06"/>
+  <path d="M100 58 C116 44 140 44 154 56 C138 66 116 66 100 58 Z" fill="#96CC06"/>
+  <path d="M100 58 C94 44 96 32 100 24 C104 32 106 44 100 58 Z" fill="#96CC06"/>
+  <line x1="100" y1="58" x2="100" y2="80" stroke="#FFFFFF" stroke-width="4"/>
+  <rect x="88" y="78" width="24" height="16" rx="3" fill="#FFFFFF"/>
+  <circle cx="100" cy="140" r="50" fill="#96CC06"/>
+  <rect x="50" y="128" width="100" height="22" fill="#000000"/>
+  <g fill="#FFFFFF"><circle cx="70" cy="139" r="4"/><circle cx="88" cy="139" r="4"/><circle cx="106" cy="139" r="4"/><circle cx="124" cy="139" r="4"/><circle cx="142" cy="139" r="3"/></g>
+  <path d="M70 112 A38 38 0 0 1 96 100" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+</svg>

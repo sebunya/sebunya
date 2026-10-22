@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { clearRefreshCookie, clearSessionCookie, readSessionToken } from '../../lib/session';
 import { apiBase } from '../../lib/api';
+import { checkRequestOrigin } from '../../lib/requestOrigin';
 
 /**
  * Administrative sign-out, done where it can actually work.
@@ -25,7 +26,10 @@ import { apiBase } from '../../lib/api';
 export const POST: APIRoute = async ({ request }) => {
   const token = readSessionToken(request);
 
-  if (token) {
+  // Revoking EVERY device is done only for a request from the shop itself (as the customer sign-out does): any other
+  // site could otherwise link a staff member here and sign them out everywhere (2026-10-22). This browser's cookies are
+  // still cleared either way.
+  if (token && checkRequestOrigin(request, import.meta.env as unknown as Record<string, string | undefined>).allowed) {
     try {
       await fetch(`${apiBase}/auth/logout-all`, {
         method: 'POST',

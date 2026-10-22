@@ -1,5 +1,7 @@
 import type { IPesaPalClient } from '../../ports/IPesaPalClient';
-import type { GiftCardOutboxMessage, GiftCardPurchaseRecord, IGiftCardPurchaseRepository } from '../../ports/IGiftCardPurchaseRepository';
+import {
+  GiftCardPhotoUnavailableError, type GiftCardOutboxMessage, type GiftCardPurchaseRecord, type IGiftCardPurchaseRepository,
+} from '../../ports/IGiftCardPurchaseRepository';
 import type { ICreditRepository } from '../../ports/ICreditRepository';
 import type { CreditCodeTools } from './CreditUseCases';
 import { newCreditCode } from '../../../domain/credit/CreditInstrument';
@@ -7,6 +9,7 @@ import {
   GIFT_CARD_DAILY_STARTS_PER_BUYER, GIFT_CARD_DAILY_UGX_PER_BUYER, checkGiftCardPurchase, giftCardPurchaseReference,
   isGiftCardPurchaseReference, isUgandanMobile, maskPhone, maskPhoneForSms, scheduledSendDue, type GiftCardField, type GiftCardPurchaseRequest,
 } from '../../../domain/credit/GiftCardPurchase';
+import { giftCardPhotoCutoffs } from '../../../domain/credit/GiftCardPhoto';
 
 /**
  * Customers buy a gift card online for someone else (self-service, 2026-10-21).
@@ -56,6 +59,8 @@ export interface GiftCardPublicStatus {
   sendTo: 'recipient' | 'buyer';
   deliverOn: string | null;
   textStatus: 'sent' | 'sending' | 'failed' | 'not_sent' | null;
+  /** 0201: the buyer's photo on the card, when there is one. */
+  photoId: string | null;
 }
 
 const PART_SPENT = 'Part of this card has been spent or is reserved by an order, so the payment cannot be refunded in full here. Settle it with the buyer and refund the rest from the Pesapal dashboard.';
@@ -95,15 +100,20 @@ export class GiftCardPurchaseUseCases {
     }
 
     let purchase: GiftCardPurchaseRecord | null = null;
+    // 0201: the photo is claimed inside create's own transaction (GiftCardPhotoUnavailableError when it cannot be).
+    const photoClaimableAfter = giftCardPhotoCutoffs(now).claimableAfter;
     for (let attempt = 0; attempt < 3 && !purchase; attempt++) {
       try {
         purchase = await this.repo.create({
           reference: giftCardPurchaseReference(this.tools.referenceIndexes()), amountUgx: v.amountUgx,
           buyerName: v.buyerName, buyerPhone, buyerEmail: v.buyerEmail, buyerUserId: input.buyerUserId ?? null,
           fromName: v.fromName, recipientName: v.recipientName, recipientPhone: v.recipientPhone ? this.tools.normalizePhone(v.recipientPhone) : null,
-          sendTo: v.sendTo, message: v.message, theme: v.theme, deliverOn: v.deliverOn,
-        });
+          sendTo: v.sendTo, message: v.message, theme: v.theme, deliverOn: v.deliverOn, photoId: v.photoId,
+        }, { photoClaimableAfter });
       } catch (err) {
+        if (err instanceof GiftCardPhotoUnavailableError) {
+          return { ok: false, code: 'INVALID', errors: { photo: 'Your photo can no longer be used. Add it again, or remove it to send the card without one.' } };
+        }
         if (!/gift_card_purchases_reference_uq|duplicate key/i.test(String((err as Error)?.message ?? err))) throw err;
       }
     }
@@ -200,6 +210,7 @@ export class GiftCardPurchaseUseCases {
       sendTo: p.sendTo,
       deliverOn: p.deliverOn,
       textStatus: p.textStatus,
+      photoId: p.photoId,
     };
   }
 
@@ -248,6 +259,7 @@ export class GiftCardPurchaseUseCases {
 
   private async refundFound(p: GiftCardPurchaseRecord, actor: { id: string; username: string }, reason: string): Promise<{ ok: boolean; message: string }> {
     if (!p.confirmationCode) return { ok: false, message: 'Pesapal gave no confirmation code for this payment; refund it from the Pesapal dashboard, then cancel the card.' };
+    const giveBack = (why: string) => this.repo.releaseRefundClaim?.(p.id, `REFUND_NOT_SENT: ${why}`.slice(0, 300)).catch(() => undefined);
     if (p.instrumentId) {
       const card = await this.credit.findById(p.instrumentId);
       if (!card) return { ok: false, message: 'The card for this purchase was not found.' };
@@ -271,10 +283,20 @@ export class GiftCardPurchaseUseCases {
       // that went back. False: the sweep issued it a moment ago; look again.
       return { ok: false, message: 'The card was issued a moment ago. Open the purchase again and refund it from there.' };
     }
+    // An issued card's purchase still reads 'issued' while Pesapal is asked, so a second request (a double click, the
+    // other replica) passed every check above and asked again. One request at a time per purchase (2026-10-22). A
+    // scheduled card's purchase is already 'refunded' here (closed first, above), which guards it the same way.
+    if (p.instrumentId && this.repo.claimRefund && !(await this.repo.claimRefund(p.id, `REFUND_IN_FLIGHT by ${actor.username}`))) {
+      return { ok: false, message: 'A refund for this purchase is already being sent. Open the purchase again in a minute.' };
+    }
     try {
       const res = await this.pesapal.requestRefund({ confirmationCode: p.confirmationCode, amount: p.amountUgx, username: actor.username, remarks: `Gift card ${p.reference}: ${reason.trim()}`.slice(0, 200) });
-      if (String(res.status) !== '200') return { ok: false, message: `Pesapal did not accept the refund (${res.message || res.status}). No card can be spent for this purchase now; refund it from the Pesapal dashboard.` };
+      if (String(res.status) !== '200') {
+        await giveBack(String(res.message || res.status));
+        return { ok: false, message: `Pesapal did not accept the refund (${res.message || res.status}). No card can be spent for this purchase now; refund it from the Pesapal dashboard.` };
+      }
     } catch (err) {
+      await giveBack(String((err as Error)?.message ?? err));
       return { ok: false, message: `Pesapal could not be reached (${String((err as Error)?.message ?? err).slice(0, 120)}). No card can be spent for this purchase now; refund it from the Pesapal dashboard.` };
     }
     await this.repo.markRefunded(p.id, `REFUND_REQUESTED by ${actor.username}: ${reason.trim()}`.slice(0, 300));

@@ -1,3 +1,4 @@
+import type { FailureLockoutStore } from '../../ports/FailureLockoutStore';
 import { normalizeUgandanPhone } from '@goldplus/shared';
 import { IUserRepository } from '../../ports/IUserRepository';
 import { IPasswordHasher } from '../../ports/IPasswordHasher';
@@ -43,6 +44,12 @@ export const SMS_RESET_MAX_ATTEMPTS = 5;
  * anonymously; ten covers any real customer and keeps a day's guessing to 50 in 900,000.
  */
 export const SMS_RESET_MAX_PER_DAY = 10;
+/**
+ * Of those, at most this many from one place (one client address) in a day. Anyone who knew a customer's number could
+ * use up all ten and keep them locked out of the only recovery that delivers (email never has from production): the
+ * customer's own phone, asking from its own place, still has the rest (2026-10-22). The account-wide ceiling stays.
+ */
+export const SMS_RESET_MAX_PER_PLACE_PER_DAY = 3;
 const MIN_PASSWORD_LENGTH = 8;
 
 /** Identical for every input, by design. */
@@ -89,6 +96,8 @@ export class RequestSmsPasswordResetUseCase {
     private readonly hash: (v: string) => string,
     private readonly random: () => string,
     private readonly now: () => Date = () => new Date(),
+    /** Per (account, place) count over a day; optional so older suites construct unchanged. */
+    private readonly perPlace?: FailureLockoutStore,
   ) {}
 
   async execute(input: { phone: string; ip?: string | null }): Promise<RequestSmsPasswordResetResult> {
@@ -111,6 +120,12 @@ export class RequestSmsPasswordResetUseCase {
     // is: a refused request must not invalidate the code the customer already
     // has.
     const at = this.now();
+    // Checked FIRST, before anything is written: a refused request from a place that used its share must not count
+    // against the customer's own daily budget.
+    const placeKey = input.ip && this.perPlace ? this.hash(`sms-reset-place|${user.id}|${input.ip}`) : null;
+    if (placeKey && (await this.perPlace!.failures(placeKey, at.getTime()).catch(() => 0)) >= SMS_RESET_MAX_PER_PLACE_PER_DAY) {
+      return generic({ userFound: true, throttled: true, delivery: 'NOT_ATTEMPTED' });
+    }
     const lastIssuedAt = await this.identity.lastOtpIssuedAt(user.id);
     if (lastIssuedAt && at.getTime() - lastIssuedAt.getTime() < OTP_RESEND_COOLDOWN_MS) {
       return generic({ userFound: true, throttled: true, delivery: 'NOT_ATTEMPTED' });
@@ -131,6 +146,7 @@ export class RequestSmsPasswordResetUseCase {
       expiresAt: new Date(at.getTime() + SMS_RESET_CODE_TTL_MINUTES * 60_000),
     });
 
+    if (placeKey) await this.perPlace!.recordFailure(placeKey, at.getTime(), 86_400_000).catch(() => undefined);
     const sent = await this.delivery.sendResetCode({
       phoneE164: phone.e164,
       code,

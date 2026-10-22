@@ -32,6 +32,8 @@ import { categoryHasUniqueCopy, shopCrawlDirective } from '../lib/crawlPolicy';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { offerPriceUgx } from '../lib/offerPrice';
+import { chargedPriceUgx } from '../lib/productStructuredData';
+import { hubForCategory } from '../lib/indexableLinks';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../lib/storefrontDiscount';
 import { fetchApprovedCatalogueWithStatus } from '../lib/catalogue';
 import { isListableProduct } from '../lib/product-discovery';
@@ -72,6 +74,12 @@ const { robotsMeta: shelfRobotsMeta, canonicalUrl } = shopCrawlDirective({
 });
 // A filtered view is never its own indexable page: the canonical (built without the filters) is the shelf.
 const robotsMeta = hasShopFacets(facetSelection) ? 'noindex,follow' : shelfRobotsMeta;
+// A plain category view that has its own hub page (/power, /audio …) names the hub as canonical: one indexable URL per
+// category, not two competing for the same searches (2026-10-22).
+const categoryHub = category && !search && !subcategory && (!sort || sort === 'default') && requestedPage <= 1 && !hasShopFacets(facetSelection)
+  ? hubForCategory(category)
+  : null;
+const shopCanonicalUrl = categoryHub ? `${SITE_ORIGIN}${categoryHub}` : canonicalUrl;
 
 function shopUrl(overrides: Partial<{ search: string; category: string; subcategory: string; sort: string; page: number; facets: ShopFacetSelection }> = {}) {
   // Changing any filter returns to page 1; only an explicit page keeps one.
@@ -153,11 +161,14 @@ if (personalOrderEligible && leadParam !== null) {
     // The standard order is always a fine answer.
   }
 }
-const facetedProducts = applyShopFacets(filteredProducts, facetSelection);
-const shopFacets = buildShopFacets(filteredProducts, facetSelection);
+// The price the card shows (the sale price while a campaign runs) is what the price filter and sort use.
+const shopDiscount = await getStorefrontDiscount();
+const shopPrice = (p: ProductPublicDto) => chargedPriceUgx(p, shopDiscount);
+const facetedProducts = applyShopFacets(filteredProducts, facetSelection, shopPrice);
+const shopFacets = buildShopFacets(filteredProducts, facetSelection, shopPrice);
 const facetsChosen = hasShopFacets(facetSelection);
-const standardLead = sortDiscoveryProducts(facetedProducts, sort, taxonomy)[0]?.categoryName;
-const products = sortDiscoveryProducts(facetedProducts, sort, taxonomy, preferredCategories);
+const standardLead = sortDiscoveryProducts(facetedProducts, sort, taxonomy, [], shopPrice)[0]?.categoryName;
+const products = sortDiscoveryProducts(facetedProducts, sort, taxonomy, preferredCategories, shopPrice);
 // Said plainly, and only when it actually changed what is on top.
 const personalLead = preferredCategories.length > 0 && products[0] && products[0].categoryName !== standardLead ? products[0].categoryName : '';
 if (personalLead) Astro.response.headers.set('Cache-Control', 'private, no-store');
@@ -265,7 +276,6 @@ const activeFilters = [
 const onlyCategoryFilter = Boolean(category) && !search && !subcategory && sort === 'default' && !facetsChosen;
 
 // The same campaign the cards render, so the ItemList offer says what the card says.
-const shopDiscount = await getStorefrontDiscount();
 const shopCampaignRunning = shopDiscount.active && shopDiscount.percentBps > 0;
 const shopItemList = {
   '@context': 'https://schema.org',
@@ -290,7 +300,7 @@ const shopBreadcrumb = breadcrumbJsonLd([
 ]);
 ---
 
-<BaseLayout title={pageTitle} description={pageDescription} robotsMeta={robotsMeta} canonicalUrl={canonicalUrl}>
+<BaseLayout title={pageTitle} description={pageDescription} robotsMeta={robotsMeta} canonicalUrl={shopCanonicalUrl}>
   <Fragment slot="head">
     {page > 1 && <link rel="prev" href={`${SITE_ORIGIN}${shopUrl({ page: page - 1 })}`} />}
     {page < totalPages && <link rel="next" href={`${SITE_ORIGIN}${shopUrl({ page: page + 1 })}`} />}

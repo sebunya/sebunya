@@ -57,6 +57,8 @@ export interface CustomerMessageData {
   paymentStatus?: string | null;
   /** 0196: what a gift card / store credit paid towards the total; the rest came by Mobile Money or card. */
   storeCreditAppliedUgx?: number | null;
+  /** What is still to pay: the total less any gift card / store credit (the payment reminder asks for this). */
+  amountDueUgx?: number | null;
   /** 0196 CREDIT_USED / CREDIT_EXPIRING: the card's last four, what was spent, what is left and when it ends. Never the code. */
   creditLast4?: string;
   spentUgx?: number;
@@ -139,6 +141,10 @@ export function giftCardOpenUrl(code: string | null | undefined): string {
 export function giftCardStatusUrl(reference: string | null | undefined): string {
   return `${publicBaseUrl()}/gift-card/bought${reference ? `?ref=${encodeURIComponent(reference)}` : ''}`;
 }
+
+/** What is still to pay on an order: the amount due when the writer sent it, else the total. */
+const dueUgx = (d: CustomerMessageData): number =>
+  typeof d.amountDueUgx === 'number' && Number.isFinite(d.amountDueUgx) ? d.amountDueUgx : Number(d.totalUgx);
 
 export function formatUgx(amount: number | null | undefined): string {
   const n = Math.max(0, Math.round(Number(amount) || 0));
@@ -269,7 +275,8 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
       return `${SHOP_NAME}: order${ref} is complete. Thank you for shopping with us. How was it? Rate it in a minute: ${reviewOrderUrl(d.orderNumber)} If anything is wrong, call ${phone}.`;
     case 'ORDER_PAYMENT_REMINDER':
       // Sent once, about an hour after an online order was placed and never paid, never while a payment is clearing.
-      return `${SHOP_NAME}: your order${ref} for ${formatUgx(d.totalUgx)} is saved but not paid yet. Pay with Mobile Money or card here: ${track} If you already paid, do not pay again; call ${phone}. We will not remind you again.`;
+      // The amount still to pay: a gift card that covered part of it is not asked for again (2026-10-22).
+      return `${SHOP_NAME}: your order${ref} for ${formatUgx(dueUgx(d))} is saved but not paid yet. Pay with Mobile Money or card here: ${track} If you already paid, do not pay again; call ${phone}. We will not remind you again.`;
     case 'CREDIT_USED':
       // To the card's holder when someone else's order spent it (a gift): what went, and what is left.
       return `${SHOP_NAME}: ${formatUgx(d.spentUgx)} from your ${d.creditKind === 'gift_card' ? 'gift card' : 'store credit'} ending ${d.creditLast4} paid for order ${d.orderNumber}. Left on it: ${formatUgx(d.balanceUgx)}. Not you? Call ${phone}.`;
@@ -285,9 +292,9 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
       if (d.toBuyer) {
         return `${SHOP_NAME}: your gift card of ${formatUgx(d.valueUgx)} for ${gsmPlain(String(d.recipientName ?? ''))} is ready. Send them this link to open it: ${giftCardOpenUrl(d.creditCode)} Code: ${d.creditCode}. Anyone with the code can spend it, so share it only with them.`;
       }
-      // The card page shows the buyer's words exactly (emoji and all); the SMS carries a plain copy, because one
-      // emoji turns the whole text into UCS-2 and triples its parts.
-      return `${SHOP_NAME}: ${gsmPlain(String(d.fromName ?? '')) || 'Someone'} sent you a gift card of ${formatUgx(d.valueUgx)}${gsmPlain(String(d.giftMessage ?? '')) ? `: "${gsmPlain(String(d.giftMessage ?? ''))}"` : '.'} Open it: ${giftCardOpenUrl(d.creditCode)} Code: ${d.creditCode}. Spend it on shopgoldplus.com or in our shop. Keep it safe: anyone with the code can spend it.`;
+      // The note (up to 160 characters, emoji and all) is on the card itself, exactly as written; the text only says
+      // there is one, so its length stays the same whatever the buyer wrote and nothing of it is cut or stripped.
+      return `${SHOP_NAME}: ${gsmPlain(String(d.fromName ?? '')) || 'Someone'} sent you a gift card of ${formatUgx(d.valueUgx)}${String(d.giftMessage ?? '').trim() ? ', with a note for you on the card.' : '.'} Open it: ${giftCardOpenUrl(d.creditCode)} Code: ${d.creditCode}. Spend it on shopgoldplus.com or in our shop. Keep it safe: anyone with the code can spend it.`;
     case 'GIFT_CARD_PAID':
       // 0199: to the buyer when the code goes to someone else. Never the code.
       return d.deliverOnWords
@@ -461,7 +468,7 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         subject: `Your ${SHOP_NAME} order${ref} is saved but not paid`,
         preheader: 'Pay with Mobile Money or card when you are ready. This is the only reminder.',
         headline: 'Your order is waiting for payment',
-        body: `You placed order${ref} for ${total}, and it has not been paid yet, so we have not started preparing it. You can pay with Mobile Money or card from the link below, using the phone number or email from your order. If you already paid and it has not cleared, please do not pay again: call ${phone} and we will check. This is the only reminder we send.`,
+        body: `You placed order${ref} for ${formatUgx(dueUgx(d))}${Number(d.storeCreditAppliedUgx) > 0 ? ' still to pay after your gift card' : ''}, and it has not been paid yet, so we have not started preparing it. You can pay with Mobile Money or card from the link below, using the phone number or email from your order. If you already paid and it has not cleared, please do not pay again: call ${phone} and we will check. This is the only reminder we send.`,
         cta: { label: 'Pay for this order', url: track },
         tone: 'wait',
       };

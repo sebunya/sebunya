@@ -14,6 +14,7 @@ import { DEFAULT_HOMEPAGE_CONTENT, xHandleFromSocials, jpegRendition } from '@go
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { resolveMeasurementConfig } from '../lib/measurement';
 import DeclarativeActions from '../components/DeclarativeActions.astro';
+import { inviteNoteWords } from '../lib/referralInvite';
 
 // Business/contact info — admin-editable, DB-backed (falls back to DEFAULT).
 const biz = await getBusinessInfo();
@@ -79,7 +80,7 @@ const SEEN_FLAG = `try{if(localStorage.getItem('goldplus_seen_before')==='true')
 // Recently-viewed flag, same timing: the homepage trust strip hides only when the
 // "Pick up where you left off" rail will take its place (not for every returner).
 const RV_FLAG = `try{var r=JSON.parse(localStorage.getItem('goldplus_recently_viewed')||'[]');if(Array.isArray(r)&&r.length)document.documentElement.classList.add('gp-rv')}catch(e){}`;
-const FONT_LOADER = `(function(){var d=0;function go(){if(d)return;d=1;var l=document.createElement('link');l.rel='stylesheet';l.href='/fonts/faces.css?v=20260913';document.head.appendChild(l);}try{var o=new PerformanceObserver(function(){o.disconnect();setTimeout(go,0);});o.observe({type:'paint',buffered:true});}catch(e){}addEventListener('load',function(){setTimeout(go,0);});setTimeout(go,3000);})();`;
+const FONT_LOADER = `(function(){var d=0;function go(){if(d)return;d=1;var l=document.createElement('link');l.rel='stylesheet';l.href='/fonts/faces.css?v=20261021';document.head.appendChild(l);}try{var o=new PerformanceObserver(function(){o.disconnect();setTimeout(go,0);});o.observe({type:'paint',buffered:true});}catch(e){}addEventListener('load',function(){setTimeout(go,0);});setTimeout(go,3000);})();`;
 const clarityId = /^[a-z0-9]{6,20}$/.test(import.meta.env.PUBLIC_CLARITY_ID ?? '') ? import.meta.env.PUBLIC_CLARITY_ID : null;
 // Clarity records page TEXT, not only inputs: everything is masked except the
 // public catalogue (home, shop, products, categories, blog, info pages), so a
@@ -237,7 +238,7 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         first paint (Cloudflare RUM: CLS 0.106 on the section under it). Same localStorage
         key as lib/returning-user.ts. */}
     <script nonce={Astro.locals.cspNonce} is:inline data-cfasync="false" set:html={SEEN_FLAG + RV_FLAG}></script>
-    <noscript><link rel="stylesheet" href="/fonts/faces.css?v=20260913" /></noscript>
+    <noscript><link rel="stylesheet" href="/fonts/faces.css?v=20261021" /></noscript>
     {/* Cloudflare Web Analytics (real-user LCP/INP/CLS), installed manually and loaded after
         window.load when the browser is idle (2026-09-14). Cloudflare's automatic injection
         put the 10 KB beacon beside the document before first paint on every page view.
@@ -278,6 +279,15 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
     <div id="main" tabindex="-1"></div>
 
     <main class="flex-grow flex flex-col">
+      {(() => {
+        // A friend's invite was just added to this account, or could not be (lib/referralInvite): said once.
+        const invite = inviteNoteWords(Astro.locals.gpInviteNote ?? null);
+        return invite ? (
+          <div class={`mx-auto mt-4 w-full max-w-3xl px-4 text-sm`} role="status" data-invite-note>
+            <p class={`rounded-xl border px-4 py-3 ${invite.kind === 'success' ? 'border-green-200 bg-green-50 text-green-900' : 'border-slate-200 bg-slate-50 text-slate-800'}`}>{invite.text}</p>
+          </div>
+        ) : null;
+      })()}
       <slot />
     </main>
 

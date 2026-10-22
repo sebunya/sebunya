@@ -35,7 +35,7 @@ interface Deps {
       district?: string | null;
       deliveryArea?: string | null;
       items: ReadonlyArray<{ productId: string; quantity: number }>;
-    }): Promise<{ feeUgx: number | null; confirmed: boolean; mayFallBackToLegacy: boolean; unavailableReason?: string | null }>;
+    }): Promise<{ feeUgx: number | null; confirmed: boolean; mayFallBackToLegacy: boolean; unavailableReason?: string | null; paidAtCollectionUgx?: number | null }>;
   } | null;
 }
 
@@ -93,7 +93,7 @@ export class GetDeliveryEstimateUseCase {
       if (!quoted.mayFallBackToLegacy) {
         const estimate: DeliveryEstimate = quoted.feeUgx === null
           ? { kind: 'UNAVAILABLE', feeUgx: null, source: null, band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false }
-          : { kind: quoted.confirmed ? 'CONFIRMED' : 'ESTIMATED', feeUgx: quoted.feeUgx, source: 'MODEL', band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false };
+          : { kind: quoted.confirmed ? 'CONFIRMED' : 'ESTIMATED', feeUgx: quoted.feeUgx, source: 'MODEL', band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false, ...(quoted.paidAtCollectionUgx ? { paidAtCollectionUgx: quoted.paidAtCollectionUgx } : {}) };
         return { ok: true, district: district ?? '', area, estimate };
       }
     }

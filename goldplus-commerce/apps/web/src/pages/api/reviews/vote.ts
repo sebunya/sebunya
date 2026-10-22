@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { apiBase } from '../../../lib/api';
 import { readBodyCapped } from '../../../lib/boundedBody';
+import { apiHeaders, readClientAddress } from '../../../lib/forwardClient';
 
 /**
  * Same-origin relay for "Was this helpful?" (gap analysis #10). Forwards only the review id and the vote, with the
@@ -9,7 +10,8 @@ import { readBodyCapped } from '../../../lib/boundedBody';
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const POST: APIRoute = async ({ request, locals, redirect }) => {
+export const POST: APIRoute = async (context) => {
+  const { request, locals, redirect } = context;
   const read = await readBodyCapped(request, 2048);
   if (!read.ok) return new Response(null, { status: 413 });
   const isJson = (request.headers.get('content-type') ?? '').includes('application/json');
@@ -27,7 +29,8 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
   if (UUID.test(reviewId) && (vote === 'helpful' || vote === 'not_helpful') && visit) {
     const res = await fetch(`${apiBase}/commerce/reviews/${reviewId}/vote`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-gp-visit': visit },
+      // Attributed to the visitor, so the API's per-client limit applies (a relay without it counted as internal).
+      headers: apiHeaders({ 'Content-Type': 'application/json', 'x-gp-visit': visit }, readClientAddress(context)),
       body: JSON.stringify({ vote }),
       signal: AbortSignal.timeout(3000),
     }).catch(() => null);

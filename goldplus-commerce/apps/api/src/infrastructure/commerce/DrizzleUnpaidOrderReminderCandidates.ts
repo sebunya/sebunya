@@ -8,7 +8,10 @@ export class DrizzleUnpaidOrderReminderCandidates implements IUnpaidOrderReminde
       select o.id
         from orders o
        where o.payment_method = 'pesapal'
-         and o.payment_status = 'unpaid'
+         -- 'failed': a declined Mobile Money prompt is unpaid too, and the most common case worth one reminder.
+         and o.payment_status in ('unpaid', 'failed')
+         -- Nothing left to pay (a gift card covers it): never "please pay".
+         and o.total_amount > o.store_credit_applied_ugx
          and o.status in ('received', 'pending_payment')
          and o.created_at <= ${input.placedBefore.toISOString()}
          and o.created_at > ${input.placedAfter.toISOString()}
@@ -16,7 +19,12 @@ export class DrizzleUnpaidOrderReminderCandidates implements IUnpaidOrderReminde
          and not exists (
            select 1 from payment_attempts a
             where a.order_id = o.id
-              and a.status in ('pending', 'verification_pending', 'completed'))
+              -- A 'pending' attempt is clearing only while it is fresh or the provider has just spoken about it: one
+              -- opened at checkout and left untouched for half an hour is a payment page nobody finished. Counting
+              -- every pending attempt excluded nearly every order, so the reminder almost never went (2026-10-22).
+              and (a.status in ('verification_pending', 'completed')
+                   -- (updated_at moves on every poll, so it says nothing; only the IPN or the callback is the provider speaking.)
+                   or (a.status = 'pending' and greatest(a.created_at, a.ipn_received_at, a.callback_received_at) > now() - interval '30 minutes')))
          and not exists (
            select 1 from payments p
             where p.order_id = o.id)

@@ -110,9 +110,11 @@ export class DrizzleCareDeskRepository implements ICareDeskRepository {
     });
   }
 
-  async lastTitled(prefix: string) {
+  async lastTitled(prefix: string, opts?: { exact?: boolean }) {
     const [r] = await db.select({ status: careTasks.status, createdAt: careTasks.createdAt }).from(careTasks)
-      .where(sql`${careTasks.title} like ${prefix.replace(/[\\%_]/g, (m) => `\\${m}`) + '%'}`).orderBy(desc(careTasks.createdAt)).limit(1);
+      .where(opts?.exact
+        ? eq(careTasks.title, prefix)
+        : sql`${careTasks.title} like ${prefix.replace(/[\\%_]/g, (m) => `\\${m}`) + '%'}`).orderBy(desc(careTasks.createdAt)).limit(1);
     return r ? { status: r.status as CareStatus, createdAt: r.createdAt } : null;
   }
 

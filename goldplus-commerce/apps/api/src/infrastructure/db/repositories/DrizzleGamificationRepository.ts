@@ -14,7 +14,7 @@ import { ActiveMission, IGamificationLiveRepository } from '../../../application
  * phone-only orders are reported as unattributable, never guessed. REVIEW_COUNT
  * counts approved reviews per identity hash, which is a DIFFERENT identity space
  * from user accounts; the evaluator says so instead of pretending linkage.
- * STREAK_DAYS / REFERRAL_COUNT have no data source yet and evaluate as
+ * STREAK_DAYS has no data source yet (REFERRAL_COUNT counts awarded referrals, 0174) and evaluates as
  * NOT_EVALUABLE. Awards are never written here — the award ledger stays empty
  * until loyalty activation.
  */
@@ -211,11 +211,23 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
         note: 'Counts approved reviews per identity hash — a separate identity space from customer accounts; awarding requires the identity link that does not exist yet.',
       };
     }
+    if (mission.kind === 'REFERRAL_COUNT') {
+      // Awarded referrals per referrer: the same count the live engine uses (0174). It used to say "unbuilt".
+      const [row] = (await db.execute(sql`
+        select count(*) filter (where n >= ${mission.threshold})::int as qualifying, count(*)::int as population
+          from (select referrer_user_id, count(*) as n from loyalty_referrals where status = 'awarded' group by referrer_user_id) per_referrer`)) as unknown as Array<{ qualifying: number; population: number }>;
+      return {
+        evaluable: true,
+        wouldQualify: Number(row?.qualifying ?? 0),
+        population: Number(row?.population ?? 0),
+        note: 'Counts paid referrals (the friend\'s first order delivered) per customer who invited them.',
+      };
+    }
     return {
       evaluable: false,
       wouldQualify: 0,
       population: 0,
-      note: `${mission.kind} has no data source yet (streak/referral tracking is unbuilt) — reported as not evaluable rather than zero.`,
+      note: `${mission.kind} has no data source yet (streak tracking is unbuilt) — reported as not evaluable rather than zero.`,
     };
   }
 

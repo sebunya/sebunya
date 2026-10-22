@@ -29,6 +29,8 @@ const TEN_MINUTES = 10 * 60_000;
 /** The forms that are budgeted; every other path is untouched. */
 export const PUBLIC_FORM_BUDGETS: Readonly<Record<string, FormBudget>> = {
   '/dealers/apply': { limit: 5, windowMs: TEN_MINUTES },
+  // The dealer portal's sign-in sends a code by text (start) and checks it (verify), both from this page.
+  '/dealers/dashboard': { limit: 10, windowMs: TEN_MINUTES },
   '/quote-request': { limit: 5, windowMs: TEN_MINUTES },
   '/support/issue': { limit: 5, windowMs: TEN_MINUTES },
   '/support/fake': { limit: 5, windowMs: TEN_MINUTES },

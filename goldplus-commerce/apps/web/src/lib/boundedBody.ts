@@ -14,9 +14,15 @@
 export type BoundedBody = { ok: true; text: string } | { ok: false; reason: 'TOO_LARGE' };
 
 export async function readBodyCapped(request: Request, maxBytes: number): Promise<BoundedBody> {
+  const read = await readBytesCapped(request, maxBytes);
+  return read.ok ? { ok: true, text: new TextDecoder().decode(read.bytes) } : read;
+}
+
+/** The same cap, for a body that is not text (a photo). */
+export async function readBytesCapped(request: Request, maxBytes: number): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; reason: 'TOO_LARGE' }> {
   const declared = Number(request.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > maxBytes) return { ok: false, reason: 'TOO_LARGE' };
-  if (!request.body) return { ok: true, text: '' };
+  if (!request.body) return { ok: true, bytes: new Uint8Array(0) };
 
   const reader = request.body.getReader();
   const parts: Uint8Array[] = [];
@@ -42,5 +48,5 @@ export async function readBodyCapped(request: Request, maxBytes: number): Promis
     joined.set(part, offset);
     offset += part.byteLength;
   }
-  return { ok: true, text: new TextDecoder().decode(joined) };
+  return { ok: true, bytes: joined };
 }

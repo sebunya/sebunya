@@ -271,3 +271,33 @@ never bind.
   `{"budgetCapPoints": N}`. The response echoes the UGX equivalent at the
   current point value. A cap below what has already been awarded is refused.
 - All three are audited.
+
+## Refer a friend, reworked (2026-10-22, migration 0202)
+
+Owner asked for better tracking, a simpler experience and fixes. What changed, and the rules now in force:
+
+- **One short link.** The invite is `/r/<code>?via=whatsapp|sms|share|copy`. It remembers the code in the friend's
+  browser for 60 days (`gp_ref`, httpOnly), counts the open per person (`loyalty_referral_visits`; a random id's hash,
+  no IP; link previews from WhatsApp/Facebook/Telegram are not counted), and lands on `/invite` ("Rob S. invited
+  you") tagged `utm_medium=friend`, which the channel report files as **Invited by a customer** (`friend_referral`)
+  instead of direct. Older `/register?ref=` links still work and are remembered too.
+- **Nothing to type.** The remembered code is added to the account the first time the friend is signed in, however
+  they signed up (email, Google, Facebook). A customer can also add a friend's code later on Rewards ("A friend
+  invited you?"), **only until their first order is delivered** (`ALREADY_A_CUSTOMER` after that). A wrong code is
+  explained on the next page, never dropped silently. Codes are read as typed: `gp 4k7-m2q` = `GP4K7M2Q`.
+- **Payout unchanged in amount and moment:** both sides when the friend's first paid retail order is delivered.
+  Fixed: it used to run only when that order earned points, and then required "exactly one delivered order", so a
+  first delivery that earned nothing (zero earn, paused budget) left the referral pending forever. It now runs on
+  every paid retail delivery and pays the first time a pending referral meets one.
+- **Held is a state.** Over 10 paid in 30 days, or the friend's order going to the referrer's own phone, makes the
+  referral `held` with its reason and order; `/admin/loyalty/referrals` releases it (pays both) or refuses it with a
+  reason, audited. Before, held referrals stayed `pending` and nobody could pay them. 0202 converts the old ones.
+- **The referrer sees each friend** ("Sarah N." from the friend's latest order name, never email or phone): Joined,
+  Ordered, Delivered and paid, Being checked, Not counted. The counts add up.
+- **Admin funnel:** people who opened a link → joined → placed a first order → paid, by source (link, typed, social,
+  added later) and by share button.
+- The kill switch now also hides the invite card.
+
+Not built, deliberately: a guest checkout cannot earn a referral (points need an account); the friend's code stays
+remembered, so creating an account later still counts it. Rewards still are not delayed to the end of the return
+window; a full refund still reverses both sides (unchanged).

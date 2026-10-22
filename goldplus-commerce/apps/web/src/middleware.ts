@@ -9,6 +9,7 @@ import { resolveDeliveryPlace } from "./lib/locationSignals";
 import { visitorCookieDomain } from "./lib/visitorCookieDomain";
 import { readRefreshToken, readSessionToken, setRequestSessionToken, setSignInCookies, clearSignInCookies, tokenSecondsLeft } from "./lib/session";
 import { apiHeaders, readClientAddress } from "./lib/forwardClient";
+import { INVITE_NOTE_COOKIE, forgetInvite, rememberedInvite } from "./lib/referralInvite";
 import { makeNonce, nonceScriptStream, strictPolicyMode, strictReportOnlyPolicy } from "./lib/contentSecurityPolicy";
 import { PublicFormLimiter, budgetedFormPath, tooManySubmissionsResponse, visitorKey } from "./lib/publicFormLimiter";
 
@@ -138,6 +139,39 @@ async function renewSessionIfDue(context: Parameters<Parameters<typeof defineMid
   }
 }
 
+/**
+ * A friend's invite link remembered in this browser (lib/referralInvite) is added to the account the first time the
+ * visitor is signed in, whichever way they signed up (email, Google, Facebook), then forgotten. Also hands the page
+ * the one-time note registration left. Never blocks a page: an API that cannot answer leaves the invite for later.
+ */
+async function applyRememberedInvite(context: Parameters<Parameters<typeof defineMiddleware>[0]>[0]): Promise<void> {
+  const note = context.cookies.get(INVITE_NOTE_COOKIE)?.value;
+  if (note) {
+    context.locals.gpInviteNote = note;
+    context.cookies.delete(INVITE_NOTE_COOKIE, { path: '/' });
+  }
+  const code = rememberedInvite(context.cookies);
+  const token = readSessionToken(context.request);
+  if (!code || !context.locals.gpUserId || !token) return;
+  try {
+    const res = await fetch(`${apiBase}/account/referral/code`, {
+      method: 'POST',
+      headers: apiHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` }, readClientAddress(context)),
+      body: JSON.stringify({ code, source: 'link' }),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (res.status >= 500) return; // try again on a later page
+    const json: any = await res.json().catch(() => null);
+    forgetInvite(context.cookies);
+    // Already on the account (registration added it) or already a customer from before: nothing to say.
+    const code_ = json?.error?.code;
+    if (json?.success) context.locals.gpInviteNote = 'applied';
+    else if (code_ && code_ !== 'ALREADY_REFERRED' && code_ !== 'ALREADY_A_CUSTOMER') context.locals.gpInviteNote = code_;
+  } catch {
+    /* unreachable API: keep the invite for the next page */
+  }
+}
+
 export const onRequest = defineMiddleware(async (context, next) => {
   // /products/<slug>/ served a second copy of every product page (canonical
   // included); one address per product.
@@ -260,6 +294,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
       const identity = await resolveRequestIdentity(context.cookies);
       context.locals.gpUserId = identity.gpUserId;
       context.locals.gpSessionUnknown = identity.gpSessionUnknown;
+      await applyRememberedInvite(context);
       context.locals.gpCart = identity.gpCart;
       // 0193: "Deliver to", once per document, for every page and component (header, homepage, product page, cart,
       // checkout). Cookie first (no network); the profile lookup runs at most once a day for a visitor without one.

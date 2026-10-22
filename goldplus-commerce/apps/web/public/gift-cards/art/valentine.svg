@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Two hearts tied together with a ribbon">
+  <!-- Valentine's Day: two full hearts, close together, with a ribbon looped between them. Drawn for a black field. -->
+  <path d="M74 158 C42 136 16 112 16 86 C16 66 30 52 48 52 C60 52 68 60 74 70 C80 60 88 52 100 52 C118 52 132 66 132 86 C132 112 106 136 74 158 Z" fill="#96CC06"/>
+  <path d="M128 140 C102 122 82 104 82 82 C82 66 94 56 108 56 C118 56 124 62 128 70 C132 62 138 56 148 56 C162 56 174 66 174 82 C174 104 154 122 128 140 Z" fill="#FFFFFF" stroke="#000000" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M24 176 C60 150 140 190 182 156" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+  <path d="M176 150 L188 152 L182 164" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

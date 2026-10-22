@@ -34,6 +34,12 @@ export interface OutboxClaimFilter {
 }
 
 export interface IOutboxRepository {
+  /**
+   * Extends this worker's lease on one claimed event, just before it is sent; false when the event is no longer this
+   * worker's (its lease ran out mid-batch and another worker claimed it) or is already finished. Optional so test
+   * doubles need not implement it.
+   */
+  renewLease?(eventId: string, now: Date): Promise<boolean>;
   claimDueBatch(
     now: Date,
     limit: number,

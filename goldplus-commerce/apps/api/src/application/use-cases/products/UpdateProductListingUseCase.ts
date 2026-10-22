@@ -28,7 +28,7 @@ export interface ProductListingWriter {
   setFeedEligibility(productId: string, eligible: boolean): Promise<void>;
 }
 export type UpdateProductListingResult =
-  | { ok: true; changed: { text: string[]; specs: number; feed: boolean } }
+  | { ok: true; changed: { text: string[]; specs: number; removedSpecs: number; feed: boolean } }
   | { ok: false; code: 'NOT_FOUND' | 'BAD_INPUT'; message: string };
 
 export const LISTING_LIMITS = { name: 150, shortDescription: 500, longDescription: 5000, specName: 100, specValue: 255 } as const;
@@ -73,6 +73,7 @@ export class UpdateProductListingUseCase {
 
     const define = new DefineAttributeUseCase(this.attributes);
     let written = 0;
+    const kept: string[] = [];
     for (const [order, s] of specs.entries()) {
       const slug = s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
       let attribute = await this.attributes.findBySlugInCategory(target.categoryId, slug);
@@ -82,12 +83,17 @@ export class UpdateProductListingUseCase {
         attribute = defined.attribute;
       }
       await this.attributes.setValue({ productId, attributeId: attribute.id, value: s.value, isVerified: s.isVerified });
+      kept.push(attribute.id);
       written += 1;
     }
+    // The editor sends the whole list: a spec the operator blanked or renamed is removed, not left live on the product
+    // page, its JSON-LD and the Google feed while the page said "saved" (2026-10-22). Only when specs were sent at all.
+    let removed = 0;
+    if (input.specs !== undefined && this.attributes.removeValuesExcept) removed = await this.attributes.removeValuesExcept(productId, kept);
 
     let feed = false;
     if (typeof input.isFeedEligible === 'boolean') { await this.products.setFeedEligibility(productId, input.isFeedEligible); feed = true; }
 
-    return { ok: true, changed: { text: Object.keys(patch), specs: written, feed } };
+    return { ok: true, changed: { text: Object.keys(patch), specs: written, removedSpecs: removed, feed } };
   }
 }

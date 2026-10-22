@@ -9,6 +9,7 @@ import { apiBase } from '../lib/api';
 import SocialSignIn from '../components/auth/SocialSignIn.astro';
 import { SESSION_COOKIE_NAME, setSignInCookies } from '../lib/session';
 import { SIGNED_UP_COOKIE } from '../lib/siteSignalRules';
+import { forgetInvite, normaliseInviteCode, rememberInvite, rememberedInvite, setInviteNote } from '../lib/referralInvite';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
 import {
   validateRegistration,
@@ -76,8 +77,22 @@ const returnTo =
 // 0087 referrals: ?ref=CODE arrives from a shared invite link and rides the
 // form through registration. An invalid code never blocks the signup — the API
 // records the link as a pending fact and pays nothing until first delivery.
-const refParam = Astro.url.searchParams.get('ref');
-const referralCodeFromUrl = refParam && /^[A-Za-z0-9]{4,12}$/.test(refParam) ? refParam.toUpperCase() : '';
+// 2026-10-22: an older ?ref= link is remembered like /r/<code>, so leaving this page no longer loses it; and the
+// code an invite link left in this browser fills the field by itself.
+const refFromUrl = normaliseInviteCode(Astro.url.searchParams.get('ref'));
+if (refFromUrl) rememberInvite(Astro.cookies, refFromUrl, import.meta.env.PROD);
+const rememberedCode = refFromUrl ?? rememberedInvite(Astro.cookies);
+const referralCodeFromUrl = rememberedCode ?? '';
+let inviterName: string | null = null;
+if (rememberedCode && Astro.request.method === 'GET') {
+  try {
+    const r = await fetch(`${apiBase}/referrals/invite/${encodeURIComponent(rememberedCode)}`, { headers: jsonApiHeaders(null), signal: AbortSignal.timeout(2000) });
+    const j: any = r.ok ? await r.json().catch(() => null) : null;
+    if (j?.success && typeof j.data?.inviter === 'string') inviterName = j.data.inviter;
+  } catch {
+    inviterName = null;
+  }
+}
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -85,8 +100,10 @@ if (Astro.request.method === 'POST') {
   const phone = String(form.get('phone') ?? '').trim();
   const password = String(form.get('password') ?? '');
   const confirm = String(form.get('confirmPassword') ?? '');
-  const referralCodeRaw = String(form.get('referralCode') ?? '').trim().toUpperCase();
-  const referralCode = /^[A-Z0-9]{4,12}$/.test(referralCodeRaw) ? referralCodeRaw : '';
+  // "gp 4k7-m2q" is a code too; a malformed one is still sent so the customer is told, not silently dropped.
+  const referralCodeTyped = String(form.get('referralCode') ?? '').trim();
+  const referralCode = normaliseInviteCode(referralCodeTyped) ?? (referralCodeTyped ? referralCodeTyped.slice(0, 20) : '');
+  const referralSource = referralCode && referralCode === rememberedCode ? 'link' : 'typed';
   values = { email, phone };
 
   // The same checks the API makes, before the round trip, so each problem is
@@ -107,7 +124,7 @@ if (Astro.request.method === 'POST') {
         method: 'POST',
         signal: AbortSignal.timeout(8000),
         headers: jsonApiHeaders(clientAddress),
-        body: JSON.stringify({ email, phone, password, ...(referralCode ? { referralCode } : {}) }),
+        body: JSON.stringify({ email, phone, password, ...(referralCode ? { referralCode, referralSource } : {}) }),
       });
       const json: any = await res.json().catch(() => null);
 
@@ -117,6 +134,12 @@ if (Astro.request.method === 'POST') {
         // Via Astro.cookies — a raw Set-Cookie header on Astro.response is DROPPED
         // when the return value is Astro.redirect(), which is exactly this path.
         setSignInCookies(Astro.cookies, json.data); // short token + refresh credential (renewed by the middleware)
+        // The invite's outcome is said once on the next page (the API answered it; it used to be ignored).
+        if (referralCode) {
+          forgetInvite(Astro.cookies);
+          const r = json.data?.referral;
+          setInviteNote(Astro.cookies, r?.applied ? 'applied' : String(r?.reason ?? 'CODE_NOT_FOUND'), import.meta.env.PROD);
+        }
 
 
         // R9 (M8, fixation): the visit token is ROTATED at the authentication
@@ -195,10 +218,11 @@ const focusField = firstErrorField(fieldErrors);
         <FormField
           id="referralCode"
           name="referralCode"
-          label="Referral code (optional)"
+          label={inviterName ? `Invited by ${inviterName}` : "Friend's invite code (optional)"}
           type="text"
           autocomplete="off"
           placeholder="GPXXXXXX"
+          helperText={inviterName ? 'Filled in from your invite link. Your welcome points arrive with your first delivered order.' : undefined}
           defaultValue={referralCodeFromUrl}
         />
         <button

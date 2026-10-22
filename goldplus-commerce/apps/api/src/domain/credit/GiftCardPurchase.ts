@@ -7,8 +7,10 @@
  *
  * Pure: no database, no clock of its own, no randomness of its own.
  */
+import { GIFT_CARD_FROM_MAX, GIFT_CARD_MESSAGE_MAX, GIFT_CARD_NAME_MAX, clipText, unsafeGiftText } from '@goldplus/shared';
 import { SECOND_APPROVAL_ABOVE_UGX } from './CreditInstrument';
 import { GIFT_CARD_OCCASIONS, isGiftCardOccasion, type GiftCardOccasion } from './GiftCardOccasions';
+import { isGiftCardPhotoId } from './GiftCardPhoto';
 
 export const GIFT_CARD_MIN_UGX = 10_000;
 /** Online cards never need a second staff approval: the ceiling is the approval threshold. */
@@ -22,8 +24,9 @@ export const GIFT_CARD_SCHEDULED_SEND_HOUR_EAT = 9;
 export const GIFT_CARD_DAILY_STARTS_PER_BUYER = 6;
 export const GIFT_CARD_DAILY_UGX_PER_BUYER = 1_000_000;
 
-export const GIFT_CARD_MESSAGE_MAX = 100;
-export const GIFT_CARD_FROM_MAX = 40;
+// The text rules are shared with the storefront, which checks the same things before the buyer leaves the page.
+// The note is shown on the card, never in the text message.
+export { GIFT_CARD_FROM_MAX, GIFT_CARD_MESSAGE_MAX, unsafeGiftText };
 
 export type GiftCardSendTo = 'recipient' | 'buyer';
 /** The card's look is its occasion (GiftCardOccasions.ts: one list; the storefront draws each; the database checks it). */
@@ -44,6 +47,8 @@ export interface GiftCardPurchaseRequest {
   buyerEmail: unknown;
   deliverOn: unknown;
   theme?: unknown;
+  /** 0201: the id the photo upload handed back, or empty. */
+  photoId?: unknown;
 }
 
 export interface CleanGiftCardPurchase {
@@ -60,26 +65,15 @@ export interface CleanGiftCardPurchase {
   /** YYYY-MM-DD in Kampala, or null to send as soon as it is paid. */
   deliverOn: string | null;
   theme: GiftCardTheme;
+  photoId: string | null;
 }
 
-export type GiftCardField = 'amountUgx' | 'recipientName' | 'recipientPhone' | 'sendTo' | 'message' | 'fromName' | 'buyerName' | 'buyerPhone' | 'buyerEmail' | 'deliverOn';
+export type GiftCardField = 'amountUgx' | 'recipientName' | 'recipientPhone' | 'sendTo' | 'message' | 'fromName' | 'buyerName' | 'buyerPhone' | 'buyerEmail' | 'deliverOn' | 'photo';
 
 // Control characters (a newline would let a message forge a second line of our SMS) become spaces.
 const controlChars = (v: string) => Array.from(v, (ch) => (ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? ' ' : ch)).join('');
 const text = (v: unknown, max: number): string =>
-  typeof v === 'string' ? controlChars(v).replace(/\s+/g, ' ').trim().slice(0, max) : '';
-
-/**
- * The buyer's words go out from GoldPlus's own SMS sender, so they must not be usable for a scam that borrows our
- * name: no links, no web addresses and no phone or account numbers ("send 50,000 to 07…"). Names and kind words
- * pass; anything that reads like a place to send money or click does not.
- */
-export function unsafeGiftText(value: string): boolean {
-  if (/https?:|www\.|\.(com|ug|net|org|co|me|ly|io|link|xyz|info)\b/i.test(value)) return true;
-  if (/\d[\d\s.-]{5,}\d/.test(value)) return true; // 7+ digits, spaced or not: a phone or account number
-  if (/[<>{}\\]/.test(value)) return true;
-  return false;
-}
+  typeof v === 'string' ? clipText(controlChars(v).replace(/\s+/g, ' ').trim(), max) : '';
 
 /** Same rule as validationHelpers.isValidUgandanPhone (kept pure here: the domain imports no application code). */
 export function isUgandanMobile(raw: string): boolean {
@@ -121,7 +115,7 @@ export function checkGiftCardPurchase(
   }
   const sendTo: GiftCardSendTo = input.sendTo === 'buyer' ? 'buyer' : 'recipient';
 
-  const recipientName = text(input.recipientName, 60);
+  const recipientName = text(input.recipientName, GIFT_CARD_NAME_MAX);
   if (recipientName.length < 2) errors.recipientName = 'Type the name of the person the card is for.';
   else if (unsafeGiftText(recipientName)) errors.recipientName = 'Use only their name here.';
 
@@ -132,7 +126,7 @@ export function checkGiftCardPurchase(
     errors.recipientPhone = 'Check their number, or leave it empty.';
   }
 
-  const buyerName = text(input.buyerName, 60);
+  const buyerName = text(input.buyerName, GIFT_CARD_NAME_MAX);
   if (buyerName.length < 2) errors.buyerName = 'Type your name.';
   else if (unsafeGiftText(buyerName)) errors.buyerName = 'Use only your name here.';
   const buyerPhone = text(input.buyerPhone, 20);
@@ -143,7 +137,7 @@ export function checkGiftCardPurchase(
   const buyerEmail = text(input.buyerEmail, 255).toLowerCase();
   if (buyerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) errors.buyerEmail = 'Check your email address, or leave it empty.';
 
-  const fromName = text(input.fromName, GIFT_CARD_FROM_MAX) || buyerName.slice(0, GIFT_CARD_FROM_MAX);
+  const fromName = text(input.fromName, GIFT_CARD_FROM_MAX) || clipText(buyerName, GIFT_CARD_FROM_MAX);
   if (fromName && unsafeGiftText(fromName)) errors.fromName = 'Use only a name here (no numbers or links).';
 
   const message = text(input.message, GIFT_CARD_MESSAGE_MAX + 1);
@@ -161,6 +155,9 @@ export function checkGiftCardPurchase(
     else deliverOn = deliverRaw > today ? deliverRaw : null;
   }
 
+  const photoRaw = typeof input.photoId === 'string' ? input.photoId.trim().toLowerCase() : '';
+  if (photoRaw && !isGiftCardPhotoId(photoRaw)) errors.photo = 'Add the photo again, or remove it.';
+
   if (Object.keys(errors).length > 0) return { ok: false, errors };
   return {
     ok: true,
@@ -169,6 +166,7 @@ export function checkGiftCardPurchase(
       fromName, buyerName, buyerPhone, buyerEmail: buyerEmail || null, deliverOn,
       // An unknown theme is not the buyer's mistake to fix: the card simply takes the GoldPlus look.
       theme: isGiftCardTheme(input.theme) ? input.theme : 'gold',
+      photoId: photoRaw || null,
     },
   };
 }

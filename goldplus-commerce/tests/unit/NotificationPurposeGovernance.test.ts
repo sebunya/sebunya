@@ -236,6 +236,15 @@ describe("requesting a code is bounded", () => {
     expect(sent).toHaveLength(1);
   });
 
+  it("refuses a number another account already holds, before any code is sent (one SIM, one account; 2026-10-22)", async () => {
+    let created = 0;
+    const { useCase, sent } = build({ phoneHeldByAnother: async () => true, createOtp: async () => { created++; } });
+    const result = await useCase.execute({ userId: "u2", phone: "+256 700 000 000" });
+    expect(result).toMatchObject({ ok: false, code: "PHONE_IN_USE" });
+    expect(sent).toHaveLength(0);
+    expect(created).toBe(0);
+  });
+
   it("refuses a resend inside the cooldown, and sends nothing", async () => {
     const { useCase, sent } = build({
       lastOtpIssuedAt: async () => new Date("2026-08-15T11:59:30Z"), // 30s ago

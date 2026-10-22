@@ -8,7 +8,8 @@ tested; nothing is sent until the Google Ads card on `/admin/advertising` is sav
 | Signal | When | How |
 |---|---|---|
 | **Purchase** | an order is confirmed (paid online) | Data Manager `events:ingest` → the purchase action (UPLOAD_CLICKS). Value in **UGX** (Google lists UGX). `transactionId` = order number. |
-| **Refund** | money goes back (partial or full) | the **same** transaction restated with the value kept (0 for a full refund) — a conversion adjustment; Google overwrites the value, so a repeat is harmless. Only after the purchase reached Google. |
+| **Refund** | money goes back (partial or full) | the **same** transaction restated with the value kept (0 for a full refund) — a conversion adjustment: Google matches on `transactionId` within the same conversion action and the new value "replaces the recorded value" (Data Manager conversion-adjustments guide, read 2026-10-22). Only after the purchase reached Google. |
+| **Confirmation** | about two minutes after each upload | Data Manager only queues an upload (the reply is a `requestId`). The sweep asks `requestStatus:retrieve`: SUCCESS confirms; FAILED or PARTIAL_SUCCESS marks the delivery failed with Google's error counts and records it on the connection (`/admin/advertising`), and a failed purchase is never restated. Uploads older than 7 days are no longer asked about. |
 | **Lead** | quote request, WhatsApp tap | the optional lead action, no value. |
 | **Phone / WhatsApp sale** | recorded on `/admin/advertising/offline` | `eventSource` PHONE or MESSAGE, matched by the customer's click id or hashed contact. |
 | **New vs returning** | every purchase | `userProperties.customerType`: NEW when there is no earlier paid or delivered order by the same account or phone. Turn on **new customer acquisition** in the campaign to bid for it. |
@@ -105,3 +106,13 @@ Owner steps:
 5. **Purchase (server)** settings: click-through window **90 days**, attribution **Data-driven**.
 6. Optional, for campaign names, types and spend in the report: the developer token for spend import (above).
    Without it, the report still splits sales by type from `gp_net`.
+
+## Limits (checked against Google's documentation, 2026-10-22)
+
+- **No retraction through Data Manager.** The API restates values but does not retract a conversion (the Google Ads
+  API's ConversionAdjustmentUploadService RETRACTION has no Data Manager equivalent). So a pay-on-delivery order that
+  is reported at placement and then cancelled before any money moved stays counted in Google Ads, while GA4 gets the
+  refund. Whether restating to value 0 is accepted is not documented, so it is not attempted.
+- **Store sales conversions** do not support adjustments; multi-source conversions cannot update values during their
+  first 14 days.
+

@@ -26,7 +26,9 @@ export async function listPaidOrdersOwedConfirmedEffects(since: Date, limit: num
       and o.updated_at >= ${since}
       and exists (select 1 from payment_attempts pa where pa.order_id = o.id and pa.status = 'completed')
       and (
-        (t.id is not null and t.payment_status <> 'paid' and t.status not in ('CANCELLED', 'DELIVERED'))
+        -- A gift card / store credit hold still 'held' on a paid order: its capture was lost (it runs once, inline).
+        exists (select 1 from credit_ledger l where l.order_id = o.id and l.type = 'HOLD' and l.hold_state = 'held')
+        or (t.id is not null and t.payment_status <> 'paid' and t.status not in ('CANCELLED', 'DELIVERED'))
         or (
           o.status not in ('cancelled', 'delivered', 'completed', 'failed')
           and exists (select 1 from payment_attempts pa where pa.order_id = o.id and pa.status = 'completed' and pa.updated_at >= ${since})

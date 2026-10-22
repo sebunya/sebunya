@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="A bold green celebratory burst">
+  <!-- Congratulations: one bold burst with a white heart of light. Drawn for a black field. -->
+  <path d="M100 16 L114 56 L152 34 L138 74 L182 76 L146 100 L182 124 L138 126 L152 166 L114 144 L100 184 L86 144 L48 166 L62 126 L18 124 L54 100 L18 76 L62 74 L48 34 L86 56 Z" fill="#96CC06"/>
+  <circle cx="100" cy="100" r="30" fill="#000000"/>
+  <path d="M100 80 L106 94 L120 100 L106 106 L100 120 L94 106 L80 100 L94 94 Z" fill="#FFFFFF"/>
+</svg>

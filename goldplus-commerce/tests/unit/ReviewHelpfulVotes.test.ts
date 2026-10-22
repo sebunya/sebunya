@@ -37,6 +37,12 @@ describe('review helpful votes (gap #10)', () => {
     expect(pdp).toContain('<form method="POST" action="/api/reviews/vote" data-review-vote>');
     const relay = read('apps/web/src/pages/api/reviews/vote.ts');
     expect(relay).toContain("'x-gp-visit': visit");
+    expect(relay).toContain('readClientAddress(context)'); // attributed to the visitor, so the API's limit applies
     expect(relay).toContain('return redirect(/^\\/products\\/[a-z0-9-]+$/i.test(back)');
+  });
+
+  it('the API counts a vote only from a visit token we signed (an unchecked header let a script vote endlessly)', () => {
+    const route = read('apps/api/src/interfaces/http/routes/commerce.ts');
+    expect(route).toMatch(/const voterKey = hashVisitToken\(c\.req\.header\('x-gp-visit'\) \?\? ''\) \?\? '';/);
   });
 });

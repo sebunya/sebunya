@@ -78,7 +78,7 @@ routes.get('/merchant-feed.xml', async (c) => {
     const products = await registry.seoGrowthRepo.feedProducts();
     // The same one campaign the storefront reads, so the feed quotes the price
     // the shopper is actually charged.
-    const campaign = await resolveStorefrontDiscount(registry.pricingRepo);
+    const campaign = await resolveStorefrontDiscount(registry.storefrontPricingRepo);
     return buildMerchantFeedXml(
       products,
       STOREFRONT_BASE_URL,

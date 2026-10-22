@@ -251,6 +251,12 @@ export interface AreaInput {
    */
   fulfilmentMode?: FulfilmentMode | null;
   /**
+   * Ops' explicit mode for this area (delivery_corridor.fulfilment_mode, set through the corridor file). When set it
+   * beats every derivation (resolveFulfilmentMode). Read since 2026-10-22: before, it was applied and audited but no
+   * quote ever saw it.
+   */
+  declaredFulfilmentMode?: FulfilmentMode | null;
+  /**
    * True when the address resolved only as far as a district. Corridor and
    * band do not exist at that granularity, so no quote is possible — but the
    * customer is one choice away from one.

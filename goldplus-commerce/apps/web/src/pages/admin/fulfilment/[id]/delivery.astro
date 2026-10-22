@@ -38,7 +38,10 @@ if (Astro.request.method === "POST") {
     const res = await fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/delivery`, { method: "POST", headers, body: JSON.stringify(payload) });
     const json = await res.json().catch(() => null);
     if (res.status === 403) notice = { kind: "error", text: "You do not have permission to record deliveries." };
-    else if (json?.success) notice = { kind: "success", text: json.data?.completed ? "Delivery confirmed — order marked DELIVERED." : "Delivery attempt recorded." };
+    // Only say the ORDER is delivered when it is: the task can finish while the order does not follow (2026-10-22).
+    else if (json?.success) notice = !json.data?.completed ? { kind: "success", text: "Delivery attempt recorded." }
+      : json.data?.orderTransition === "delivered" ? { kind: "success", text: "Delivery confirmed. The order says delivered." }
+      : { kind: "error", text: "The delivery is recorded, but the order did not move to delivered. Open the order and press \"Mark the order delivered\"." };
     else notice = { kind: "error", text: json?.error?.message || "The delivery service rejected that attempt." };
   } catch {
     notice = { kind: "error", text: "The delivery service is unreachable right now." };

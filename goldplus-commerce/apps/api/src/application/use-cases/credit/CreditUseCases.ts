@@ -1,3 +1,4 @@
+import { isQuietHours } from '../../notifications/QuietHours';
 import { formatUgx } from '../../notifications/CustomerMessages';
 import type { CreditInstrumentView, ICreditRepository } from '../../ports/ICreditRepository';
 import { checkIssue, maskCreditCode, newCreditCode, normalizeCreditCode, type CreditKind } from '../../../domain/credit/CreditInstrument';
@@ -25,7 +26,13 @@ const ISSUE_MESSAGES: Record<string, string> = {
 };
 
 export class IssueCreditUseCase {
-  constructor(private readonly repo: ICreditRepository, private readonly tools: CreditCodeTools, private readonly notifier: CreditIssuedNotifier | null) {}
+  constructor(
+    private readonly repo: ICreditRepository,
+    private readonly tools: CreditCodeTools,
+    private readonly notifier: CreditIssuedNotifier | null,
+    /** A refund as credit takes back the order's points like any refund (2026-10-22: it touched no loyalty at all). */
+    private readonly refundLoyalty?: { execute(input: { orderId: string; refundedShareBps: number; reason: string }): Promise<void> },
+  ) {}
 
   async execute(input: {
     kind: CreditKind; amountUgx: number; reason: string; recipientName?: string | null; recipientPhone?: string | null;
@@ -55,6 +62,14 @@ export class IssueCreditUseCase {
         let texted = false;
         if (status === 'active' && phone && this.notifier) {
           await this.notifier.send({ instrumentId: id, phone, kind: input.kind, valueUgx: input.amountUgx, code, recipientName: ((input.recipientName ?? '').trim() || forOrder?.name) ?? null }).then(() => { texted = true; }).catch(() => undefined);
+        }
+        if (status === 'active' && forOrder && this.refundLoyalty && this.repo.refundedSoFarForOrder) {
+          // Isolated: the credit exists already; points can be corrected by hand.
+          await this.repo.refundedSoFarForOrder(forOrder.id)
+            .then(({ refundedUgx, totalUgx }) => totalUgx > 0
+              ? this.refundLoyalty!.execute({ orderId: forOrder.id, refundedShareBps: Math.min(10_000, Math.floor((refundedUgx * 10_000) / totalUgx)), reason: 'Refunded as store credit' })
+              : undefined)
+            .catch(() => undefined);
         }
         return { ok: true, id, code, masked: maskCreditCode(code), status, texted };
       } catch (err) {
@@ -124,7 +139,7 @@ export class ManageCreditUseCases {
     if (result.ok && this.refundLoyalty && result.orderTotalUgx > 0) {
       // Isolated like the cash path: the money is already back on the card; points can be corrected by hand.
       await this.refundLoyalty
-        .execute({ orderId: result.orderId, refundedShareBps: Math.floor((amountUgx * 10_000) / result.orderTotalUgx), reason: 'Item given back to the gift card' })
+        .execute({ orderId: result.orderId, refundedShareBps: Math.min(10_000, Math.floor((result.refundedSoFarUgx * 10_000) / result.orderTotalUgx)), reason: 'Item given back to the gift card' })
         .catch(() => undefined);
     }
     return result;
@@ -162,6 +177,7 @@ export class NotifyCardUsedUseCase {
 export class CreditExpiryRemindersUseCase {
   constructor(private readonly repo: ICreditRepository, private readonly sender: CreditNoticeSender) {}
   async execute(now: Date): Promise<{ due: number; sent: number }> {
+    if (isQuietHours(now)) return { due: 0, sent: 0 }; // held until 08:00 Kampala
     const due = await this.repo.expiringSoon(now, new Date(now.getTime() + 7 * 86_400_000), 200);
     let sent = 0;
     for (const c of due) {

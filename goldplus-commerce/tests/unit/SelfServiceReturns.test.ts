@@ -58,4 +58,9 @@ describe('self-service returns (gap #8)', () => {
     expect(r('apps/web/src/pages/returns.astro')).toContain('href="/returns/start"');
     expect(r('apps/web/src/pages/orders/[id].astro')).toContain('/returns/start?reference=${encodeURIComponent(order.orderNumber)}');
   });
+
+  it('asks the care desk for exactly this item, not any title that starts with it (BL-4C vs BL-4CT)', () => {
+    const src = readFileSync(new URL('../../apps/api/src/application/use-cases/commerce/RequestReturnUseCase.ts', import.meta.url), 'utf8');
+    expect(src).toContain('this.care.lastTitled(title, { exact: true })');
+  });
 });

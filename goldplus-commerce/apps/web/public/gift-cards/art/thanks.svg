@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="A folded thank-you note tied with a ribbon">
+  <!-- Thank you: a folded note, tied with a ribbon. Drawn for a green field. -->
+  <g transform="rotate(-8 100 110)">
+    <path d="M30 56 H170 V164 H30 Z" fill="#FFFFFF" stroke="#000000" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M30 56 L100 112 L170 56" fill="none" stroke="#000000" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M30 164 L84 110 M170 164 L116 110" fill="none" stroke="#000000" stroke-width="4" stroke-linejoin="round" opacity=".35"/>
+    <rect x="30" y="100" width="140" height="18" fill="#000000"/>
+    <path d="M100 108 C84 86 62 84 62 96 C62 106 82 110 100 108 Z" fill="#000000"/>
+    <path d="M100 108 C116 86 138 84 138 96 C138 106 118 110 100 108 Z" fill="#000000"/>
+    <path d="M96 110 L84 136 L94 132 L98 142 Z M104 110 L116 136 L106 132 L102 142 Z" fill="#000000"/>
+    <circle cx="100" cy="108" r="8" fill="#FFFFFF" stroke="#000000" stroke-width="5"/>
+  </g>
+</svg>

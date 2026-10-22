@@ -47,6 +47,8 @@ export interface IAddressRepository {
   /** Live (non-deleted) addresses only. */
   listForUser(userId: string): Promise<AddressDto[]>;
   findForUser(userId: string, addressId: string): Promise<AddressDto | null>;
+  /** The pin on this customer's own address, for an order placed from it. Optional for test doubles. */
+  pinForUser?(userId: string, addressId: string): Promise<{ gpsLat: number; gpsLng: number; gpsAccuracyM: number | null; gpsSource: string | null; areaSlug: string | null } | null>;
   createForUser(input: CreateAddressInput): Promise<AddressDto>;
   /**
    * User-scoped edit. Returns before+after for the audit trail, or null when

@@ -243,12 +243,12 @@ export function searchDiscoveryProducts(
  * touches an order the shopper chose, never hides anything, and within a
  * category the order is the same for everyone.
  */
-export function sortDiscoveryProducts(products: ProductPublicDto[], sort: DiscoverySort, taxonomy: Taxonomy = DEFAULT_TAXONOMY, preferredCategories: readonly string[] = []): ProductPublicDto[] {
+export function sortDiscoveryProducts(products: ProductPublicDto[], sort: DiscoverySort, taxonomy: Taxonomy = DEFAULT_TAXONOMY, preferredCategories: readonly string[] = [], priceOf: PriceOf = regularPrice): ProductPublicDto[] {
   const list = [...products];
-  const safePrice = (product: ProductPublicDto) =>
-    typeof product.retailPriceUgx === 'number' && Number.isFinite(product.retailPriceUgx) && product.retailPriceUgx > 0
-      ? product.retailPriceUgx
-      : Number.POSITIVE_INFINITY;
+  const safePrice = (product: ProductPublicDto) => {
+    const p = priceOf(product);
+    return typeof p === 'number' && Number.isFinite(p) && p > 0 ? p : Number.POSITIVE_INFINITY;
+  };
   if (sort === 'price-low-high') return list.sort((a, b) => safePrice(a) - safePrice(b) || a.name.localeCompare(b.name));
   if (sort === 'price-high-low') return list.sort((a, b) => safePrice(b) - safePrice(a) || a.name.localeCompare(b.name));
   if (sort === 'name-a-z') return list.sort((a, b) => a.name.localeCompare(b.name));
@@ -324,14 +324,22 @@ function specValues(product: ProductPublicDto, attribute: string): string[] {
     .map((a) => `${String(a.value).trim()}${a.unit ? ` ${a.unit}` : ''}`.slice(0, 60));
 }
 
-function priceBandOf(product: ProductPublicDto): string | null {
-  const p = product.retailPriceUgx;
+/**
+ * What a product costs the shopper right now. The default is the regular price; during a campaign the shop page
+ * passes the price actually charged (the card shows it), so "Under UGX 20,000" and "price low to high" agree with
+ * what the cards say (2026-10-22: both read the regular price while the cards showed the sale price).
+ */
+export type PriceOf = (product: ProductPublicDto) => number | null | undefined;
+const regularPrice: PriceOf = (product) => product.retailPriceUgx;
+
+function priceBandOf(product: ProductPublicDto, priceOf: PriceOf = regularPrice): string | null {
+  const p = priceOf(product);
   if (typeof p !== 'number' || p <= 0) return null;
   return PRICE_BANDS.find((b) => p >= b.min && p <= b.max)?.key ?? null;
 }
 
-function matchesFacets(product: ProductPublicDto, sel: ShopFacetSelection, skip?: string): boolean {
-  if (skip !== 'price' && sel.price.length && !sel.price.includes(priceBandOf(product) ?? '')) return false;
+function matchesFacets(product: ProductPublicDto, sel: ShopFacetSelection, skip?: string, priceOf: PriceOf = regularPrice): boolean {
+  if (skip !== 'price' && sel.price.length && !sel.price.includes(priceBandOf(product, priceOf) ?? '')) return false;
   for (const [attr, values] of Object.entries(sel.specs)) {
     if (attr === skip || values.length === 0) continue;
     const own = specValues(product, attr);
@@ -340,8 +348,8 @@ function matchesFacets(product: ProductPublicDto, sel: ShopFacetSelection, skip?
   return true;
 }
 
-export function applyShopFacets(products: ProductPublicDto[], sel: ShopFacetSelection): ProductPublicDto[] {
-  return products.filter((p) => matchesFacets(p, sel));
+export function applyShopFacets(products: ProductPublicDto[], sel: ShopFacetSelection, priceOf: PriceOf = regularPrice): ProductPublicDto[] {
+  return products.filter((p) => matchesFacets(p, sel, undefined, priceOf));
 }
 
 /** "20000 mAh" before "10000 mAh"? No: numbers ascending, then words. */
@@ -355,11 +363,11 @@ function compareValues(a: string, b: string): number {
  * The filters for these products. Each option's count is what choosing it would show, given every OTHER filter
  * already chosen (so a count never promises products that the other choices hide).
  */
-export function buildShopFacets(products: ProductPublicDto[], sel: ShopFacetSelection): ShopFacet[] {
+export function buildShopFacets(products: ProductPublicDto[], sel: ShopFacetSelection, priceOf: PriceOf = regularPrice): ShopFacet[] {
   const facets: ShopFacet[] = [];
-  const priced = products.filter((p) => matchesFacets(p, sel, 'price'));
+  const priced = products.filter((p) => matchesFacets(p, sel, 'price', priceOf));
   const bandCounts = new Map<string, number>();
-  for (const p of priced) { const b = priceBandOf(p); if (b) bandCounts.set(b, (bandCounts.get(b) ?? 0) + 1); }
+  for (const p of priced) { const b = priceBandOf(p, priceOf); if (b) bandCounts.set(b, (bandCounts.get(b) ?? 0) + 1); }
   if (bandCounts.size >= 2 || sel.price.length) {
     facets.push({
       key: 'price',
@@ -369,7 +377,7 @@ export function buildShopFacets(products: ProductPublicDto[], sel: ShopFacetSele
     });
   }
   for (const attr of FILTER_ATTRIBUTES) {
-    const base = products.filter((p) => matchesFacets(p, sel, attr));
+    const base = products.filter((p) => matchesFacets(p, sel, attr, priceOf));
     const counts = new Map<string, number>();
     let covered = 0;
     for (const p of base) {

@@ -135,12 +135,16 @@ describe('store credit flow (gap #17)', () => {
     expect(shares[1]).toBe(3_333);
 
     const back: number[] = [];
-    const m = new ManageCreditUseCases({ returnToCardForOrder: async () => ({ ok: true, instrumentId: 'c', leftUgx: 50_000, orderId: 'o1', orderTotalUgx: 250_000 }) } as any, tools,
+    // The repository reports everything the order has had back so far (card + cash): the share sent to loyalty is
+    // that running total, so a second 25,000 return on a 250,000 order is 20%, not another 10% (2026-10-22).
+    let soFar = 0;
+    const m = new ManageCreditUseCases({ returnToCardForOrder: async (_r: string, amount: number) => { soFar += amount; return { ok: true, instrumentId: 'c', leftUgx: 50_000, orderId: 'o1', orderTotalUgx: 250_000, refundedSoFarUgx: soFar }; } } as any, tools,
       { execute: async (i) => { back.push(i.refundedShareBps); } });
     expect(await m.returnToCard('gp-202610-abcd', 25_000, 'staff', 'Charger returned')).toMatchObject({ ok: true });
-    expect(back).toEqual([1_000]);
+    expect(await m.returnToCard('gp-202610-abcd', 25_000, 'staff', 'Cable returned')).toMatchObject({ ok: true });
+    expect(back).toEqual([1_000, 2_000]);
     expect(await m.returnToCard('nonsense', 25_000, 'staff', 'Charger returned')).toMatchObject({ ok: false });
-    expect(back).toHaveLength(1);
+    expect(back).toHaveLength(2);
   });
 
   it('a cancelled order says where the card money went, and who refunds the rest', async () => {
@@ -233,5 +237,20 @@ describe('store credit flow (gap #17)', () => {
     expect(issued[0]).toMatchObject({ sourceOrderId: 'o1', customerUserId: 'u1', recipientName: 'Amina N', recipientPhone: '+256772123456' });
     expect(texts[0]).toMatchObject({ phone: '+256772123456', recipientName: 'Amina N' });
     expect(await uc.execute({ kind: 'store_credit', amountUgx: 30_000, reason: 'Refund', orderNumber: 'GP-NOPE', actorId: 's' })).toMatchObject({ ok: false, code: 'BAD_ORDER' });
+  });
+
+  it('a refund as store credit takes back the order\'s points by its running refunded share (2026-10-22)', async () => {
+    const shares: number[] = [];
+    const repo: any = {
+      orderForCredit: async () => ({ id: 'o1', userId: 'u1', name: 'Amina N', phone: '+256772123456' }),
+      issue: async () => ({ id: 'c1' }),
+      refundedSoFarForOrder: async () => ({ refundedUgx: 30_000, totalUgx: 120_000 }),
+    };
+    const uc = new IssueCreditUseCase(repo, tools, null, { execute: async (i) => { shares.push(i.refundedShareBps); } });
+    await uc.execute({ kind: 'store_credit', amountUgx: 30_000, reason: 'Refund for GP-202610-ABCD', orderNumber: 'GP-202610-ABCD', actorId: 's' });
+    expect(shares).toEqual([2_500]);
+    // A credit not linked to an order (a gift sold at the counter) touches no loyalty.
+    await uc.execute({ kind: 'gift_card', amountUgx: 30_000, reason: 'Sold at the counter', actorId: 's' });
+    expect(shares).toEqual([2_500]);
   });
 });

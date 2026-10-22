@@ -1,3 +1,4 @@
+import { isFulfilmentMode } from '../../domain/delivery/DeliveryFulfilmentMode';
 import { sql } from 'drizzle-orm';
 import { foldUgandanOrthography, normalizeUgandaDistrict } from '@goldplus/shared';
 import { db } from '../db/client';
@@ -32,6 +33,7 @@ interface CorridorRow {
   distance_band: string;
   access_mode: string;
   serviceable: boolean;
+  fulfilment_mode?: string | null;
   centroid_lat: string | null;
   centroid_lng: string | null;
   centroid_source: string | null;
@@ -59,7 +61,7 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
    */
   private async corridorFor(areaSlug: string): Promise<CorridorRow | null> {
     const rows = (await db.execute(sql`
-      select c.area_slug, c.area, c.district, c.corridor, c.distance_band, c.access_mode, c.serviceable,
+      select c.area_slug, c.area, c.district, c.corridor, c.distance_band, c.access_mode, c.serviceable, c.fulfilment_mode,
              c.centroid_lat, c.centroid_lng, c.centroid_source, c.centroid_sample_size, c.centroid_expected_error_m,
              u.area_kind
       from delivery_corridor c left join ug_area u on u.area_slug = c.area_slug
@@ -129,6 +131,7 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
       band,
       accessMode: row.access_mode === 'water' ? 'water' : 'road',
       serviceable: row.serviceable && !NEVER_DOOR_DELIVERY.has(row.area_kind ?? ''),
+      declaredFulfilmentMode: row.fulfilment_mode && isFulfilmentMode(row.fulfilment_mode) ? row.fulfilment_mode : null,
       // A measured centroid beats a band midpoint — but only once it exists,
       // and only once the registry says to price with it. `centroidKm` is the
       // fact; `measuredKm` is set by the quoting use case from it (0189).

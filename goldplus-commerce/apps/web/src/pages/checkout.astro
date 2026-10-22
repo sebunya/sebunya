@@ -428,6 +428,8 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
          deliveryAddress: [selectedAddress.areaDetails, values.deliveryAddress].filter(Boolean).join(' | '),
          // The same key the page quoted by, so the charge resolves on it too.
          deliveryLocation: { district: selectedAddress.district, areaSlug: selectedAddress.areaSlug ?? undefined },
+         // The API takes the address's own pin (the page never sees its coordinates).
+         savedAddressId: selectedAddress.id,
        };
      }
      // Owner decision 2026-10-16: always online (the server refuses pay on delivery unless switched back on).
@@ -1441,11 +1443,12 @@ const checkoutSavingLabel = basketSavingLabel(
     }
 
     let feeLineHome: { parent: HTMLElement | null; next: Element | null } | null = null;
-    function renderLocationFeeLine(est: { kind: string; feeUgx: number | null } | null, located: boolean) {
+    function renderLocationFeeLine(est: { kind: string; feeUgx: number | null; paidAtCollectionUgx?: number | null } | null, located: boolean) {
       const line = document.getElementById('location-fee-line');
       if (!line) return;
       let text = '';
-      if (est && est.kind === 'CONFIRMED' && est.feeUgx !== null) text = est.feeUgx === 0 ? 'No delivery fee' : `Delivery ${ugx(est.feeUgx)}`;
+      if (est && est.kind === 'CONFIRMED' && est.feeUgx === 0 && est.paidAtCollectionUgx) text = `Shipping ${ugx(est.paidAtCollectionUgx)}, paid to the carrier when you collect`;
+      else if (est && est.kind === 'CONFIRMED' && est.feeUgx !== null) text = est.feeUgx === 0 ? 'No delivery fee' : `Delivery ${ugx(est.feeUgx)}`;
       else if (est && est.kind === 'ESTIMATED' && est.feeUgx !== null) text = `Delivery about ${ugx(est.feeUgx)}, confirmed before the rider leaves`;
       else if (located) text = 'Delivery fee confirmed by phone before dispatch';
       // A saved address hides the new-address block the line sits in: then it shows under the saved choices.
@@ -1458,8 +1461,15 @@ const checkoutSavingLabel = basketSavingLabel(
       line.classList.toggle('hidden', !text);
     }
 
-    function renderEstimateRow(est: { kind: string; feeUgx: number | null } | null, located: boolean) {
+    function renderEstimateRow(est: { kind: string; feeUgx: number | null; paidAtCollectionUgx?: number | null } | null, located: boolean) {
       if (!estimateEl || !totalEl || !totalLabelEl) return;
+      // A taxi/bus parcel paid to the conductor at collection: nothing is charged in the order, but it is not free.
+      if (est && est.kind === 'CONFIRMED' && est.feeUgx === 0 && est.paidAtCollectionUgx) {
+        estimateEl.innerHTML = `<span class="font-bold text-gray-900 tabular-nums">${ugx(est.paidAtCollectionUgx)} <span class="block text-[10px] font-semibold text-slate-600">paid to the carrier when you collect</span></span>`;
+        totalLabelEl.textContent = 'Total to pay now';
+        totalEl.textContent = ugx(goodsTotal());
+        return;
+      }
       // The Total always includes every fee shown above it. A CONFIRMED fee is
       // the amount to pay; an ESTIMATE is folded into an "Estimated total" so the
       // customer never sees a total that excludes a fee the page just quoted.

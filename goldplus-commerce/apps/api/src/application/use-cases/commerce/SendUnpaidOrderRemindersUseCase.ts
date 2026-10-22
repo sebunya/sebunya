@@ -1,3 +1,4 @@
+import { isQuietHours } from '../../notifications/QuietHours';
 import type { IUnpaidOrderReminderCandidates } from '../../ports/IUnpaidOrderReminderCandidates';
 
 /**
@@ -23,6 +24,7 @@ export class SendUnpaidOrderRemindersUseCase {
 
   async execute(now: Date): Promise<{ due: number; enqueued: number; failed: number; disabled?: true }> {
     if (!this.enabled()) return { due: 0, enqueued: 0, failed: 0, disabled: true };
+    if (isQuietHours(now)) return { due: 0, enqueued: 0, failed: 0 }; // held until 08:00 Kampala (the window is a day)
     const orderIds = await this.candidates.findDue({
       placedBefore: new Date(now.getTime() - PAYMENT_REMINDER_AFTER_MINUTES * 60_000),
       placedAfter: new Date(now.getTime() - PAYMENT_REMINDER_UNTIL_HOURS * 3_600_000),

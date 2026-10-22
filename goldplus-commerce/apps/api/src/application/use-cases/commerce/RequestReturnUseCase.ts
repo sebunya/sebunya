@@ -33,7 +33,7 @@ export class RequestReturnUseCase {
     private readonly delivered: IOrderDeliveredAt,
     private readonly care: {
       openTask(input: OpenTaskInput): Promise<{ ok: boolean; created?: boolean }>;
-      lastTitled(prefix: string): Promise<{ status: string } | null>;
+      lastTitled(prefix: string, opts?: { exact?: boolean }): Promise<{ status: string } | null>;
     },
     private readonly now: () => Date = () => new Date(),
   ) {}
@@ -57,7 +57,8 @@ export class RequestReturnUseCase {
     if (reason === 'changed_mind' && days !== null && days > CHANGE_OF_MIND_DAYS) return { ok: false, reason: 'PAST_CHANGE_OF_MIND' };
 
     const title = `Return ${order.orderNumber}: ${item.name}`.slice(0, 200);
-    const last = await this.care.lastTitled(title).catch(() => null);
+    // Exactly this item: a prefix match took "Battery BL-4C" for an open "Battery BL-4CT" return and dropped it.
+    const last = await this.care.lastTitled(title, { exact: true }).catch(() => null);
     if (last && last.status === 'open') return { ok: true, created: false };
 
     const lines = [

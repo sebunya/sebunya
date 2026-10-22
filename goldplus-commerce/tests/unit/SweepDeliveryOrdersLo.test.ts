@@ -86,6 +86,19 @@ describe('free-delivery threshold waives the fee it advertises (finding: qualifi
     expect(waived.kind === 'bus_shipment' && waived.parcelSentence).toMatch(/Delivery is free\./);
   });
 
+  it('a card paid to the carrier at collection is never "free": the shop cannot waive what the conductor is paid (2026-10-22)', () => {
+    const q = bus(10_000, 1, 'collection');
+    const after = applyFreeDeliveryThreshold(q, { thresholdUgx: 100_000, basisUgx: 150_000 });
+    expect(after).toBe(q);
+    expect(after.kind === 'bus_shipment' && after.freeDelivery).toBeFalsy();
+  });
+
+  it('checkout says what is paid at collection instead of "No delivery fee"', () => {
+    const page = read('apps/web/src/pages/checkout.astro');
+    expect(page).toContain('paid to the carrier when you collect');
+    expect(read('apps/api/src/infrastructure/Registry.ts')).toMatch(/paidAtCollectionUgx: q\.kind === 'bus_shipment' && q\.shipment\.chargedAt === 'collection' \? q\.feeUgx : null/);
+  });
+
   it('the route shows progress against the same threshold, and no longer reads only the shop-wide key', () => {
     const src = read('apps/api/src/interfaces/http/routes/delivery.ts');
     expect(src).toMatch(/thresholdUgx: outcome\.freeDeliveryThresholdUgx/);
@@ -288,6 +301,14 @@ describe('a cash-on-delivery order follows its task to dispatched (COD mirror)',
     const p = port('received');
     expect(await mirrorOrderDispatched(p as never, 'o-1', { actorId: 'a', note: 'x', cashOnDelivery: false })).toBe('skipped');
     expect(p.state.hops).toEqual([]);
+  });
+
+  it('a PAID order still at received is confirmed (no payment switch), then dispatched (owner, 2026-10-22)', async () => {
+    const p = port('received', 'paid');
+    expect(await mirrorOrderDispatched(p as never, 'o-1', { actorId: 'a', note: 'x', cashOnDelivery: false, paid: true })).toBe('dispatched');
+    expect(p.state.hops).toEqual(['received->processing', 'processing->dispatched']);
+    expect(p.transition.mock.calls[1][2]).toMatchObject({ reasonCode: 'dispatch_confirmed' });
+    expect(p.transition.mock.calls[1][2]).not.toHaveProperty('switchToPayOnDelivery');
   });
 
   it('a cancelled order is never revived', async () => {

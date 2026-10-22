@@ -5,14 +5,17 @@ import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
 import { readSessionToken } from '../../lib/session';
 import { formatUgx } from '../../lib/money';
 import GiftCardFace from '../../components/GiftCardFace.astro';
-import { GIFT_CARD_THEMES, giftCardTheme } from '../../lib/giftCardThemes';
+import GiftCardThumb from '../../components/GiftCardThumb.astro';
+import { giftCardPhotoUrl, isPhotoId } from '../../lib/giftCardPhoto';
+import { GIFT_CARD_THEMES, GIFT_MESSAGE_MAX, giftCardTheme } from '../../lib/giftCardThemes';
 
 /**
  * Buy a GoldPlus gift card for someone (0199). Built for a phone first:
  *  - six things to fill, in the order a person thinks: how much, who for, how it looks and what it says, when,
  *    and who you are (your name is the card's "From"; the receipt comes by SMS, so no email);
  *  - their name and number from the phone's contacts where the browser can (Android Chrome);
- *  - a message idea for the chosen design, one tap;
+ *  - a message idea for the chosen design, one tap (the whole idea, within the 160-character note);
+ *  - an optional photo, cropped on the phone (drag and zoom), kept through occasion changes and a reload;
  *  - every mistake shown at the field as it happens, and checked again before the page is left;
  *  - the pay button always in reach at the bottom of the screen, with the amount on it.
  * Works without JavaScript: the form posts here, the API opens a Pesapal payment under the purchase's own reference,
@@ -28,7 +31,7 @@ const today = kampalaToday();
 type Fields = Record<string, string>;
 const v: Fields = {
   amountPreset: '50000', amountOther: '', theme: 'gold', recipientName: '', recipientPhone: '', sendToMe: '', when: 'now', deliverOn: '',
-  message: '', buyerName: '', buyerPhone: '',
+  message: '', buyerName: '', buyerPhone: '', photoId: '',
 };
 // From a link: /gift-card/buy?theme=birthday&amount=100000 (the balance page, Goldie, a campaign).
 if (GIFT_CARD_THEMES.some((t) => t.key === Astro.url.searchParams.get('theme'))) v.theme = String(Astro.url.searchParams.get('theme'));
@@ -56,6 +59,7 @@ if (Astro.request.method === 'POST') {
         // One name: the buyer's is the card's "From".
         fromName: v.buyerName, buyerName: v.buyerName, buyerPhone: v.buyerPhone, buyerEmail: '',
         deliverOn: !toMe && v.when === 'date' ? v.deliverOn : '',
+        photoId: isPhotoId(v.photoId) ? v.photoId : '',
       }),
       signal: AbortSignal.timeout(20_000),
     });
@@ -111,13 +115,13 @@ const firstView = chosenOutside ? [...occasions.featured, v.theme] : occasions.f
 const moreView = occasions.more.filter((k) => !firstView.includes(k));
 const themeOf = (k: string) => giftCardTheme(k);
 
-const ORDER = ['amountPreset', 'amountOther', 'recipientName', 'recipientPhone', 'message', 'deliverOn', 'buyerName', 'buyerPhone'];
+const ORDER = ['amountPreset', 'amountOther', 'recipientName', 'recipientPhone', 'message', 'photo', 'deliverOn', 'buyerName', 'buyerPhone'];
+const photoUrl = errors.photo ? null : giftCardPhotoUrl(v.photoId);
 const firstError = ORDER.find((k) => errors[k]) ?? null;
 const field = 'mt-1 w-full min-h-12 rounded-xl border px-3.5 py-3 text-base outline-none focus:ring-2 focus:ring-brand-primaryInk';
 const border = (name: string) => (errors[name] ? 'border-red-400 bg-red-50' : 'border-slate-300 bg-white');
 const label = 'text-sm font-bold text-gray-900';
 const toMe = v.sendToMe === '1';
-const theme = giftCardTheme(v.theme);
 const previewAmount = (() => {
   const n = v.amountPreset === 'other' ? Number(v.amountOther.replace(/[,\s]/g, '')) : Number(v.amountPreset);
   return Number.isFinite(n) && n > 0 ? n : 50_000;
@@ -143,7 +147,7 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
       <aside>
         <div class="lg:sticky lg:top-28">
           <div class="mx-auto max-w-sm lg:max-w-md" data-gc-preview>
-            <GiftCardFace theme={v.theme} amountUgx={previewAmount} toName={v.recipientName} fromName={v.buyerName} message={v.message} masked="GPGC-••••-••••-••••" />
+            <GiftCardFace theme={v.theme} amountUgx={previewAmount} toName={v.recipientName} fromName={v.buyerName} message={v.message} photoUrl={photoUrl} />
           </div>
           <p class="mx-auto mt-3 hidden max-w-md text-xs text-slate-500 lg:block">They open it from our text and scratch to reveal the code. The text has the code too, for a phone without internet. The card does not expire.</p>
         </div>
@@ -157,10 +161,11 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
             {firstView.map((k) => (
               <label class="relative cursor-pointer text-center" data-occasion={k}>
                 <input type="radio" name="theme" value={k} checked={v.theme === k} class="peer sr-only" />
-                <span class="block aspect-[1.586/1] rounded-xl ring-offset-2 transition peer-checked:ring-4 peer-checked:ring-brand-primaryInk peer-focus-visible:ring-4 peer-focus-visible:ring-sky-500" style={`background:${themeOf(k).background};background-size:100% auto,cover;background-position:center,center`} aria-hidden="true"></span>
-                {occasions.labels[k] && <span class="absolute left-1 top-1 rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-gray-900 shadow">{occasions.labels[k]}</span>}
-                {chosenOutside && k === v.theme && <span class="absolute left-1 top-1 rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-gray-900 shadow">Your choice</span>}
+                <span class="block rounded-[10px] ring-offset-2 transition peer-checked:ring-4 peer-checked:ring-brand-primaryInk peer-focus-visible:ring-4 peer-focus-visible:ring-sky-500"><GiftCardThumb theme={k} /></span>
                 <span class="mt-1 block text-xs font-bold leading-tight text-gray-900">{themeOf(k).label}</span>
+                {/* Under the name, not over the picture: a badge on the thumbnail covered the illustration. */}
+                {occasions.labels[k] && <span class="mt-0.5 block text-[10px] font-black uppercase tracking-wider text-brand-primaryInk">{occasions.labels[k]}</span>}
+                {chosenOutside && k === v.theme && <span class="mt-0.5 block text-[10px] font-black uppercase tracking-wider text-brand-primaryInk">Your choice</span>}
               </label>
             ))}
           </div>
@@ -174,7 +179,7 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
                 {moreView.map((k) => (
                   <label class="relative cursor-pointer text-center" data-occasion={k}>
                     <input type="radio" name="theme" value={k} checked={v.theme === k} class="peer sr-only" />
-                    <span class="block aspect-[1.586/1] rounded-xl ring-offset-2 transition peer-checked:ring-4 peer-checked:ring-brand-primaryInk peer-focus-visible:ring-4 peer-focus-visible:ring-sky-500" style={`background:${themeOf(k).background};background-size:100% auto,cover;background-position:center,center`} aria-hidden="true"></span>
+                    <span class="block rounded-[10px] ring-offset-2 transition peer-checked:ring-4 peer-checked:ring-brand-primaryInk peer-focus-visible:ring-4 peer-focus-visible:ring-sky-500"><GiftCardThumb theme={k} /></span>
                     <span class="mt-1 block text-xs font-bold leading-tight text-gray-900">{themeOf(k).label}</span>
                   </label>
                 ))}
@@ -231,18 +236,49 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
 
 
         <fieldset>
-          <legend class="text-lg font-black text-gray-900">Your message</legend>
+          <legend class="text-lg font-black text-gray-900">Your note</legend>
           <label class="mt-3 block">
-            <span class={label}>A short message <span class="font-normal text-slate-500">(optional; ideas below)</span></span>
-            <textarea name="message" rows="2" maxlength="100" placeholder={theme.suggestions[0]} class={`${field} resize-none ${border('message')}`} autofocus={firstError === 'message'}>{v.message}</textarea>
+            <span class={label}>A note on the card <span class="font-normal text-slate-500">(optional)</span></span>
+            <textarea name="message" rows="4" maxlength={GIFT_MESSAGE_MAX} class={`${field} resize-none ${border('message')}`} autofocus={firstError === 'message'}>{v.message}</textarea>
           </label>
-          <div class="mt-2 flex flex-wrap gap-2" data-suggestions aria-label="Message ideas">
-            {theme.suggestions.map((m) => (
-              <button type="button" class="hidden min-h-10 rounded-full border border-slate-300 bg-white px-3 text-xs font-bold text-gray-900" data-suggestion>{m}</button>
-            ))}
-          </div>
-          <p class="mt-1 flex justify-between gap-3 text-xs text-slate-500"><span>No links or phone numbers, for their safety.</span><span data-gc-count aria-live="polite">{v.message.length}/100</span></p>
+          <p class="mt-1 flex justify-between gap-3 text-xs text-slate-500"><span>No links or phone numbers, for their safety.</span><span data-gc-count aria-live="polite">{v.message.length}/{GIFT_MESSAGE_MAX}</span></p>
           <p class={errClass('message')} data-err="message">{errors['message'] ?? ''}</p>
+          <p class="mt-3 hidden text-xs font-bold uppercase tracking-wider text-slate-500" data-suggestions-title>Or use one of these</p>
+          <div class="mt-2 grid gap-2" data-suggestions aria-label="Note ideas"></div>
+        </fieldset>
+
+        <fieldset data-photo class="js-only">
+          <legend class="text-lg font-black text-gray-900">A photo <span class="text-sm font-semibold text-slate-500">(optional)</span></legend>
+          <p class="mt-1 text-sm text-slate-600">It goes on the card instead of the picture. Only they and you see it.</p>
+          <p class="mt-1 text-xs text-slate-500">Use a photo you are happy for them to keep. They can remove it from their card, and so can you or we, at any time.</p>
+          <input type="hidden" name="photoId" value={photoUrl ? v.photoId : ''} />
+          <div class={`mt-3 flex items-center gap-3 ${photoUrl ? '' : 'hidden'}`} tabindex="-1" aria-label="Your photo is on the card" data-photo-chosen>
+            <img src={photoUrl ?? undefined} alt="Your photo, as it will show on the card" width="64" height="64" class="h-16 w-16 shrink-0 rounded-lg object-cover ring-1 ring-black/10" data-photo-thumb />
+            <div class="flex flex-wrap gap-2">
+              <label class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-slate-300 bg-white px-4 text-sm font-black text-gray-900">Change<input type="file" accept="image/*" class="sr-only" data-photo-file /></label>
+              <button type="button" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-4 text-sm font-black text-gray-900" data-photo-adjust hidden>Adjust</button>
+              <button type="button" class="inline-flex min-h-11 items-center rounded-full px-3 text-sm font-black text-red-700 underline" data-photo-remove>Remove</button>
+            </div>
+          </div>
+          <label class={`mt-3 inline-flex min-h-12 cursor-pointer items-center gap-2 rounded-xl border border-dashed border-slate-400 bg-white px-4 text-sm font-black text-gray-900 ${photoUrl ? 'hidden' : ''}`} data-photo-add>
+            <span aria-hidden="true" class="text-lg leading-none">+</span> Add a photo
+            <input type="file" accept="image/*" class="sr-only" data-photo-file />
+          </label>
+          <div class="mt-3 hidden select-none" data-photo-crop>
+            <p class="text-sm font-semibold text-gray-900">Drag to place it. Pinch or slide to zoom.</p>
+            <div class="relative mt-2 aspect-square w-full max-w-[18rem] touch-none select-none overflow-hidden rounded-xl bg-slate-200 ring-1 ring-black/10 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-sky-500" tabindex="0" role="application" aria-label="Your photo. Drag, pinch or use the arrow keys to place it; plus and minus to zoom." data-photo-frame>
+              <img alt="" class="pointer-events-none absolute left-0 top-0 max-w-none origin-top-left" data-photo-source />
+            </div>
+            <label class="mt-3 flex max-w-[18rem] items-center gap-3 text-sm font-semibold text-gray-900">Zoom
+              <input type="range" min="1" max="3" step="0.01" value="1" class="w-full accent-[#456B00]" data-photo-zoom aria-label="Zoom the photo" />
+            </label>
+            <div class="mt-3 flex gap-2">
+              <button type="button" class="inline-flex min-h-11 items-center rounded-full bg-gray-900 px-5 text-sm font-black text-white" data-photo-use>Use this photo</button>
+              <button type="button" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-4 text-sm font-black text-gray-900" data-photo-cancel>Cancel</button>
+            </div>
+          </div>
+          <p class="mt-2 hidden text-sm font-semibold text-slate-600" data-photo-status aria-live="polite"></p>
+          <p class={errClass('photo')} data-err="photo">{errors['photo'] ?? ''}</p>
         </fieldset>
 
         <fieldset data-when>
@@ -293,7 +329,7 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
   {/* Always in reach on a phone: what you are paying and the button. Hidden while the form's own button shows. */}
   <div class="fixed inset-x-0 bottom-0 z-40 hidden border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_-12px_rgba(0,0,0,.25)] backdrop-blur lg:hidden" style="padding-bottom:max(0.75rem, env(safe-area-inset-bottom))" data-pay-bar>
     <div class="mx-auto flex max-w-xl items-center gap-3">
-      <button type="button" class="h-10 w-16 shrink-0 rounded-lg shadow ring-1 ring-black/10" style={`background:${theme.background}`} data-bar-thumb aria-label="See the card"></button>
+      <button type="button" class="w-16 shrink-0" data-bar-thumb aria-label="See the card"><GiftCardThumb theme={v.theme} /></button>
       <div class="min-w-0 flex-1">
         <p class="truncate text-xs font-semibold text-slate-600" data-bar-for>Gift card</p>
         <p class="text-base font-black tabular-nums text-gray-900" data-bar-amount>{formatUgx(previewAmount)}</p>
@@ -306,10 +342,19 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
 <style>
   /* Hidden only once the script runs; without JavaScript every box shows. */
   :global(html.gc-js) .js-hide { display: none; }
+  /* The photo is chosen and placed by the script: without it, the box would offer a button that does nothing. */
+  :global(html:not(.gc-js)) .js-only { display: none; }
+  /* While a photo is being placed, the pay bar steps aside: it would cover the zoom and "Use this photo". */
+  :global([data-pay-bar][data-cropping]) { display: none !important; }
 </style>
 
 <script>
-  import { GIFT_CARD_THEMES } from '../../lib/giftCardThemes';
+  import { GIFT_CARD_THEMES, GIFT_MESSAGE_MAX, logoUrl } from '../../lib/giftCardThemes';
+  import { giftCardPhotoUrl } from '../../lib/giftCardPhoto';
+  import { CARD_PLACEHOLDER, asCardNote, giftCardLabel, greetingParts } from '../../lib/giftCardFaceText';
+  import { cropSource, cropTransform, initialCrop, panCrop, zoomCrop, type PhotoCrop } from '../../lib/photoCrop';
+  // The API's own text rule (one file, shared): the page refuses exactly what the server would, in the same words.
+  import { unsafeGiftText } from '@goldplus/shared/src/gift-cards/giftText';
 
   document.documentElement.classList.add('gc-js');
   const form = document.querySelector<HTMLFormElement>('#gift-form');
@@ -338,15 +383,18 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
       else if (a % 1000 !== 0) out.amountOther = 'Use whole thousands, for example 35,000.';
     }
     if (val('recipientName').length < 2) out.recipientName = 'Type the name of the person it is for.';
+    else if (unsafeGiftText(val('recipientName'))) out.recipientName = 'Use only their name here.';
     const rp = val('recipientPhone');
     if (!toMe() && !ugMobile(rp)) out.recipientPhone = 'Type their Ugandan mobile number. The card is texted to it.';
     else if (toMe() && rp && !ugMobile(rp)) out.recipientPhone = 'Check their number, or leave it empty.';
     if (!toMe() && ugMobile(rp) && ugMobile(val('buyerPhone')) && rp.replace(/\D/g, '').slice(-9) === val('buyerPhone').replace(/\D/g, '').slice(-9)) {
       out.recipientPhone = 'That is your own number. To give the card yourself, tick "Send the code to me instead".';
     }
-    if (/https?:|www\.|\.(com|ug|net|org)\b|\d[\d\s.-]{5,}\d/i.test(val('message'))) out.message = 'For their safety the message cannot carry links or phone numbers.';
+    if (val('message').length > GIFT_MESSAGE_MAX) out.message = `Keep the note to ${GIFT_MESSAGE_MAX} characters.`;
+    else if (unsafeGiftText(val('message'))) out.message = 'For their safety the message cannot carry links, web addresses or phone numbers.';
     if (!toMe() && checked('when') === 'date' && !val('deliverOn')) out.deliverOn = 'Pick the day, or choose Now.';
     if (val('buyerName').length < 2) out.buyerName = 'Type your name.';
+    else if (unsafeGiftText(val('buyerName'))) out.buyerName = 'Use only your name here.';
     if (!ugMobile(val('buyerPhone'))) out.buyerPhone = 'Type your Ugandan mobile number. Your receipt is texted to it.';
     return out;
   }
@@ -385,51 +433,63 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
     form.querySelector('[data-optional]')?.classList.toggle('hidden', !me);
 
     if (face) {
-      const light = t.ink === 'light';
-      face.style.background = t.background;
+      // The same card the server drew, redrawn for the choices made: its field, logo, illustration and band.
       face.dataset.theme = t.key;
-      face.classList.toggle('text-white', light);
-      face.classList.toggle('text-gray-900', !light);
+      face.classList.toggle('gcf-dark', t.variant === 'dark');
+      face.classList.toggle('gcf-light', t.variant === 'light');
       const set = (sel: string, text: string) => { const n = face.querySelector<HTMLElement>(sel); if (n) n.textContent = text; };
-      set('[data-gc-headline]', t.headline);
+      const head = face.querySelector<HTMLElement>('[data-gc-headline]');
+      if (head) {
+        const { lines, long } = greetingParts(t.headline);
+        head.replaceChildren(...lines.flatMap((l, i) => (i > 0 ? [document.createElement('br'), l] : [l])));
+        head.classList.toggle('gcf-greet-long', long);
+      }
+      face.querySelector<HTMLImageElement>('[data-gc-logo]')?.setAttribute('src', logoUrl(t.logo));
+      face.querySelector<HTMLImageElement>('[data-gc-art]')?.setAttribute('src', t.art);
       set('[data-gc-amount]', okAmount ? ugx(a) : 'UGX …');
-      set('[data-gc-to]', val('recipientName') || 'Someone special');
-      set('[data-gc-from]', val('buyerName') || 'You');
+      set('[data-gc-to]', val('recipientName') || CARD_PLACEHOLDER.to);
+      set('[data-gc-from]', val('buyerName') || CARD_PLACEHOLDER.from);
       const m = face.querySelector<HTMLElement>('[data-gc-message]');
-      const message = val('message');
-      if (m) { m.textContent = message ? `“${message}”` : ''; m.classList.toggle('hidden', !message); }
-      const pill = face.querySelector<HTMLElement>('[data-gc-amount-pill]');
-      if (pill) { pill.style.background = t.accent; pill.style.color = t.accentInk; }
-      const logo = face.querySelector<HTMLElement>('[data-gc-logo]');
-      if (logo) logo.style.filter = light ? 'brightness(0) invert(1)' : '';
-      const swaps: Array<[string, string]> = [['text-gray-900/70', 'text-white/75'], ['text-gray-900/65', 'text-white/70'], ['text-gray-900/85', 'text-white/90'], ['text-gray-900/75', 'text-white/80']];
-      face.querySelectorAll<HTMLElement>('p').forEach((p) => swaps.forEach(([dark, lite]) => (light ? p.classList.replace(dark, lite) : p.classList.replace(lite, dark))));
+      // As the shop will keep it (one paragraph), and as the server draws it.
+      const message = asCardNote(val('message'));
+      if (m) { m.textContent = message; m.classList.toggle('gcf-hidden', !message); }
+      face.setAttribute('aria-label', giftCardLabel({
+        headline: t.headline, to: val('recipientName'), from: val('buyerName'), amount: okAmount ? ugx(a) : null,
+        photo: face.classList.contains('gcf-has-photo'), note: message,
+      }));
     }
 
-    // Message ideas for this design.
+    // Note ideas for this occasion: each button puts in exactly the words it shows.
     const box = form.querySelector<HTMLElement>('[data-suggestions]');
     if (box && box.dataset.theme !== t.key) {
       box.dataset.theme = t.key;
+      form.querySelector('[data-suggestions-title]')?.classList.remove('hidden');
       box.replaceChildren(...t.suggestions.map((s) => {
         const b = document.createElement('button');
         b.type = 'button';
-        b.className = 'min-h-10 rounded-full border border-slate-300 bg-white px-3 text-xs font-bold text-gray-900';
+        b.className = 'min-h-11 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-left text-sm font-medium leading-snug text-gray-900';
         b.textContent = s;
-        b.addEventListener('click', () => { const ta = el<HTMLTextAreaElement>('message'); if (ta) { ta.value = s; touched.add('message'); redraw(); } });
+        b.addEventListener('click', () => { const ta = el<HTMLTextAreaElement>('message'); if (ta) { ta.value = s; touched.add('message'); redraw(); saveDraft(); } });
         return b;
       }));
-      el<HTMLTextAreaElement>('message')?.setAttribute('placeholder', t.suggestions[0]);
     }
     const count = form.querySelector<HTMLElement>('[data-gc-count]');
-    if (count) count.textContent = `${val('message').length}/100`;
+    if (count) count.textContent = `${val('message').length}/${GIFT_MESSAGE_MAX}`;
+    // The note box grows with the note: all 160 characters stay in view on a phone.
+    const ta = el<HTMLTextAreaElement>('message');
+    if (ta) { ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight + 2}px`; }
 
     // The pay buttons carry the amount; the summary says back where it goes.
     const payLabel = form.querySelector<HTMLElement>('[data-pay-label]');
     if (payLabel) payLabel.textContent = okAmount ? `Pay ${ugx(a)}` : 'Pay';
     const barAmount = document.querySelector<HTMLElement>('[data-bar-amount]');
     if (barAmount) barAmount.textContent = okAmount ? ugx(a) : 'Choose an amount';
-    const thumb = document.querySelector<HTMLElement>('[data-bar-thumb]');
-    if (thumb) thumb.style.background = t.background;
+    const thumb = document.querySelector<HTMLElement>('[data-bar-thumb] .gct');
+    if (thumb) {
+      thumb.classList.toggle('gct-dark', t.variant === 'dark');
+      thumb.classList.toggle('gct-light', t.variant === 'light');
+      thumb.querySelector('img')?.setAttribute('src', t.art);
+    }
     const barFor = document.querySelector<HTMLElement>('[data-bar-for]');
     if (barFor) barFor.textContent = val('recipientName') ? `Gift card for ${val('recipientName')}` : 'Gift card';
     const summary = form.querySelector<HTMLElement>('[data-gc-summary]');
@@ -529,7 +589,7 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
   // ── A draft kept on this phone: occasion, amount, names, message and timing (never phone numbers) ─────────────
   // Restored only on a plain visit (not over a link's choices or a returned form); dropped once a card is paid.
   const DRAFT = 'gp_gift_draft_v1';
-  const KEEP = ['amountPreset', 'amountOther', 'theme', 'recipientName', 'message', 'buyerName', 'sendToMe', 'when', 'deliverOn'];
+  const KEEP = ['amountPreset', 'amountOther', 'theme', 'recipientName', 'message', 'buyerName', 'sendToMe', 'when', 'deliverOn', 'photoId'];
   let saveTimer = 0;
   function saveDraft() {
     if (!form) return;
@@ -544,7 +604,7 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
     let d: Record<string, string> | null = null;
     try { d = JSON.parse(localStorage.getItem(DRAFT) ?? 'null'); } catch { d = null; }
     if (!d || Date.now() - Number(d.savedAt ?? 0) > 30 * 86_400_000) return;
-    const meaningful = d.recipientName || d.message || d.buyerName || d.amountOther;
+    const meaningful = d.recipientName || d.message || d.buyerName || d.amountOther || d.photoId;
     if (!meaningful) return;
     for (const k of ['amountPreset', 'theme', 'when']) {
       const r = form.querySelector<HTMLInputElement>(`input[name="${k}"][value="${CSS.escape(d[k] ?? '')}"]`);
@@ -552,6 +612,9 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
       if (r) r.checked = true;
     }
     for (const k of ['amountOther', 'recipientName', 'message', 'buyerName', 'deliverOn']) { const i = el<HTMLInputElement>(k); if (i && d[k]) i.value = d[k]; }
+    // The photo comes back from the shop (it was uploaded); if it has expired, the card simply has none.
+    const restored = giftCardPhotoUrl(d.photoId);
+    if (restored) showPhoto(d.photoId, restored, true);
     const me = el<HTMLInputElement>('sendToMe'); if (me) me.checked = d.sendToMe === '1';
     const chosen = more?.querySelector(`input[name="theme"]:checked`);
     if (chosen && more) more.open = true;
@@ -562,6 +625,174 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
     try { localStorage.removeItem(DRAFT); } catch { /* nothing kept */ }
     location.replace(location.pathname);
   });
+  // ── An optional photo: chosen, placed and zoomed on the phone, then uploaded once as a square JPEG ──────────
+  // The geometry is lib/photoCrop.ts (tested): the crop is kept in the photo's own pixels, so what the frame shows is
+  // exactly what is uploaded, whatever the frame's size. The preview is a data: URL (the page allows no blob: images);
+  // the shop re-encodes the upload and strips its metadata.
+  const photoBox = form?.querySelector<HTMLElement>('[data-photo]');
+  const frame = photoBox?.querySelector<HTMLElement>('[data-photo-frame]');
+  const source = photoBox?.querySelector<HTMLImageElement>('[data-photo-source]');
+  const zoom = photoBox?.querySelector<HTMLInputElement>('[data-photo-zoom]');
+  const status = photoBox?.querySelector<HTMLElement>('[data-photo-status]');
+  let crop: PhotoCrop | null = null;
+  /** The photo last opened (a data: URL) and where it was placed, so "Adjust" comes back to that placement. */
+  let lastFile: string | null = null;
+  let lastCrop: PhotoCrop | null = null;
+  const say = (text: string) => { if (status) { status.textContent = text; status.classList.toggle('hidden', !text); } };
+  const frameSize = () => frame?.clientWidth || 288;
+  function place(next: PhotoCrop | null = crop) {
+    crop = next;
+    if (!source || !zoom || !crop) return;
+    const t = cropTransform(crop, frameSize());
+    source.style.transform = `translate(${t.x}px, ${t.y}px) scale(${t.scale})`;
+    zoom.value = String(crop.zoom);
+  }
+  function openCrop(dataUrl: string, keepPlacement = false) {
+    if (!source || !zoom) return;
+    source.onload = () => {
+      const fresh = initialCrop(source.naturalWidth, source.naturalHeight);
+      const kept = keepPlacement && lastCrop && lastCrop.width === fresh.width && lastCrop.height === fresh.height ? lastCrop : null;
+      place(kept ?? fresh);
+    };
+    source.onerror = () => { say('This phone cannot open that photo here. Choose a JPEG or PNG photo.'); closeCrop(); };
+    source.src = dataUrl;
+    photoBox?.querySelector('[data-photo-crop]')?.classList.remove('hidden');
+    photoBox?.querySelector('[data-photo-add]')?.classList.add('hidden');
+    document.querySelector('[data-pay-bar]')?.setAttribute('data-cropping', '');
+    say('');
+  }
+  function closeCrop() {
+    photoBox?.querySelector('[data-photo-crop]')?.classList.add('hidden');
+    document.querySelector('[data-pay-bar]')?.removeAttribute('data-cropping');
+    const has = Boolean(el<HTMLInputElement>('photoId')?.value);
+    photoBox?.querySelector('[data-photo-add]')?.classList.toggle('hidden', has);
+  }
+  function showPhoto(id: string, src: string, restored = false) {
+    const hidden = el<HTMLInputElement>('photoId');
+    if (hidden) hidden.value = id;
+    const thumb = photoBox?.querySelector<HTMLImageElement>('[data-photo-thumb]');
+    const cardPhoto = face?.querySelector<HTMLImageElement>('[data-gc-photo]');
+    if (restored && thumb) thumb.onerror = () => { removePhoto(); say('The photo you added earlier has expired. Add it again if you like.'); };
+    if (thumb) thumb.src = src;
+    if (cardPhoto) { cardPhoto.src = src; cardPhoto.alt = 'Your photo'; cardPhoto.classList.remove('gcf-hidden'); }
+    face?.querySelector('[data-gc-art]')?.classList.add('gcf-hidden');
+    face?.classList.add('gcf-has-photo');
+    photoBox?.querySelector('[data-photo-chosen]')?.classList.remove('hidden');
+    photoBox?.querySelector('[data-photo-add]')?.classList.add('hidden');
+    const adjust = photoBox?.querySelector<HTMLButtonElement>('[data-photo-adjust]');
+    if (adjust) adjust.hidden = !lastFile;
+    redraw();
+  }
+  function removePhoto() {
+    const hidden = el<HTMLInputElement>('photoId');
+    if (hidden) hidden.value = '';
+    const cardPhoto = face?.querySelector<HTMLImageElement>('[data-gc-photo]');
+    if (cardPhoto) { cardPhoto.removeAttribute('src'); cardPhoto.classList.add('gcf-hidden'); }
+    face?.querySelector('[data-gc-art]')?.classList.remove('gcf-hidden');
+    face?.classList.remove('gcf-has-photo');
+    photoBox?.querySelector('[data-photo-chosen]')?.classList.add('hidden');
+    photoBox?.querySelector('[data-photo-add]')?.classList.remove('hidden');
+    form?.querySelector('[data-err="photo"]')?.classList.add('hidden');
+    saveDraft();
+    redraw();
+  }
+  photoBox?.querySelectorAll<HTMLInputElement>('[data-photo-file]').forEach((input) => input.addEventListener('change', () => {
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    // A photo, not a drawing or an animation (an SVG cannot be turned into a picture here; a GIF would lose its motion).
+    if (!/^image\//.test(file.type) || /svg|gif/i.test(file.type)) { say('Choose a photo (JPEG, PNG or one from your camera).'); return; }
+    if (file.size > 25 * 1024 * 1024) { say('That photo is too large. Choose one under 25 MB.'); return; }
+    const reader = new FileReader();
+    reader.onload = () => { lastFile = String(reader.result); lastCrop = null; openCrop(lastFile); };
+    reader.onerror = () => say('That photo could not be read. Try another.');
+    reader.readAsDataURL(file);
+  }));
+  photoBox?.querySelector('[data-photo-adjust]')?.addEventListener('click', () => { if (lastFile) openCrop(lastFile, true); });
+  photoBox?.querySelector('[data-photo-cancel]')?.addEventListener('click', closeCrop);
+  photoBox?.querySelector('[data-photo-remove]')?.addEventListener('click', removePhoto);
+  // Zoom about a point of the frame: its centre for the slider and keys, the fingers' midpoint for a pinch.
+  const zoomTo = (next: number, fx?: number, fy?: number) => { if (crop) place(zoomCrop(crop, next, frameSize(), fx, fy)); };
+  const panBy = (dx: number, dy: number) => { if (crop) place(panCrop(crop, dx, dy, frameSize())); };
+  zoom?.addEventListener('input', () => zoomTo(Number(zoom.value)));
+  // One finger (or the mouse) moves the photo; two fingers pinch to zoom.
+  const pointers = new Map<number, { x: number; y: number }>();
+  let pinch: { dist: number; zoom: number } | null = null;
+  const spread = () => { const [p1, p2] = [...pointers.values()]; return Math.hypot(p1.x - p2.x, p1.y - p2.y); };
+  frame?.addEventListener('pointerdown', (e) => {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    frame.setPointerCapture(e.pointerId);
+    if (pointers.size === 2 && crop) pinch = { dist: spread(), zoom: crop.zoom };
+  });
+  frame?.addEventListener('pointermove', (e) => {
+    const last = pointers.get(e.pointerId);
+    if (!last) return;
+    const now = { x: e.clientX, y: e.clientY };
+    pointers.set(e.pointerId, now);
+    if (pointers.size === 1) { panBy(now.x - last.x, now.y - last.y); return; }
+    if (pinch && pointers.size === 2) {
+      const r = frame.getBoundingClientRect();
+      const [p1, p2] = [...pointers.values()];
+      zoomTo(pinch.zoom * (spread() / Math.max(1, pinch.dist)), (p1.x + p2.x) / 2 - r.left, (p1.y + p2.y) / 2 - r.top);
+    }
+  });
+  const endPointer = (e: PointerEvent) => { pointers.delete(e.pointerId); if (pointers.size < 2) pinch = null; };
+  frame?.addEventListener('pointerup', endPointer);
+  frame?.addEventListener('pointercancel', endPointer);
+  // A mouse wheel or trackpad zooms too; the keyboard moves (arrows) and zooms (+ and -).
+  frame?.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (!crop) return;
+    const r = frame.getBoundingClientRect();
+    zoomTo(crop.zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08), e.clientX - r.left, e.clientY - r.top);
+  }, { passive: false });
+  frame?.addEventListener('keydown', (e) => {
+    const step = e.shiftKey ? 40 : 12;
+    const moves: Record<string, [number, number]> = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
+    if (moves[e.key]) { e.preventDefault(); panBy(moves[e.key][0], moves[e.key][1]); return; }
+    if ((e.key === '+' || e.key === '=') && crop) { e.preventDefault(); zoomTo(crop.zoom + 0.1); }
+    if (e.key === '-' && crop) { e.preventDefault(); zoomTo(crop.zoom - 0.1); }
+  });
+  // The frame can change size while a photo is being placed (the phone turns); the crop itself does not move.
+  if (frame && 'ResizeObserver' in window) new ResizeObserver(() => place()).observe(frame);
+  photoBox?.querySelector<HTMLButtonElement>('[data-photo-use]')?.addEventListener('click', async (e) => {
+    const button = e.currentTarget as HTMLButtonElement;
+    if (!source || !crop) return;
+    const { sx, sy, side, out } = cropSource(crop);
+    let dataUrl = '';
+    let blob: Blob | null = null;
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = out; canvas.height = out;
+      const c = canvas.getContext('2d');
+      if (!c) throw new Error('NO_CANVAS');
+      c.fillStyle = '#FFFFFF'; // a transparent PNG becomes white, not black, as a JPEG
+      c.fillRect(0, 0, out, out);
+      c.drawImage(source, sx, sy, side, side, 0, 0, out, out);
+      dataUrl = canvas.toDataURL('image/jpeg', 0.86);
+      blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.86));
+    } catch { blob = null; }
+    if (!blob || !dataUrl) { say('That photo could not be prepared on this phone. Try another photo.'); return; }
+    button.disabled = true; button.textContent = 'Adding…';
+    try {
+      const res = await fetch('/gift-card/photo', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+      const json = await res.json().catch(() => null) as { success?: boolean; data?: { photoId?: string }; error?: { message?: string } } | null;
+      if (!res.ok || !json?.success || !json.data?.photoId) { say(json?.error?.message ?? 'We could not add the photo just now. Try again, or send the card without one.'); return; }
+      lastCrop = crop;
+      closeCrop();
+      showPhoto(json.data.photoId, dataUrl);
+      // Focus where the photo now is (the cropper that had it is gone), so a keyboard or screen reader is not lost.
+      photoBox?.querySelector<HTMLElement>('[data-photo-chosen]')?.focus();
+      form?.querySelector('[data-err="photo"]')?.classList.add('hidden');
+      say('');
+      saveDraft();
+    } catch {
+      say('We could not add the photo just now. Check your connection and try again.');
+    } finally {
+      button.disabled = false; button.textContent = 'Use this photo';
+    }
+  });
+
   restoreDraft();
   showChosen();
 

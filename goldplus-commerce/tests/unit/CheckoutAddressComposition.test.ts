@@ -129,3 +129,20 @@ describe('an unusable location falls back rather than corrupting the address', (
     expect(payload.customerDetails.deliveryAddress).toBe('Plot 1, Harness Road');
   });
 });
+
+describe('written directions with a pin (2026-10-22)', () => {
+  const form = (loc: Record<string, unknown>) => {
+    const f = new FormData();
+    f.set('locationJson', JSON.stringify(loc));
+    f.set('name', 'A Buyer'); f.set('phone', '0772000000');
+    return f;
+  };
+  it('the pin rides along with the manual address (the panel priced from it)', () => {
+    const p = prepareCheckoutPayload(form({ manual: true, rawAddressText: 'Behind the church, blue gate', gpsLat: 0.35, gpsLng: 32.6, gpsAccuracyM: 20, gpsSource: 'pasted_link' }), []);
+    expect(p.customerDetails.deliveryLocation).toMatchObject({ gpsLat: 0.35, gpsLng: 32.6, gpsAccuracyM: 20, gpsSource: 'pasted_link' });
+  });
+  it('without a pin or a district there is still no structured location', () => {
+    const p = prepareCheckoutPayload(form({ manual: true, rawAddressText: 'Behind the church' }), []);
+    expect(p.customerDetails.deliveryLocation).toBeNull();
+  });
+});

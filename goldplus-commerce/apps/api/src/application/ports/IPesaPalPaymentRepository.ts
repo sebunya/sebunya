@@ -34,6 +34,11 @@ export interface IPesaPalPaymentRepository {
 
   findByTrackingId(orderTrackingId: string): Promise<RecordedPaymentAttempt | null>;
 
+  /**
+   * Records the provider transaction on an attempt only if none is recorded yet; null when another request got there
+   * first (a double tap on Pay submits twice). Optional so test doubles construct unchanged.
+   */
+  recordFirstSubmission?(id: string, submission: { orderTrackingId: string; redirectUrl: string }): Promise<{ orderTrackingId: string; redirectUrl: string } | null>;
   updatePaymentAttemptStatus(id: string, update: {
     /** Omitted: only the timestamps are stamped and the current status stands. */
     status?: string;

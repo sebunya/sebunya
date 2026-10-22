@@ -73,6 +73,21 @@ export class DrizzleAddressRepository implements IAddressRepository {
     return row ? rowToDto(row) : null;
   }
 
+  /**
+   * The pin saved on THIS customer's own address (never anyone else's), for an order placed from it. The browser only
+   * ever sees "has a pin", so checkout names the address and the order takes the point from here.
+   */
+  async pinForUser(userId: string, addressId: string): Promise<{ gpsLat: number; gpsLng: number; gpsAccuracyM: number | null; gpsSource: string | null; areaSlug: string | null } | null> {
+    const row = await db.query.addresses.findFirst({ where: and(eq(addresses.id, addressId), live(userId)) });
+    if (!row || row.gpsLat === null || row.gpsLng === null) return null;
+    return {
+      gpsLat: Number(row.gpsLat), gpsLng: Number(row.gpsLng),
+      gpsAccuracyM: row.gpsAccuracyM === null ? null : Number(row.gpsAccuracyM),
+      gpsSource: (row as { gpsSource?: string | null }).gpsSource ?? null,
+      areaSlug: (row as { areaSlug?: string | null }).areaSlug ?? null,
+    };
+  }
+
   async createForUser(input: CreateAddressInput): Promise<AddressDto> {
     return db.transaction(async (tx) => {
       const existing = await tx.query.addresses.findMany({ where: live(input.userId) });

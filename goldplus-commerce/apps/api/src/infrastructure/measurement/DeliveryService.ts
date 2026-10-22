@@ -6,7 +6,7 @@ import { env } from '../../config/env';
 import { logger } from '../logging/logger';
 import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { ga4CollectHit } from '../telemetry/Ga4CollectHit';
-import { META_GRAPH_VERSION, adErrorSummary, adPlatform, adSkipReason, buildAdRequest, normalisePhoneUg, hashEmail, hashEmailGoogle, hashEmailMicrosoft, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
+import { META_GRAPH_VERSION, adErrorSummary, adPlatform, adSkipReason, buildAdRequest, googleDataManagerHeaders, normalisePhoneUg, hashEmail, hashEmailGoogle, hashEmailMicrosoft, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
 import { isMetaClickId, metaBrowserIdFromVisitor, metaCustomerHashes } from '../../domain/advertising/MetaIdentifiers';
 import { storefrontOrigin } from '../config/storefrontOrigin';
 import { businessMessagingPurchase } from '../../domain/advertising/WhatsAppAdReferrals';
@@ -457,6 +457,13 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
   if (built.suppress) { await finish(deliveryId, token, 'SUPPRESSED', built.suppress); return 'SUPPRESSED'; }
   if (built.defer || !built.req) { await finish(deliveryId, token, 'RETRY_WAIT', built.defer ?? 'DEPENDENCY_UNAVAILABLE', { nextAt: new Date(Date.now() + 30 * 60_000) }); return 'DEFERRED'; }
   const req = built.req;
+  // The same guard the browsing-event path applies: an owner-entered network postback host must resolve only to
+  // public addresses (not the server itself, the docker network or cloud metadata). The order path skipped it.
+  if ((req.method ?? 'POST') === 'GET') {
+    const { assertPublicHost } = await import('../advertising/AdConversionDispatch');
+    const ok = await assertPublicHost(req.url).then(() => true, () => false);
+    if (!ok) { await finish(deliveryId, token, 'SUPPRESSED', 'POSTBACK_HOST_NOT_PUBLIC'); return 'SUPPRESSED'; }
+  }
 
   // STARTED marker: committed BEFORE the network call (dossier §5.3 step 6).
   const attemptId = randomUUID();
@@ -498,6 +505,16 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
       where attempt_id = ${attemptId}::uuid`);
   });
   if (c.kind === 'accepted') {
+    // Google's Data Manager only QUEUES the upload: the reply is a requestId and the outcome comes later from
+    // requestStatus:retrieve. Kept here so confirmGoogleUploads() can ask, instead of calling "Sent" final (2026-10-22).
+    if (platform === 'google_ads') {
+      const requestId = googleRequestIdOf(text);
+      if (requestId) {
+        await db.execute(sql`update measurement.delivery_attempt
+          set safe_response = jsonb_build_object('googleRequestId', cast(${requestId} as text), 'googleConfirmation', 'WAITING')
+          where attempt_id = ${attemptId}::uuid`);
+      }
+    }
     await finish(deliveryId, token, 'ACCEPTED', messaging ? 'OK_WHATSAPP_ADVERT' : 'OK', { accepted: true });
     if (platform) await adRepo.recordResult(platform, true).catch(() => undefined);
     if (messaging) await whatsappAds?.markAttributed(messaging.referralId).catch(() => undefined);
@@ -510,3 +527,83 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
   logger.warn({ deliveryId, sink, code: c.code, status }, '[Delivery] dead-lettered');
   return 'DEAD_LETTER';
 }
+
+/** The requestId in a Data Manager ingest reply, or null. */
+export function googleRequestIdOf(replyText: string): string | null {
+  try {
+    const id = (JSON.parse(replyText) as { requestId?: unknown })?.requestId;
+    return typeof id === 'string' && /^[A-Za-z0-9_-]{1,200}$/.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What Google's requestStatus:retrieve said, for one upload (developers.google.com/data-manager/api/reference/rest/v1/
+ * requestStatus/retrieve, read 2026-10-22): SUCCESS (warnings allowed), PROCESSING (ask again later), FAILED or
+ * PARTIAL_SUCCESS (with errorInfo.errorCounts). One conversion per upload, so a partial success is a failure here.
+ */
+export function googleUploadVerdict(reply: unknown): { verdict: 'SUCCESS' | 'WAITING' | 'FAILED'; errors: string[] } {
+  const per = Array.isArray((reply as { requestStatusPerDestination?: unknown[] })?.requestStatusPerDestination)
+    ? (reply as { requestStatusPerDestination: Array<{ requestStatus?: string; errorInfo?: { errorCounts?: Array<{ reason?: string; recordCount?: unknown }> } }> }).requestStatusPerDestination
+    : [];
+  if (per.length === 0) return { verdict: 'WAITING', errors: [] };
+  const errors = per.flatMap((d) => (d.errorInfo?.errorCounts ?? []).map((e) => `${String(e.reason ?? 'UNKNOWN_ERROR')}: ${String(e.recordCount ?? '?')}`.slice(0, 120)));
+  if (per.some((d) => d.requestStatus === 'FAILED' || d.requestStatus === 'PARTIAL_SUCCESS')) return { verdict: 'FAILED', errors };
+  if (per.every((d) => d.requestStatus === 'SUCCESS')) return { verdict: 'SUCCESS', errors: [] };
+  return { verdict: 'WAITING', errors: [] };
+}
+
+/**
+ * Asks Google how each accepted conversion upload ended. Before this a 200 {requestId} was recorded as delivered and
+ * the activity page said "Sent" while Google could still reject it (wrong action, an expired or unmatched click id):
+ * those rejections were never seen. A failure now shows on the delivery and on the Google connection's last result,
+ * and a failed purchase is never "restated". Both replicas may run it: every write is conditional on still WAITING.
+ */
+export async function confirmGoogleUploads(fetchImpl: typeof fetch = fetch, limit = 20): Promise<{ checked: number; confirmed: number; failed: number }> {
+  const out = { checked: 0, confirmed: 0, failed: 0 };
+  const waiting = rows(await db.execute(sql`
+    select a.attempt_id, a.delivery_id, a.safe_response->>'googleRequestId' as request_id
+      from measurement.delivery_attempt a join measurement.delivery_intent i on i.delivery_id = a.delivery_id
+     where a.safe_response->>'googleConfirmation' = 'WAITING' and i.state = 'ACCEPTED'
+       and a.started_at < now() - interval '2 minutes' and a.started_at > now() - interval '7 days'
+     order by a.started_at limit ${limit}`));
+  if (waiting.length === 0) return out;
+  const def = adPlatform('google_ads');
+  const dest = (await adRepo.active()).find((d) => d.platform === 'google_ads');
+  const vault = IntegrationCredentialVault.fromEnv();
+  if (!def || !dest || !dest.secretEnc || !vault) return out;
+  let headers: Record<string, string>;
+  try {
+    const secret = String(vault.decrypt<{ apiKey: string }>(dest.secretEnc).apiKey ?? '');
+    headers = await googleDataManagerHeaders(secret);
+  } catch {
+    return out;
+  }
+  for (const w of waiting) {
+    out.checked += 1;
+    let reply: unknown = null;
+    try {
+      const res = await fetchImpl(`https://datamanager.googleapis.com/v1/requestStatus:retrieve?requestId=${encodeURIComponent(String(w.request_id))}`, { method: 'GET', headers, signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) continue; // ask again next time
+      reply = await res.json().catch(() => null);
+    } catch {
+      continue;
+    }
+    const v = googleUploadVerdict(reply);
+    if (v.verdict === 'WAITING') continue;
+    const won = rows(await db.execute(sql`update measurement.delivery_attempt
+      set safe_response = jsonb_build_object('googleRequestId', safe_response->>'googleRequestId', 'googleConfirmation', cast(${v.verdict} as text), 'googleErrors', cast(${v.errors.join(' | ').slice(0, 500)} as text))
+      where attempt_id = ${String(w.attempt_id)}::uuid and safe_response->>'googleConfirmation' = 'WAITING' returning attempt_id`));
+    if (!won.length) continue;
+    if (v.verdict === 'SUCCESS') { out.confirmed += 1; continue; }
+    out.failed += 1;
+    const why = `GOOGLE_PROCESSING_FAILED${v.errors.length ? `: ${v.errors.join(' | ').slice(0, 240)}` : ''}`;
+    await db.execute(sql`update measurement.delivery_intent set state = 'DEAD_LETTER', state_reason = ${why}, updated_at = now()
+      where delivery_id = ${String(w.delivery_id)}::uuid and state = 'ACCEPTED'`);
+    await adRepo.recordResult('google_ads', false, why).catch(() => undefined);
+    logger.warn({ deliveryId: w.delivery_id, errors: v.errors }, '[Delivery] Google rejected a conversion after accepting the upload');
+  }
+  return out;
+}
+

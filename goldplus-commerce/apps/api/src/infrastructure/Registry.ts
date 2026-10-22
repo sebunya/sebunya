@@ -1,3 +1,4 @@
+import { RedisFailureLockout } from './security/RedisFailureLockout';
 import { ReholdStockOnLatePaymentUseCase } from '../application/use-cases/payments/ReholdStockOnLatePaymentUseCase';
 import { cancelRefundUpdate } from '../application/notifications/CustomerMessages';
 import './logging/appLoggerBinding';
@@ -80,6 +81,10 @@ import { CreditExpiryRemindersUseCase, IssueCreditUseCase, ManageCreditUseCases,
 import { creditCodeHash, creditRandomIndexes } from './credit/CreditCodeCrypto';
 import { DrizzleCreditRepository } from './credit/DrizzleCreditRepository';
 import { DrizzleGiftCardPurchaseRepository } from './credit/DrizzleGiftCardPurchaseRepository';
+import { SharpGiftCardPhotoProcessor } from './credit/SharpGiftCardPhotoProcessor';
+import { DrizzleGiftCardPhotoRepository } from './credit/DrizzleGiftCardPhotoRepository';
+import { piiHasher } from './security/PiiHashingService';
+import { GiftCardPhotoUseCases } from '../application/use-cases/credit/GiftCardPhotoUseCases';
 import { GiftCardPurchaseUseCases } from '../application/use-cases/credit/GiftCardPurchaseUseCases';
 import { GiftCardOccasionUseCases } from '../application/use-cases/credit/GiftCardOccasionUseCases';
 import { DrizzleOccasionSettingsRepository } from './credit/DrizzleOccasionSettingsRepository';
@@ -204,7 +209,7 @@ import { HeroSignalsService } from './hero/HeroSignalsService';
 import { HeroTelemetryService } from './hero/HeroTelemetryService';
 import { DrizzleNavRepository } from './db/repositories/DrizzleNavRepository';
 import { NavContentService } from '../application/nav/NavContentService';
-import { resolveStorefrontDiscount } from '../application/pricing/StorefrontDiscountQuery';
+import { resolveStorefrontDiscount, storefrontPricingView } from '../application/pricing/StorefrontDiscountQuery';
 import { DrizzleBusinessInfoRepository } from './db/repositories/DrizzleBusinessInfoRepository';
 import { BusinessInfoService } from '../application/business/BusinessInfoService';
 import { DrizzleTaxonomyRepository } from './db/repositories/DrizzleTaxonomyRepository';
@@ -339,6 +344,7 @@ import {
   CatchUpMissionAwardsUseCase,
   QualifyReferralOnDeliveryUseCase,
   RecordReferralUseCase,
+  DecideHeldReferralUseCase,
 } from '../application/use-cases/loyalty/LoyaltyGamificationUseCases';
 import { DrizzleBirthdayUserSource, DrizzleLoyaltyReferralRepository } from './db/repositories/DrizzleLoyaltyReferralRepository';
 import {
@@ -707,6 +713,7 @@ import { DrizzleFulfilmentDeliveryRepository } from './db/repositories/DrizzleFu
 import { DrizzleFulfilmentReportRepository } from './db/repositories/DrizzleFulfilmentReportRepository';
 import {
   GetDeliveryHistoryUseCase,
+  CompleteOrderForDeliveredTaskUseCase,
   RecordDeliveryUseCase,
   GetFulfilmentReportUseCase,
 } from '../application/use-cases/fulfilment/DeliveryUseCases';
@@ -834,6 +841,8 @@ export class Registry {
   public readonly pricingQuoteRepo = new DrizzlePricingQuoteRepository();
   public readonly pricingCapacityRepo = new DrizzlePricingCapacityRepository();
   public readonly couponRepo = new DrizzleCouponRepository();
+  /** What the storefront may advertise: active promotions minus used-up and code-only ones (as checkout charges). */
+  public readonly storefrontPricingRepo = storefrontPricingView(this.pricingRepo, this.pricingCapacityRepo, this.couponRepo);
   public readonly reviewRepo = new DrizzleReviewRepository();
   public readonly creatorRepo = new DrizzleCreatorRepository();
   public readonly flashSaleRepo = new DrizzleFlashSaleRepository();
@@ -969,7 +978,7 @@ export class Registry {
   // Advertising operations (0154): audiences, spend import, offline conversions, catalogue feeds, checklist.
   public readonly advertisingOps = createAdvertisingOperations({
     audit: this.createAuditLogUseCase, destinations: this.advertising, feedProducts: () => this.seoGrowthRepo.feedProducts(),
-    pricingRepo: this.pricingRepo, publicApiOrigin: env.publicApiBaseUrl,
+    pricingRepo: this.storefrontPricingRepo, publicApiOrigin: env.publicApiBaseUrl,
     // Owner-defined segments reach ad platforms only through the first-party port (consent per member, hashes only).
     customSegments: () => ({ source: this.segmentAudienceSource, list: () => this.segmentRepo.list(false) }),
   });
@@ -1071,7 +1080,7 @@ export class Registry {
   public readonly deviceCatalogueUseCases = new DeviceCatalogueUseCases(this.deviceCatalogueRepo, this.auditRepo);
   public readonly batteryCompatibilityUseCases = new BatteryCompatibilityUseCases(this.batteryCompatibilityRepo, this.batteryCatalogueRepo, this.deviceCatalogueRepo, this.auditRepo);
   public readonly inventoryLedgerUseCases = new InventoryLedgerUseCases(this.inventoryLedgerRepo, this.batteryCatalogueRepo, this.auditRepo);
-  public readonly batteryFinderUseCases = new BatteryFinderUseCases(this.batteryFinderRepo, this.batteryCatalogueRepo, this.auditRepo, process.env.IDENTITY_HASH_PEPPER ?? '', this.pricingRepo);
+  public readonly batteryFinderUseCases = new BatteryFinderUseCases(this.batteryFinderRepo, this.batteryCatalogueRepo, this.auditRepo, process.env.IDENTITY_HASH_PEPPER ?? '', this.storefrontPricingRepo);
   public readonly batteryImportUseCases = new BatteryImportUseCases(
     this.batteryImportRepo,
     new XlsxSpreadsheetParser(),
@@ -1219,7 +1228,7 @@ export class Registry {
   public readonly deliveryZoneRepo = new DrizzleDeliveryZoneRepository();
   public readonly getPaymentReconciliationUseCase = new GetPaymentReconciliationUseCase(this.orderRepo, this.paymentRepo, this.pesapalPaymentRepo);
   public readonly searchDemandRepo = new DrizzleSearchDemandRepository();
-  public readonly suggestProductsUseCase = new SuggestProductsUseCase(this.productRepo, this.pricingRepo, () => this.taxonomyService.getPublicConfig());
+  public readonly suggestProductsUseCase = new SuggestProductsUseCase(this.productRepo, this.storefrontPricingRepo, () => this.taxonomyService.getPublicConfig());
   public readonly listPublishedPostsUseCase = new ListPublishedPostsUseCase(this.blogRepo);
   public readonly getPublishedPostUseCase = new GetPublishedPostUseCase(this.blogRepo);
   public readonly getPostForAdminUseCase = new GetPostForAdminUseCase(this.blogRepo);
@@ -1535,6 +1544,9 @@ export class Registry {
   public readonly fulfilmentDeliveryRepo = new DrizzleFulfilmentDeliveryRepository();
   public readonly fulfilmentReportRepo = new DrizzleFulfilmentReportRepository();
   public readonly getDeliveryHistoryUseCase = new GetDeliveryHistoryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo);
+  public readonly completeOrderForDeliveredTaskUseCase = new CompleteOrderForDeliveredTaskUseCase(
+    this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo, this.orderTransitionService, { findById: (id: string) => this.orderRepo.findById(id) },
+  );
   public readonly recordDeliveryUseCase = new RecordDeliveryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo, this.orderTransitionService, {
     // 0189: the quote capture learns the outcome. actual_minutes is dispatch → handover (one outbound leg + last
     // mile), which is the only duration the shop observes; MODEL.md PART 4 states the comparison basis.
@@ -1880,6 +1892,8 @@ export class Registry {
         data: { points, source: kind === 'referrer' ? 'referral' : 'referral_welcome' },
       }),
   );
+  /** 0202: a person releases or refuses a held referral. */
+  public readonly decideHeldReferralUseCase = new DecideHeldReferralUseCase(this.loyaltyIssuanceCompletion, this.loyaltyReferralRepo, this.qualifyReferralOnDeliveryUseCase);
   public readonly awardBirthdayPointsUseCase = new AwardBirthdayPointsUseCase(
     this.loyaltyRepo,
     this.loyaltyIssuanceCompletion,
@@ -2181,6 +2195,8 @@ export class Registry {
       const charge = orderChargeUgx(q);
       return {
         feeUgx: charge,
+        // Paid to the carrier at the parcel office: the order charges 0, and the page says what is paid there.
+        paidAtCollectionUgx: q.kind === 'bus_shipment' && q.shipment.chargedAt === 'collection' ? q.feeUgx : null,
         // Checkout re-decides the free-delivery waiver on the post-promotion
         // goods total, which it only knows after pricing; these let it do that
         // without a second quote.
@@ -2577,6 +2593,9 @@ export class Registry {
     new SmsResetCodeDelivery(this.smsAdapter, this.recordNotificationAttemptUseCase),
     otpHash,
     otpRandom,
+    undefined,
+    // Shared by both replicas: one place's share of a customer's daily reset codes.
+    new RedisFailureLockout('sms-reset-place'),
   );
   public readonly resetPasswordWithSmsCodeUseCase = new ResetPasswordWithSmsCodeUseCase(
     this.userRepo,
@@ -2592,7 +2611,7 @@ export class Registry {
   // card prices — never a hand-typed deadline or figure in the slide row.
   public readonly heroContentService = new HeroContentService(
     this.heroRepo,
-    () => resolveStorefrontDiscount(this.pricingRepo),
+    () => resolveStorefrontDiscount(this.storefrontPricingRepo),
     // Same-day cutoff and closed days: business_info, the one authority the nav
     // and checkout read. Lazy, so declaration order does not matter.
     async () => {
@@ -2813,6 +2832,9 @@ export class Registry {
         idempotencyKey: `credit-issued:${instrumentId}`, relatedEntity: 'credit_instrument', relatedEntityId: instrumentId,
       });
     },
+  }, {
+    // A refund as credit claws back the order's points by its running refunded share, as a cash refund does.
+    execute: (input) => new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase).execute(input),
   });
   /** 0196: card messages that never carry the code (card used by someone else's order; a week before expiry). */
   private readonly creditNoticeSender = {
@@ -2840,6 +2862,13 @@ export class Registry {
       dailyShopCapUgx: Number(process.env.GIFT_CARD_DAILY_SHOP_CAP_UGX) > 0 ? Number(process.env.GIFT_CARD_DAILY_SHOP_CAP_UGX) : 5_000_000,
     }),
     (event, detail) => logger.info({ event, ...detail }, `[gift-card] ${event}`),
+  );
+  /** 0201: the optional photo on a gift card bought online (upload, serving, removal, retention). */
+  public readonly giftCardPhotoUseCases = new GiftCardPhotoUseCases(
+    new DrizzleGiftCardPhotoRepository(),
+    new SharpGiftCardPhotoProcessor(),
+    { hashCode: creditCodeHash, visitorKey: (raw) => piiHasher.hashName(raw) },
+    (event, detail) => logger.info({ event, ...detail }, `[gift-card-photo] ${event}`),
   );
   /** 0196: an order paid entirely by store credit / a gift card, settled through the same doors as Pesapal. */
   public readonly settleByStoreCreditUseCase = new SettleByStoreCreditUseCase(this.orderRepo, this.orderTransitionService, this.reconcileOrderPaymentUseCase, this.settlePaymentUseCase);
@@ -2949,7 +2978,9 @@ export class Registry {
           and not exists (
             select 1 from payment_attempts a
             where a.order_id = o.id
-              and a.status in ('pending', 'verification_pending', 'verification_failed')
+              -- 'completed': money the provider confirmed. Even if the order never moved (a crash between the
+              -- attempt write and the order transition), it is never cancelled or released by time.
+              and a.status in ('pending', 'verification_pending', 'verification_failed', 'completed')
           )
         order by o.created_at limit ${limit}`)) as unknown as Array<{
         id: string; orderNumber: string; status: string; createdAt: Date;
@@ -2971,7 +3002,9 @@ export class Registry {
           and not exists (
             select 1 from payment_attempts a
             where a.order_id = o.id
-              and a.status in ('pending', 'verification_pending', 'verification_failed')
+              -- 'completed': money the provider confirmed. Even if the order never moved (a crash between the
+              -- attempt write and the order transition), it is never cancelled or released by time.
+              and a.status in ('pending', 'verification_pending', 'verification_failed', 'completed')
           )
         order by o.created_at limit ${limit}`)) as unknown as Array<{
         id: string; orderNumber: string; createdAt: Date;
@@ -2997,6 +3030,22 @@ export class Registry {
     this.auditRepo,
     // The abandoned order's task leaves the work queue with it.
     new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
+    // Last word from Pesapal before cancelling: each failed/invalid attempt with a tracking id is settled once.
+    async (orderId) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const attempts = (await db.execute(sql`
+        select order_tracking_id as "trackingId", merchant_reference as "reference" from payment_attempts
+        where order_id = ${orderId} and status in ('failed', 'invalid') and order_tracking_id is not null`)) as unknown as Array<{ trackingId: string; reference: string }>;
+      for (const a of attempts) {
+        const outcome = await Registry.getInstance().settlePaymentUseCase.execute({
+          orderTrackingId: a.trackingId, merchantReference: a.reference, source: 'poll', traceId: `abandon-recheck:${a.reference}`,
+        });
+        if (outcome.confirmed || outcome.verification.status === 'completed') return true;
+        if (outcome.verification.status === 'verification_pending') throw new Error('PROVIDER_UNREACHABLE');
+      }
+      return false;
+    },
   );
 
   public readonly alertOnLedgerMismatchUseCase = new AlertOnLedgerMismatchUseCase(
@@ -3537,6 +3586,8 @@ export class Registry {
         customerName: order.customerName,
         orderNumber: order.orderNumber,
         totalUgx: order.totalUgx,
+        // What is still to pay (the total less any gift card / store credit): the payment reminder asks for this.
+        amountDueUgx: order.amountDueUgx,
         // 0196: the gift card / store credit part, so payment messages and the receipt name the split.
         ...(order.storeCreditAppliedUgx > 0 ? {
           storeCreditAppliedUgx: order.storeCreditAppliedUgx,
@@ -3614,7 +3665,9 @@ export class Registry {
         // PART M: earn confirmation when points VEST, not when the order is
         // placed. Enqueued only when an earn actually landed for this order.
         const earn = await this.loyaltyCompletionRepo.findEarnEntryForOrder(orderId).catch(() => null);
-        const source = earn ? await this.orderRepo.findLoyaltyEarnSource(orderId).catch(() => null) : null;
+        // A paid retail order by a customer, whether or not it earned points (a paused budget, a zero earn).
+        const orderSource = await this.orderRepo.findLoyaltyEarnSource(orderId).catch(() => null);
+        const source = earn ? orderSource : null;
         if (earn && source) {
           await this.loyaltyOutboxNotifier
             .enqueue({
@@ -3632,16 +3685,22 @@ export class Registry {
         if (source) {
           await this.gamificationRepo.awardBadgeByKey(source.userId, 'first_order').catch(() => undefined);
           await this.evaluateGamificationForUserUseCase.execute({ userId: source.userId }).catch(() => undefined);
-          const referral = await this.qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: source.userId }).catch(() => undefined);
-          // An awarded referral is the referrer's completion event (REFERRAL_COUNT, 0174).
-          if (referral?.ok && referral.status === 'awarded' && referral.referrerUserId) {
-            await this.evaluateGamificationForUserUseCase.execute({ userId: referral.referrerUserId }).catch(() => undefined);
-          }
+
           // 0088: a delivered order grants ONE scratch card. Idempotent on the
           // order id, so a replayed transition never mints a second card.
           await this.grantDrawTokenUseCase
             .execute({ trigger: 'order_delivered', userId: source.userId, sourceType: 'order', sourceId: orderId })
             .catch(() => undefined);
+        }
+        // Referral qualification on EVERY paid retail delivery, not only one that earned points (2026-10-22): a
+        // friend's first delivery that earned nothing used to skip it, and the referral then stayed pending forever.
+        if (orderSource) {
+          const referral = await this.qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: orderSource.userId })
+            .catch((err: unknown) => { logger.error({ orderId, err: err instanceof Error ? err.message : String(err) }, 'referral qualification failed'); return undefined; });
+          // An awarded referral is the referrer's completion event (REFERRAL_COUNT, 0174).
+          if (referral?.ok && referral.status === 'awarded' && referral.referrerUserId) {
+            await this.evaluateGamificationForUserUseCase.execute({ userId: referral.referrerUserId }).catch(() => undefined);
+          }
         }
       }
       if (toStatus === 'processing' && ctx.paymentStatus === 'paid') {

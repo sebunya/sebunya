@@ -181,10 +181,15 @@ export function classifyPublicEndpoint(method: string, rawPath: string): RouteFa
   if (path === '/quotes/lookup') return 'order-lookup';
   // 0199: buying a gift card is a human form (it opens a payment page); its status read takes an unguessable reference.
   if (post && path === '/commerce/gift-cards/purchase') return 'quote-request';
+  // 0201: a photo for a gift card is a person choosing one picture; sharp's work is not to be had in bulk.
+  if (post && path === '/commerce/gift-cards/photos') return 'issue-report';
   if (isUnder(path, '/commerce/gift-cards')) return 'order-lookup';
   // 0196: a gift card / store credit code check is a guess at a bearer secret: the tight order-lookup budget.
   if (isUnder(path, '/commerce/credit')) return 'order-lookup';
   // The dealer portal reads a phone's orders: the order-lookup budget, per client.
+  // Starting and proving a dealer sign-in texts a code to the number typed, like price access below: the tight
+  // family, not the lookup one (60 a minute per address let one script send tens of thousands of texts a day).
+  if (path === '/quotes/dealer-portal/start' || path === '/quotes/dealer-portal/verify') return 'auth-recovery';
   if (isUnder(path, '/quotes/dealer-portal')) return 'order-lookup';
   // Bulk prices behind a verified phone: sending a code costs an SMS and
   // checking one is a guessing surface, so both get the recovery budget.

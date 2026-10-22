@@ -230,8 +230,14 @@ const bundlesP: Promise<PdpBundle[]> = (async () => {
   const list = res.ok ? (((await res.json()) as ApiResponse<Omit<PdpBundle, 'products'>[]>).data ?? []) : [];
   if (!Array.isArray(list) || list.length === 0) return [];
   const ids = [...new Set(list.flatMap((b) => b.productIds))];
-  const pr = await fetch(`${apiBase}/products?ids=${ids.join(',')}&limit=${ids.length}`, { signal: AbortSignal.timeout(2500) });
-  const products = pr.ok ? (((await pr.json()) as ApiResponse<ProductPublicDto[]>).data ?? []) : [];
+  // The public list answers at most three ids per call: asked for all at once, a 4-product bundle (or two bundles
+  // with more than three partners between them) came back short and was dropped, so it never showed (2026-10-22).
+  const batches: string[][] = [];
+  for (let i = 0; i < ids.length; i += 3) batches.push(ids.slice(i, i + 3));
+  const products = (await Promise.all(batches.map(async (batch) => {
+    const pr = await fetch(`${apiBase}/products?ids=${batch.join(',')}&limit=${batch.length}`, { signal: AbortSignal.timeout(2500) });
+    return pr.ok ? (((await pr.json()) as ApiResponse<ProductPublicDto[]>).data ?? []) : [];
+  }))).flat();
   const byId = new Map(products.map((x) => [x.id, x]));
   // Only a bundle whose every product is listed right now.
   return list

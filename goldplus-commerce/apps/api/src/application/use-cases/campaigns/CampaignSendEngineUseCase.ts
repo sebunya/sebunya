@@ -1,3 +1,4 @@
+import { isQuietHours } from '../../notifications/QuietHours';
 /**
  * Campaign send engine — DRY-RUN ONLY (send wave under no-send verification).
  *
@@ -37,11 +38,8 @@ export interface SendRunSink {
 export type SendDecisionKind = 'ELIGIBLE' | 'NO_IDENTITY' | 'NO_CONSENT' | 'SUPPRESSED' | 'FREQUENCY_CAPPED';
 
 export const FREQUENCY_CAP_DAYS = 7;
-/** Africa/Kampala is UTC+3 year-round. Quiet hours: 21:00–08:00 local. */
-export function isQuietHours(now: Date): boolean {
-  const kampalaHour = (now.getUTCHours() + 3) % 24;
-  return kampalaHour >= 21 || kampalaHour < 8;
-}
+/** Africa/Kampala is UTC+3 year-round. Quiet hours: 21:00–08:00 local (one rule for every customer reminder). */
+export { isQuietHours };
 
 export type SendRunOutcome =
   | { ok: true; runId: string; counts: { candidates: number; eligible: number; noIdentity: number; noConsent: number; suppressed: number; frequency: number }; quietHoursAtRun: boolean }

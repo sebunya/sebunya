@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="A green heart with a white heart outline">
+  <!-- With love: one full green heart and its white echo, with generous space. Drawn for a black field. -->
+  <path d="M92 176 C52 148 18 118 18 84 C18 58 38 40 60 40 C76 40 86 50 92 62 C98 50 108 40 124 40 C146 40 166 58 166 84 C166 118 132 148 92 176 Z" fill="#96CC06"/>
+  <path d="M124 138 C98 120 78 102 78 80 C78 64 90 54 104 54 C114 54 120 60 124 68 C128 60 134 54 144 54 C158 54 170 64 170 80 C170 102 150 120 124 138 Z" fill="none" stroke="#FFFFFF" stroke-width="7" stroke-linejoin="round" transform="translate(14 -30)"/>
+</svg>

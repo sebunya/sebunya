@@ -123,6 +123,8 @@ export interface DeliveryEstimate {
   sampleSize: number;
   /** True when the observed median disagrees with the model by a notable margin. */
   observedDisagreesWithModel: boolean;
+  /** A taxi/bus card paid to the carrier at collection: the order charges 0 and this is what is paid there. */
+  paidAtCollectionUgx?: number | null;
 }
 
 const DRIFT_RATIO = 0.25;

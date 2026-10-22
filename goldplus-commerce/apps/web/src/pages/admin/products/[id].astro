@@ -31,6 +31,10 @@ async function fetchProduct(productId: string) {
 }
 
 const product = await fetchProduct(id || '');
+// /view answers the PUBLIC product shape: retailPriceUgx and availability.kind. This page read priceUgx and
+// stockStatus (the old shape), so every product showed "Retail Price —" and a red OUT OF STOCK (2026-10-22).
+const shownPriceUgx: number | null = product ? (product.retailPriceUgx ?? product.priceUgx ?? null) : null;
+const shownStock: string = product ? String(product.availability?.kind ?? product.stockStatus ?? 'unknown') : 'unknown';
 
 if (product && (product as any).authError) {
   Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' }); // a header set on Astro.response is dropped by a returned redirect
@@ -136,7 +140,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
               </div>
               <div class="text-right">
                  <p class="text-[9px] font-black text-gray-500 uppercase tracking-widest">Retail Price</p>
-                 <p class="text-2xl font-black text-brand-dark mt-1">{product.priceUgx ? formatter.format(product.priceUgx) : '—'}</p>
+                 <p class="text-2xl font-black text-brand-dark mt-1">{shownPriceUgx ? formatter.format(shownPriceUgx) : '—'}</p>
               </div>
             </div>
 
@@ -148,9 +152,9 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
               <div>
                 <span class="text-[9px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Stock Status</span>
                 <span class={`inline-block px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider border ${
-                  product.stockStatus === 'in_stock' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
+                  shownStock === 'in_stock' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
                 }`}>
-                  {(product.stockStatus || 'out_of_stock').replace('_', ' ')}
+                  {shownStock.replace(/_/g, ' ')}
                 </span>
               </div>
               <div>

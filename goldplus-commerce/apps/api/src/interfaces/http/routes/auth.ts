@@ -160,7 +160,8 @@ routes.post('/register', async (c) => {
   let referral: { applied: boolean; reason?: string } | undefined;
   if (typeof body.referralCode === 'string' && body.referralCode.trim()) {
     const outcome = await registry.recordReferralUseCase
-      .execute({ refereeUserId: result.user.id, code: String(body.referralCode) })
+      // 'link' when the code came from an invite link the browser remembered (the storefront says so), else typed.
+      .execute({ refereeUserId: result.user.id, code: String(body.referralCode), source: body.referralSource === 'link' ? 'link' : 'typed' })
       .catch(() => null);
     referral = outcome && 'status' in outcome ? { applied: true } : { applied: false, reason: outcome?.code ?? 'REFERRAL_FAILED' };
   }

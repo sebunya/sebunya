@@ -1,3 +1,4 @@
+import { isQuietHours } from '../../notifications/QuietHours';
 import type { IReviewReminderCandidates } from '../../ports/IReviewReminderCandidates';
 
 /** The delivered or collected message already asks on the day. The reminder
@@ -19,6 +20,7 @@ export class SendReviewRemindersUseCase {
   ) {}
 
   async execute(now: Date): Promise<{ due: number; enqueued: number; failed: number }> {
+    if (isQuietHours(now)) return { due: 0, enqueued: 0, failed: 0 }; // held until 08:00 Kampala
     const orderIds = await this.candidates.findDue({
       closedBefore: new Date(now.getTime() - REVIEW_REMINDER_AFTER_DAYS * DAY_MS),
       closedAfter: new Date(now.getTime() - REVIEW_REMINDER_UNTIL_DAYS * DAY_MS),

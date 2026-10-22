@@ -1,7 +1,7 @@
 import { Registry } from '../Registry';
 import { telemetryDispatcher } from '../telemetry/TelemetryDispatchService';
 import { processAdConversionBatch } from '../advertising/AdConversionDispatch';
-import { deliverOne, recoverExpiredLeases, routeBusinessEvents, scheduleDueDeliveries } from '../measurement/DeliveryService';
+import { confirmGoogleUploads, deliverOne, recoverExpiredLeases, routeBusinessEvents, scheduleDueDeliveries } from '../measurement/DeliveryService';
 
 /**
  * One measurement-delivery cycle. With the queue up, due intents become BullMQ
@@ -31,6 +31,9 @@ async function runMeasurementDelivery() {
     await deliverOne(data.deliveryId, data.enqueueGeneration);
     return true;
   });
+  // Google answers conversion uploads later (requestStatus): ask how the accepted ones ended.
+  const google = await confirmGoogleUploads().catch((err) => { logger.warn({ err }, '[OutboxTicker] Google upload confirmation failed'); return null; });
+  if (google?.failed) logger.warn(google, '[OutboxTicker] Google rejected conversions after accepting them');
   // Nightly attribution batch: one bounded job under the analytics lease (addendum 17).
   const { maybeRunScheduledAttribution } = await import('../measurement/AttributionJob');
   void maybeRunScheduledAttribution().catch((err) => logger.error({ err }, '[OutboxTicker] attribution schedule failed'));

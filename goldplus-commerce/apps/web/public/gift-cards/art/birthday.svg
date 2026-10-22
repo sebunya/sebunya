@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Three birthday candles on a ribbon">
+  <!-- Birthday: three candles, the middle one tallest, on a ribbon with notched ends. Drawn for a green field. -->
+  <g stroke="#000000" stroke-width="5" stroke-linejoin="round">
+    <rect x="54" y="92" width="24" height="62" rx="4" fill="#FFFFFF"/>
+    <rect x="88" y="64" width="24" height="90" rx="4" fill="#FFFFFF"/>
+    <rect x="122" y="92" width="24" height="62" rx="4" fill="#FFFFFF"/>
+  </g>
+  <g fill="#000000">
+    <path d="M54 110 L78 101 L78 110 L54 119 Z"/><path d="M54 132 L78 123 L78 132 L54 141 Z"/>
+    <path d="M88 84 L112 75 L112 84 L88 93 Z"/><path d="M88 106 L112 97 L112 106 L88 115 Z"/><path d="M88 128 L112 119 L112 128 L88 137 Z"/>
+    <path d="M122 110 L146 101 L146 110 L122 119 Z"/><path d="M122 132 L146 123 L146 132 L122 141 Z"/>
+  </g>
+  <g stroke="#000000" stroke-width="3"><line x1="66" y1="92" x2="66" y2="84"/><line x1="100" y1="64" x2="100" y2="56"/><line x1="134" y1="92" x2="134" y2="84"/></g>
+  <path d="M66 84 C57 74 61 63 66 52 C71 63 75 74 66 84 Z" fill="#000000"/>
+  <path d="M100 56 C88 43 93 28 100 14 C107 28 112 43 100 56 Z" fill="#000000"/>
+  <path d="M134 84 C125 74 129 63 134 52 C139 63 143 74 134 84 Z" fill="#000000"/>
+  <path d="M66 78 C63 74 64 69 66 65 C68 69 69 74 66 78 Z" fill="#FFFFFF"/>
+  <path d="M100 50 C96 44 97 37 100 31 C103 37 104 44 100 50 Z" fill="#FFFFFF"/>
+  <path d="M134 78 C131 74 132 69 134 65 C136 69 137 74 134 78 Z" fill="#FFFFFF"/>
+  <path d="M14 158 L44 154 L44 184 L14 188 L24 173 Z" fill="#000000"/>
+  <path d="M186 158 L156 154 L156 184 L186 188 L176 173 Z" fill="#000000"/>
+  <rect x="34" y="150" width="132" height="30" rx="3" fill="#000000"/>
+  <rect x="34" y="150" width="132" height="5" fill="#FFFFFF" opacity=".25"/>
+</svg>

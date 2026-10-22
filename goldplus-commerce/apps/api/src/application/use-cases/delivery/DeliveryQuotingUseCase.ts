@@ -175,7 +175,7 @@ export class DeliveryQuotingUseCase {
     const rawCeiling = raw.own_rider_max_band ?? null;
     const ceiling: DistanceBand | null = rawCeiling && isDistanceBand(rawCeiling) ? (rawCeiling as DistanceBand) : null;
     const perRoad = parseCorridorCeilings(raw.own_rider_max_band_by_corridor ?? null);
-    const mode = resolved ? resolveFulfilmentMode({ ...resolved.input, declaredMode: null }, ceiling, perRoad.ok ? perRoad.ceilings : null) : null;
+    const mode = resolved ? resolveFulfilmentMode({ ...resolved.input, declaredMode: resolved.input.declaredFulfilmentMode ?? null }, ceiling, perRoad.ok ? perRoad.ceilings : null) : null;
 
     // Hour of week in EAT, never the server's timezone.
     const parts = toEatParts(at);

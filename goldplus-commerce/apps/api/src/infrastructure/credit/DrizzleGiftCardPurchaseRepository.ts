@@ -2,7 +2,9 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { outboxEvents } from '../db/schema/system';
 import { customerOutboxValues } from '../notifications/CustomerOutboxNotifier';
-import type { GiftCardOutboxMessage, GiftCardPurchaseRecord, IGiftCardPurchaseRepository } from '../../application/ports/IGiftCardPurchaseRepository';
+import {
+  GiftCardPhotoUnavailableError, type GiftCardOutboxMessage, type GiftCardPurchaseRecord, type IGiftCardPurchaseRepository,
+} from '../../application/ports/IGiftCardPurchaseRepository';
 
 const rowsOf = (r: unknown) => (Array.isArray(r) ? r : ((r as { rows?: unknown[] })?.rows ?? [])) as Array<Record<string, any>>;
 const at = (v: unknown) => (v ? new Date(v as string) : null);
@@ -19,7 +21,7 @@ function record(r: Record<string, any>): GiftCardPurchaseRecord {
     recipientPhone: r.recipient_phone ?? null, sendTo: r.send_to, message: r.message ?? null, theme: r.theme ?? 'gold', deliverOn: isoDate(r.deliver_on),
     status: r.status, orderTrackingId: r.order_tracking_id ?? null, redirectUrl: r.redirect_url ?? null, providerStatus: r.provider_status ?? null,
     confirmationCode: r.confirmation_code ?? null, paymentMethod: r.payment_method ?? null, instrumentId: r.instrument_id ?? null,
-    cardLast4: r.card_last4 ?? null, textStatus: textStatus(r), createdAt: new Date(r.created_at), paidAt: at(r.paid_at), issuedAt: at(r.issued_at),
+    photoId: r.photo_id ?? null, cardLast4: r.card_last4 ?? null, textStatus: textStatus(r), createdAt: new Date(r.created_at), paidAt: at(r.paid_at), issuedAt: at(r.issued_at),
   };
 }
 
@@ -44,6 +46,33 @@ const SELECT = sql.raw(`select p.*, i.code_last4 as card_last4,
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+const lastNine = (phone: string) => phone.replace(/\D/g, '').slice(-9);
+
+/**
+ * 0201: the photo a new purchase will carry, inside the purchase's own transaction. An unclaimed upload made after
+ * `claimableAfter` is claimed (the row lock makes it one purchase's). Otherwise, when the photo is already on one of
+ * this buyer's purchases (the same phone, last nine digits, as buyerActivity counts them), it is copied: trying again
+ * after a failed or cancelled payment keeps the photo, and the earlier purchase keeps its own, should it be paid late.
+ * Anything else (gone, too old, another buyer's): GiftCardPhotoUnavailableError, and the transaction writes nothing.
+ */
+async function claimPhoto(tx: Tx, photoId: string, buyerPhone: string, claimableAfter: Date): Promise<string> {
+  const [claimed] = rowsOf(await tx.execute(sql`
+    update gift_card_photos set attached_at = now()
+     where id = ${photoId} and attached_at is null and created_at > ${claimableAfter}
+    returning id`));
+  if (claimed) return String(claimed.id);
+  const [copy] = rowsOf(await tx.execute(sql`
+    insert into gift_card_photos (image, width, height, attached_at, uploader_key)
+    select ph.image, ph.width, ph.height, now(), ph.uploader_key
+      from gift_card_photos ph
+     where ph.id = ${photoId}
+       and exists (select 1 from gift_card_purchases p
+                    where p.photo_id = ph.id and right(regexp_replace(p.buyer_phone, '\\D', '', 'g'), 9) = ${lastNine(buyerPhone)})
+    returning id`));
+  if (copy) return String(copy.id);
+  throw new GiftCardPhotoUnavailableError();
+}
+
 /** The outbox row for a gift card message, written with the same writer (and encoding) as every customer message. */
 async function enqueueInTx(tx: Tx, m: GiftCardOutboxMessage, relatedEntityId: string): Promise<void> {
   const values = customerOutboxValues({
@@ -55,14 +84,21 @@ async function enqueueInTx(tx: Tx, m: GiftCardOutboxMessage, relatedEntityId: st
 
 /** 0199: gift cards bought online. Every status change is a compare-and-set on the current status. */
 export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepository {
-  async create(input: Parameters<IGiftCardPurchaseRepository['create']>[0]): Promise<GiftCardPurchaseRecord> {
-    const [r] = rowsOf(await db.execute(sql`
-      insert into gift_card_purchases (reference, amount_ugx, buyer_name, buyer_phone, buyer_email, buyer_user_id, from_name,
-                                       recipient_name, recipient_phone, send_to, message, theme, deliver_on)
-      values (${input.reference}, ${input.amountUgx}, ${input.buyerName}, ${input.buyerPhone}, ${input.buyerEmail}, ${input.buyerUserId},
-              ${input.fromName}, ${input.recipientName}, ${input.recipientPhone}, ${input.sendTo}, ${input.message}, ${input.theme}, ${input.deliverOn}::date)
-      returning *`));
-    return record(r);
+  async create(
+    input: Parameters<IGiftCardPurchaseRepository['create']>[0],
+    opts: Parameters<IGiftCardPurchaseRepository['create']>[1],
+  ): Promise<GiftCardPurchaseRecord> {
+    return db.transaction(async (tx) => {
+      const photoId = input.photoId ? await claimPhoto(tx, input.photoId, input.buyerPhone, opts.photoClaimableAfter) : null;
+      const [r] = rowsOf(await tx.execute(sql`
+        insert into gift_card_purchases (reference, amount_ugx, buyer_name, buyer_phone, buyer_email, buyer_user_id, from_name,
+                                         recipient_name, recipient_phone, send_to, message, theme, deliver_on, photo_id)
+        values (${input.reference}, ${input.amountUgx}, ${input.buyerName}, ${input.buyerPhone}, ${input.buyerEmail}, ${input.buyerUserId},
+                ${input.fromName}, ${input.recipientName}, ${input.recipientPhone}, ${input.sendTo}, ${input.message}, ${input.theme}, ${input.deliverOn}::date,
+                ${photoId})
+        returning *`));
+      return record(r);
+    });
   }
 
   private async one(where: ReturnType<typeof sql>): Promise<GiftCardPurchaseRecord | null> {
@@ -78,7 +114,7 @@ export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepos
   }
 
   async buyerActivity(buyerPhone: string, since: Date): Promise<{ started: number; paidUgx: number }> {
-    const last9 = buyerPhone.replace(/\D/g, '').slice(-9);
+    const last9 = lastNine(buyerPhone);
     const [r] = rowsOf(await db.execute(sql`
       select count(*)::int as started,
              coalesce(sum(amount_ugx) filter (where status in ('paid','issued')), 0)::bigint as paid
@@ -189,13 +225,28 @@ export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepos
   }
   async faceByCodeHash(codeHash: string) {
     const [r] = rowsOf(await db.execute(sql`
-      select p.theme, p.from_name, p.recipient_name, p.message, i.initial_value_ugx from gift_card_purchases p
+      select p.theme, p.from_name, p.recipient_name, p.message, p.photo_id, i.initial_value_ugx from gift_card_purchases p
         join credit_instruments i on i.id = p.instrument_id where i.code_hash = ${codeHash} limit 1`));
-    return r ? { theme: r.theme, fromName: r.from_name, toName: r.recipient_name, message: r.message ?? null, originalUgx: Number(r.initial_value_ugx) } : null;
+    return r ? { theme: r.theme, fromName: r.from_name, toName: r.recipient_name, message: r.message ?? null, originalUgx: Number(r.initial_value_ugx), photoId: r.photo_id ?? null } : null;
   }
   async recent(limit: number) {
     return rowsOf(await db.execute(sql`${SELECT} order by p.created_at desc limit ${limit}`)).map(record);
   }
+  async claimRefund(id: string, note: string): Promise<boolean> {
+    // provider_status carries the claim: one refund request at a time per purchase, across both replicas.
+    const rows = rowsOf(await db.execute(sql`
+      update gift_card_purchases set provider_status = ${note}, updated_at = now()
+       where id = ${id} and status in ('paid','issued','review')
+         and (provider_status is null or provider_status not like 'REFUND_IN_FLIGHT%' or updated_at < now() - interval '10 minutes')
+       returning id`));
+    return rows.length > 0;
+  }
+
+  async releaseRefundClaim(id: string, note: string): Promise<void> {
+    await db.execute(sql`update gift_card_purchases set provider_status = ${note}, updated_at = now()
+                          where id = ${id} and provider_status like 'REFUND_IN_FLIGHT%'`);
+  }
+
   async markRefunded(id: string, note: string, opts?: { unissuedOnly?: boolean }): Promise<boolean> {
     const rows = rowsOf(await db.execute(sql`
       update gift_card_purchases set status = 'refunded', provider_status = ${note}, updated_at = now()
