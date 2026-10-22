@@ -20,6 +20,7 @@ suite('Google-derived coordinates are purged after 29 days (real PostgreSQL)', (
   const orders: Record<string, string> = {};
   const addrs: Record<string, string> = {};
   const DAY = 86_400_000;
+  let signalId = '';
 
   beforeAll(async () => {
     process.env.DATABASE_URL = URL!;
@@ -36,6 +37,9 @@ suite('Google-derived coordinates are purged after 29 days (real PostgreSQL)', (
     await order('oldPlace', place, 31);
     await order('newPlace', place, 3);
     await order('oldDevice', { district: 'Kampala', gpsLat: 0.33, gpsLng: 32.59, gpsAccuracyM: 12, gpsSource: 'device' }, 60);
+    await order('pastRetention', { district: 'Kampala', gpsLat: 0.31, gpsLng: 32.58, gpsAccuracyM: 9, gpsSource: 'device' }, 200);
+    [{ id: signalId }] = await raw`insert into location_signals (kind, surface, area_slug, pin_lat, pin_lng, pin_accuracy_m, occurred_at)
+      values ('locate_offer_chosen', 'checkout', ${slug}, 0.31, 32.58, 15, ${new Date(Date.now() - 200 * DAY)}) returning id`;
     const address = async (key: string, source: string, ageDays: number) => {
       [{ id: addrs[key] }] = await raw`insert into addresses (user_id, label, recipient_name, phone, district, area_details, gps_lat, gps_lng, gps_source, gps_captured_at)
         values (${userId}, ${key}, 'Mp Tester', ${phone}, 'Kampala', 'Acacia Mall', 0.3378, 32.5946, ${source}, ${new Date(Date.now() - ageDays * DAY)}) returning id`;
@@ -47,6 +51,7 @@ suite('Google-derived coordinates are purged after 29 days (real PostgreSQL)', (
 
   afterAll(async () => {
     if (!raw) return;
+    await raw`delete from location_signals where id = ${signalId}`;
     await raw`delete from addresses where user_id = ${userId}`;
     await raw`delete from orders where user_id = ${userId}`;
     await raw`delete from delivery_corridor where area_slug = ${slug}`;
@@ -68,6 +73,13 @@ suite('Google-derived coordinates are purged after 29 days (real PostgreSQL)', (
     expect(oldPlace.district).toBe('Kampala');
     expect((await loc('newPlace')).gpsLat).toBe(0.3378);
     expect((await loc('oldDevice')).gpsLat).toBe(0.33);
+    // Past the 180-day promise (privacy page, "on WhatsApp or at checkout"): the checkout pin and the Locate me point go.
+    const past = await loc('pastRetention');
+    expect(past.gpsLat).toBeUndefined();
+    expect(past.district).toBe('Kampala');
+    const [sig] = await raw`select pin_lat, area_slug from location_signals where id = ${signalId}`;
+    expect(sig.pin_lat).toBeNull();
+    expect(sig.area_slug).toBe(slug);
 
     const addr = async (key: string) => (await raw`select gps_lat from addresses where id = ${addrs[key]}`)[0].gps_lat;
     expect(await addr('oldPlace')).toBeNull();
