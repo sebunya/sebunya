@@ -99,6 +99,8 @@ export function giftCardWorld(opts: { ipnId?: string | null; buyerActivity?: { s
     },
     faceByCodeHash: async (hash: string) => { const c = cards.find((x) => `h:${x.code}` === hash); const p = c ? rows.get(c.purchaseId) : null; return p ? { theme: p.theme, fromName: p.fromName, toName: p.recipientName, message: p.message, originalUgx: p.amountUgx, photoId: p.photoId ?? null } : null; },
     recent: async () => [],
+    claimRefund: async (id: string) => { const p = rows.get(id)! as any; if (p._refundClaim) return false; p._refundClaim = true; return true; },
+    releaseRefundClaim: async (id: string) => { (rows.get(id)! as any)._refundClaim = false; },
     markRefunded: async (id: string, _n: string, o?: any) => { const p = rows.get(id)!; if (!['paid', 'issued', 'review'].includes(p.status) || (o?.unissuedOnly && p.instrumentId)) return false; p.status = 'refunded'; return true; },
   };
 
@@ -129,7 +131,7 @@ export function giftCardWorld(opts: { ipnId?: string | null; buyerActivity?: { s
   const pesapal = {
     submitOrderRequest: async (i: any) => { pesapalCalls.push(`submit:${i.id}:${i.amount}:${i.callback_url}:${i.cancellation_url}`); return { order_tracking_id: `T-${i.id}`, merchant_reference: i.id, redirect_url: `https://pay.pesapal.com/${i.id}` }; },
     getTransactionStatus: async (t: string) => { pesapalCalls.push(`status:${t}`); return typeof pesapalStatus === 'function' ? pesapalStatus(t) : pesapalStatus; },
-    requestRefund: async (i: any) => { pesapalCalls.push(`refund:${i.confirmationCode}:${i.amount}`); return { status: '200', message: 'ok' }; },
+    requestRefund: async (i: any) => { pesapalCalls.push(`refund:${i.confirmationCode}:${i.amount}`); await new Promise((r) => setTimeout(r, 5)); return { status: '200', message: 'ok' }; },
   };
   let idx = 0;
   const uc = new GiftCardPurchaseUseCases(purchaseRepo as any, credit as any, pesapal as any, {

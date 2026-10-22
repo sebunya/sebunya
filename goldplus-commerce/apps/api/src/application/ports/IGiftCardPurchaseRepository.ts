@@ -133,5 +133,13 @@ export interface IGiftCardPurchaseRepository {
    * Staff: the money goes back to the buyer. Paid/issued/review -> refunded. `unissuedOnly`: only while no card
    * exists (closes a scheduled purchase before its card can be issued).
    */
+  /**
+   * One refund request at a time per purchase: claims it (false when another request holds the claim, younger than ten
+   * minutes). A double click sent the same refund to Pesapal twice while the purchase still read 'issued' (2026-10-22).
+   * Optional so test doubles construct unchanged.
+   */
+  claimRefund?(id: string, note: string): Promise<boolean>;
+  /** Gives the claim back after a refund Pesapal did not take, so staff can try again. */
+  releaseRefundClaim?(id: string, note: string): Promise<void>;
   markRefunded(id: string, note: string, opts?: { unissuedOnly?: boolean }): Promise<boolean>;
 }

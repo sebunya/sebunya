@@ -232,6 +232,21 @@ export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepos
   async recent(limit: number) {
     return rowsOf(await db.execute(sql`${SELECT} order by p.created_at desc limit ${limit}`)).map(record);
   }
+  async claimRefund(id: string, note: string): Promise<boolean> {
+    // provider_status carries the claim: one refund request at a time per purchase, across both replicas.
+    const rows = rowsOf(await db.execute(sql`
+      update gift_card_purchases set provider_status = ${note}, updated_at = now()
+       where id = ${id} and status in ('paid','issued','review')
+         and (provider_status is null or provider_status not like 'REFUND_IN_FLIGHT%' or updated_at < now() - interval '10 minutes')
+       returning id`));
+    return rows.length > 0;
+  }
+
+  async releaseRefundClaim(id: string, note: string): Promise<void> {
+    await db.execute(sql`update gift_card_purchases set provider_status = ${note}, updated_at = now()
+                          where id = ${id} and provider_status like 'REFUND_IN_FLIGHT%'`);
+  }
+
   async markRefunded(id: string, note: string, opts?: { unissuedOnly?: boolean }): Promise<boolean> {
     const rows = rowsOf(await db.execute(sql`
       update gift_card_purchases set status = 'refunded', provider_status = ${note}, updated_at = now()

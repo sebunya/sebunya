@@ -58,6 +58,15 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     await raw.end();
   });
 
+  it('one refund request at a time: a second claim is refused until the first is released (2026-10-22)', async () => {
+    const p = await create();
+    await raw`update gift_card_purchases set status = 'paid' where id = ${p.id}`;
+    expect(await repo.claimRefund(p.id, 'REFUND_IN_FLIGHT by a')).toBe(true);
+    expect(await repo.claimRefund(p.id, 'REFUND_IN_FLIGHT by b')).toBe(false);
+    await repo.releaseRefundClaim(p.id, 'REFUND_NOT_SENT: test');
+    expect(await repo.claimRefund(p.id, 'REFUND_IN_FLIGHT by b')).toBe(true);
+  });
+
   it('paid once, with the buyer’s receipt in the same write; a replay changes nothing', async () => {
     const p = await create();
     await repo.recordStarted(p.id, `T-${p.reference}`, 'https://pay/x');

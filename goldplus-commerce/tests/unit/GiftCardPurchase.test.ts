@@ -291,6 +291,22 @@ describe('buying a gift card online (0199)', () => {
     expect(h.byRef(r.reference)?.status).toBe('refunded');
   });
 
+  it('refund: a double click asks Pesapal once (the second request finds the refund in flight)', async () => {
+    const h = harness();
+    const r = await h.uc.start(form(), NOW);
+    if (!r.ok) throw new Error('start');
+    h.setStatus(h.paidStatus(r.reference));
+    await h.uc.settle({ trackingId: `T-${r.reference}`, reference: r.reference, source: 'ipn' }, NOW);
+    const staff = { id: 'staff', username: 's@x' };
+    // The second click arrives while the first is waiting on Pesapal: the card is already cancelled, the purchase
+    // still reads 'issued'.
+    const first = h.uc.refund(r.reference, staff, 'Changed mind');
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    const [a, b] = await Promise.all([first, h.uc.refund(r.reference, staff, 'Changed mind')]);
+    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+    expect(h.pesapalCalls.filter((c) => c.startsWith('refund:'))).toHaveLength(1);
+  });
+
   it('refund of a scheduled card closes the purchase before Pesapal is asked, so the morning sweep never issues it', async () => {
     const h = harness();
     const r = await h.uc.start(form({ deliverOn: '2026-11-14' }), NOW);
