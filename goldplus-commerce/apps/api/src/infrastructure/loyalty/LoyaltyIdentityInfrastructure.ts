@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomInt } from 'node:crypto';
-import { and, eq, gte, isNull, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { LOYALTY_PAYMENT_QUALIFIES_SQL } from '../db/LoyaltyEarnEligibilitySql';
 import { users } from '../db/schema/identity';
@@ -65,6 +65,17 @@ export class DrizzleLoyaltyIdentityRepository implements ILoyaltyIdentityReposit
 
   async markPhoneVerified(userId: string, phoneE164: string): Promise<void> {
     await db.update(users).set({ phone: phoneE164, phoneVerifiedAt: new Date() }).where(eq(users.id, userId));
+  }
+
+  async phoneHeldByAnother(userId: string, phoneE164: string): Promise<boolean> {
+    const e164 = (phoneE164 ?? '').trim();
+    if (!/^\+256\d{9}$/.test(e164)) return false;
+    const national = e164.slice(4);
+    const row = await db.query.users.findFirst({
+      where: and(inArray(users.phone, [e164, `256${national}`, `0${national}`, national]), ne(users.id, userId)),
+      columns: { id: true },
+    });
+    return !!row;
   }
 
   async phoneVerifiedAt(userId: string): Promise<Date | null> {

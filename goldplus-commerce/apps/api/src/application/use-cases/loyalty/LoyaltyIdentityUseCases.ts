@@ -26,6 +26,13 @@ export interface ILoyaltyIdentityRepository {
   bumpOtpAttempts(id: string): Promise<number>;
   consumeOtp(id: string): Promise<void>;
   markPhoneVerified(userId: string, phoneE164: string): Promise<void>;
+  /**
+   * Is this number already another account's (in any written form: 0772…, 256…, +256…)? One SIM proves one account:
+   * without it a second account (opened by Google sign-in, say) took the same SIM, its verification points and the
+   * guest-order backfill, and a third hit a unique-index error after its code was spent (2026-10-22). Optional so
+   * older test doubles construct unchanged.
+   */
+  phoneHeldByAnother?(userId: string, phoneE164: string): Promise<boolean>;
   phoneVerifiedAt(userId: string): Promise<Date | null>;
   /** Guest orders (no user_id) paid+delivered/completed for this exact phone within the window. */
   guestOrdersForPhone(phoneE164: string, lookbackDays: number): Promise<Array<{ orderId: string; totalUgx: number; buyerType: string }>>;
@@ -84,6 +91,10 @@ export class RequestPhoneVerificationUseCase {
     );
     if (issuedThisHour >= OTP_MAX_PER_HOUR) {
       return fail('TOO_MANY_CODES', 'Too many verification codes requested. Try again later.');
+    }
+
+    if (await this.identity.phoneHeldByAnother?.(input.userId, phone.e164)) {
+      return fail('PHONE_IN_USE', 'This number belongs to another GoldPlus account. Sign in to that account, or call us and we will help.');
     }
 
     const code = this.random();
@@ -175,6 +186,10 @@ export class VerifyPhoneUseCase {
     const attempts = await this.identity.bumpOtpAttempts(otp.id);
     if (attempts > 5) return fail('TOO_MANY_ATTEMPTS', 'Too many attempts. Request a new code.');
     if (this.hash(input.code.trim()) !== otp.codeHash) return fail('WRONG_CODE', 'That code is not correct.');
+    // Checked again here: the number may have been taken by another account since the code was sent.
+    if (await this.identity.phoneHeldByAnother?.(input.userId, otp.phoneE164)) {
+      return fail('PHONE_IN_USE', 'This number belongs to another GoldPlus account. Sign in to that account, or call us and we will help.');
+    }
     await this.identity.consumeOtp(otp.id);
     await this.identity.markPhoneVerified(input.userId, otp.phoneE164);
     await new CreateAuditLogUseCase(this.audit).execute({
