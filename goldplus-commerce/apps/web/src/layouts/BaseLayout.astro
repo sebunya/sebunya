@@ -72,8 +72,9 @@ const canonical = canonicalUrl ?? `${SITE_ORIGIN}${Astro.url.pathname}`;
 const shareImage = jpegRendition(/^https?:\/\//i.test(image) ? image : `${SITE_ORIGIN}${image.startsWith('/') ? '' : '/'}${image}`);
 const measurement = resolveMeasurementConfig(import.meta.env);
 // Loads /fonts/faces.css right after the first paint (see the <head> comment).
-// Loads Cloudflare Web Analytics after load + idle (see the <head> comment).
-const CF_BEACON_LOADER = `(function(){function go(){var s=document.createElement('script');s.defer=true;s.src='https://static.cloudflareinsights.com/beacon.min.js';s.setAttribute('data-cf-beacon','{"token":"6288c9e8fae24ebcbc432462132ae7bd"}');document.body.appendChild(s);}function idle(){(window.requestIdleCallback||function(f){setTimeout(f,1500);})(go,{timeout:4000});}if(document.readyState==='complete'){idle();}else{addEventListener('load',idle);}})();`;
+// Loads Cloudflare Web Analytics after load + idle (see the <head> comment), on the shop's own host only: anywhere
+// else (a local or CI copy) its beacon is refused by CORS and only adds console errors and stray visits.
+const CF_BEACON_LOADER = `(function(){if(!/(^|\\.)shopgoldplus\\.com$/.test(location.hostname))return;function go(){var s=document.createElement('script');s.defer=true;s.src='https://static.cloudflareinsights.com/beacon.min.js';s.setAttribute('data-cf-beacon','{"token":"6288c9e8fae24ebcbc432462132ae7bd"}');document.body.appendChild(s);}function idle(){(window.requestIdleCallback||function(f){setTimeout(f,1500);})(go,{timeout:4000});}if(document.readyState==='complete'){idle();}else{addEventListener('load',idle);}})();`;
 // Returning-visitor flag on <html> before first paint (see the <head> comment).
 const SEEN_FLAG = `try{if(localStorage.getItem('goldplus_seen_before')==='true')document.documentElement.classList.add('gp-seen')}catch(e){}`;
 // Recently-viewed flag, same timing: the homepage trust strip hides only when the

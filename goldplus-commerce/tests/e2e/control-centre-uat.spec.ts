@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { CONTROL_CENTRE_MODULES } from '../../packages/shared/src/control-centre/module-registry';
 
 /**
  * Control Centre and Commerce OS admin UAT.
@@ -102,21 +103,18 @@ test.describe('Control Centre', () => {
 test.describe('Commerce OS', () => {
   test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD, 'ADMIN_EMAIL/ADMIN_PASSWORD required');
 
-  test('renders all fourteen commerce modules', async ({ page }) => {
+  // From the registry, not a hand count: the test said fourteen long after the registry grew to seventeen.
+  const COMMERCE_OS_KEYS = CONTROL_CENTRE_MODULES.filter((m) => m.category === 'COMMERCE_OS').map((m) => m.key);
+  test('renders every commerce module the registry lists', async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);
     await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
     await page.goto('/admin/commerce-os');
 
     await expect(page.locator('[data-commerce-os]')).toBeVisible();
     await expect(page.locator('[data-cc-failure]')).toHaveCount(0);
-    await expect(page.locator('[data-cc-module]')).toHaveCount(14);
+    await expect(page.locator('[data-cc-module]')).toHaveCount(COMMERCE_OS_KEYS.length);
 
-    for (const key of [
-      'decision-intelligence', 'customer-dna', 'shopping-assistant', 'automation',
-      'surveys', 'copy-quality', 'behavioural-interventions', 'experiments',
-      'pricing', 'fraud', 'pim-import', 'loyalty-os', 'search-insights',
-      'inventory-fulfilment',
-    ]) {
+    for (const key of COMMERCE_OS_KEYS) {
       await expect(page.locator(`[data-cc-module="${key}"]`), `${key} must render`).toBeVisible();
     }
 

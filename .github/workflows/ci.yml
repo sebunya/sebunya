@@ -277,3 +277,10 @@ jobs:
       - name: Server logs on failure
         if: failure()
         run: tail -80 /tmp/api.log; tail -40 /tmp/web.log
+      - name: Playwright failure evidence (page snapshot and screenshot of each failed test)
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4, pinned 2026-10-07
+        with:
+          name: playwright-test-results
+          path: goldplus-commerce/test-results
+          retention-days: 7
