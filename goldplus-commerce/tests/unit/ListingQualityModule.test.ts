@@ -67,7 +67,7 @@ describe('the listing use case owns title, descriptions, specs and the feed swit
     const uc = new UpdateProductListingUseCase(w, attrs);
     const r = await uc.execute({ productId: 'p1', name: 'GoldPlus GP-C10 100W USB-C PD Super Fast Charger', longDescription: 'Real text.', isFeedEligible: false,
       specs: [{ name: 'Output power', value: '100', unit: 'W', isVerified: true }, { name: 'Port', value: 'USB-C', isVerified: true }, { name: '', value: '' }] });
-    expect(r).toEqual({ ok: true, changed: { text: ['name', 'longDescription'], specs: 2, feed: true } });
+    expect(r).toEqual({ ok: true, changed: { text: ['name', 'longDescription'], specs: 2, removedSpecs: 0, feed: true } });
     expect(attrs.defs.map((d) => [d.slug, d.unit])).toEqual([['output-power', 'W'], ['port', null]]);
     expect(attrs.values).toEqual([{ productId: 'p1', attributeId: 'a1', value: '100', isVerified: true }, { productId: 'p1', attributeId: 'a2', value: 'USB-C', isVerified: true }]);
     expect(state.text).toEqual([{ name: 'GoldPlus GP-C10 100W USB-C PD Super Fast Charger', longDescription: 'Real text.' }]);
@@ -77,6 +77,21 @@ describe('the listing use case owns title, descriptions, specs and the feed swit
     expect(attrs.defs.length).toBe(2);
     expect(attrs.values.find((v) => v.attributeId === 'a1')).toEqual({ productId: 'p1', attributeId: 'a1', value: '65', isVerified: false });
   });
+  it('a spec the operator blanked or renamed is removed, not left live; a text-only save touches no spec (2026-10-22)', async () => {
+    const attrs = new FakeAttributes() as FakeAttributes & { removeValuesExcept?: (p: string, keep: string[]) => Promise<number> };
+    const removals: Array<[string, string[]]> = [];
+    attrs.removeValuesExcept = async (productId, keep) => { removals.push([productId, [...keep]]); return 1; };
+    const { w } = writer();
+    const uc = new UpdateProductListingUseCase(w, attrs);
+    await uc.execute({ productId: 'p1', specs: [{ name: 'Output power', value: '100', unit: 'W', isVerified: true }] });
+    const r = await uc.execute({ productId: 'p1', specs: [] });
+    expect(r).toMatchObject({ ok: true, changed: { removedSpecs: 1 } });
+    expect(removals.at(-1)).toEqual(['p1', []]);
+    removals.length = 0;
+    await uc.execute({ productId: 'p1', name: 'A title only, no specs sent' });
+    expect(removals).toEqual([]);
+  });
+
   it('validates before it writes anything', async () => {
     const attrs = new FakeAttributes(); const { w, state } = writer();
     const uc = new UpdateProductListingUseCase(w, attrs);
