@@ -197,6 +197,10 @@ export class SettlePaymentUseCase {
 
   async redoConfirmedEffects(orderId: string): Promise<void> {
     await this.runEffect('fulfilment_payment_confirmed', orderId, () => this.effects.markFulfilmentPaid(orderId));
+    // The card hold's capture runs once inline; lost (a database blip, a shutdown mid-sweep) it stayed 'held' for good
+    // and the ledger misstated card spend. Capturing is conditional on 'held', so repeating it is harmless (2026-10-22).
+    const capture = this.effects.captureStoreCredit?.bind(this.effects);
+    if (capture) await this.runEffect('store_credit_capture', orderId, () => capture(orderId));
     await this.runEffect('fulfilment_alert', orderId, () => this.effects.notifyFulfilmentOfPaidOrder(orderId));
     await this.runEffect('customer_message', orderId, () => this.effects.enqueueCustomerMessage(orderId, 'ORDER_PAYMENT_SUCCESS'));
   }
