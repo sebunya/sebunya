@@ -47,15 +47,23 @@ export async function runNightlyAreaPoints(opts: { dryRun?: boolean; now?: Date 
     select c.area_slug, p.lat, p.lng
     from delivery_order_pin p
     join delivery_quote_capture c on c.order_id = p.order_id
-    where p.confirmed_at is not null and p.source <> 'saved_address' and c.first_attempt_success = true
+    -- 'rider': a rider's WhatsApp handover is counted as a handover above; here it counted the same delivery twice.
+    where p.confirmed_at is not null and p.source not in ('saved_address', 'rider') and c.first_attempt_success = true
       and p.captured_at >= ${since} and c.area_slug is not null
     union all
     -- 0193: a customer who used "Locate me" and CHOSE this area, with a phone fix of 100 m or better: they told us
     -- they are in it, standing there. Customer pins, not Google points (those never become signals).
-    select area_slug, pin_lat as lat, pin_lng as lng
-    from location_signals
-    where kind = 'locate_offer_chosen' and pin_lat is not null and area_slug is not null
-      and (pin_accuracy_m is null or pin_accuracy_m <= 100) and occurred_at >= ${since}`));
+    -- The signal endpoint is public: ONE pin per known visitor and area (their latest), and only with a stated fix
+    -- of 100 m or better. Five presses of "Locate me", or five posts with no accuracy, moved an area's priced point
+    -- overnight before 2026-10-22.
+    select area_slug, lat, lng from (
+      select distinct on (area_slug, coalesce(customer_id, profile_id)) area_slug, pin_lat as lat, pin_lng as lng
+      from location_signals
+      where kind = 'locate_offer_chosen' and pin_lat is not null and area_slug is not null
+        and coalesce(customer_id, profile_id) is not null
+        and pin_accuracy_m is not null and pin_accuracy_m <= 100 and occurred_at >= ${since}
+      order by area_slug, coalesce(customer_id, profile_id), occurred_at desc
+    ) one_per_visitor`));
   const current = rows(await db.execute(sql`select area_slug, centroid_source from delivery_corridor`));
   const sourceOf = new Map(current.map((r) => [String(r.area_slug), r.centroid_source === null ? null : String(r.centroid_source)]));
 
