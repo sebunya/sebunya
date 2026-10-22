@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { hashVisitToken } from '../../../application/use-cases/identity/ExperienceProfileUseCases';
 import { isGiftCardPurchaseReference } from '../../../domain/credit/GiftCardPurchase';
 import { z } from 'zod';
 import { Registry } from '../../../infrastructure/Registry';
@@ -1195,7 +1196,9 @@ routes.get('/reviews/products/:productId', async (c) => {
  * the identity pepper before it is stored, so nothing reusable is kept. No token, no vote.
  */
 routes.post('/reviews/:id/vote', async (c) => {
-  const voterKey = c.req.header('x-gp-visit') ?? '';
+  // The visitor's SIGNED visit token, checked: an unchecked header let a script post with a fresh random value each
+  // time, count as a new voter every call and pin any review to the top of a product page (2026-10-22).
+  const voterKey = hashVisitToken(c.req.header('x-gp-visit') ?? '') ?? '';
   if (!voterKey) return c.json({ success: false, error: { code: 'NO_VISITOR', message: 'Refresh the page and try again.' } }, 400);
   const body = await c.req.json().catch(() => null);
   try {
