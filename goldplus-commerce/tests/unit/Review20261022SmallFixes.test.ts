@@ -62,4 +62,13 @@ describe('2026-10-22 review: small fixes', () => {
     expect(trustedEventTime(nowS + 86_400, now)).toBe(nowS); // a day in the future
     expect(trustedEventTime(nowS - 30 * 86_400, now)).toBe(nowS); // a month old
   });
+
+  it('order-path network postbacks get the same public-host guard as browsing events', () => {
+    expect(read('apps/api/src/infrastructure/measurement/DeliveryService.ts')).toContain("'POSTBACK_HOST_NOT_PUBLIC'");
+    expect(read('apps/api/src/infrastructure/advertising/AdConversionDispatch.ts')).toContain('export async function assertPublicHost(');
+  });
+
+  it("Snapchat's click id reaches browsing events under the schema's own name (sccid)", () => {
+    expect(read('apps/web/src/lib/telemetry.ts')).toContain('...(ScCid ? { sccid: ScCid } : {}),');
+  });
 });

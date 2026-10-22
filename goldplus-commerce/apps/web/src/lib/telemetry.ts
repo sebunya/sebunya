@@ -156,10 +156,15 @@ export function captureAndPersistClickIds(): Record<string, string> {
 export function assembleUserData(extra?: {
   user_id?: string;
 }): Record<string, string | undefined> {
+  const ids = captureAndPersistClickIds();
+  // The event schema names Snapchat's click id `sccid`; the URL's `ScCid` was stripped as an unknown key, so no
+  // browsing event ever carried it (2026-10-22).
+  const { ScCid, ...rest } = ids;
   return {
     fp_client_id: getFpClientId(),
     session_id:   getPageSessionId(),
-    ...captureAndPersistClickIds(),
+    ...rest,
+    ...(ScCid ? { sccid: ScCid } : {}),
     ...extra,
   };
 }

@@ -457,6 +457,13 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
   if (built.suppress) { await finish(deliveryId, token, 'SUPPRESSED', built.suppress); return 'SUPPRESSED'; }
   if (built.defer || !built.req) { await finish(deliveryId, token, 'RETRY_WAIT', built.defer ?? 'DEPENDENCY_UNAVAILABLE', { nextAt: new Date(Date.now() + 30 * 60_000) }); return 'DEFERRED'; }
   const req = built.req;
+  // The same guard the browsing-event path applies: an owner-entered network postback host must resolve only to
+  // public addresses (not the server itself, the docker network or cloud metadata). The order path skipped it.
+  if ((req.method ?? 'POST') === 'GET') {
+    const { assertPublicHost } = await import('../advertising/AdConversionDispatch');
+    const ok = await assertPublicHost(req.url).then(() => true, () => false);
+    if (!ok) { await finish(deliveryId, token, 'SUPPRESSED', 'POSTBACK_HOST_NOT_PUBLIC'); return 'SUPPRESSED'; }
+  }
 
   // STARTED marker: committed BEFORE the network call (dossier §5.3 step 6).
   const attemptId = randomUUID();

@@ -32,7 +32,7 @@ export function isNonPublicAddress(ip: string): boolean {
  * refused at send time. (A rebinding between this check and the connection is
  * the residual risk; the request is a blind GET with redirects not followed.)
  */
-async function assertPublicHost(url: string): Promise<void> {
+export async function assertPublicHost(url: string): Promise<void> {
   const host = new URL(url).hostname;
   const addrs = await lookup(host, { all: true }).catch(() => []);
   if (addrs.length === 0 || addrs.some((a) => isNonPublicAddress(a.address))) throw Object.assign(new Error(`postback host ${host} does not resolve to a public address`), { status: 400 });
