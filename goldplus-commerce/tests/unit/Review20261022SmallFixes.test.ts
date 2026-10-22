@@ -6,6 +6,7 @@ import { normalisePhoneUg } from '../../apps/api/src/infrastructure/advertising/
 import { classifyPublicEndpoint } from '../../apps/api/src/domain/security/PublicEndpointPolicy';
 import { budgetedFormPath } from '../../apps/web/src/lib/publicFormLimiter';
 import { planTermsImport } from '../../apps/api/src/domain/quotes/BulkTermsImport';
+import { hubForCategory } from '../../apps/web/src/lib/indexableLinks';
 import { trustedEventTime } from '../../apps/api/src/application/use-cases/telemetry/TrackBrowserTelemetryEventUseCase';
 
 const read = (p: string) => readFileSync(resolve(__dirname, '../..', p), 'utf8');
@@ -70,5 +71,16 @@ describe('2026-10-22 review: small fixes', () => {
 
   it("Snapchat's click id reaches browsing events under the schema's own name (sccid)", () => {
     expect(read('apps/web/src/lib/telemetry.ts')).toContain('...(ScCid ? { sccid: ScCid } : {}),');
+  });
+
+  it('a category with its own hub is one indexable URL: the shop view names the hub, the categories sitemap leaves it out', () => {
+    expect(hubForCategory('power-devices')).toBe('/power');
+    expect(hubForCategory('no-such-category')).toBeNull();
+    expect(read('apps/web/src/pages/sitemaps/categories.xml.ts')).toContain('.filter((cat) => !hubForCategory(cat.slug))');
+    expect(read('apps/web/src/pages/shop.astro')).toContain('canonicalUrl={shopCanonicalUrl}');
+  });
+
+  it('approve-skus never approves a product with no real photo', () => {
+    expect(read('apps/api/src/scripts/approve-skus.ts')).toContain("const rows = listed.filter((r) => Number(r.real_images) > 0);");
   });
 });

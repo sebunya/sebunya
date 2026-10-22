@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { getTaxonomy } from '../../lib/taxonomy';
 import { urlsetXml, xmlResponse } from '../../lib/sitemap';
 import { categoryHasUniqueCopy } from '../../lib/crawlPolicy';
+import { hubForCategory } from '../../lib/indexableLinks';
 
 /**
  * U6 — category landing URLs from the public taxonomy (/commerce/taxonomy).
@@ -18,6 +19,9 @@ export const GET: APIRoute = async () => {
   const taxonomy = await getTaxonomy();
   const urls = taxonomy
     .filter(categoryHasUniqueCopy)
+    // A category with its own hub (/power, /audio …) is listed ONCE, as the hub (hubs sitemap): the shop view of it
+    // names the hub as canonical, so two indexable URLs no longer compete for the same searches (2026-10-22).
+    .filter((cat) => !hubForCategory(cat.slug))
     .map((cat) => ({ loc: `/shop?category=${encodeURIComponent(cat.slug)}` }));
   return xmlResponse(urlsetXml(urls));
 };

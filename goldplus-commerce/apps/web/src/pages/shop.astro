@@ -33,6 +33,7 @@ import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { offerPriceUgx } from '../lib/offerPrice';
 import { chargedPriceUgx } from '../lib/productStructuredData';
+import { hubForCategory } from '../lib/indexableLinks';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../lib/storefrontDiscount';
 import { fetchApprovedCatalogueWithStatus } from '../lib/catalogue';
 import { isListableProduct } from '../lib/product-discovery';
@@ -73,6 +74,12 @@ const { robotsMeta: shelfRobotsMeta, canonicalUrl } = shopCrawlDirective({
 });
 // A filtered view is never its own indexable page: the canonical (built without the filters) is the shelf.
 const robotsMeta = hasShopFacets(facetSelection) ? 'noindex,follow' : shelfRobotsMeta;
+// A plain category view that has its own hub page (/power, /audio …) names the hub as canonical: one indexable URL per
+// category, not two competing for the same searches (2026-10-22).
+const categoryHub = category && !search && !subcategory && (!sort || sort === 'default') && requestedPage <= 1 && !hasShopFacets(facetSelection)
+  ? hubForCategory(category)
+  : null;
+const shopCanonicalUrl = categoryHub ? `${SITE_ORIGIN}${categoryHub}` : canonicalUrl;
 
 function shopUrl(overrides: Partial<{ search: string; category: string; subcategory: string; sort: string; page: number; facets: ShopFacetSelection }> = {}) {
   // Changing any filter returns to page 1; only an explicit page keeps one.
@@ -293,7 +300,7 @@ const shopBreadcrumb = breadcrumbJsonLd([
 ]);
 ---
 
-<BaseLayout title={pageTitle} description={pageDescription} robotsMeta={robotsMeta} canonicalUrl={canonicalUrl}>
+<BaseLayout title={pageTitle} description={pageDescription} robotsMeta={robotsMeta} canonicalUrl={shopCanonicalUrl}>
   <Fragment slot="head">
     {page > 1 && <link rel="prev" href={`${SITE_ORIGIN}${shopUrl({ page: page - 1 })}`} />}
     {page < totalPages && <link rel="next" href={`${SITE_ORIGIN}${shopUrl({ page: page + 1 })}`} />}

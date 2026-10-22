@@ -514,7 +514,7 @@ async function giftCardProofs(product: { id: string; priceUgx: number }): Promis
   await resetStub();
   const pinJar = browserWithCart(product);
   await get(pinJar, '/checkout');
-  const pinPhone = '+256700000903';
+  const pinPhone = '+256700000977';
   const pinSubmit = await postForm(pinJar, '/checkout', {
     ...payFields, phone: pinPhone,
     locationJson: JSON.stringify({ manual: true, rawAddressText: 'Behind the church, blue gate', gpsLat: 0.3501, gpsLng: 32.6101, gpsAccuracyM: 20, gpsSource: 'pasted_link' }),

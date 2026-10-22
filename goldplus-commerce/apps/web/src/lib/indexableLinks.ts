@@ -54,6 +54,11 @@ const TERM_TO_CHILD: Readonly<Record<string, Readonly<Record<string, string>>>> 
   },
 };
 
+/** The indexable hub that covers exactly this category (/power for power-devices), or null when there is none. */
+export function hubForCategory(slug: string): string | null {
+  return CATEGORY_TO_HUB[(slug ?? '').trim().toLowerCase()] ?? null;
+}
+
 export function indexableCategoryHref(href: string): string {
   if (typeof href !== 'string' || !href.startsWith('/shop?')) return href;
   let url: URL;
