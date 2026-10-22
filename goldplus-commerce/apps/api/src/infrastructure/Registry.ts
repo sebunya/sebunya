@@ -3003,6 +3003,22 @@ export class Registry {
     this.auditRepo,
     // The abandoned order's task leaves the work queue with it.
     new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
+    // Last word from Pesapal before cancelling: each failed/invalid attempt with a tracking id is settled once.
+    async (orderId) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const attempts = (await db.execute(sql`
+        select order_tracking_id as "trackingId", merchant_reference as "reference" from payment_attempts
+        where order_id = ${orderId} and status in ('failed', 'invalid') and order_tracking_id is not null`)) as unknown as Array<{ trackingId: string; reference: string }>;
+      for (const a of attempts) {
+        const outcome = await Registry.getInstance().settlePaymentUseCase.execute({
+          orderTrackingId: a.trackingId, merchantReference: a.reference, source: 'poll', traceId: `abandon-recheck:${a.reference}`,
+        });
+        if (outcome.confirmed || outcome.verification.status === 'completed') return true;
+        if (outcome.verification.status === 'verification_pending') throw new Error('PROVIDER_UNREACHABLE');
+      }
+      return false;
+    },
   );
 
   public readonly alertOnLedgerMismatchUseCase = new AlertOnLedgerMismatchUseCase(

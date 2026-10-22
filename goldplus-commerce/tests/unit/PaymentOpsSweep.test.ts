@@ -130,6 +130,22 @@ describe('order abandonment — cancelled through the canonical lifecycle, never
     expect(r.errors).toEqual([]);
   });
 
+  it('asks Pesapal once about failed attempts before cancelling: a paid order is never abandoned, an unreachable provider means wait (2026-10-22)', async () => {
+    config.order_abandonment_hours = '72';
+    const old = new Date(NOW.getTime() - 100 * HOUR);
+    orders.stale = [
+      { id: 'paid', orderNumber: 'GP-P', status: 'received', createdAt: old },
+      { id: 'unpaid', orderNumber: 'GP-U', status: 'received', createdAt: old },
+      { id: 'unknown', orderNumber: 'GP-X', status: 'received', createdAt: old },
+    ];
+    transitions.length = 0;
+    const recheck = async (id: string) => { if (id === 'unknown') throw new Error('PROVIDER_UNREACHABLE'); return id === 'paid'; };
+    const r = await new AbandonStaleUnpaidOrdersUseCase(configReader, orders, transition, inventory, audit as never, undefined, recheck).execute(NOW);
+    expect(r.abandoned).toBe(1);
+    expect(transitions.map((t: { orderId: string }) => t.orderId)).toEqual(['unpaid']);
+    expect(r.errors.join(' ')).toMatch(/GP-X/);
+  });
+
   it('one refused transition never stops the rest', async () => {
     config.order_abandonment_hours = '72';
     const refusing = {

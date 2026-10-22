@@ -116,6 +116,14 @@ export class AbandonStaleUnpaidOrdersUseCase {
      * Optional so older suites construct unchanged; production wires it.
      */
     private readonly fulfilment?: { execute(input: { orderId: string; actorId: string | null; reason: string }): Promise<unknown> },
+    /**
+     * Asks the provider, once, about the order's attempts marked failed or invalid, through the same settlement as an
+     * IPN; true when the order is now paid. A decline can be followed by a payment on the same page (observed
+     * 2026-09-20), and the poller only asks about pending attempts, so a lost IPN meant a paid order was cancelled
+     * here at 48 h with the money kept (2026-10-22 review). Throws when the provider cannot be asked: the order then
+     * waits for the next sweep rather than being cancelled blind.
+     */
+    private readonly recheckPaid?: (orderId: string) => Promise<boolean>,
   ) {}
 
   async execute(now: Date = new Date()): Promise<{ abandoned: number; skipped: 'window_not_configured' | null; errors: string[] }> {
@@ -128,6 +136,7 @@ export class AbandonStaleUnpaidOrdersUseCase {
     const errors: string[] = [];
     for (const order of stale) {
       try {
+        if (this.recheckPaid && (await this.recheckPaid(order.id))) continue; // paid after all: settled, not abandoned
         await this.transition.transition(order.id, 'cancelled', {
           actorId: null,
           actorType: 'system',
