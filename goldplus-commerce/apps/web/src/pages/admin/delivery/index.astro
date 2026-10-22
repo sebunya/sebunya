@@ -321,8 +321,10 @@ const tierLabel: Record<number, string> = { 1: "One approver", 2: "Needs a secon
             <div>
               <p class="text-xs font-bold text-gray-800 mb-1">Per road: the last band a rider serves on that corridor</p>
               <p class="text-[11px] text-gray-500 mb-2">"Same as shop-wide" leaves the road on the setting above. Areas beyond a road's limit ship by bus.</p>
-              {!corridorSummary || corridorSummary.corridors.length === 0 ? (
+              {!corridorSummary ? (
                 <p class="text-xs text-gray-500">The corridor list is unavailable right now.</p>
+              ) : corridorSummary.corridors.length === 0 ? (
+                <p class="text-xs text-gray-500">No corridors are loaded yet: import the corridor file first. Until then every road follows the shop-wide setting above.</p>
               ) : (
                 <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {corridorSummary.corridors.map((r: any) => (

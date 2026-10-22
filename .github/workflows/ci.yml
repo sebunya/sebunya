@@ -267,6 +267,12 @@ jobs:
       ANTHROPIC_API_KEY: ci-placeholder-not-a-key
       ANTHROPIC_MESSAGES_URL: http://127.0.0.1:9/v1/messages
       INTERNAL_API_KEY: ci-only-internal-key-000000000000000000000
+      # A throwaway administrator in this job's own database (created below), so the admin page checks run: without
+      # it every admin route-contract, accessibility and Control Centre test skipped (357 of them, 2026-10-22).
+      E2E_ADMIN_EMAIL: e2e-admin@goldplus.test
+      E2E_ADMIN_PASSWORD: ci-only-e2e-admin-password-0000
+      ADMIN_EMAIL: e2e-admin@goldplus.test
+      ADMIN_PASSWORD: ci-only-e2e-admin-password-0000
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4, pinned 2026-10-07
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4, pinned 2026-10-07
@@ -280,6 +286,8 @@ jobs:
       - run: pnpm install
       - run: pnpm -F @goldplus/api db:migrate
       - run: pnpm exec tsx scripts/seed.ts
+      - name: The administrator the admin page checks sign in as (this job's database only)
+        run: BOOTSTRAP_ADMIN_EMAIL="$E2E_ADMIN_EMAIL" BOOTSTRAP_ADMIN_PASSWORD="$E2E_ADMIN_PASSWORD" pnpm exec tsx scripts/bootstrap-admin.ts
       - run: pnpm build
       - name: Start API and website
         run: |
@@ -296,3 +304,10 @@ jobs:
       - name: Server logs on failure
         if: failure()
         run: tail -80 /tmp/api.log; tail -40 /tmp/web.log
+      - name: Playwright failure evidence (page snapshot and screenshot of each failed test)
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4, pinned 2026-10-07
+        with:
+          name: playwright-test-results
+          path: goldplus-commerce/test-results
+          retention-days: 7

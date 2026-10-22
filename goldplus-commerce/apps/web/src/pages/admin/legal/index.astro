@@ -466,7 +466,7 @@ const linkButtonClass = "text-[10px] font-black uppercase tracking-widest text-g
               Simple paragraph preview — text is escaped and markdown syntax is shown as typed, not
               rendered as HTML.
             </p>
-            <div class="mt-4 rounded-xl border border-gray-200 bg-gray-50/50 p-5 space-y-3 max-h-[36rem] overflow-y-auto">
+            <div class="mt-4 rounded-xl border border-gray-200 bg-gray-50/50 p-5 space-y-3 max-h-[36rem] overflow-y-auto" tabindex="0" role="region" aria-label="Policy preview">
               <p class="text-base font-black text-brand-dark">{detail.title}</p>
               {previewBlocks(detail.bodyMarkdown).length === 0 ? (
                 <p class="text-xs text-gray-500 italic">Nothing to preview yet.</p>
@@ -527,7 +527,8 @@ const linkButtonClass = "text-[10px] font-black uppercase tracking-widest text-g
             </div>
           </div>
 
-          <div class="overflow-x-auto">
+          <!-- Focusable so a keyboard can scroll it (WCAG scrollable-region-focusable). -->
+          <div class="overflow-x-auto" tabindex="0" role="region" aria-label={`${policy.title} versions`}>
             <table class="w-full text-left border-collapse">
               <thead>
                 <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-500 tracking-widest">
