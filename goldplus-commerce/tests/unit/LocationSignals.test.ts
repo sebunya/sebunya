@@ -151,10 +151,13 @@ describe('area points learn where customers really are', () => {
     expect(medianPoint([{ lat: 0.39, lng: 32.61, accuracyM: 10 }])).toBeNull();
   });
 
-  it('the nightly area-point job counts chosen Locate me pins (100 m or better) as customer pins', () => {
+  it('the nightly area-point job counts chosen Locate me pins (100 m or better, one per visitor) as customer pins', () => {
+    // The signal endpoint is public: a missing accuracy no longer passes, and repeats by one visitor count once
+    // (2026-10-22; real-database proof in tests/integration/NightlyAreaPointsSignals.integration.test.ts).
     const job = read('apps/api/src/scripts/geo-nightly-area-points.ts');
     expect(job).toMatch(/from location_signals\s+where kind = 'locate_offer_chosen' and pin_lat is not null/);
-    expect(job).toMatch(/pin_accuracy_m is null or pin_accuracy_m <= 100/);
+    expect(job).toMatch(/pin_accuracy_m is not null and pin_accuracy_m <= 100/);
+    expect(job).toMatch(/distinct on \(area_slug, coalesce\(customer_id, profile_id\)\)/);
   });
 });
 
