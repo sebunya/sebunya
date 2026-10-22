@@ -37,8 +37,16 @@ suite('ad conversion lease (real PostgreSQL)', () => {
   it('renews a row only while it carries this worker\'s deadline', async () => {
     const claimedUntil = new Date(Date.now() + 5 * 60_000);
     const ours = await row('ours', { status: 'processing', nextAttemptAt: claimedUntil });
-    const stored = (await raw`select next_attempt_at::text as t, ${claimedUntil}::timestamptz::text as sent from outbox_events where id = ${ours}`)[0];
-    expect(await D.renewAdConversionLease(ours, claimedUntil), `stored ${stored.t}, claimed ${claimedUntil.toISOString()} (${stored.sent})`).toBe(true);
+    const renewed = await D.renewAdConversionLease(ours, claimedUntil);
+    if (!renewed) {
+      const { db } = await import('../../apps/api/src/infrastructure/db/client');
+      const { outboxEvents } = await import('../../apps/api/src/infrastructure/db/schema');
+      const { eq } = await import('drizzle-orm');
+      const seen = await db.select().from(outboxEvents).where(eq(outboxEvents.id, ours));
+      const rawRow = (await raw`select status, is_processed, next_attempt_at::text as t, current_database() as d from outbox_events where id = ${ours}`)[0];
+      const drizzleDb = await db.execute(`select current_database() as d` as never).catch((e: Error) => e.message);
+      throw new Error(`renew refused. raw: ${JSON.stringify(rawRow)} | drizzle sees: ${JSON.stringify(seen.map((r) => ({ status: r.status, isProcessed: r.isProcessed, next: r.nextAttemptAt })))} | drizzle db: ${JSON.stringify(drizzleDb)} | claimed ${claimedUntil.toISOString()}`);
+    }
     expect(await deadline(ours)).toBeGreaterThanOrEqual(claimedUntil.getTime() - 1000);
 
     // The lease ran out and another worker claimed it: its deadline is there now, so this worker leaves the row.
