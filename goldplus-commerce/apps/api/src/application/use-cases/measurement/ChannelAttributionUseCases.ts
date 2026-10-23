@@ -1,4 +1,4 @@
-import { normaliseWhatsAppRef, parseHeardAbout, type HeardAboutAnswer } from '@goldplus/shared';
+import { normaliseWhatsAppRef, HEARD_ABOUT_STAFF_ONLY, parseHeardAbout, type HeardAboutAnswer } from '@goldplus/shared';
 import {
   buildWeeklyChannelReport,
   countsAsSale,
@@ -67,7 +67,9 @@ export class RecordCheckoutAttributionUseCase {
   constructor(private readonly store: ChannelAttributionStore, private readonly attribute: AttributeOrderUseCase) {}
 
   async execute(input: { orderId: string; heardAbout: unknown }): Promise<void> {
-    const answer = parseHeardAbout(input.heardAbout);
+    const parsed = parseHeardAbout(input.heardAbout);
+    // A customer cannot file a staff-only (offline) answer from the checkout form.
+    const answer = parsed && !HEARD_ABOUT_STAFF_ONLY.has(parsed) ? parsed : null;
     if (answer) {
       // A replayed checkout (double submit, retry) answers once, not twice.
       const facts = await this.store.loadOrder(input.orderId);

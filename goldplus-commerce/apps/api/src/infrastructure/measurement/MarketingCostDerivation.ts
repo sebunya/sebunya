@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { classifyTemplate } from '../notifications/messageClassification';
-import { effectiveNumber } from '../../domain/measurement/MeasurementConfig';
+import { effectiveNumber, resolveUgxPerUsd, whatsappCostUgx, type FxFeedReading } from '../../domain/measurement/MeasurementConfig';
 import type { MeasurementConfigPort } from '../../application/ports/measurement/MeasurementConfigPort';
 
 const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
@@ -23,27 +23,31 @@ interface CostRow { day: string; channel: string; platform: string; campaign: st
  * Print, radio and anything paid off-platform stay a CSV upload (channel 'print', platform of choice).
  */
 export class MarketingCostDerivation {
-  constructor(private readonly config: MeasurementConfigPort) {}
+  constructor(private readonly config: MeasurementConfigPort, private readonly fxFeed: { latestFx(): Promise<FxFeedReading | null> } = { latestFx: async () => null }) {}
 
-  async derive(days = 35, now = new Date()): Promise<{ rows: number; skipped: string[] }> {
+  async derive(days = 35, now = new Date()): Promise<{ rows: number; skipped: string[]; rates: { ugxPerUsd: number; basis: string; detail: string; smsUgx: number; whatsappMarketingUgx: number; whatsappUtilityUgx: number; whatsappBasis: string } }> {
     const to = kampalaDay(now);
     const from = kampalaDay(new Date(now.getTime() - days * 86_400_000));
     const values = await this.config.values();
     const skipped: string[] = [];
     const out: CostRow[] = [];
 
-    const smsCost = effectiveNumber(values, 'sms_cost_ugx_per_message');
-    const waCost = effectiveNumber(values, 'whatsapp_cost_ugx_per_message');
-    if (smsCost === null) skipped.push('SMS cost per message is unset');
-    if (waCost === null) skipped.push('WhatsApp cost per message is unset');
-    if (smsCost !== null || waCost !== null) {
+    // Shillings per dollar: manual override, else the fed market rate plus the safety margin, else 3,800.
+    const fx = resolveUgxPerUsd(values, await this.fxFeed.latestFx().catch(() => null), to);
+    const smsCost = effectiveNumber(values, 'sms_cost_ugx_per_message') ?? 0;
+    const wa = whatsappCostUgx(values, fx.rate);
+    const rates = { ugxPerUsd: fx.rate, basis: fx.basis, detail: fx.detail, smsUgx: smsCost, whatsappMarketingUgx: wa.marketing, whatsappUtilityUgx: wa.utility, whatsappBasis: wa.basis };
+    if (smsCost <= 0) skipped.push('SMS cost per message is unset');
+    {
       const sent = rows(await db.execute(sql`select ${KDAY('attempted_at')} as day, channel, template, count(*)::int as n from notification_attempts
         where status = 'SENT' and channel in ('sms', 'whatsapp') and attempted_at >= ${from}::date - interval '1 day' and attempted_at < ${to}::date + interval '2 day' group by 1, 2, 3`));
       const agg = new Map<string, CostRow>();
       for (const r of sent) {
-        const cost = r.channel === 'sms' ? smsCost : waCost;
-        if (cost === null) continue;
         const cls = classifyTemplate(String(r.template)) === 'TRANSACTIONAL' ? 'transactional' : 'marketing';
+        // WhatsApp bills by template class: marketing templates at the marketing rate, order updates and codes at
+        // the utility rate. SMS is one price per part whatever it says.
+        const cost = r.channel === 'sms' ? smsCost : cls === 'marketing' ? wa.marketing : wa.utility;
+        if (cost <= 0) continue;
         const k = `${r.day}|${r.channel}|${cls}`;
         const row = agg.get(k) ?? { day: iso(r.day), channel: String(r.channel), platform: r.channel === 'sms' ? 'EgoSMS' : 'Meta WhatsApp', campaign: `${cls} messages`, spendUgx: 0 };
         row.spendUgx += Number(r.n) * cost;
@@ -77,6 +81,12 @@ export class MarketingCostDerivation {
       from creator_contracts c, generate_series(greatest(c.start_date, ${from}::date), least(c.end_date, ${to}::date), interval '1 day') d
       where c.flat_fee_ugx > 0 and c.start_date is not null and c.end_date is not null and c.status in ('active', 'paused', 'blocked') group by 1`));
     for (const r of fees) out.push({ day: iso(r.day), channel: 'creator', platform: 'Creators', campaign: 'flat fees', spendUgx: Number(r.ugx) });
+    // Negotiated payments outside a contract record (0204): each agreement's amount spread evenly over its days,
+    // one campaign line per creator so the channel report can say who was paid for what.
+    const negotiated = rows(await db.execute(sql`select d::date as day, c.handle, n.label, sum(n.amount_ugx::numeric / (n.end_date - n.start_date + 1))::numeric as ugx
+      from creator_negotiated_costs n join creators c on c.id = n.creator_id, generate_series(greatest(n.start_date, ${from}::date), least(n.end_date, ${to}::date), interval '1 day') d
+      where n.deleted_at is null and n.end_date >= ${from}::date and n.start_date <= ${to}::date group by 1, 2, 3`));
+    for (const r of negotiated) out.push({ day: iso(r.day), channel: 'creator', platform: 'Creators', campaign: `${String(r.handle)}: ${String(r.label)}`.slice(0, 120), spendUgx: Number(r.ugx) });
 
     const keep = out.filter((r) => r.spendUgx > 0 && r.day >= from && r.day <= to);
     await db.transaction(async (tx) => {
@@ -86,7 +96,7 @@ export class MarketingCostDerivation {
           values (${r.day}::date, ${r.channel}, ${r.platform}, ${r.platform}, ${r.campaign}, 'UGX', ${Math.round(r.spendUgx)}, 0, ${DERIVED_SOURCE}, 'measurement nightly')`);
       }
     });
-    return { rows: keep.length, skipped };
+    return { rows: keep.length, skipped, rates };
   }
 }
 

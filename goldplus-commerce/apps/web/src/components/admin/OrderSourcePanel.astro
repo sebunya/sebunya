@@ -7,7 +7,7 @@
  * /api/admin/orders/<id>/source, which audits it through the API.
  */
 import { apiBase } from '../../lib/api';
-import { HEARD_ABOUT_LABELS, HEARD_ABOUT_OPTIONS } from '@goldplus/shared';
+import { HEARD_ABOUT_LABELS, HEARD_ABOUT_STAFF_OPTIONS } from '@goldplus/shared';
 import { formatUgx } from '../../lib/money';
 
 interface Props { orderId: string; token: string }
@@ -53,7 +53,7 @@ const customerSaid: string = view?.effectiveAnswer ? (heardAboutLabels[view.effe
         <label class="block font-bold text-gray-900" for="source-answer">How did the customer hear about us?</label>
         <select id="source-answer" name="answer" class="block w-full min-h-11 rounded-lg border border-gray-300 px-3">
           <option value="">Not asked / no answer</option>
-          {HEARD_ABOUT_OPTIONS.map((o) => <option value={o.value} selected={view.effectiveAnswer === o.value}>{o.label}</option>)}
+          {HEARD_ABOUT_STAFF_OPTIONS.map((o) => <option value={o.value} selected={view.effectiveAnswer === o.value}>{o.label}</option>)}
         </select>
         <label class="block font-bold text-gray-900" for="source-ref">WhatsApp reference <span class="font-normal text-gray-600">(optional, from the chat: "Ref GP-…")</span></label>
         <input id="source-ref" name="whatsappRef" maxlength="20" autocomplete="off" placeholder="GP-7K3Q9X" class="block w-full min-h-11 rounded-lg border border-gray-300 px-3 font-mono uppercase" />

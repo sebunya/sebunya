@@ -26,6 +26,8 @@ import { DrizzleHoldoutStore } from './measurement/DrizzleHoldoutStore';
 import { HoldoutGate } from '../application/use-cases/measurement/HoldoutGate';
 import { MmmDataset } from './measurement/MmmDataset';
 import { MarketingCostDerivation } from './measurement/MarketingCostDerivation';
+import { ControlFeeds } from './measurement/ControlFeeds';
+import { DrizzleCreatorCostStore } from './measurement/DrizzleCreatorCostStore';
 import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
 import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRepository';
 import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository';
@@ -893,8 +895,10 @@ export class Registry {
   public readonly measurementConfig = new DrizzleMeasurementConfig((e) => this.createAuditLogUseCase.execute(e));
   public readonly holdoutStore = new DrizzleHoldoutStore();
   public readonly holdoutGate = new HoldoutGate(this.measurementConfig, this.holdoutStore);
-  public readonly mmmDataset = new MmmDataset(this.measurementConfig);
-  public readonly marketingCostDerivation = new MarketingCostDerivation(this.measurementConfig);
+  public readonly controlFeeds = new ControlFeeds();
+  public readonly mmmDataset = new MmmDataset(this.measurementConfig, this.controlFeeds);
+  public readonly marketingCostDerivation = new MarketingCostDerivation(this.measurementConfig, this.controlFeeds);
+  public readonly creatorCostStore = new DrizzleCreatorCostStore();
   // Advertising destinations (0138): server-side conversion APIs, token vault-encrypted.
   // Measurement delivery operations (0140/0141): queue, replay, quarantine, kill switch.
   /** Collector contract v2 (0141); the per-event durable write is the caller's tracking path. */

@@ -3,9 +3,9 @@ import { PERMISSIONS } from '@goldplus/shared';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { Registry } from '../../../../infrastructure/Registry';
-import { MEASUREMENT_CONFIG_REGISTRY } from '../../../../domain/measurement/MeasurementConfig';
+import { MEASUREMENT_CONFIG_REGISTRY, effectiveNumber, resolveUgxPerUsd, whatsappCostUgx } from '../../../../domain/measurement/MeasurementConfig';
 import { HOLDOUT_PROGRAMMES } from '../../../../domain/measurement/Incrementality';
-import { CONTROL_KEYS, MANUAL_CONTROL_KEYS } from '../../../../infrastructure/measurement/MmmDataset';
+import { CONTROL_HELP, CONTROL_KEYS, MANUAL_CONTROL_KEYS } from '../../../../infrastructure/measurement/MmmDataset';
 import { Ga4Reconciliation, HttpGa4Reader, careDeskAlarm } from '../../../../infrastructure/measurement/Ga4Reconciliation';
 import { lastMeasurementNightly, runMeasurementNightlyOnce } from '../../../../infrastructure/scheduler/MeasurementNightlyTicker';
 import { storeZip } from '../../../../infrastructure/measurement/storeZip';
@@ -23,8 +23,33 @@ const bad = (c: Context, message: string, status: 400 | 403 = 400) => c.json({ s
 
 routes.get('/status', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   const r = registry();
-  const [readiness, nightly, counts, values] = await Promise.all([r.mmmDataset.readiness(), lastMeasurementNightly(), r.holdoutStore.assignmentCounts(), r.measurementConfig.values()]);
-  return c.json({ success: true, data: { readiness, nightly, holdoutAssignments: counts, settingsSet: Object.keys(values).filter((k) => k !== 'holdout_salt') } });
+  const [readiness, nightly, counts, values, fxFeed] = await Promise.all([r.mmmDataset.readiness(), lastMeasurementNightly(), r.holdoutStore.assignmentCounts(), r.measurementConfig.values(), r.controlFeeds.latestFx()]);
+  const fx = resolveUgxPerUsd(values, fxFeed, new Date().toISOString().slice(0, 10));
+  const whatsapp = whatsappCostUgx(values, fx.rate);
+  const costs = { ugxPerUsd: fx.rate, fxBasis: fx.basis, fxDetail: fx.detail, smsUgx: effectiveNumber(values, 'sms_cost_ugx_per_message'), whatsappMarketingUgx: whatsapp.marketing, whatsappUtilityUgx: whatsapp.utility, whatsappBasis: whatsapp.basis };
+  return c.json({ success: true, data: { readiness, nightly, holdoutAssignments: counts, settingsSet: Object.keys(values).filter((k) => k !== 'holdout_salt'), costs } });
+});
+
+/** Creator payments agreed outside a contract record (0204). Listed with the creators to choose from. */
+routes.get('/creator-costs', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  const r = registry();
+  const [rows, creators] = await Promise.all([r.creatorCostStore.list(Math.min(800, Number(c.req.query('days') ?? 400) || 400)), r.creatorCostStore.creators()]);
+  return c.json({ success: true, data: { rows, creators } });
+});
+routes.post('/creator-costs', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const input = { creatorId: String(body?.creatorId ?? ''), label: String(body?.label ?? ''), amountUgx: Number(body?.amountUgx), startDate: String(body?.startDate ?? ''), endDate: String(body?.endDate ?? body?.startDate ?? ''), note: body?.note ? String(body.note) : null, actorId: actorId(c) ?? '' };
+  const r = await registry().creatorCostStore.add(input);
+  if (!r.ok) return bad(c, r.message);
+  await registry().createAuditLogUseCase.execute({ actorId: input.actorId, action: 'CREATOR_COST_ADDED', entity: 'creator_negotiated_costs', entityId: r.id, newState: { creatorId: input.creatorId, label: input.label, amountUgx: input.amountUgx, startDate: input.startDate, endDate: input.endDate } });
+  return c.json({ success: true, data: { id: r.id } });
+});
+routes.delete('/creator-costs/:id', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const r = await registry().creatorCostStore.end(id, actorId(c) ?? '');
+  if (!r.ok) return bad(c, r.message);
+  await registry().createAuditLogUseCase.execute({ actorId: actorId(c) ?? '', action: 'CREATOR_COST_ENDED', entity: 'creator_negotiated_costs', entityId: id, newState: { ended: r.wasLive } });
+  return c.json({ success: true, data: { ended: r.wasLive } });
 });
 
 routes.get('/readiness', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => c.json({ success: true, data: await registry().mmmDataset.readiness() }));
@@ -44,7 +69,7 @@ routes.get('/export', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) 
   return new Response(new Uint8Array(zip), { headers: { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="goldplus-mmm-${new Date().toISOString().slice(0, 10)}.zip"` } });
 });
 
-routes.get('/controls', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => c.json({ success: true, data: { keys: CONTROL_KEYS, manualKeys: MANUAL_CONTROL_KEYS, rows: await registry().mmmDataset.listControls(Math.min(400, Number(c.req.query('days') ?? 60) || 60)) } }));
+routes.get('/controls', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => c.json({ success: true, data: { keys: CONTROL_KEYS, manualKeys: MANUAL_CONTROL_KEYS, help: CONTROL_HELP, rows: await registry().mmmDataset.listControls(Math.min(400, Number(c.req.query('days') ?? 60) || 60)) } }));
 
 routes.post('/controls', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => null);

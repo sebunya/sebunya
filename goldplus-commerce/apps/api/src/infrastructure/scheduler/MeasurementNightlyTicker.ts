@@ -8,6 +8,7 @@ import { Ga4Reconciliation, HttpGa4Reader, careDeskAlarm } from '../measurement/
 /**
  * Measurement nightly (0203, 2026-10-23), after the attribution batch and the first-party run (03:30–05:59
  * Kampala), once a day, one replica at a time:
+ *  0. control feeds (market dollar rate, Kampala rain) into measurement.control_series;
  *  1. derived marketing costs (SMS, WhatsApp, loyalty, referrals, creators) into media_cost_facts;
  *  2. the MMM daily dataset and its control series;
  *  3. holdout outcomes (treated versus held, 14 and 28 days);
@@ -46,6 +47,7 @@ export async function runMeasurementNightlyOnce(now = new Date(), trigger: 'sche
     const step = async (name: string, fn: () => Promise<unknown>) => {
       try { stats[name] = await fn(); } catch (err) { stats[name] = { error: String((err as Error).message ?? err).slice(0, 300) }; logger.error({ err: (err as Error).message, step: name }, '[measurement-nightly] step failed'); }
     };
+    await step('feeds', () => registry.controlFeeds.run(now));
     await step('costs', () => registry.marketingCostDerivation.derive(35, now));
     await step('mmm', () => registry.mmmDataset.rebuild(now));
     await step('holdouts', () => registry.holdoutStore.computeOutcomes(now));

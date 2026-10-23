@@ -4,15 +4,30 @@ import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { reportChannelForSpend } from '../../domain/measurement/ChannelReport';
 import { calendarControls } from '../../domain/measurement/UgandaCalendar';
 import { readiness, toWeekly, type MmmDailyRow, type ReadinessReport } from '../../domain/measurement/MmmReadiness';
-import { effectiveNumber } from '../../domain/measurement/MeasurementConfig';
+import { resolveUgxPerUsd, type FxFeedReading } from '../../domain/measurement/MeasurementConfig';
 import type { MeasurementConfigPort } from '../../application/ports/measurement/MeasurementConfigPort';
 import { kampalaDay } from './MarketingCostDerivation';
 
 const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
 export const MMM_WINDOW_DAYS = 400;
-export const CONTROL_KEYS = ['holiday', 'school_term', 'stockout_share', 'price_index', 'momo_outage', 'delivery_fee_index', 'promo_depth'] as const;
+export const CONTROL_KEYS = ['holiday', 'school_term', 'stockout_share', 'price_index', 'usd_ugx', 'rain_mm', 'momo_outage', 'delivery_fee_index', 'promo_depth', 'power_outage', 'competitor_promo', 'fuel_price_index'] as const;
 export type ControlKey = typeof CONTROL_KEYS[number];
-export const MANUAL_CONTROL_KEYS: readonly ControlKey[] = ['momo_outage', 'delivery_fee_index', 'promo_depth'];
+/** Typed in by a person. No public feed exists for Uganda's load-shedding, competitor promotions or pump prices. */
+export const MANUAL_CONTROL_KEYS: readonly ControlKey[] = ['momo_outage', 'delivery_fee_index', 'promo_depth', 'power_outage', 'competitor_promo', 'fuel_price_index'];
+export const CONTROL_HELP: Record<ControlKey, string> = {
+  holiday: 'Public holiday (calendar)',
+  school_term: 'School term in session (calendar)',
+  stockout_share: 'Share of listed products not in stock (measured nightly)',
+  price_index: 'Mean retail price, UGX (measured nightly)',
+  usd_ugx: 'Market shillings per dollar (fed nightly, no margin)',
+  rain_mm: 'Rain in Kampala, mm (fed nightly)',
+  momo_outage: 'Mobile money down that day: 1',
+  delivery_fee_index: 'Delivery fee relative to normal, e.g. 1.2 for 20% up',
+  promo_depth: 'Depth of a shop-wide promotion, e.g. 0.1 for 10% off',
+  power_outage: 'Hours of load-shedding in Kampala that day',
+  competitor_promo: 'A competitor ran a visible promotion that day: 1',
+  fuel_price_index: 'Petrol pump price relative to the start of the series, e.g. 1.08',
+};
 
 /**
  * The media channel key the model sees. Paid platforms stay apart (a dollar on Meta and a dollar on Google are
@@ -29,7 +44,7 @@ export function mmmChannelKey(channel: string, platform: string): string {
 }
 
 export class MmmDataset {
-  constructor(private readonly config: MeasurementConfigPort) {}
+  constructor(private readonly config: MeasurementConfigPort, private readonly fxFeed: { latestFx(): Promise<FxFeedReading | null> } = { latestFx: async () => null }) {}
 
   /** Rebuilds measurement.mmm_daily for the window and writes the calendar + measured controls. */
   async rebuild(now = new Date(), days = MMM_WINDOW_DAYS): Promise<{ days: number; rows: number; notes: string[] }> {
@@ -38,12 +53,14 @@ export class MmmDataset {
     const from = kampalaDay(new Date(now.getTime() - days * 86_400_000));
     const notes: string[] = [];
     const values = await this.config.values();
-    const fallbackRate = effectiveNumber(values, 'ugx_per_usd');
+    const fx = resolveUgxPerUsd(values, await this.fxFeed.latestFx().catch(() => null), to);
+    const fallbackRate: number = fx.rate;
+    notes.push(`dollar rate ${fx.rate} UGX (${fx.basis}: ${fx.detail})`);
     const rates = new Map<string, number>();
     for (const r of rows(await db.execute(sql`select platform, config->>'ugxPerUsd' as rate from ad_destinations`))) {
       const n = Number(r.rate); if (Number.isFinite(n) && n > 0) rates.set(String(r.platform), n);
     }
-    const rateFor = (platform: string): number | null => {
+    const rateFor = (platform: string): number => {
       const p = platform.toLowerCase();
       const key = /google/.test(p) ? 'google_ads' : /meta|facebook/.test(p) ? 'meta' : /tiktok/.test(p) ? 'tiktok' : null;
       return (key && rates.get(key)) || fallbackRate;
@@ -58,13 +75,12 @@ export class MmmDataset {
       return c;
     };
 
-    let usdLeftOut = 0;
     for (const r of rows(await db.execute(sql`select spend_date::text as day, channel, platform, currency, sum(spend_minor + tax_or_fee_minor)::bigint as spend, sum(clicks)::bigint as clicks, sum(impressions)::bigint as impressions
       from media_cost_facts where spend_date >= ${from}::date and spend_date <= ${to}::date group by 1, 2, 3, 4`))) {
       const key = mmmChannelKey(String(r.channel), String(r.platform));
       let ugx: number | null = null;
       if (r.currency === 'UGX') ugx = Number(r.spend);
-      else if (r.currency === 'USD') { const rate = rateFor(String(r.platform)); if (rate) ugx = Math.round(Number(r.spend) / 100 * rate); else usdLeftOut += Number(r.spend); }
+      else if (r.currency === 'USD') ugx = Math.round(Number(r.spend) / 100 * rateFor(String(r.platform)));
       else notes.push(`${r.currency} spend on ${r.platform} left out (only UGX and USD are understood)`);
       if (ugx === null) continue;
       const c = cell(String(r.day), key);
@@ -72,7 +88,6 @@ export class MmmDataset {
       if (r.impressions != null) c.impressions = (c.impressions ?? 0) + Number(r.impressions);
       if (r.clicks != null) c.clicks = (c.clicks ?? 0) + Number(r.clicks);
     }
-    if (usdLeftOut > 0) notes.push(`USD ${(usdLeftOut / 100).toFixed(2)} of spend left out: set "Shillings per US dollar" in measurement settings or on the platform's advertising form`);
 
     for (const r of rows(await db.execute(sql`select (occurred_at at time zone 'Africa/Kampala')::date::text as day, channel, count(distinct anonymous_id)::int as sessions
       from measurement.touchpoint where environment = ${env} and traffic_class = 'customer' and occurred_at >= ${from}::date - interval '1 day' and occurred_at < ${to}::date + interval '2 day' group by 1, 2`))) {

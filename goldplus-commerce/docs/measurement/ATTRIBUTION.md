@@ -69,7 +69,11 @@ One journey per order, oldest first, from three labelled kinds of evidence:
 3. **Declared**: the customer's (or staff's) answer to "How did you hear about
    us?". Used in the journey **only when there is no observed or code touch**,
    and marked `basis = 'declared'`. Ambiguous answers stay ambiguous:
-   "Facebook" is `social_declared`, never paid social.
+   "Facebook" is `social_declared`, never paid social. Two answers are
+   staff-only (`walk_in`, `phone_call`; the checkout never offers or accepts
+   them): they are the offline-order rule, filed as `shop_floor` and
+   `phone_order`, the order's own channels, never "direct" and never spread
+   (docs/measurement/MMM_AND_INCREMENTALITY.md §8).
 
 Models (`measurement.order_channel_credit`, one row per order × model ×
 channel × detail, with weight and integer UGX credit; `model_version =
