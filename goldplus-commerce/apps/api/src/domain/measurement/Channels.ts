@@ -4,7 +4,7 @@ import { AD_CLICK_IDS, PAYMENT_HOST, SOCIAL_SHARE_CLICK_IDS } from '@goldplus/sh
  * utm medium/source, then the referrer. Deterministic and pure; the same
  * inputs always give the same channel. "direct" means no evidence, not "no ad".
  */
-export const CHANNELS = ['paid_search', 'paid_social', 'display', 'affiliate', 'email', 'sms', 'whatsapp', 'organic_search', 'organic_social', 'ai_assistant', 'friend_referral', 'referral', 'direct', 'other_paid', 'other'] as const;
+export const CHANNELS = ['paid_search', 'paid_social', 'display', 'affiliate', 'email', 'sms', 'whatsapp', 'organic_search', 'organic_social', 'ai_assistant', 'friend_referral', 'print', 'referral', 'direct', 'other_paid', 'other'] as const;
 export type Channel = typeof CHANNELS[number];
 
 /**
@@ -56,6 +56,8 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   // A customer's invite link (/r/<code>, 2026-10-22) tags its landing utm_medium=friend: the friend arrives from
   // WhatsApp or SMS with no referrer, which used to read as direct.
   if (med === 'friend') return 'friend_referral';
+  // A QR code on a receipt, packaging, a flyer or the shop window (?ch=q.<campaign>: the rulebook's CHANNEL_TAGS).
+  if (med === 'print') return 'print';
   if (src === 'whatsapp' || med === 'whatsapp') return 'whatsapp';
   // Our own tagged links (shared/links/shopLinkTag, 2026-10-23): Goldie's replies in Messenger and Instagram are a
   // conversation with our page (organic social); the installed app's start page is a returning customer (direct).

@@ -45,6 +45,8 @@ const ROWS: Row[] = [
   { name: 'Our email link', url: '/review?reference=GP-1&ch=e.review', ga4Referrer: null, ga4Utm: ['goldplus', 'email'], ga4Channel: 'Email', channel: 'email', order: ['goldplus', 'email'] },
   { name: 'Goldie\'s link in Messenger (Messenger adds fbclid)', url: '/products/x?ch=m.goldie&fbclid=IwAR1abcdefgh', ua: FB_APP, ga4Referrer: null, ga4Utm: ['messenger', 'chat'], ga4Channel: 'Messaging (GoldPlus channels)', channel: 'organic_social', order: ['messenger', 'chat'] },
   { name: 'A customer\'s invite link', url: '/invite?code=AB12&utm_source=customer_invite&utm_medium=friend&utm_campaign=refer_a_friend', ga4Referrer: null, ga4Utm: ['customer_invite', 'friend'], ga4Channel: 'Friend referrals (GoldPlus channels)', channel: 'friend_referral', order: ['customer_invite', 'friend'] },
+  { name: 'A QR code on the packaging (?ch=q.packaging)', url: '/?ch=q.packaging', ga4Referrer: null, ga4Utm: ['qr', 'print'], ga4Channel: 'Print and QR (GoldPlus channels)', channel: 'print', order: ['qr', 'print'] },
+  { name: 'A product shared from its page (Share on WhatsApp)', url: '/products/x?utm_source=customer_share&utm_medium=friend&utm_campaign=product_share&utm_content=whatsapp', ga4Referrer: null, ga4Utm: ['customer_share', 'friend'], ga4Channel: 'Friend referrals (GoldPlus channels)', channel: 'friend_referral', order: ['customer_share', 'friend'] },
   { name: 'Installed app', url: '/?ch=a.homescreen', ga4Referrer: null, ga4Utm: ['app', 'pwa'], ga4Channel: 'App (GoldPlus channels)', channel: 'direct', order: ['app', 'pwa'] },
   { name: 'Untagged WhatsApp link (WhatsApp sends nothing)', url: '/products/x', ga4Referrer: null, ga4Channel: 'Direct', channel: 'direct', order: [null, null] },
   { name: 'A product link someone copied into WhatsApp (dark social), opened by a friend', url: '/products/x#s=k3j9q2', ga4Referrer: null, ga4Utm: ['shared_link', 'friend'], ga4Channel: 'Friend referrals (GoldPlus channels)', channel: 'friend_referral', order: ['shared_link', 'friend'] },
@@ -103,12 +105,22 @@ describe('the attribution contract: every reader says the same thing about each 
     expect(page('https://shopgoldplus.com/faq#returns', { local: new Map() }).loc.hash).toBe('#returns');
   });
 
+  it('the product share link: the clean page address, the friend-referral tags, and how it went', async () => {
+    const { productShareUrl } = await import('../../packages/shared/src/attribution/arrival');
+    expect(productShareUrl('https://shopgoldplus.com/products/x?search=pb&rank=2#s=k3j9q2', 'whatsapp'))
+      .toBe('https://shopgoldplus.com/products/x?utm_source=customer_share&utm_medium=friend&utm_campaign=product_share&utm_content=whatsapp');
+    expect(productShareUrl('https://shopgoldplus.com/products/x', 'copy')).toMatch(/utm_content=copy$/);
+    const pdp = (await import('node:fs')).readFileSync((await import('node:path')).resolve(__dirname, '../../apps/web/src/pages/products/[slug].astro'), 'utf8');
+    expect(pdp).toContain("productShareUrl(canonical, 'whatsapp')");
+    expect(pdp).toMatch(/https:\/\/wa\.me\/\?text=/);
+  });
+
   it('no reader keeps its own copy of the rules', async () => {
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');
     const src = (f: string) => readFileSync(resolve(__dirname, '../..', f), 'utf8');
     // The lists live only in the rulebook; the readers import it (the loader receives it as data).
-    const lists = /pesapal\\\.com|FB_IAB|Instagram\\s|'twclid'|fbclid: '|ordertrackingid|shared_link|copied_link/;
+    const lists = /pesapal\\\.com|FB_IAB|Instagram\\s|'twclid'|fbclid: '|ordertrackingid|shared_link|copied_link|customer_share|\['sms', 'sms'\]/;
     for (const f of ['apps/web/src/layouts/BaseLayout.astro', 'apps/web/src/lib/attribution.ts', 'apps/web/src/lib/telemetry.ts', 'apps/web/src/lib/inAppBrowser.ts', 'apps/web/src/lib/internalReferrer.ts', 'apps/api/src/domain/measurement/Channels.ts']) {
       expect(src(f), f).not.toMatch(lists);
     }

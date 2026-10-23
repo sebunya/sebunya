@@ -187,8 +187,8 @@ const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, 
           (gp_staff, set when the admin opens).
         - Where the visit came from, settled before anything reads the URL:
           1. Our own links carry ?ch=<channel>.<campaign> (shared/links/shopLinkTag; short because SMS is paid by the
-             character), rewritten to utm_source/utm_medium/utm_campaign. Channels: s SMS, w WhatsApp, e email,
-             m Messenger, i Instagram, a the installed app.
+             character), rewritten to utm_source/utm_medium/utm_campaign (the rulebook's CHANNEL_TAGS: SMS, WhatsApp,
+             email, Messenger, Instagram, the installed app, print/QR).
           2. A social app's own browser sends no referrer but names itself (lib/inAppBrowser.ts, same list, kept in
              step by a test): the landing is credited to that network. So is an untagged link carrying Facebook's
              fbclid: it is added to shares too, so it says "from Facebook", never "an ad" (no ad has ever run; 10 of
@@ -214,10 +214,10 @@ const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, 
         if (navigator.webdriver === true || new RegExp(rules.bots, 'i').test(ua)
           || /(?:^|; )(?:gp_probe|gp_staff)=/.test(document.cookie)) return;
         var CAMPAIGN = new RegExp(rules.campaign, 'i');
-        var CH = { s: ['sms', 'sms'], w: ['whatsapp', 'chat'], e: ['goldplus', 'email'], m: ['messenger', 'chat'], i: ['instagram', 'chat'], a: ['app', 'pwa'] };
+        var CH = rules.ch;
         try {
           var u = new URL(location.href), gt = u.searchParams.get('ch');
-          var g = gt && /^([swemia])\.([a-z0-9_-]{1,40})$/.exec(gt);
+          var g = gt && new RegExp('^([' + Object.keys(CH).join('') + '])\\.([a-z0-9_-]{1,40})$').exec(gt);
           if (g && !u.searchParams.has('utm_source')) {
             u.searchParams.delete('ch');
             u.searchParams.set('utm_source', CH[g[1]][0]); u.searchParams.set('utm_medium', CH[g[1]][1]); u.searchParams.set('utm_campaign', g[2]);

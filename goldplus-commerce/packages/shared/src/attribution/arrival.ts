@@ -68,6 +68,18 @@ export const SHARE_FRAGMENT = /^#s=([a-z0-9]{6})$/;
 export const SHARE_PAGE_DENY = /^\/(checkout|cart|account|admin|login|register|reset-password|forgot|gift-card\/(open|bought)|track-order|review|returns|invite|r\/|pay|api\/|wa$|consent|preferences|dealers)/;
 export const SHARE_TAGS = { utm_source: 'shared_link', utm_medium: 'friend', utm_campaign: 'copied_link' } as const;
 
+/**
+ * Our own links' short tag `?ch=<code>.<campaign>` (shared/links/shopLinkTag), as utm_source / utm_medium: the page
+ * rewrites it before anything reads the URL. q is print: a QR code on a receipt, packaging, a flyer or the shop window
+ * (`?ch=q.packaging`); GA4 has no default channel for it (the GoldPlus channels group names it), ours files it as print.
+ */
+export const CHANNEL_TAGS: Readonly<Record<string, readonly [string, string]>> = {
+  s: ['sms', 'sms'], w: ['whatsapp', 'chat'], e: ['goldplus', 'email'], m: ['messenger', 'chat'], i: ['instagram', 'chat'], a: ['app', 'pwa'], q: ['qr', 'print'],
+};
+
+/** A product link a customer shares from the product page (Share on WhatsApp, Share, Copy link): a friend referral. */
+export const PRODUCT_SHARE_TAGS = { utm_source: 'customer_share', utm_medium: 'friend', utm_campaign: 'product_share' } as const;
+
 /** The payment gateway sending the shopper back: never an arrival (GA4's "unwanted referral"). */
 export const PAYMENT_HOST = /(^|\.)pesapal\.com$/i;
 
@@ -132,7 +144,7 @@ export function landingTouch(input: { search: string; referrer: string; ua: stri
 }
 
 /** The same rules as plain data, for the inline tag loader (BaseLayout `define:vars`), which cannot import modules. */
-export function loaderRules(): { campaign: string; tagged: string; pay: string; iab: Array<[string, string, string]>; soc: Record<string, string>; share: { frag: string; deny: string; tags: Record<string, string> } } {
+export function loaderRules(): { campaign: string; tagged: string; pay: string; iab: Array<[string, string, string]>; soc: Record<string, string>; share: { frag: string; deny: string; tags: Record<string, string> }; ch: Record<string, readonly [string, string]> } {
   return {
     campaign: CAMPAIGN_PARAM.source,
     tagged: TAGGED_OR_AD_PARAM.source,
@@ -140,5 +152,15 @@ export function loaderRules(): { campaign: string; tagged: string; pay: string; 
     iab: IN_APP_BROWSERS.map(([re, host]) => [re.source, re.flags, host]),
     soc: { ...SOCIAL_SHARE_CLICK_IDS },
     share: { frag: SHARE_FRAGMENT.source, deny: SHARE_PAGE_DENY.source, tags: { ...SHARE_TAGS } },
+    ch: { ...CHANNEL_TAGS },
   };
+}
+
+/** The link a customer shares from a product page: the page's clean address with PRODUCT_SHARE_TAGS and how it went. */
+export function productShareUrl(pageUrl: string, via: 'whatsapp' | 'share' | 'copy'): string {
+  const u = new URL(pageUrl);
+  u.search = ''; u.hash = '';
+  for (const [k, v] of Object.entries(PRODUCT_SHARE_TAGS)) u.searchParams.set(k, v);
+  u.searchParams.set('utm_content', via);
+  return u.toString();
 }

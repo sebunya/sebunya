@@ -54,6 +54,15 @@ test('PDP renders live API product detail', async ({ page }) => {
   if (product.formattedPrice) {
     await expect(page.getByText(product.formattedPrice, { exact: false }).first()).toBeVisible();
   }
+
+  // Share this product (2026-10-23): a WhatsApp share (no number: never a chat with us) and Copy link, both carrying
+  // the friend-referral tags, so a passed-on product is not counted as Direct.
+  const wa = page.getByRole('link', { name: /share on whatsapp/i });
+  await expect(wa).toBeVisible();
+  const href = await wa.getAttribute('href');
+  expect(href).toMatch(/^https:\/\/wa\.me\/\?text=/);
+  expect(decodeURIComponent(href!)).toContain(`/products/${product.slug}?utm_source=customer_share&utm_medium=friend&utm_campaign=product_share&utm_content=whatsapp`);
+  await expect(page.getByRole('button', { name: /copy link/i })).toBeVisible();
 });
 
 test('legal pages show registry status chips and support-routed claims', async ({ page }) => {

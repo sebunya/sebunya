@@ -63,6 +63,14 @@ privacy (#analytics) and cookies pages state all of this. Supersedes the 2026-08
   friend_referral); the owner reopening it is nothing. Not on checkout/account/order/gift card/payment pages, never
   over an existing `#`. Checked in Chrome vs the live container: one page_view, tags in dl, no # in dl.
   Limits: the same person on two devices counts as a share; a received link reopened by its recipient keeps its tags.
+- **Share this product** (product page: Share on WhatsApp, Share, Copy link): `customer_share / friend / product_share`,
+  `utm_content` = whatsapp | share | copy (rulebook PRODUCT_SHARE_TAGS, productShareUrl). The WhatsApp share has no
+  number, so it never gets a chat reference code or a lead.
+- **QR codes and print:** any shop URL + `?ch=q.<where>` (e.g. `https://shopgoldplus.com/?ch=q.packaging`,
+  `?ch=q.receipt`, `?ch=q.window`, `?ch=q.flyer_oct26`) = `qr / print / <where>`; our channel "Print and QR codes";
+  in GA4 the GoldPlus channels group's "Print and QR" channel (medium exactly print).
+- **Google Business Profile website link:** `https://shopgoldplus.com/?utm_source=google&utm_medium=organic&utm_campaign=gbp_website`
+  (medium organic keeps it in Organic Search; the campaign tells it apart from the search results).
 - **Links staff share by hand** (WhatsApp status, groups, a printed QR): add `?ch=w.status`, `?ch=w.group`,
   `?ch=s.<name>` etc. to any shop URL; the page turns it into utm_*. Longer campaigns: /admin/utm-builder.
 - **Which GA4 cookie:** our stream's `_ga_YVV0KLGMQJ` when the API knows the id, else the most recently active one
