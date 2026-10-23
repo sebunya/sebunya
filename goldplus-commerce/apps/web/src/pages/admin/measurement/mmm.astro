@@ -39,7 +39,8 @@ if (Astro.request.method === "POST") {
   else formError = r.message;
 }
 
-const [status, settings, holdouts, recon, controls, creatorCosts] = await Promise.all([call("GET", "/status"), call("GET", "/settings"), call("GET", "/holdouts"), call("GET", "/reconciliation"), call("GET", "/controls?days=30"), call("GET", "/creator-costs")]);
+const [status, settings, holdouts, recon, controls, creatorCosts, ga4Series] = await Promise.all([call("GET", "/status"), call("GET", "/settings"), call("GET", "/holdouts"), call("GET", "/reconciliation"), call("GET", "/controls?days=30"), call("GET", "/creator-costs"), call("GET", "/ga4-series?report=channel&days=7")]);
+const ga4Summary = status.ok ? status.data.ga4Series : null;
 const costs = status.ok ? status.data.costs : null;
 const fxBasisText: Record<string, string> = { manual: "set by hand", feed: "market rate from the nightly feed plus the safety margin", default: "the documented default; no feed reading yet" };
 const readiness = status.ok ? status.data.readiness : null;
@@ -107,6 +108,21 @@ const statusText: Record<string, string> = { ok: "Agree", alarm: "GA4 missing pu
             </table></div>
           )}
         </>
+      )}
+    </section>
+
+    <section class="mb-8 rounded-2xl border border-gray-200 bg-white p-5">
+      <h3 class="text-lg font-black text-brand-dark mb-1">GA4 daily series, kept here</h3>
+      <p class="text-sm text-gray-600 mb-3">Sessions, users and purchases per day by channel, source, landing page and device, pulled from GA4 every night into the shop's own tables, so the history outlives GA4's retention and does not depend on BigQuery. The first run takes 400 days; later runs re-pull the last three.</p>
+      {!ga4Summary ? null : ga4Summary.rows === 0 ? <p class="text-sm text-gray-700">Nothing pulled yet. The nightly needs the GA4 service account (vault connection google-analytics-4) with Viewer on the property; until then the nightly stats say "unavailable".</p> : (
+        <p class="text-sm text-gray-700 mb-3">Held: {ga4Summary.days} days up to {ga4Summary.lastDay}, {ga4Summary.rows} rows, last pulled {ga4Summary.lastFetchedAt ? ga4Summary.lastFetchedAt.slice(0, 16).replace("T", " ") : "–"} UTC.</p>
+      )}
+      {ga4Series.ok && ga4Series.data.rows.length > 0 && (
+        <div class="overflow-x-auto"><table class="min-w-full text-sm">
+          <thead><tr class="text-left text-xs font-bold uppercase tracking-wide text-gray-600"><th class="py-2 pr-4">Day</th><th class="py-2 pr-4">Channel</th><th class="py-2 pr-4">Sessions</th><th class="py-2 pr-4">Users</th><th class="py-2 pr-4">Purchases</th><th class="py-2 pr-4">Revenue</th></tr></thead>
+          <tbody>{ga4Series.data.rows.map((d: any) => (
+            <tr class="border-t border-gray-100"><td class="py-2 pr-4">{d.day}</td><td class="py-2 pr-4">{d.dimension}</td><td class="py-2 pr-4">{d.sessions}</td><td class="py-2 pr-4">{d.totalUsers}</td><td class="py-2 pr-4">{d.purchases}</td><td class="py-2 pr-4">{formatUgx(d.purchaseRevenueUGX)}</td></tr>))}</tbody>
+        </table></div>
       )}
     </section>
 

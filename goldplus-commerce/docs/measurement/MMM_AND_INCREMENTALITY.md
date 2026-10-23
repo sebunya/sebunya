@@ -148,6 +148,27 @@ and on demand. A red run there is the signal to bump a pin; the Mac never instal
 
 ## Still owner work (browser)
 
-- GA4 Admin → BigQuery links: export property 549232812 daily (free tier) for event-level joins.
-- GA4 Admin → Search Console links: link the shopgoldplus.com property.
+- Done 2026-10-23: GA4 → Search Console link; GA4 → BigQuery link (daily export of property 549232812
+  into project goldplus-511709, under the goldplusafrica account). The first `analytics_549232812`
+  dataset appears within 24 hours of the link.
+- BigQuery is in **sandbox** (project has no billing account, and the goldplusafrica account has none
+  at all), so every exported table is created with a 60-day expiry. Nothing in this module reads the
+  export: the dataset is built from the shop's own Postgres, so the expiry costs nothing today. When the
+  export is needed, the choices are, in order of preference:
+  1. **Built (0205): the shop keeps its own copy.** `Ga4DailyPull` runs nightly right after the control
+     feeds and pulls sessions, total and new users, engaged sessions, key events, purchases and purchase
+     revenue per Kampala day by channel group, source/medium, landing page and device from the GA4 Data
+     API into `measurement.ga4_daily_series` (one row per day, report and dimension value). The first run
+     backfills 400 days; every later run re-pulls the last three days, because GA4 fills a day in for up to
+     48 hours. It uses the same service account as the GA4 reconciliation (vault connection
+     google-analytics-4, else `GA4_SERVICE_ACCOUNT_JSON` + `GA4_PROPERTY_ID`), read-only; a missing or
+     refused credential writes nothing and shows as "unavailable" in the nightly stats and on the admin
+     page. The admin page lists the last week by channel; `GET /admin/measurement/mmm/ga4-series?report=`
+     `channel|source_medium|landing_page|device&days=` serves any report. No billing, no BigQuery.
+  2. If event-level rows are ever wanted: link a billing account to goldplus-511709 (Console → Billing → Link). The free tier (10 GB
+     storage, 1 TB of queries a month) covers a shop this size, so the real cost is a valid card on file.
+     After upgrading, two more clicks or the data still expires: set the dataset's **default table
+     expiration to Never** (sandbox datasets keep the 60-day default after the upgrade) and clear the
+     expiry on any tables already created.
+  3. Otherwise the sandbox stays a rolling 60-day window for ad-hoc event-level joins.
 - Nothing to type for costs any more: SMS 35, Meta's WhatsApp rates and the dollar feed are defaults. Check the "In use tonight" line on the admin page after the first nightly run.
