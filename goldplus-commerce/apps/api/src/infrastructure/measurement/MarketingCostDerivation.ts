@@ -14,7 +14,7 @@ interface CostRow { day: string; channel: string; platform: string; campaign: st
  * Marketing costs nobody typed in (2026-10-23): the channel report and the MMM dataset read media_cost_facts, which
  * knew only ad platforms and CSV uploads. Every row below is rebuilt nightly for the last `days` days under
  * source 'derived', so it is never double-counted and always reflects the current settings:
- *  - SMS and WhatsApp: messages SENT (notification_attempts) × the cost per message in settings, split into
+ *  - SMS and WhatsApp: messages SENT (notification_attempts; SMS by billed parts) × the cost per unit in settings, split into
  *    marketing and transactional campaigns (messageClassification), so a reminder's cost sits beside its lift;
  *  - loyalty: points redeemed on orders at their snapshot value (the discount the programme paid for);
  *  - friend referrals: referral bonus points × the point value;
@@ -39,7 +39,11 @@ export class MarketingCostDerivation {
     const rates = { ugxPerUsd: fx.rate, basis: fx.basis, detail: fx.detail, smsUgx: smsCost, whatsappMarketingUgx: wa.marketing, whatsappUtilityUgx: wa.utility, whatsappBasis: wa.basis };
     if (smsCost <= 0) skipped.push('SMS cost per message is unset');
     {
-      const sent = rows(await db.execute(sql`select ${KDAY('attempted_at')} as day, channel, template, count(*)::int as n from notification_attempts
+      // n = billable units: SMS parts (the adapter writes "[parts=N]" into provider_message; older rows count as
+      // one part), WhatsApp messages.
+      const sent = rows(await db.execute(sql`select ${KDAY('attempted_at')} as day, channel, template,
+          sum(case when channel = 'sms' then coalesce(nullif(substring(provider_message from 'parts=(\\d+)'), '')::int, 1) else 1 end)::int as n
+        from notification_attempts
         where status = 'SENT' and channel in ('sms', 'whatsapp') and attempted_at >= ${from}::date - interval '1 day' and attempted_at < ${to}::date + interval '2 day' group by 1, 2, 3`));
       const agg = new Map<string, CostRow>();
       for (const r of sent) {

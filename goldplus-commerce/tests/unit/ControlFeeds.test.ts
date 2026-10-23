@@ -14,8 +14,15 @@ vi.mock('../../apps/api/src/infrastructure/db/client', () => ({
 vi.mock('../../apps/api/src/infrastructure/logging/logger', () => ({ logger: { warn: () => undefined, info: () => undefined, error: () => undefined } }));
 
 function sqlText(q: unknown): string {
+  // drizzle sql`` chunks: StringChunk {value: string[]}, nested SQL {queryChunks}, or a bare parameter value.
   const chunks = (q as { queryChunks?: unknown[] })?.queryChunks ?? [];
-  return chunks.map((c) => (typeof c === 'string' ? c : Array.isArray((c as { value?: unknown }).value) ? ((c as { value: string[] }).value).join('') : typeof (c as { value?: unknown }).value === 'object' ? '' : String((c as { value?: unknown }).value ?? ''))).join('');
+  return chunks.map((c): string => {
+    if (c === null || c === undefined) return 'null';
+    if (typeof c !== 'object') return String(c);
+    if (Array.isArray((c as { value?: unknown }).value)) return ((c as { value: string[] }).value).join('');
+    if ((c as { queryChunks?: unknown[] }).queryChunks) return sqlText(c);
+    return '';
+  }).join('');
 }
 
 const { ControlFeeds } = await import('../../apps/api/src/infrastructure/measurement/ControlFeeds');

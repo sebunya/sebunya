@@ -56,7 +56,7 @@ export function validateMeasurementValue(key: string, raw: string): MeasurementC
   }
   const n = Number(trimmed);
   if (!Number.isFinite(n)) return { ok: false, message: `${entry.label} must be a number of ${entry.unit}.` };
-  if (entry.type === 'usd' && Math.round(n * 10000) !== n * 10000) return { ok: false, message: `${entry.label} takes at most four decimal places (Meta quotes to the tenth of a cent).` };
+  if (entry.type === 'usd' && Math.abs(n * 10000 - Math.round(n * 10000)) > 1e-6) return { ok: false, message: `${entry.label} takes at most four decimal places (Meta quotes to the tenth of a cent).` };
   if (entry.type === 'integer' && !Number.isInteger(n)) return { ok: false, message: `${entry.label} must be a whole number of ${entry.unit}.` };
   if (entry.min !== undefined && n < entry.min) return { ok: false, message: `${entry.label} cannot be below ${entry.min}.` };
   if (entry.max !== undefined && n > entry.max) return { ok: false, message: `${entry.label} cannot be above ${entry.max}.` };

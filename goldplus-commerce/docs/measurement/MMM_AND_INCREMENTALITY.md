@@ -93,7 +93,11 @@ templates Goldie sends directly (care alerts, hand-overs) bypass the attempts ta
 the rate card used is Meta's 2025-10-01 USD card, and Meta has since announced a 2026-10-01 revision whose
 Uganda figures could not be read from the published page: check the two dollar settings against the
 next Meta invoice. Operational templates (staff alerts) are costed at the utility rate under the campaign
-"operational messages", never as marketing.
+"operational messages", never as marketing. SMS is billed per part, not per message: the EgoSMS adapter
+writes `[parts=N]` into `provider_message` on success and the nightly sums those (rows from before this
+convention count as one part). A negotiated creator payment that overlaps a contract flat fee for the same
+creator is flagged "also under contract" on the admin page, because the two may be the same money; the
+owner ends one of them.
 
 ## 5. Cross-device identity in attribution
 

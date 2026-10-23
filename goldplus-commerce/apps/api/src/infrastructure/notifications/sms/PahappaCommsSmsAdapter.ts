@@ -9,7 +9,7 @@ import {
   OUTCOME_UNKNOWN_PROVIDER_CODE,
 } from '../../../application/ports/INotificationProvider';
 import { resilientFetch, sendMayHaveReachedProvider } from '../../http/HttpClient';
-import { tagShopLinksInSms } from '@goldplus/shared';
+import { smsSegments, tagShopLinksInSms } from '@goldplus/shared';
 
 export class PahappaCommsSmsAdapter implements INotificationProvider {
   /**
@@ -182,7 +182,8 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
         return {
           status: 'SENT' as NotificationStatus,
           providerCode: resJson.MsgFollowUpUniqueCode || 'SENT_OK',
-          providerMessage: resJson.Message || 'Successfully Sent!',
+          // "[parts=N]" is read by the nightly cost derivation: the provider bills per part, not per message.
+          providerMessage: `${resJson.Message || 'Successfully Sent!'} [parts=${smsSegments(text)}]`,
         };
       }
 
