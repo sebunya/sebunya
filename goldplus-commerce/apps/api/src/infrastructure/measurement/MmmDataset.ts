@@ -4,7 +4,7 @@ import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { reportChannelForSpend } from '../../domain/measurement/ChannelReport';
 import { calendarControls } from '../../domain/measurement/UgandaCalendar';
 import { readiness, toWeekly, type MmmDailyRow, type ReadinessReport } from '../../domain/measurement/MmmReadiness';
-import { resolveUgxPerUsd, type FxFeedReading } from '../../domain/measurement/MeasurementConfig';
+import { effectiveNumber, resolveUgxPerUsd, type FxFeedReading } from '../../domain/measurement/MeasurementConfig';
 import type { MeasurementConfigPort } from '../../application/ports/measurement/MeasurementConfigPort';
 import { kampalaDay } from './MarketingCostDerivation';
 
@@ -60,10 +60,20 @@ export class MmmDataset {
     for (const r of rows(await db.execute(sql`select platform, config->>'ugxPerUsd' as rate from ad_destinations`))) {
       const n = Number(r.rate); if (Number.isFinite(n) && n > 0) rates.set(String(r.platform), n);
     }
-    const rateFor = (platform: string): number => {
+    // A day's dollar spend is converted at that day's fed market rate plus the margin (the feed series is the
+    // market rate without it). Days before the feed started, or with no reading, use the resolved fallback. A
+    // hand-set rate pins every day, as the settings help says.
+    const margin = effectiveNumber(values, 'usd_ugx_margin') ?? 0;
+    const dayRates = new Map<string, number>();
+    if (fx.basis !== 'manual') {
+      for (const r of rows(await db.execute(sql`select day::text as day, value from measurement.control_series where control_key = 'usd_ugx' and source = 'feed' and day >= ${from}::date and day <= ${to}::date`))) {
+        const n = Number(r.value); if (Number.isFinite(n) && n > 0) dayRates.set(String(r.day), Math.round(n + margin));
+      }
+    }
+    const rateFor = (platform: string, day: string): number => {
       const p = platform.toLowerCase();
       const key = /google/.test(p) ? 'google_ads' : /meta|facebook/.test(p) ? 'meta' : /tiktok/.test(p) ? 'tiktok' : null;
-      return (key && rates.get(key)) || fallbackRate;
+      return (key && rates.get(key)) || dayRates.get(day) || fallbackRate;
     };
 
     type Cell = { spend: number; impressions: number | null; clicks: number | null; sessions: number; orders: number; revenue: number };
@@ -80,7 +90,7 @@ export class MmmDataset {
       const key = mmmChannelKey(String(r.channel), String(r.platform));
       let ugx: number | null = null;
       if (r.currency === 'UGX') ugx = Number(r.spend);
-      else if (r.currency === 'USD') ugx = Math.round(Number(r.spend) / 100 * rateFor(String(r.platform)));
+      else if (r.currency === 'USD') ugx = Math.round(Number(r.spend) / 100 * rateFor(String(r.platform), String(r.day)));
       else notes.push(`${r.currency} spend on ${r.platform} left out (only UGX and USD are understood)`);
       if (ugx === null) continue;
       const c = cell(String(r.day), key);

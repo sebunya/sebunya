@@ -221,3 +221,22 @@ def test_to_weekly_impressions_column_only_where_reported(small_daily):
 def test_to_weekly_without_controls(small_daily):
     weekly = to_weekly(validate_daily(small_daily))
     assert not [c for c in weekly.columns if c.startswith("control_")]
+
+
+def test_level_controls_are_carried_forward_not_zero_filled():
+    """A dollar-rate feed that starts mid-series must not become a 0 -> 4,000 cliff."""
+    import pandas as pd
+
+    from goldplus_mmm.contract import densify_controls, is_index_key
+
+    assert is_index_key("usd_ugx") and is_index_key("price_index") and is_index_key("fuel_price_index")
+    assert not is_index_key("rain_mm") and not is_index_key("holiday") and not is_index_key("power_outage")
+    dates = pd.date_range("2026-10-01", "2026-10-05")
+    controls = pd.DataFrame({
+        "date": pd.to_datetime(["2026-10-03", "2026-10-04", "2026-10-03"]),
+        "key": ["usd_ugx", "usd_ugx", "rain_mm"],
+        "value": [4100.0, 4120.0, 12.5],
+    })
+    wide = densify_controls(controls, dates)
+    assert wide["usd_ugx"].tolist() == [4100.0, 4100.0, 4100.0, 4120.0, 4120.0]
+    assert wide["rain_mm"].tolist() == [0.0, 0.0, 12.5, 0.0, 0.0]

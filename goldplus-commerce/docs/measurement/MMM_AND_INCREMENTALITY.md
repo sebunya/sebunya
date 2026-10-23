@@ -84,6 +84,16 @@ cost-per-order and ROAS cover all of them.
 **Shillings per dollar** (`resolveUgxPerUsd`): a hand-set `ugx_per_usd` wins; else the newest fed market
 rate at most seven days old plus the safety margin (`usd_ugx_margin`, default 100); else 3,800. The
 settings card on the admin page says which one is in use tonight and what the message costs come to.
+In the dataset each day's dollar spend is converted at that day's fed rate plus the margin where a reading
+exists (so a year of history is not all priced at tonight's rate); a hand-set rate pins every day.
+
+Known limits, stated rather than hidden: sends are counted at status SENT, Meta bills delivered, so the
+WhatsApp figure is an upper bound; Goldie's session replies are free and are not counted; the few WhatsApp
+templates Goldie sends directly (care alerts, hand-overs) bypass the attempts table and are not counted;
+the rate card used is Meta's 2025-10-01 USD card, and Meta has since announced a 2026-10-01 revision whose
+Uganda figures could not be read from the published page: check the two dollar settings against the
+next Meta invoice. Operational templates (staff alerts) are costed at the utility rate under the campaign
+"operational messages", never as marketing.
 
 ## 5. Cross-device identity in attribution
 

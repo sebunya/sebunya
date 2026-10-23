@@ -43,9 +43,11 @@ export class MarketingCostDerivation {
         where status = 'SENT' and channel in ('sms', 'whatsapp') and attempted_at >= ${from}::date - interval '1 day' and attempted_at < ${to}::date + interval '2 day' group by 1, 2, 3`));
       const agg = new Map<string, CostRow>();
       for (const r of sent) {
-        const cls = classifyTemplate(String(r.template)) === 'TRANSACTIONAL' ? 'transactional' : 'marketing';
-        // WhatsApp bills by template class: marketing templates at the marketing rate, order updates and codes at
-        // the utility rate. SMS is one price per part whatever it says.
+        const klass = classifyTemplate(String(r.template));
+        const cls = klass === 'TRANSACTIONAL' ? 'transactional' : klass === 'OPERATIONAL' ? 'operational' : 'marketing';
+        // WhatsApp bills by template class: marketing templates at the marketing rate; order updates, codes and the
+        // shop's own staff alerts at the utility rate. SMS is one price per part whatever it says. Goldie's replies
+        // inside a customer-opened 24-hour window go straight to Meta, are free, and are not in this table.
         const cost = r.channel === 'sms' ? smsCost : cls === 'marketing' ? wa.marketing : wa.utility;
         if (cost <= 0) continue;
         const k = `${r.day}|${r.channel}|${cls}`;
