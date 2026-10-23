@@ -48,6 +48,7 @@ export * from './time/eat';
 export * from './admin/status';
 export * from './admin/utm';
 export * from './links/shopLinkTag';
+export * from './links/analyticsSafeUrl';
 export * from './batteries';
 export * from './media/resolveGallery';
 export * from './activation/liveReviewRules';

@@ -12,6 +12,7 @@ import { apiHeaders, readClientAddress } from "./lib/forwardClient";
 import { INVITE_NOTE_COOKIE, forgetInvite, rememberedInvite } from "./lib/referralInvite";
 import { makeNonce, nonceScriptStream, strictPolicyMode, strictReportOnlyPolicy } from "./lib/contentSecurityPolicy";
 import { PublicFormLimiter, budgetedFormPath, tooManySubmissionsResponse, visitorKey } from "./lib/publicFormLimiter";
+import { campaignOnRedirect } from './lib/carryQuery';
 
 // Public forms reach the API server side, where its per-visitor budgets cannot
 // see the visitor (lib/publicFormLimiter.ts). The budget is applied here.
@@ -317,7 +318,18 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // Made BEFORE rendering: templates put it on the inline scripts they own.
   const cspNonce = makeNonce();
   context.locals.cspNonce = cspNonce;
-  const response = await next();
+  let response = await next();
+  // A redirect keeps the visit's campaign tags (lib/carryQuery: the sign-in redirects drop the query). Astro attaches
+  // this request's cookies to whatever response middleware returns, so a rebuilt redirect keeps its Set-Cookie.
+  if (context.request.method === 'GET' && response.status >= 301 && response.status <= 308) {
+    const loc = response.headers.get('location');
+    const carried = loc ? campaignOnRedirect(loc, context.url) : null;
+    if (carried) {
+      const headers = new Headers(response.headers);
+      headers.set('location', carried);
+      response = new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+    }
+  }
   // Tell agents the cheaper representation exists. Only for documents we can
   // actually serve as Markdown, so the header never promises a 404.
   if (isDocument && response.status === 200 && agentRepresentablePath(path)) {
