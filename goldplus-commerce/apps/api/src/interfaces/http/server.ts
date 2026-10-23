@@ -25,6 +25,7 @@ import { startUnpaidOrderReminderTicker, stopUnpaidOrderReminderTicker } from '.
 import { startCreditExpiryReminderTicker, stopCreditExpiryReminderTicker } from '../../infrastructure/scheduler/CreditExpiryReminderTicker';
 import { startAdvertisingTicker, stopAdvertisingTicker } from '../../infrastructure/scheduler/AdvertisingTicker';
 import { startFirstPartyNightlyTicker, stopFirstPartyNightlyTicker } from '../../infrastructure/scheduler/FirstPartyNightlyTicker';
+import { startMeasurementNightlyTicker, stopMeasurementNightlyTicker } from '../../infrastructure/scheduler/MeasurementNightlyTicker';
 import { startGoldieCareTicker, stopGoldieCareTicker } from '../../infrastructure/scheduler/GoldieCareTicker';
 import { Registry } from '../../infrastructure/Registry';
 import { runPermissionRegistrySyncAtBoot } from '../../infrastructure/security/PermissionRegistrySync';
@@ -69,6 +70,8 @@ const server = serve({
     startAdvertisingTicker();
     // First-party data (0155): nightly order→customer linking + segment materialisation.
     startFirstPartyNightlyTicker();
+    // Measurement nightly (0203): derived costs, MMM dataset, holdout outcomes, GA4 reconciliation.
+    startMeasurementNightlyTicker();
     // Goldie (0177-0181): finish interrupted WhatsApp replies; re-page urgent customers nobody has taken.
     startGoldieCareTicker();
     // Meta's template approvals read at start: customer updates go on WhatsApp from the first message after a deploy.
@@ -131,6 +134,7 @@ async function gracefulShutdown(signal: string) {
     stopCreditExpiryReminderTicker();
     stopAdvertisingTicker();
     stopFirstPartyNightlyTicker();
+    stopMeasurementNightlyTicker();
     stopGoldieCareTicker();
     logger.info('[Process] Stopping HTTP server...');
     await new Promise<void>((resolve) => {

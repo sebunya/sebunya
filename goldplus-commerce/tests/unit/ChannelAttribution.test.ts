@@ -294,6 +294,7 @@ function memoryStore(seed: Partial<OrderAttributionFacts> = {}) {
   let sales: SaleFacts[] = [];
   const store: ChannelAttributionStore = {
     loadOrder: async (id) => (id === order.orderId ? structuredClone(order) : null),
+    stitchedVisitorIds: async () => [],
     linkVisitorTouches: async ({ visitorId, method }) => {
       links.push({ visitorId, method });
       const fresh = (touchesByVisitor.get(visitorId) ?? []).filter((t) => !order.observed.some((o) => o.touchId === t.touchId));

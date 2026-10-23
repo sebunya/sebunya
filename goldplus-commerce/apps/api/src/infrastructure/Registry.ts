@@ -21,6 +21,11 @@ import { createHmac, randomInt as nodeRandomInt } from 'node:crypto';
 import { db } from './db/client';
 import { createAiVisibility } from './ai-visibility/AiVisibilityWiring';
 import { channelAttribution } from './measurement/createChannelAttribution';
+import { DrizzleMeasurementConfig } from './measurement/DrizzleMeasurementConfig';
+import { DrizzleHoldoutStore } from './measurement/DrizzleHoldoutStore';
+import { HoldoutGate } from '../application/use-cases/measurement/HoldoutGate';
+import { MmmDataset } from './measurement/MmmDataset';
+import { MarketingCostDerivation } from './measurement/MarketingCostDerivation';
 import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
 import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRepository';
 import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository';
@@ -884,6 +889,12 @@ export class Registry {
   public readonly aiVisibility = createAiVisibility(this.createAuditLogUseCase);
   /** Attribution module (0156): order ↔ visit links, per-order channel credit, weekly channel report. */
   public get channelAttribution() { return channelAttribution(); }
+  // ── Measurement settings, holdouts, MMM dataset (0203, 2026-10-23) ────────
+  public readonly measurementConfig = new DrizzleMeasurementConfig((e) => this.createAuditLogUseCase.execute(e));
+  public readonly holdoutStore = new DrizzleHoldoutStore();
+  public readonly holdoutGate = new HoldoutGate(this.measurementConfig, this.holdoutStore);
+  public readonly mmmDataset = new MmmDataset(this.measurementConfig);
+  public readonly marketingCostDerivation = new MarketingCostDerivation(this.measurementConfig);
   // Advertising destinations (0138): server-side conversion APIs, token vault-encrypted.
   // Measurement delivery operations (0140/0141): queue, replay, quarantine, kill switch.
   /** Collector contract v2 (0141); the per-event durable write is the caller's tracking path. */
@@ -1867,13 +1878,16 @@ export class Registry {
     this.loyaltyRepo,
     this.loyaltyIssuanceCompletion,
     this.gamificationRepo,
-    async ({ userId, missionKey, missionTitle, points }) =>
-      this.loyaltyOutboxNotifier.enqueue({
+    async ({ userId, missionKey, missionTitle, points }) => {
+      // Holdout (2026-10-23): a share of customers are not told by message; the points are theirs all the same.
+      if ((await this.holdoutGate.decide({ programme: 'loyalty_mission', subjectRef: `${missionKey}:${userId}`, userId, channel: 'sms' })) === 'hold') return 'skipped' as const;
+      return this.loyaltyOutboxNotifier.enqueue({
         userId,
         eventType: 'LOYALTY_POINTS_EARNED',
         idempotencyKey: `mission-notify:${missionKey}:${userId}`, // a mission pays once ever, so it is told once
         data: { points, source: 'mission', missionTitle },
-      }),
+      });
+    },
   );
   public readonly catchUpMissionAwardsUseCase = new CatchUpMissionAwardsUseCase(this.gamificationRepo, this.evaluateGamificationForUserUseCase, this.loyaltyIssuanceCompletion);
   public readonly recordReferralUseCase = new RecordReferralUseCase(this.loyaltyCompletionRepo, this.loyaltyReferralRepo);
@@ -2304,8 +2318,20 @@ export class Registry {
   /** The one review reminder per order, a few days after delivery or collection. */
   public readonly sendReviewRemindersUseCase = new SendReviewRemindersUseCase(
     new DrizzleReviewReminderCandidates(),
-    (orderId) => this.enqueueCustomerOrderMessage(orderId, 'ORDER_REVIEW_REMINDER'),
+    async (orderId) => {
+      // Holdout (2026-10-23): a share of due orders get no reminder; the candidates query skips held orders after.
+      const who = await this.reviewReminderSubject(orderId);
+      if (who && (await this.holdoutGate.decide({ programme: 'review_reminder', subjectRef: orderId, userId: who.userId, phone: who.phone, channel: 'sms' })) === 'hold') return;
+      await this.enqueueCustomerOrderMessage(orderId, 'ORDER_REVIEW_REMINDER');
+    },
   );
+  private async reviewReminderSubject(orderId: string): Promise<{ userId: string | null; phone: string | null } | null> {
+    const { db } = await import('./db/client');
+    const { sql } = await import('drizzle-orm');
+    const r = (await db.execute(sql`select user_id, customer_phone from orders where id = ${orderId}::uuid`)) as unknown;
+    const row = (Array.isArray(r) ? r : ((r as { rows?: any[] }).rows ?? []))[0] as { user_id: string | null; customer_phone: string | null } | undefined;
+    return row ? { userId: row.user_id ?? null, phone: row.customer_phone ?? null } : null;
+  }
     public readonly runLoyaltyDailySweepUseCase = new RunLoyaltyDailySweepUseCase(
     this.loyaltyRepo,
     this.loyaltyCompletionRepo,

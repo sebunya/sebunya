@@ -41,7 +41,9 @@ export interface SaleFacts {
 export interface ChannelAttributionStore {
   loadOrder(orderId: string): Promise<OrderAttributionFacts | null>;
   /** Links the visitor's customer touches in (orderAt − lookback, orderAt]. Returns how many were new. */
-  linkVisitorTouches(input: { orderId: string; visitorId: string; orderAt: Date; lookbackDays: number; method: 'visitor' | 'whatsapp_ref' }): Promise<number>;
+  linkVisitorTouches(input: { orderId: string; visitorId: string; orderAt: Date; lookbackDays: number; method: 'visitor' | 'whatsapp_ref' | 'stitched' }): Promise<number>;
+  /** Every visitor id the identity graph (0155) links to this order's customer, other than the one on the order. */
+  stitchedVisitorIds(orderId: string): Promise<string[]>;
   /** Replaces the order's credits in one transaction (derived data, recomputable). */
   replaceCredits(orderId: string, credits: OrderCredit[], modelVersion: string): Promise<void>;
   recordSourceReport(input: { orderId: string; reportedBy: 'customer' | 'admin'; answer: HeardAboutAnswer | null; whatsappRef: string | null; note: string | null; actorId: string | null }): Promise<void>;

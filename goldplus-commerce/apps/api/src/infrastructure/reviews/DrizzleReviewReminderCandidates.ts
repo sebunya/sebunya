@@ -27,6 +27,9 @@ export class DrizzleReviewReminderCandidates implements IReviewReminderCandidate
          and not exists (
            select 1 from outbox_events x
             where x.idempotency_key = 'customer-order-message:' || o.id::text || ':ORDER_REVIEW_REMINDER')
+         and not exists (
+           select 1 from measurement.holdout_assignment h
+            where h.programme = 'review_reminder' and h.subject_ref = o.id::text)
        order by c.closed_at
        limit ${input.limit}
     `)) as unknown as Array<{ id: string }>;

@@ -159,7 +159,8 @@ describe('#19 match quality: aggregated in SQL, null when there is no data', () 
   it('the repository aggregates in SQL instead of loading every row', () => {
     const src = read('apps/api/src/infrastructure/measurement/DrizzleAttributionRepository.ts');
     const body = src.slice(src.indexOf('async getMatchQualitySummary'));
-    expect(body).toMatch(/avg\(\$\{attributionTouchpoints\.matchScore\}\)/);
+    // 2026-10-23: reads the live tables (orders, order_attribution) instead of the never-written attribution_touchpoints.
+    expect(body).toMatch(/avg\(least\(score, 100\)\)/);
     expect(body).toMatch(/count\(\*\) filter \(where/);
     expect(body).not.toMatch(/rows\.reduce/);
   });

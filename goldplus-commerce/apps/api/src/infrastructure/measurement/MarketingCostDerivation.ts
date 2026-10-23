@@ -1,0 +1,94 @@
+import { sql } from 'drizzle-orm';
+import { db } from '../db/client';
+import { classifyTemplate } from '../notifications/messageClassification';
+import { effectiveNumber } from '../../domain/measurement/MeasurementConfig';
+import type { MeasurementConfigPort } from '../../application/ports/measurement/MeasurementConfigPort';
+
+const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
+export const DERIVED_SOURCE = 'derived';
+const KDAY = (col: string) => sql.raw(`(${col} at time zone 'Africa/Kampala')::date`);
+
+interface CostRow { day: string; channel: string; platform: string; campaign: string; spendUgx: number; note?: string }
+
+/**
+ * Marketing costs nobody typed in (2026-10-23): the channel report and the MMM dataset read media_cost_facts, which
+ * knew only ad platforms and CSV uploads. Every row below is rebuilt nightly for the last `days` days under
+ * source 'derived', so it is never double-counted and always reflects the current settings:
+ *  - SMS and WhatsApp: messages SENT (notification_attempts) × the cost per message in settings, split into
+ *    marketing and transactional campaigns (messageClassification), so a reminder's cost sits beside its lift;
+ *  - loyalty: points redeemed on orders at their snapshot value (the discount the programme paid for);
+ *  - friend referrals: referral bonus points × the point value;
+ *  - loyalty bonuses: mission, birthday, draw and verification points × the point value;
+ *  - creators: commissions approved or paid, and flat fees spread evenly over the contract days.
+ * Print, radio and anything paid off-platform stay a CSV upload (channel 'print', platform of choice).
+ */
+export class MarketingCostDerivation {
+  constructor(private readonly config: MeasurementConfigPort) {}
+
+  async derive(days = 35, now = new Date()): Promise<{ rows: number; skipped: string[] }> {
+    const to = kampalaDay(now);
+    const from = kampalaDay(new Date(now.getTime() - days * 86_400_000));
+    const values = await this.config.values();
+    const skipped: string[] = [];
+    const out: CostRow[] = [];
+
+    const smsCost = effectiveNumber(values, 'sms_cost_ugx_per_message');
+    const waCost = effectiveNumber(values, 'whatsapp_cost_ugx_per_message');
+    if (smsCost === null) skipped.push('SMS cost per message is unset');
+    if (waCost === null) skipped.push('WhatsApp cost per message is unset');
+    if (smsCost !== null || waCost !== null) {
+      const sent = rows(await db.execute(sql`select ${KDAY('attempted_at')} as day, channel, template, count(*)::int as n from notification_attempts
+        where status = 'SENT' and channel in ('sms', 'whatsapp') and attempted_at >= ${from}::date - interval '1 day' and attempted_at < ${to}::date + interval '2 day' group by 1, 2, 3`));
+      const agg = new Map<string, CostRow>();
+      for (const r of sent) {
+        const cost = r.channel === 'sms' ? smsCost : waCost;
+        if (cost === null) continue;
+        const cls = classifyTemplate(String(r.template)) === 'TRANSACTIONAL' ? 'transactional' : 'marketing';
+        const k = `${r.day}|${r.channel}|${cls}`;
+        const row = agg.get(k) ?? { day: iso(r.day), channel: String(r.channel), platform: r.channel === 'sms' ? 'EgoSMS' : 'Meta WhatsApp', campaign: `${cls} messages`, spendUgx: 0 };
+        row.spendUgx += Number(r.n) * cost;
+        agg.set(k, row);
+      }
+      out.push(...agg.values());
+    }
+
+    const pv = rows(await db.execute(sql`select point_value_ugx from loyalty_config where singleton = 'config'`))[0];
+    const pointValue = pv?.point_value_ugx ? Number(pv.point_value_ugx) : null;
+    const redeemed = rows(await db.execute(sql`select ${KDAY('o.created_at')} as day, sum(r.value_ugx)::bigint as ugx from loyalty_redemptions r join orders o on o.id = r.order_id
+      where r.status = 'confirmed' and o.created_at >= ${from}::date - interval '1 day' and o.created_at < ${to}::date + interval '2 day' group by 1`));
+    for (const r of redeemed) out.push({ day: iso(r.day), channel: 'loyalty', platform: 'Loyalty programme', campaign: 'points redeemed', spendUgx: Number(r.ugx) });
+    if (pointValue === null) skipped.push('loyalty point value is unset: referral and bonus points carry no cost');
+    else {
+      // The ledger carries a reason sentence, not a rule code: referral rewards start "Referral reward". Every
+      // other positive earn or adjustment (order earn, missions, birthdays, scratch cards, verifications) is the
+      // programme's own cost.
+      const pts = rows(await db.execute(sql`select ${KDAY('created_at')} as day, case when reason like 'Referral reward%' then 'referral' else 'bonus' end as kind, sum(points)::bigint as points
+        from loyalty_ledger_entries where points > 0 and type in ('earn', 'adjustment')
+          and created_at >= ${from}::date - interval '1 day' and created_at < ${to}::date + interval '2 day' group by 1, 2`));
+      for (const r of pts) out.push(r.kind === 'referral'
+        ? { day: iso(r.day), channel: 'friend_referral', platform: 'Loyalty programme', campaign: 'referral points', spendUgx: Number(r.points) * pointValue }
+        : { day: iso(r.day), channel: 'loyalty', platform: 'Loyalty programme', campaign: 'points issued', spendUgx: Number(r.points) * pointValue });
+    }
+
+    const comm = rows(await db.execute(sql`select ${KDAY('created_at')} as day, sum(commission_amount_ugx)::bigint as ugx from creator_commissions
+      where status in ('approved', 'paid') and created_at >= ${from}::date - interval '1 day' and created_at < ${to}::date + interval '2 day' group by 1`));
+    for (const r of comm) out.push({ day: iso(r.day), channel: 'creator', platform: 'Creators', campaign: 'commissions', spendUgx: Number(r.ugx) });
+    const fees = rows(await db.execute(sql`select d::date as day, sum(flat_fee_ugx::numeric / greatest(1, (end_date - start_date + 1)))::bigint as ugx
+      from creator_contracts c, generate_series(greatest(c.start_date, ${from}::date), least(c.end_date, ${to}::date), interval '1 day') d
+      where c.flat_fee_ugx > 0 and c.start_date is not null and c.end_date is not null and c.status in ('active', 'paused', 'blocked') group by 1`));
+    for (const r of fees) out.push({ day: iso(r.day), channel: 'creator', platform: 'Creators', campaign: 'flat fees', spendUgx: Number(r.ugx) });
+
+    const keep = out.filter((r) => r.spendUgx > 0 && r.day >= from && r.day <= to);
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`delete from media_cost_facts where source = ${DERIVED_SOURCE} and spend_date >= ${from}::date and spend_date <= ${to}::date`);
+      for (const r of keep) {
+        await tx.execute(sql`insert into media_cost_facts (spend_date, channel, platform, account, campaign, currency, spend_minor, tax_or_fee_minor, source, source_reference)
+          values (${r.day}::date, ${r.channel}, ${r.platform}, ${r.platform}, ${r.campaign}, 'UGX', ${Math.round(r.spendUgx)}, 0, ${DERIVED_SOURCE}, 'measurement nightly')`);
+      }
+    });
+    return { rows: keep.length, skipped };
+  }
+}
+
+export function kampalaDay(d: Date): string { return new Date(d.getTime() + 3 * 3600_000).toISOString().slice(0, 10); }
+const iso = (v: unknown): string => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
