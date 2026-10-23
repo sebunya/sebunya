@@ -1,5 +1,7 @@
 ---
 import '../styles/global.css';
+import { ANALYTICS_REDACTED_PARAMS, loaderRules } from '@goldplus/shared';
+import { DECLARED } from '../lib/declaredAutomation';
 import GpNav from '../components/GpNav.astro';
 import WebMcpTools from '../components/WebMcpTools.astro';
 import ShopAssistant from '../components/ShopAssistant.astro';
@@ -87,8 +89,6 @@ const clarityId = /^[a-z0-9]{6,20}$/.test(import.meta.env.PUBLIC_CLARITY_ID ?? '
 // public catalogue (home, shop, products, categories, blog, info pages), so a
 // name, phone or quote shown back on any other page is never recorded.
 const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|search|batteries|deals|about|faq|delivery|returns|warranty|contact)(\/|$|\?)/.test(Astro.url.pathname);
-import { ANALYTICS_REDACTED_PARAMS, loaderRules } from '@goldplus/shared';
-import { DECLARED } from '../lib/declaredAutomation';
 /** The attribution rulebook (packages/shared/src/attribution/arrival.ts) as data for the inline tag loader. */
 const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, bots: DECLARED.source };
 
