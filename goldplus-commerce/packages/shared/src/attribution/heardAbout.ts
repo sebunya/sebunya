@@ -20,8 +20,21 @@ export const HEARD_ABOUT_ANSWERS = [
   'radio_tv',
   'returning',
   'other',
+  // Staff-only answers (2026-10-23, offline-order rule): how an order that never touched the website reached
+  // the shop. A customer at checkout is never offered these; staff file them on the order.
+  'walk_in',
+  'phone_call',
 ] as const;
 export type HeardAboutAnswer = typeof HEARD_ABOUT_ANSWERS[number];
+
+/**
+ * The offline-order source rule. An order placed with help from staff (walk-in sale, phone call, a WhatsApp chat
+ * without a reference code) has no browser journey, so without a staff answer it would be "No recorded source".
+ * Staff answer "How did this order reach us?" on the order; the answer becomes the order's whole journey (basis
+ * "declared") and the order is reported and modelled under its own offline channel, never as "direct" and never
+ * spread over the marketing channels. These answers are not shown to customers.
+ */
+export const HEARD_ABOUT_STAFF_ONLY: ReadonlySet<HeardAboutAnswer> = new Set<HeardAboutAnswer>(['walk_in', 'phone_call']);
 
 export const HEARD_ABOUT_LABELS: Record<HeardAboutAnswer, string> = {
   search: 'Google or another search',
@@ -34,9 +47,15 @@ export const HEARD_ABOUT_LABELS: Record<HeardAboutAnswer, string> = {
   radio_tv: 'Radio, TV or print',
   returning: 'I have bought from GoldPlus before',
   other: 'Somewhere else',
+  walk_in: 'Walked into the shop (staff)',
+  phone_call: 'Phoned the shop (staff)',
 };
 
+/** What a customer is offered at checkout: never the staff-only answers. */
 export const HEARD_ABOUT_OPTIONS: ReadonlyArray<{ value: HeardAboutAnswer; label: string }> =
+  HEARD_ABOUT_ANSWERS.filter((value) => !HEARD_ABOUT_STAFF_ONLY.has(value)).map((value) => ({ value, label: HEARD_ABOUT_LABELS[value] }));
+/** What staff are offered on an order: every answer, the offline ones last. */
+export const HEARD_ABOUT_STAFF_OPTIONS: ReadonlyArray<{ value: HeardAboutAnswer; label: string }> =
   HEARD_ABOUT_ANSWERS.map((value) => ({ value, label: HEARD_ABOUT_LABELS[value] }));
 
 /** A known answer, or null. Unknown values are dropped, never guessed at. */

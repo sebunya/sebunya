@@ -69,6 +69,8 @@ export const CHANNEL_LABELS: Record<string, string> = {
   social_declared: 'Social media (customer said)',
   word_of_mouth: 'Friends and family (customer said)',
   offline_media: 'Radio, TV and print (customer said)',
+  shop_floor: 'Walked into the shop',
+  phone_order: 'Phoned the shop',
   returning_customer: 'Returning customer (customer said)',
   unattributed: 'No recorded source',
   loyalty: 'Loyalty points and rewards',
@@ -84,6 +86,9 @@ export function declaredChannel(a: HeardAboutAnswer): { channel: string; detail:
     case 'creator': return { channel: 'creator', detail: 'customer said' };
     case 'friend': return { channel: 'word_of_mouth', detail: '' };
     case 'radio_tv': return { channel: 'offline_media', detail: '' };
+    // Offline-order rule (staff answers): their own channels, never "direct", never spread.
+    case 'walk_in': return { channel: 'shop_floor', detail: 'staff said' };
+    case 'phone_call': return { channel: 'phone_order', detail: 'staff said' };
     case 'returning': return { channel: 'returning_customer', detail: '' };
     default: return { channel: 'other', detail: 'customer said' };
   }

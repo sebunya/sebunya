@@ -1,0 +1,7 @@
+# Google Meridian engine. Python >=3.10,<3.13 (TensorFlow Probability wheels).
+# Pins may need bumping: check https://pypi.org/project/google-meridian/ and
+# https://github.com/google/meridian/releases, then re-run the tests.
+# Meridian pulls TensorFlow (~600 MB); do not install on the owner's Mac if
+# the disk is nearly full - use Colab instead (README, "Run on Colab").
+-r requirements-base.txt
+google-meridian>=1.0

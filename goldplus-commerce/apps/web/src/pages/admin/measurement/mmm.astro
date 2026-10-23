@@ -32,12 +32,16 @@ if (Astro.request.method === "POST") {
   else if (action === "unset") r = await call("DELETE", `/settings/${encodeURIComponent(String(f.get("key") ?? ""))}`);
   else if (action === "control") r = await call("POST", "/controls", { day: String(f.get("day") ?? ""), key: String(f.get("key") ?? ""), value: Number(f.get("value")), note: String(f.get("note") ?? "") || null });
   else if (action === "run") r = await call("POST", "/run");
+  else if (action === "creator-cost") r = await call("POST", "/creator-costs", { creatorId: String(f.get("creatorId") ?? ""), label: String(f.get("label") ?? ""), amountUgx: Number(f.get("amountUgx")), startDate: String(f.get("startDate") ?? ""), endDate: String(f.get("endDate") ?? "") || String(f.get("startDate") ?? ""), note: String(f.get("note") ?? "") || null });
+  else if (action === "creator-cost-end") r = await call("DELETE", `/creator-costs/${encodeURIComponent(String(f.get("id") ?? ""))}`);
   else r = { ok: false as const, message: "Unknown action." };
   if (r.ok) notice = action === "run" ? `Nightly run: ${r.data.status}${r.data.stats ? ` (${Object.keys(r.data.stats).filter((k) => k !== "trigger").join(", ")})` : ""}.` : "Saved.";
   else formError = r.message;
 }
 
-const [status, settings, holdouts, recon, controls] = await Promise.all([call("GET", "/status"), call("GET", "/settings"), call("GET", "/holdouts"), call("GET", "/reconciliation"), call("GET", "/controls?days=30")]);
+const [status, settings, holdouts, recon, controls, creatorCosts] = await Promise.all([call("GET", "/status"), call("GET", "/settings"), call("GET", "/holdouts"), call("GET", "/reconciliation"), call("GET", "/controls?days=30"), call("GET", "/creator-costs")]);
+const costs = status.ok ? status.data.costs : null;
+const fxBasisText: Record<string, string> = { manual: "set by hand", feed: "market rate from the nightly feed plus the safety margin", default: "the documented default; no feed reading yet" };
 const readiness = status.ok ? status.data.readiness : null;
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? "–" : `${(v * 100).toFixed(1)}%`);
 const labelOf: Record<string, string> = { review_reminder: "Review reminder", loyalty_mission: "Mission message", loyalty_expiry: "Points expiry warning", abandoned_basket: "Abandoned basket", campaign: "Campaign" };
@@ -109,6 +113,12 @@ const statusText: Record<string, string> = { ok: "Agree", alarm: "GA4 missing pu
     <section class="mb-8 rounded-2xl border border-gray-200 bg-white p-5">
       <h3 class="text-lg font-black text-brand-dark mb-1">Settings</h3>
       <p class="text-sm text-gray-600 mb-3">Holdout shares, the cost per message, the dollar rate, the GA4 tolerance and the assisted-orders switch. A blank value uses the documented default where one exists; otherwise blank means off.</p>
+      {costs && (
+        <p class="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800">
+          <span class="font-bold">In use tonight:</span> {formatUgx(costs.ugxPerUsd)} per dollar ({fxBasisText[costs.fxBasis] ?? costs.fxBasis}: {costs.fxDetail}).
+          SMS {costs.smsUgx ?? "unset"} per part. WhatsApp {costs.whatsappMarketingUgx} per marketing message and {costs.whatsappUtilityUgx} per order update or code{costs.whatsappBasis === "override" ? " (your override)" : " (Meta's rate card at that dollar rate)"}.
+        </p>
+      )}
       {!settings.ok ? <p role="alert" class="text-sm text-red-900">{settings.message}</p> : (
         <div class="grid gap-3 md:grid-cols-2">{settings.data.entries.map((e: any) => (
           <form method="POST" class="rounded-xl border border-gray-200 p-3">
@@ -126,8 +136,37 @@ const statusText: Record<string, string> = { ok: "Agree", alarm: "GA4 missing pu
     </section>
 
     <section class="mb-8 rounded-2xl border border-gray-200 bg-white p-5">
+      <h3 class="text-lg font-black text-brand-dark mb-1">Creator payments outside a contract</h3>
+      <p class="text-sm text-gray-600 mb-3">Commissions and contract flat fees are counted automatically. Record here what you agreed per creator and per negotiation (a paid post, a month of stories, a product given as payment at its retail value). The amount is spread evenly over the days it covers and counts as creator spend in the channel report and the model dataset.</p>
+      {!creatorCosts.ok ? <p role="alert" class="text-sm text-red-900">{creatorCosts.message}</p> : (
+        <>
+          <form method="POST" class="mb-4 grid gap-3 md:grid-cols-6 items-end">
+            <input type="hidden" name="action" value="creator-cost" />
+            <label class="text-xs font-bold text-gray-700 md:col-span-2">Creator<select name="creatorId" required class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal"><option value="">Choose</option>{creatorCosts.data.creators.map((cr: any) => <option value={cr.id}>@{cr.handle}{cr.status !== "active" ? ` (${cr.status})` : ""}</option>)}</select></label>
+            <label class="text-xs font-bold text-gray-700 md:col-span-2">What for<input name="label" required maxlength="120" placeholder="e.g. Two TikTok videos, October" class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700">Amount (UGX)<input name="amountUgx" type="number" min="1" step="1" required class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700">From<input name="startDate" type="date" required class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700">To (blank = same day)<input name="endDate" type="date" class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700 md:col-span-4">Note<input name="note" maxlength="300" class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <button class="inline-flex min-h-11 items-center justify-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Record payment</button>
+          </form>
+          {creatorCosts.data.creators.length === 0 && <p class="text-sm text-gray-700">No creators are on file yet; add one under Creators first.</p>}
+          {creatorCosts.data.rows.length > 0 && (
+            <div class="overflow-x-auto max-h-80"><table class="min-w-full text-sm">
+              <thead><tr class="text-left text-xs font-bold uppercase tracking-wide text-gray-600"><th class="py-2 pr-4">Creator</th><th class="py-2 pr-4">What for</th><th class="py-2 pr-4">Amount</th><th class="py-2 pr-4">Days</th><th class="py-2 pr-4">Note</th><th class="py-2 pr-4"></th></tr></thead>
+              <tbody>{creatorCosts.data.rows.map((r: any) => (
+                <tr class="border-t border-gray-100"><td class="py-2 pr-4">@{r.handle}</td><td class="py-2 pr-4">{r.label}</td><td class="py-2 pr-4">{formatUgx(r.amountUgx)}</td><td class="py-2 pr-4">{r.startDate}{r.endDate !== r.startDate ? ` to ${r.endDate}` : ""}</td><td class="py-2 pr-4">{r.note ?? ""}{r.overlapsContractFee && <span class="ml-1 rounded bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900" title="This creator also has a contract flat fee over these days, which the nightly already counts. If this is the same money, remove one.">also under contract</span>}</td>
+                  <td class="py-2 pr-4"><form method="POST"><input type="hidden" name="action" value="creator-cost-end" /><input type="hidden" name="id" value={r.id} /><button class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-4 text-xs font-bold text-brand-dark">Remove</button></form></td></tr>))}</tbody>
+            </table></div>
+          )}
+        </>
+      )}
+    </section>
+
+    <section class="mb-8 rounded-2xl border border-gray-200 bg-white p-5">
       <h3 class="text-lg font-black text-brand-dark mb-1">Things that move sales and are not marketing</h3>
-      <p class="text-sm text-gray-600 mb-3">Holidays and school terms come from the calendar; stock-outs and the mean price are measured every night. Type in what only a person knows: a mobile-money outage (momo_outage 1), a delivery-fee change (delivery_fee_index, e.g. 1.2 for 20% up), a promotion's depth (promo_depth, e.g. 0.1).</p>
+      <p class="text-sm text-gray-600 mb-3">Holidays and school terms come from the calendar; stock-outs and the mean price are measured every night; the market dollar rate and Kampala rainfall are fetched every night. Type in what only a person knows: a mobile-money outage, load-shedding hours, a competitor's promotion, a pump-price change, a delivery-fee change, a promotion's depth. There is no public feed for those in Uganda, so nothing here pretends to fetch them.</p>
+      {controls.ok && <ul class="mb-3 grid gap-1 text-xs text-gray-700 md:grid-cols-2">{controls.data.manualKeys.map((k: string) => <li><code>{k}</code>: {controls.data.help?.[k] ?? ""}</li>)}</ul>}
       <form method="POST" class="mb-4 flex flex-wrap items-end gap-3">
         <input type="hidden" name="action" value="control" />
         <label class="text-xs font-bold text-gray-700">Day<input name="day" type="date" required class="mt-1 block min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>

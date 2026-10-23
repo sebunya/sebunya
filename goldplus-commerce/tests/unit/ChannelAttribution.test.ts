@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   HEARD_ABOUT_ANSWERS,
+  HEARD_ABOUT_STAFF_ONLY,
+  HEARD_ABOUT_STAFF_OPTIONS,
   HEARD_ABOUT_OPTIONS,
   normaliseWhatsAppRef,
   parseHeardAbout,
@@ -9,6 +11,7 @@ import {
 } from '../../packages/shared/src/attribution/heardAbout';
 import {
   buildWeeklyChannelReport,
+  channelLabel,
   channelReportCsvRows,
   codeTouchFrom,
   countsAsSale,
@@ -52,7 +55,13 @@ describe('self-reported source and WhatsApp reference (shared)', () => {
     expect(parseHeardAbout('billboard')).toBeNull();
     expect(parseHeardAbout('')).toBeNull();
     expect(parseHeardAbout(undefined)).toBeNull();
-    expect(HEARD_ABOUT_OPTIONS.map((o) => o.value)).toEqual([...HEARD_ABOUT_ANSWERS]);
+    // Customers are never offered the staff-only offline answers; staff see every answer.
+    expect(HEARD_ABOUT_OPTIONS.map((o) => o.value)).toEqual(HEARD_ABOUT_ANSWERS.filter((a) => !HEARD_ABOUT_STAFF_ONLY.has(a)));
+    expect(HEARD_ABOUT_STAFF_OPTIONS.map((o) => o.value)).toEqual([...HEARD_ABOUT_ANSWERS]);
+    expect([...HEARD_ABOUT_STAFF_ONLY]).toEqual(['walk_in', 'phone_call']);
+    expect(declaredChannel('walk_in')).toEqual({ channel: 'shop_floor', detail: 'staff said' });
+    expect(declaredChannel('phone_call')).toEqual({ channel: 'phone_order', detail: 'staff said' });
+    expect(channelLabel('shop_floor')).toBe('Walked into the shop');
   });
   it('normalises what staff paste from a chat to GP-XXXXXX, and refuses anything else', () => {
     expect(normaliseWhatsAppRef('Ref GP-7K3Q9X')).toBe('GP-7K3Q9X');

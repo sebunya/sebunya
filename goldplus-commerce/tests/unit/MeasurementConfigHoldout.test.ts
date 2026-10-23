@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MEASUREMENT_CONFIG_REGISTRY, effectiveNumber, isMeasurementConfigKey, switchOn, validateMeasurementValue } from '../../apps/api/src/domain/measurement/MeasurementConfig';
+import { MEASUREMENT_CONFIG_REGISTRY, WHATSAPP_RATE_CARD, effectiveNumber, isMeasurementConfigKey, resolveUgxPerUsd, switchOn, validateMeasurementValue, whatsappCostUgx } from '../../apps/api/src/domain/measurement/MeasurementConfig';
 import { HoldoutGate, phoneKey, type HoldoutStore } from '../../apps/api/src/application/use-cases/measurement/HoldoutGate';
 import { reportChannelForSpend } from '../../apps/api/src/domain/measurement/ChannelReport';
 import { mmmChannelKey } from '../../apps/api/src/infrastructure/measurement/MmmDataset';
@@ -22,7 +22,9 @@ describe('measurement config registry', () => {
   it('defaults apply only when unset', () => {
     expect(effectiveNumber({}, 'ga4_reconciliation_tolerance_pct')).toBe(20);
     expect(effectiveNumber({ ga4_reconciliation_tolerance_pct: '5' }, 'ga4_reconciliation_tolerance_pct')).toBe(5);
-    expect(effectiveNumber({}, 'sms_cost_ugx_per_message')).toBeNull();
+    expect(effectiveNumber({}, 'sms_cost_ugx_per_message')).toBe(35); // owner's figure, 2026-10-23
+    expect(effectiveNumber({}, 'ugx_per_usd')).toBe(3800);
+    expect(effectiveNumber({}, 'whatsapp_cost_ugx_per_message')).toBeNull(); // the override stays off by default
     expect(switchOn({}, 'ga4_assisted_orders')).toBe(false);
     expect(switchOn({ ga4_assisted_orders: 'on' }, 'ga4_assisted_orders')).toBe(true);
     expect(MEASUREMENT_CONFIG_REGISTRY.every((e) => e.key && e.label && e.help)).toBe(true);
@@ -96,5 +98,35 @@ describe('Uganda calendar', () => {
     expect(inSchoolTerm('2026-01-10')).toBe(false);
     expect(calendarControls('2026-10-09').holiday).toBe(1);
     expect(calendarControls('2026-10-23').holiday).toBe(0);
+  });
+});
+
+describe('shillings per dollar and WhatsApp message cost (owner rules 2026-10-23)', () => {
+  const today = '2026-10-23';
+  it('a hand-set rate wins over the feed', () => {
+    expect(resolveUgxPerUsd({ ugx_per_usd: '3900' }, { day: today, ugxPerUsd: 4126 }, today)).toMatchObject({ rate: 3900, basis: 'manual' });
+  });
+  it('the fed market rate plus the 100-shilling margin is used when fresh', () => {
+    expect(resolveUgxPerUsd({}, { day: '2026-10-22', ugxPerUsd: 4126.43 }, today)).toMatchObject({ rate: 4226, basis: 'feed' });
+    expect(resolveUgxPerUsd({ usd_ugx_margin: '250' }, { day: today, ugxPerUsd: 4000 }, today)).toMatchObject({ rate: 4250, basis: 'feed' });
+  });
+  it('falls back to 3,800 with no feed, or a stale one', () => {
+    expect(resolveUgxPerUsd({}, null, today)).toMatchObject({ rate: 3800, basis: 'default' });
+    expect(resolveUgxPerUsd({}, { day: '2026-10-01', ugxPerUsd: 4126 }, today)).toMatchObject({ rate: 3800, basis: 'default' });
+    expect(resolveUgxPerUsd({}, { day: '2026-10-16', ugxPerUsd: 4126 }, today).basis).toBe('feed'); // exactly 7 days still counts
+  });
+  it("WhatsApp costs come from Meta's Rest-of-Africa card at the resolved rate, rounded up, unless overridden", () => {
+    expect(WHATSAPP_RATE_CARD).toMatchObject({ marketingUsd: 0.0225, utilityUsd: 0.004, effective: '2025-10-01' });
+    expect(whatsappCostUgx({}, 3800)).toEqual({ marketing: 86, utility: 16, basis: 'rate_card' });
+    expect(whatsappCostUgx({}, 4226)).toEqual({ marketing: 96, utility: 17, basis: 'rate_card' });
+    expect(whatsappCostUgx({ whatsapp_marketing_usd_per_message: '0.03' }, 4000)).toEqual({ marketing: 120, utility: 16, basis: 'rate_card' });
+    expect(whatsappCostUgx({ whatsapp_cost_ugx_per_message: '90' }, 4226)).toEqual({ marketing: 90, utility: 90, basis: 'override' });
+  });
+  it('dollar rates take four decimals at most and must be registry keys', () => {
+    expect(validateMeasurementValue('whatsapp_marketing_usd_per_message', '0.0225')).toEqual({ ok: true, value: 0.0225 });
+    expect(validateMeasurementValue('whatsapp_marketing_usd_per_message', '0.00225').ok).toBe(false);
+    expect(validateMeasurementValue('whatsapp_utility_usd_per_message', '2').ok).toBe(false);
+    expect(validateMeasurementValue('usd_ugx_margin', '100')).toEqual({ ok: true, value: 100 });
+    expect(isMeasurementConfigKey('usd_ugx_margin')).toBe(true);
   });
 });

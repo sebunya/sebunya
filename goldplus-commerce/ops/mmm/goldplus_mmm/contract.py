@@ -214,9 +214,16 @@ def media_channels(daily: pd.DataFrame) -> list[str]:
     return sorted(daily.loc[spend > 0, "channel"].unique().tolist())
 
 
+# Level controls: a missing day means "not recorded", never "zero". The dollar rate
+# feed only starts the day it is switched on; zero-filling its history would hand the
+# model a cliff from 0 to 4,000 on that day and it would credit the cliff to whatever
+# campaign ran that week.
+LEVEL_KEYS = frozenset({"usd_ugx", "price_index"})
+
+
 def is_index_key(key: str) -> bool:
-    """Control keys ending in _index are carried forward when missing."""
-    return key.endswith("_index")
+    """Control keys ending in _index, and the level keys above, are carried forward when missing."""
+    return key.endswith("_index") or key in LEVEL_KEYS
 
 
 # ---------------------------------------------------------------------------
