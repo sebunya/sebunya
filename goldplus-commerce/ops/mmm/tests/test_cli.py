@@ -45,6 +45,18 @@ def test_fit_without_engine_installed_reports_requirements(tmp_path, capsys, mon
         return real_import(name, *a, **k)
 
     monkeypatch.setattr(importlib, "import_module", fake_import)
+    # require() checks availability with find_spec, so on a machine WITH the engine installed (the CI
+    # runner) the fake must answer "absent" there too, or the real fit runs and this test means nothing.
+    import importlib.util
+
+    real_find_spec = importlib.util.find_spec
+
+    def fake_find_spec(name, *a, **k):
+        if name.startswith(("pymc", "arviz", "meridian", "tensorflow")):
+            return None
+        return real_find_spec(name, *a, **k)
+
+    monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
     code = main(["fit", "--engine", "pymc", "--daily", str(tmp_path / "daily.csv"), "--out", str(tmp_path / "r.json")])
     err = capsys.readouterr().err
     assert code == 3
