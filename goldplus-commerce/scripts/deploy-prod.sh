@@ -111,7 +111,10 @@ if [ -n "$CACHE_FLAG" ]; then
     # A zero exit proves nothing about size (2026-10-06: a "successful" trim
     # left 6.7 GB against a 2 GB bound — cache still used by images stays).
     # Re-measure and say what is really there.
-    echo "build cache after cap: $(docker system df --format '{{.Type}} {{.Size}}' 2>/dev/null | sed -n 's/^Build Cache //p') (bound ${CACHE_CAP_GB} GB, $CACHE_FLAG)"
+    # Its own share is the Reclaimable column; Size also counts layers shared with images, which are the images' bytes
+    # (5.761GB printed on 2026-10-23 was 2.145GB of cache + 3.616GB shared).
+    CACHE_DF="$(docker system df --format '{{.Type}}|{{.Size}}|{{.Reclaimable}}' 2>/dev/null | sed -n 's/^Build Cache|//p')"
+    echo "build cache after cap: ${CACHE_DF#*|} of its own (bound ${CACHE_CAP_GB} GiB, $CACHE_FLAG); ${CACHE_DF%%|*} in all, counting layers shared with images"
   else
     echo "WARN: build cache cap ($CACHE_FLAG ${CACHE_CAP_GB} GB) failed; the Steward's nightly housekeep will retry"
   fi

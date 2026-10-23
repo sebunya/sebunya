@@ -70,6 +70,33 @@ describe('the Steward prunes build cache with the flag this Docker has, and says
     expect(out).toContain('WATCH:build cache still over bound after prune');
   });
 
+  it('the host on 2026-10-23: 5.761GB in all is 2.145GB of its own, within the 2 GiB bound (no prune, no alert)', () => {
+    const bin = mkdtempSync(join(tmpdir(), 'gp-docker-'));
+    const log = join(bin, 'calls.log');
+    // Docker's own figures: Size counts layers shared with images; Reclaimable is the cache's own share.
+    writeFileSync(join(bin, 'docker'), `#!/bin/sh
+echo "$*" >> ${log}
+case "$*" in
+  "system df --format {{json .}}") echo '{"Type":"Images","Size":"15.56GB","Reclaimable":"5.28GB (33%)"}'; echo '{"Type":"Build Cache","Size":"5.761GB","Reclaimable":"2.145GB"}';;
+esac
+`);
+    chmodSync(join(bin, 'docker'), 0o755);
+    const out = py(`print(m.build_cache_size()); print(m.prune_build_cache(policy, True, st)[1]); print(st.alerts)`, bin);
+    // Decimal, as Docker prints it: 2.145GB is 2,145,000,000 bytes (read as binary it was 2.30 GiB, over the bound).
+    expect(out.split('\n')[0]).toBe('2145000000');
+    expect(out).toContain('is within its 2 GB bound');
+    expect(out).toContain('[]');
+    expect(readFileSync(log, 'utf8')).not.toMatch(/builder prune -f/);
+    // The nightly alert measures the same share: no "exceeds its bound" for the shared layers.
+    const nightly = py(`
+r = m.collect_docker()
+m.storage_amplification = lambda *a, **k: None
+m.raise_alerts(st, {"docker": {"build_cache_max_gb": 2}, "pressure": {"growth_gb_per_day_alarm": 5}}, {}, r, "OK")
+print([x.reclaimable for x in r if x.resource == "docker.build_cache"]); print(st.alerts)`, bin);
+    expect(nightly).toContain('[2145000000]');
+    expect(nightly).not.toContain('exceeds its bound');
+  });
+
   it('dry run never calls prune', () => {
     const { bin, log } = fakeDocker('--max-used-space', 0, 1);
     py(`m.prune_build_cache(policy, False, st)`, bin);

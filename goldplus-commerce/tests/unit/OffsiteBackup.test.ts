@@ -143,7 +143,10 @@ describe('deploy-prod.sh and compose hygiene', () => {
     expect(d).toContain('docker builder prune -f "$CACHE_FLAG" "$(( CACHE_CAP_GB * 1024 * 1024 * 1024 ))"');
     // A failed cap is said out loud, never swallowed; a "successful" one is re-measured.
     expect(d).toContain('WARN: build cache cap');
-    expect(d).toContain('echo "build cache after cap: $(docker system df');
+    // Re-measured by its OWN share (Reclaimable); Size also counts layers shared with images (5.761GB = 2.145GB own +
+    // 3.616GB shared on 2026-10-23, against a 2 GiB bound the prune had met).
+    expect(d).toContain(`CACHE_DF="$(docker system df --format '{{.Type}}|{{.Size}}|{{.Reclaimable}}'`);
+    expect(d).toContain('echo "build cache after cap: ${CACHE_DF#*|} of its own');
     // Same bound as the Steward's policy.
     expect(read('ops/storage-steward/policy.yaml')).toMatch(/build_cache_max_gb: 2\b/);
     // Bounded, never a full wipe: a cold build loads the 2-vCPU host.
