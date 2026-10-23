@@ -176,20 +176,27 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         link with the hero image and cost mobile LCP. gtm.start keeps the real
         page-start time and dataLayer queues anything pushed meanwhile, so no event
         is lost; sales events are sent server-side regardless. */}
+    {/* Tag loader notes (kept out of the script: inline scripts ship as written). Audit 2026-10-23: 94.6% "Direct".
+        - Not loaded for automation (same list as lib/declaredAutomation.ts, plus the gp_probe cookie) or for staff
+          (gp_staff, set when the admin opens).
+        - Where the visit came from, settled before anything reads the URL:
+          1. Our own links carry ?ch=<channel>.<campaign> (shared/links/shopLinkTag; short because SMS is paid by the
+             character), rewritten to utm_source/utm_medium/utm_campaign. Channels: s SMS, w WhatsApp, e email,
+             m Messenger, i Instagram, a the installed app.
+          2. A social app's own browser sends no referrer but names itself (lib/inAppBrowser.ts, same list, kept in
+             step by a test): the landing is credited to that network.
+          3. The tag loads late (mobile LCP), so a visitor who taps on before it loads used to lose the landing. Until
+             GA4 has seen the visit (sessionStorage gp_ga_seen, set when gtm.js loads), the landing's campaign and
+             click ids (gp_land, 30 minutes) are put on the next page's URL and its referrer is set as page_referrer.
+        - The _fp_cid fallback is Domain-scoped like the server's (visitorCookieDomain): a host-only copy beside it
+          made two ids, read differently by the tag and the collector.
+        - The tag loads after load + idle, or at the first touch, key or scroll if sooner (the hero has painted). */}
     {measurement.configured && (
       <script nonce={Astro.locals.cspNonce} define:vars={{ metricsUrl: measurement.metricsUrl, gtmId: measurement.gtmId, userId: Astro.locals.gpUserId ?? null, adSignals: siteVerification.googleAdsRemarketing }}>
         (function () {
         var ua = navigator.userAgent || '';
-        // Same list as lib/declaredAutomation.ts (our probes name themselves GoldPlusSyntheticProbe, or carry the
-        // gp_probe cookie), plus staff: a browser that opened the admin carries gp_staff and is not a customer.
         if (navigator.webdriver === true || /GoldPlusSyntheticProbe|HeadlessChrome|Chrome-Lighthouse|PageSpeed|PTST|GTmetrix|Pingdom|Playwright/i.test(ua)
           || /(?:^|; )(?:gp_probe|gp_staff)=/.test(document.cookie)) return;
-        // Where this visit came from, for GA4 (2026-10-23 audit: 94.6% "Direct").
-        // 1. Our own messages carry a short tag (?ch=s.track: SMS costs by the character; shared/links/shopLinkTag); it becomes the utm_* GA4
-        //    reads, before anything reads the URL. Channels: s SMS, w WhatsApp, e email, m Messenger, i Instagram, a app.
-        // 2. The tag loads after the page (mobile LCP). A visitor who taps on before it loads used to lose the landing:
-        //    the first page GA4 saw had our own site as referrer and no campaign, so Direct. The landing's campaign and
-        //    referrer are kept for this tab until GA4 has seen the visit, and handed to the first page it does see.
         var CAMPAIGN = /^(utm_[a-z]+|gclid|gbraid|wbraid|dclid|fbclid|ttclid|twclid|msclkid|li_fat_id|sccid|epik)$/;
         var CH = { s: ['sms', 'sms'], w: ['whatsapp', 'chat'], e: ['goldplus', 'email'], m: ['messenger', 'chat'], i: ['instagram', 'chat'], a: ['app', 'pwa'] };
         try {
@@ -204,8 +211,6 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
           here.searchParams.forEach(function (v, k) { if (CAMPAIGN.test(k)) q.push([k, v]); });
           var ref = '';
           try { var rh = new URL(document.referrer).hostname; if (!/(^|\.)shopgoldplus\.com$/.test(rh)) ref = document.referrer; } catch (e) {}
-          // 3. A social app's own browser sends no referrer but names itself (lib/inAppBrowser.ts, same list): the
-          //    landing is credited to that network, for GA4 as for our own records.
           if (!ref && !q.length && !document.referrer) {
             var IAB = [[/\bSnapchat\/\d/i, 'snapchat.com'], [/\bInstagram\s\d/i, 'instagram.com'], [/\bFBAN\/|\bFBAV\/|\bFB_IAB\//, 'facebook.com'],
               [/\bmusical_ly|\bBytedanceWebview|\bTikTok\b/i, 'tiktok.com'], [/\bLinkedInApp\b/i, 'linkedin.com'], [/\bPinterest\/\d/i, 'pinterest.com']];
@@ -216,8 +221,6 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
           if (sessionStorage.getItem('gp_ga_seen') !== '1') {
             if (q.length || ref) sessionStorage.setItem('gp_land', JSON.stringify({ q: q, r: ref, t: Date.now() }));
             else if (land) {
-              // A later page of the same visit, before GA4 saw any: carry the landing's campaign onto this URL (GA4
-              // reads campaign and click ids from it) and its referrer onto this page's hits.
               if (land.q.length) { land.q.forEach(function (kv) { here.searchParams.set(kv[0], kv[1]); }); history.replaceState(history.state, '', here.toString()); }
               if (land.r) window.__gpLandingReferrer = land.r;
             }
@@ -236,8 +239,6 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         var cid = m ? decodeURIComponent(m[1]) : null;
         if (!cid) {
           cid = 'fp.' + Date.now() + '.' + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
-          // Domain-scoped like the server's (visitorCookieDomain): a host-only copy beside it made two _fp_cid cookies,
-          // and the tag and the collector could read different ones (one person, two GA4 users).
           var dom = /(^|\.)shopgoldplus\.com$/.test(location.hostname) ? '; Domain=shopgoldplus.com' : '';
           document.cookie = '_fp_cid=' + cid + '; expires=' + new Date(Date.now() + 365 * 864e5).toUTCString() + '; path=/' + dom + '; SameSite=Lax; Secure';
         }
@@ -249,14 +250,11 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
           if (gtmLoaded) return; gtmLoaded = true;
           var j = document.createElement('script'); j.async = true;
           j.src = metricsUrl + '/gtm.js?id=' + gtmId;
-          // From here GA4 has this visit: the landing has done its job.
           j.onload = function () { try { sessionStorage.setItem('gp_ga_seen', '1'); sessionStorage.removeItem('gp_land'); } catch (e) {} };
           document.head.appendChild(j);
         }
         function whenIdle(){ (window.requestIdleCallback || function(f){ setTimeout(f, 1); })(loadGtm, { timeout: 2500 }); }
         if (document.readyState === 'complete') whenIdle(); else addEventListener('load', whenIdle);
-        // Or at the first touch, key or scroll, whichever is sooner: by then the hero has painted, and a visitor who
-        // reads and taps on is counted on the page they landed on.
         ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(function (t) { addEventListener(t, loadGtm, { once: true, passive: true }); });
         })();
       </script>

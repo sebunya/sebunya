@@ -372,7 +372,7 @@ describe('lifecycle decisions actually reach the live product URL', () => {
     expect(productPage).toContain('/seo/product-lifecycle?productId=');
     // A 301 only ever goes to a real successor product.
     expect(productPage).toContain('o.httpStatus === 301 && lcJson.data.successorSlug');
-    expect(productPage).toContain('/products/${lcJson.data.successorSlug}`, 301)');
+    expect(productPage).toContain('carryQuery(`/products/${lcJson.data.successorSlug}`, Astro.url.search), 301)');
     expect(productPage).toContain("robotsMeta={lifecycleNoindex ? 'noindex,follow' : undefined}");
   });
 

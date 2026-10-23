@@ -163,7 +163,7 @@ describe("Slice 9-B public route, copy and artifact safety", () => {
     const withoutAccountLink = publicSurface.replace(/href="\/account\/preferences"/g, '');
     expect(withoutAccountLink).not.toMatch(/\/account\/preferences|\/orders|\/inventory|customerId|readSessionToken/);
   });
-  it("redirects the consent alias to the canonical page with 303", () => expect(alias).toContain("Astro.redirect('/preferences', 303)"));
+  it("redirects the consent alias to the canonical page with 303", () => expect(alias).toContain("Astro.redirect(carryQuery('/preferences', Astro.url.search), 303)"));
   it("links support, privacy and terms", () => expect(supportActions.map((item) => item.href)).toEqual(["/support", "/privacy", "/terms"]));
   it("adds an accessible section navigation", () => expect(page).toContain('aria-label="Preference Centre sections"'));
   it("adds accessible support and policy navigation", () => expect(page).toContain('aria-label="Preference support and policy links"'));
