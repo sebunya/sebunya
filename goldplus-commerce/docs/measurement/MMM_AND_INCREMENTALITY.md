@@ -148,6 +148,23 @@ and on demand. A red run there is the signal to bump a pin; the Mac never instal
 
 ## Still owner work (browser)
 
-- GA4 Admin → BigQuery links: export property 549232812 daily (free tier) for event-level joins.
-- GA4 Admin → Search Console links: link the shopgoldplus.com property.
+- Done 2026-10-23: GA4 → Search Console link; GA4 → BigQuery link (daily export of property 549232812
+  into project goldplus-511709, under the goldplusafrica account). The first `analytics_549232812`
+  dataset appears within 24 hours of the link.
+- BigQuery is in **sandbox** (project has no billing account, and the goldplusafrica account has none
+  at all), so every exported table is created with a 60-day expiry. Nothing in this module reads the
+  export: the dataset is built from the shop's own Postgres, so the expiry costs nothing today. When the
+  export is needed, the choices are, in order of preference:
+  1. Keep the shop's own copy. Pull the daily series the model would use (sessions and users by
+     channel, landing page, device) from the GA4 Data API into `measurement` tables nightly, the way
+     the control feeds work. No billing, no BigQuery dependency, and the history outlives Google's
+     retention (GA4 event retention is set to 14 months; standard aggregate reports are not subject
+     to it). This is a build, not a setting: a Google service account with Viewer on the property and a
+     nightly step.
+  2. Link a billing account to goldplus-511709 (Console → Billing → Link). The free tier (10 GB
+     storage, 1 TB of queries a month) covers a shop this size, so the real cost is a valid card on file.
+     After upgrading, two more clicks or the data still expires: set the dataset's **default table
+     expiration to Never** (sandbox datasets keep the 60-day default after the upgrade) and clear the
+     expiry on any tables already created.
+  3. Leave the sandbox as a rolling 60-day window for ad-hoc event-level joins only.
 - Nothing to type for costs any more: SMS 35, Meta's WhatsApp rates and the dollar feed are defaults. Check the "In use tonight" line on the admin page after the first nightly run.
