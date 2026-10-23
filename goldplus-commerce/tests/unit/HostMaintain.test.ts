@@ -38,7 +38,7 @@ describe('host-maintain.sh is a report, the Storage Steward owns reclamation', (
     expect(existsSync(join(dir, 'pre-apt-empty.sql'))).toBe(true);
     expect(out).toContain('EMPTY file (not a backup)');
     expect(out).toContain('nightly sets: 30');
-  });
+  }, 20_000); // runs the real script over a fixture; a loaded CI runner has taken 5.3 s
 
   it('says loudly when no offsite copy exists, and when the nightly is stale or missing', () => {
     expect(run(fixture(1))).toContain("NONE verified for the dump files");
