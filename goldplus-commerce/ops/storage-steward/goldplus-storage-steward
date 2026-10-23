@@ -388,8 +388,8 @@ def collect_docker() -> list[Resource]:
         except Exception:
             continue
         kind = str(row.get("Type", "")).lower().replace(" ", "_")
-        size = parse_size(row.get("Size", "0B"))
-        recl = parse_size(str(row.get("Reclaimable", "0B")).split(" ")[0])
+        size = parse_docker_size(row.get("Size", "0B"))
+        recl = parse_docker_size(row.get("Reclaimable", "0B"))
         out.append(Resource(f"docker.{kind}", "docker", logical_size=size, physical_size=size,
                             reclaimable=recl, detail={"count": row.get("TotalCount"), "active": row.get("Active")}))
     # Container logs are a separate risk from images: an application that never
@@ -404,6 +404,23 @@ def parse_size(text: str) -> int:
     text = str(text).strip().replace(" ", "")
     units = {"B": 1, "KB": 1024, "MB": 1024 ** 2, "GB": 1024 ** 3, "TB": 1024 ** 4,
              "KIB": 1024, "MIB": 1024 ** 2, "GIB": 1024 ** 3}
+    for unit in sorted(units, key=len, reverse=True):
+        if text.upper().endswith(unit):
+            try:
+                return int(float(text[: -len(unit)]) * units[unit])
+            except ValueError:
+                return 0
+    try:
+        return int(float(text))
+    except ValueError:
+        return 0
+
+
+def parse_docker_size(text: str) -> int:
+    """Docker prints sizes in DECIMAL units ('2.145GB' is 2.145e9 bytes, go-units HumanSize), unlike parse_size's
+    binary reading. Read as binary, a 2.145GB cache looked 7% bigger: 2.30 GiB against a 2 GiB bound."""
+    text = str(text).strip().split(" ")[0].replace(" ", "")
+    units = {"B": 1, "KB": 1000, "MB": 1000 ** 2, "GB": 1000 ** 3, "TB": 1000 ** 4}
     for unit in sorted(units, key=len, reverse=True):
         if text.upper().endswith(unit):
             try:
@@ -777,6 +794,13 @@ def docker_log_bounds(policy: dict, apply: bool) -> list[str]:
 
 
 def build_cache_size() -> int:
+    """The disk the build cache adds of its own: Docker's Reclaimable column (buildx du's "Private").
+
+    Its Size also counts layers SHARED with images, the same bytes as the images already hold (counted under Images).
+    Measured on the host 2026-10-23: Size 5.761GB = 3.616GB shared + 2.145GB private, against a 2 GiB bound. Every
+    deploy printed 5.761GB and every night raised "still over bound" while the prune had done exactly its job.
+    A Docker that prints no Reclaimable column is measured by Size, as before.
+    """
     code, raw = run(["docker", "system", "df", "--format", "{{json .}}"], timeout=60)
     size = 0
     if code == 0:
@@ -786,7 +810,8 @@ def build_cache_size() -> int:
             except Exception:
                 continue
             if str(row.get("Type", "")).lower().startswith("build"):
-                size = parse_size(row.get("Size", "0B"))
+                own = row.get("Reclaimable")
+                size = parse_docker_size(own if own not in (None, "") else row.get("Size", "0B"))
     return size
 
 
@@ -1163,7 +1188,8 @@ def build_report(state: State, policy: dict, facts: dict, resources: list[Resour
         add(f"Replication slots          {len(detail)} ({human(slots.physical_size)} WAL retained)")
     cache = by_name.get("docker.build_cache")
     if cache:
-        add(f"Build cache                {human(cache.physical_size)} / {policy['docker']['build_cache_max_gb']} GB bound")
+        # Its own share against the bound; the rest is layers shared with images (see build_cache_size).
+        add(f"Build cache                {human(cache.reclaimable)} own / {policy['docker']['build_cache_max_gb']} GB bound ({human(cache.physical_size)} with layers shared with images)")
     recl = sum(r.reclaimable for r in resources)
     add(f"Docker reclaimable         {human(recl)}")
 
@@ -1198,8 +1224,8 @@ def raise_alerts(state: State, policy: dict, facts: dict, resources: list[Resour
         state.record_alert("HIGH", f"replication slots retain {human(slots.physical_size)} of WAL",
                            json.dumps(slots.detail))
     cache = by_name.get("docker.build_cache")
-    if cache and cache.physical_size > policy["docker"]["build_cache_max_gb"] * GB:
-        state.record_alert("WATCH", f"build cache {human(cache.physical_size)} exceeds its bound", "")
+    if cache and cache.reclaimable > policy["docker"]["build_cache_max_gb"] * GB:
+        state.record_alert("WATCH", f"build cache {human(cache.reclaimable)} of its own exceeds its bound", "")
     amp = storage_amplification(state, resources)
     if amp is not None and amp >= 10:
         state.record_alert("WATCH", f"storage amplification {amp}x",
