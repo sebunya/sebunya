@@ -142,12 +142,13 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         default to https://metrics.shopgoldplus.com, which has no DNS record —
         so setting the id alone would have shipped a loader aimed at nothing. */}
     {/* Microsoft Clarity (heatmaps, session recordings): only with a project id,
-        never for robots. Clarity masks typed input by default; checkout and
+        never for robots, our probes or staff (same gate as the GA4 tag). Clarity masks typed input by default; checkout and
         account pages are masked entirely (data-clarity-mask on <body>). */}
     {clarityId && (
       <script nonce={Astro.locals.cspNonce} define:vars={{ clarityId }}>
         (function () {
-          if (navigator.webdriver === true || /HeadlessChrome|Chrome-Lighthouse|PTST|GTmetrix|Pingdom/i.test(navigator.userAgent || '')) return;
+          if (navigator.webdriver === true || /GoldPlusSyntheticProbe|HeadlessChrome|Chrome-Lighthouse|PageSpeed|PTST|GTmetrix|Pingdom|Playwright/i.test(navigator.userAgent || '')
+            || /(?:^|; )(?:gp_probe|gp_staff)=/.test(document.cookie)) return;
           (function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
           t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
           y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script",clarityId);
@@ -188,6 +189,10 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
           3. The tag loads late (mobile LCP), so a visitor who taps on before it loads used to lose the landing. Until
              GA4 has seen the visit (sessionStorage gp_ga_seen, set when gtm.js loads), the landing's campaign and
              click ids (gp_land, 30 minutes) are put on the next page's URL and its referrer is set as page_referrer.
+        - What GA4 may see (shared/links/analyticsSafeUrl, same list): the values of order references, payment links,
+          codes and tokens in this page's address and its referrer are replaced by "redacted". A return from Pesapal
+          is not an arrival: its referrer is our own origin (GA4 would otherwise start a "pesapal.com / referral" visit).
+          A page that carried the landing's campaign is marked (__gpCarried) so our own landing touch is not filed twice.
         - The _fp_cid fallback is Domain-scoped like the server's (visitorCookieDomain): a host-only copy beside it
           made two ids, read differently by the tag and the collector.
         - The tag loads after load + idle, or at the first touch, key or scroll if sooner (the hero has painted). */}
@@ -210,7 +215,8 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
           var here = new URL(location.href), q = [];
           here.searchParams.forEach(function (v, k) { if (CAMPAIGN.test(k)) q.push([k, v]); });
           var ref = '';
-          try { var rh = new URL(document.referrer).hostname; if (!/(^|\.)shopgoldplus\.com$/.test(rh)) ref = document.referrer; } catch (e) {}
+          var PAY = /(^|\.)pesapal\.com$/i, rh = '';
+          try { rh = new URL(document.referrer).hostname; if (!/(^|\.)shopgoldplus\.com$/.test(rh) && !PAY.test(rh)) ref = document.referrer; } catch (e) {}
           if (!ref && !q.length && !document.referrer) {
             var IAB = [[/\bSnapchat\/\d/i, 'snapchat.com'], [/\bInstagram\s\d/i, 'instagram.com'], [/\bFBAN\/|\bFBAV\/|\bFB_IAB\//, 'facebook.com'],
               [/\bmusical_ly|\bBytedanceWebview|\bTikTok\b/i, 'tiktok.com'], [/\bLinkedInApp\b/i, 'linkedin.com'], [/\bPinterest\/\d/i, 'pinterest.com']];
@@ -221,7 +227,7 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
           if (sessionStorage.getItem('gp_ga_seen') !== '1') {
             if (q.length || ref) sessionStorage.setItem('gp_land', JSON.stringify({ q: q, r: ref, t: Date.now() }));
             else if (land) {
-              if (land.q.length) { land.q.forEach(function (kv) { here.searchParams.set(kv[0], kv[1]); }); history.replaceState(history.state, '', here.toString()); }
+              if (land.q.length) { land.q.forEach(function (kv) { here.searchParams.set(kv[0], kv[1]); }); history.replaceState(history.state, '', here.toString()); window.__gpCarried = true; }
               if (land.r) window.__gpLandingReferrer = land.r;
             }
           }
@@ -243,7 +249,17 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
           document.cookie = '_fp_cid=' + cid + '; expires=' + new Date(Date.now() + 365 * 864e5).toUTCString() + '; path=/' + dom + '; SameSite=Lax; Secure';
         }
         dataLayer.push(userId ? { fp_client_id: cid, user_id: userId } : { fp_client_id: cid });
-        if (window.__gpLandingReferrer) gtag('set', { page_referrer: window.__gpLandingReferrer });
+        var RED = /^(ref|reference|u|code|token|otp|ordertrackingid|ordermerchantreference|trackingid|phone|email)$/i;
+        function safeUrl(h) {
+          try { var x = new URL(h), keys = []; x.searchParams.forEach(function (v, k) { if (RED.test(k) && keys.indexOf(k) < 0) keys.push(k); });
+            if (!keys.length) return null; keys.forEach(function (k) { x.searchParams.set(k, 'redacted'); }); return x.toString(); } catch (e) { return null; }
+        }
+        var safePl = safeUrl(location.href);
+        if (safePl) gtag('set', { page_location: safePl });
+        var pr = window.__gpLandingReferrer || null;
+        if (!pr && document.referrer) { try { if (/(^|\.)pesapal\.com$/i.test(new URL(document.referrer).hostname)) pr = location.origin + '/'; } catch (e) {} }
+        if (!pr && document.referrer) pr = safeUrl(document.referrer);
+        if (pr) gtag('set', { page_referrer: pr });
         window.dataLayer.push({'gtm.start': new Date().getTime(), event: 'gtm.js'});
         var gtmLoaded = false;
         function loadGtm(){

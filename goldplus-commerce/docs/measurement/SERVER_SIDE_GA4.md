@@ -54,7 +54,16 @@ privacy (#analytics) and cookies pages state all of this. Supersedes the 2026-08
 - **Coverage check (read-only):** ops/measurement/ga4-session-coverage.sql (share of events and orders with a GA4
   visit). Metric `goldplus_ga4_skipped_no_session_total` counts events kept from GA4 for want of one.
 - **Redirects keep the query** (lib/carryQuery): recorded redirects, a product's successor, /quotes, /consent, 404.
-- **Not counted:** staff (any browser that opened the admin carries `gp_staff`; delete that cookie to be counted
+- **What GA4 may see of an address** (shared/links/analyticsSafeUrl): the values of ref, reference, u, code, token,
+  otp, OrderTrackingId, OrderMerchantReference, trackingId, phone, email are replaced by "redacted" in page_location
+  and page_referrer, in the browser's hits (gtag set, checked in Chrome against the live container) and the server's.
+- **A return from Pesapal is not an arrival**: GA4's page_referrer becomes our own origin (no "pesapal.com /
+  referral" visit when paying took over 30 minutes). Keep pesapal.com in GA4's unwanted referrals as well.
+- **Every same-site redirect keeps the campaign tags** (middleware + lib/carryQuery campaignOnRedirect): the 18
+  sign-in redirects (/login?returnTo=…) used to drop them.
+- **Engaged sessions:** server hits set `seg` only for something the shopper did; view_item and view_item_list (fired
+  as a page loads) join the visit without making it engaged.
+- **Not counted (GA4 and Clarity):** staff (any browser that opened the admin carries `gp_staff`; delete that cookie to be counted
   again), our probes (GoldPlusSyntheticProbe UA or `gp_probe`), declared automation.
 
 ## Env (.env.production)

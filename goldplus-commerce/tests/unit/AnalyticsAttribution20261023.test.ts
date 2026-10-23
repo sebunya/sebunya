@@ -8,6 +8,9 @@ import { formatWhatsAppReply } from '../../apps/api/src/domain/assistant/WhatsAp
 import { formatSocialReply } from '../../apps/api/src/domain/assistant/SocialGoldie';
 import { classifyChannel } from '../../apps/api/src/domain/measurement/Channels';
 import { inAppReferrerHost } from '../../apps/web/src/lib/inAppBrowser';
+import { ANALYTICS_REDACTED_PARAMS, analyticsSafeUrl } from '../../packages/shared/src/links/analyticsSafeUrl';
+import { ga4CollectHit } from '../../apps/api/src/infrastructure/telemetry/Ga4CollectHit';
+import { campaignOnRedirect } from '../../apps/web/src/lib/carryQuery';
 
 const read = (p: string) => readFileSync(resolve(__dirname, '../..', p), 'utf8');
 
@@ -109,7 +112,7 @@ function page(href: string, opts: { referrer?: string; cookie?: string; store?: 
   const store = opts.store ?? new Map<string, string>();
   const scripts: Array<{ src?: string; onload?: () => void }> = [];
   const listeners: Record<string, Array<() => void>> = {};
-  const loc = { href, hostname: new URL(href).hostname };
+  const loc = { href, hostname: new URL(href).hostname, origin: new URL(href).origin };
   const win: Record<string, unknown> = {};
   const ctx: Record<string, unknown> = {
     window: win, URL, JSON, Date, Math, crypto: globalThis.crypto, decodeURIComponent, encodeURIComponent, Array, Object,
@@ -131,7 +134,7 @@ function page(href: string, opts: { referrer?: string; cookie?: string; store?: 
   const proxy = new Proxy(ctx, { get: (t, k) => (k in t ? t[k as string] : win[k as string]), set: (t, k, v) => { t[k as string] = v; win[k as string] = v; return true; } });
   (proxy as Record<string, unknown>).window = proxy;
   runInNewContext(loaderSource(), proxy as never);
-  return { loc, store, scripts, listeners, dl: (win.dataLayer ?? (proxy as Record<string, unknown>).dataLayer) as unknown[] };
+  return { loc, store, scripts, listeners, win, dl: (win.dataLayer ?? (proxy as Record<string, unknown>).dataLayer) as unknown[] };
 }
 
 describe('the tag loader (BaseLayout), run for real', () => {
@@ -207,5 +210,73 @@ describe('the tag loader (BaseLayout), run for real', () => {
     expect(page('https://shopgoldplus.com/', { cookie: 'gp_staff=1' }).dl).toBeUndefined();
     expect(page('https://shopgoldplus.com/', { cookie: 'gp_probe=1' }).dl).toBeUndefined();
     expect(page('https://shopgoldplus.com/', { ua: 'Mozilla/5.0 Chrome/136 Mobile GoldPlusSyntheticProbe' }).dl).toBeUndefined();
+  });
+});
+
+const sets = (dl: unknown[]) => Object.assign({}, ...dl.filter((e) => (e as IArguments)[0] === 'set').map((e) => (e as IArguments)[1]));
+
+describe('what GA4 may see of an address (second pass)', () => {
+  it('identifier values are replaced, names and campaigns kept', () => {
+    expect(analyticsSafeUrl('https://shopgoldplus.com/gift-card/bought?ref=GC-8F3K&utm_source=sms'))
+      .toBe('https://shopgoldplus.com/gift-card/bought?ref=redacted&utm_source=sms');
+    expect(analyticsSafeUrl('https://shopgoldplus.com/checkout/pay?ref=GP-1&u=https%3A%2F%2Fpay.pesapal.com%2Fx&net=MTN'))
+      .toBe('https://shopgoldplus.com/checkout/pay?ref=redacted&u=redacted&net=MTN');
+    expect(analyticsSafeUrl('https://shopgoldplus.com/shop?q=power+bank')).toBe('https://shopgoldplus.com/shop?q=power+bank');
+  });
+
+  it('server hits carry the redacted address and referrer', () => {
+    const p = ga4CollectHit({ event_name: 'view_item', event_id: 'e1', user_data: { fp_client_id: 'fp.1.x' },
+      page_location: 'https://shopgoldplus.com/track-order?reference=GP-1', page_referrer: 'https://shopgoldplus.com/review?reference=GP-1' } as never, 'G-X')!;
+    expect([p.get('dl'), p.get('dr')]).toEqual(['https://shopgoldplus.com/track-order?reference=redacted', 'https://shopgoldplus.com/review?reference=redacted']);
+  });
+
+  it('the browser hits too: page_location and an internal referrer, redacted', () => {
+    const p = page('https://shopgoldplus.com/gift-card/bought?ref=GC-8F3K', { referrer: 'https://shopgoldplus.com/track-order?reference=GP-1' });
+    expect(sets(p.dl)).toEqual({ page_location: 'https://shopgoldplus.com/gift-card/bought?ref=redacted', page_referrer: 'https://shopgoldplus.com/track-order?reference=redacted' });
+    expect(sets(page('https://shopgoldplus.com/shop').dl)).toEqual({});
+  });
+
+  it('a return from Pesapal is not an arrival: our own origin as referrer, no landing kept', () => {
+    const store = new Map<string, string>();
+    const p = page('https://shopgoldplus.com/checkout/pesapal/callback?OrderTrackingId=abc', { referrer: 'https://pay.pesapal.com/iframe/x', store });
+    expect(sets(p.dl)).toEqual({ page_location: 'https://shopgoldplus.com/checkout/pesapal/callback?OrderTrackingId=redacted', page_referrer: 'https://shopgoldplus.com/' });
+    expect(store.has('gp_land')).toBe(false);
+  });
+
+  it('the loader\'s list is the shared list', () => {
+    const layout = read('apps/web/src/layouts/BaseLayout.astro');
+    expect(layout).toContain(`var RED = ${ANALYTICS_REDACTED_PARAMS.toString()};`);
+  });
+
+  it('a page that carried the landing is marked, and our landing recorder does not file it again', () => {
+    const store = new Map<string, string>();
+    page('https://shopgoldplus.com/?utm_source=sms&utm_medium=sms', { store });
+    const next = page('https://shopgoldplus.com/shop', { referrer: 'https://shopgoldplus.com/', store });
+    expect(next.win.__gpCarried).toBe(true);
+    expect(read('apps/web/src/lib/telemetry.ts')).toMatch(/if \(\(window as \{ __gpCarried\?: boolean \}\)\.__gpCarried\) return;/);
+  });
+});
+
+describe('loose ends (second pass)', () => {
+  it('a passive view joins the visit but does not make it engaged; an action does', () => {
+    const hit = (event_name: string) => ga4CollectHit({ event_name, event_id: 'e', user_data: { fp_client_id: 'fp.1.x', ga_session_id: '1792731618', ga_session_number: 2 } } as never, 'G-X')!;
+    for (const e of ['view_item', 'view_item_list']) expect([hit(e).get('sid'), hit(e).get('seg')], e).toEqual(['1792731618', null]);
+    for (const e of ['add_to_cart', 'begin_checkout', 'purchase', 'generate_lead', 'search']) expect(hit(e).get('seg'), e).toBe('1');
+  });
+
+  it('every same-site redirect keeps the campaign tags (the sign-in redirects built from the path alone)', () => {
+    const req = new URL('https://shopgoldplus.com/account/loyalty?ch=s.loyalty&gclid=G1&other=1');
+    expect(campaignOnRedirect('/login?returnTo=/account/loyalty', req)).toBe('/login?returnTo=%2Faccount%2Floyalty&ch=s.loyalty&gclid=G1');
+    expect(campaignOnRedirect('https://pay.pesapal.com/x', req)).toBeNull();
+    expect(campaignOnRedirect('//evil.example/x', req)).toBeNull();
+    expect(campaignOnRedirect('/login?ch=s.loyalty&gclid=G1', req)).toBeNull();
+    expect(campaignOnRedirect('/login', new URL('https://shopgoldplus.com/account'))).toBeNull();
+    const mw = read('apps/web/src/middleware.ts');
+    expect(mw).toMatch(/response\.status >= 301 && response\.status <= 308[\s\S]{0,200}campaignOnRedirect\(loc, context\.url\)/);
+  });
+
+  it('Clarity has the same gate as the GA4 tag (probes and staff)', () => {
+    const layout = read('apps/web/src/layouts/BaseLayout.astro');
+    expect(layout.match(/\/\(\?:\^\|; \)\(\?:gp_probe\|gp_staff\)=\/\.test\(document\.cookie\)/g)).toHaveLength(2);
   });
 });

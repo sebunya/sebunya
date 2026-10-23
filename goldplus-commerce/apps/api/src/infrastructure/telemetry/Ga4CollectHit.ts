@@ -1,4 +1,4 @@
-import type { CanonicalTelemetryEvent } from '@goldplus/shared';
+import { analyticsSafeUrl, type CanonicalTelemetryEvent } from '@goldplus/shared';
 
 /**
  * A canonical server event as a GA4 collection hit (`/g/collect`), the format
@@ -19,6 +19,9 @@ export function ga4ItemId(it: { item_id: string; item_sku?: string }): string {
   return /^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/.test(sku) && !/pending/i.test(sku) ? sku : it.item_id;
 }
 
+/** Events that fire on their own as a page loads: they join the visit but do not make it engaged. */
+const PASSIVE_EVENTS = new Set(['view_item', 'view_item_list']);
+
 export function ga4CollectHit(event: CanonicalTelemetryEvent, measurementId: string): URLSearchParams | null {
   const cid = event.user_data?.fp_client_id?.trim();
   if (!cid) return null;
@@ -33,11 +36,15 @@ export function ga4CollectHit(event: CanonicalTelemetryEvent, measurementId: str
   if (event.user_data?.ga_session_id) {
     p.set('sid', event.user_data.ga_session_id);
     if (event.user_data.ga_session_number) p.set('sct', String(event.user_data.ga_session_number));
-    p.set('seg', '1');
+    // "Engaged" only for something the shopper did. A list or product view fires as the page loads; marking it
+    // engaged made a two-second bounce an engaged session (audit 2026-10-23). The browser tag still marks real
+    // engagement itself (10 s, a second page, a key event).
+    if (!PASSIVE_EVENTS.has(event.event_name)) p.set('seg', '1');
   }
   if (event.user_data?.user_id) p.set('uid', event.user_data.user_id);
-  if (event.page_location) p.set('dl', event.page_location);
-  if (event.page_referrer) p.set('dr', event.page_referrer);
+  // Order references, payment links, codes: their values never reach GA4 (shared/links/analyticsSafeUrl).
+  if (event.page_location) p.set('dl', analyticsSafeUrl(event.page_location)!);
+  if (event.page_referrer) p.set('dr', analyticsSafeUrl(event.page_referrer)!);
   if (event.page_title) p.set('dt', event.page_title);
   const e = event.ecommerce;
   if (e) {

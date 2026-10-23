@@ -519,6 +519,9 @@ export { isOwnAutomation };
 export function recordLandingTouch(): void {
   try {
     if (isOwnAutomation()) return;
+    // The tag loader put the landing's campaign on this page's address (the tag had not seen the landing): the
+    // arrival was already filed on the landing page itself.
+    if ((window as { __gpCarried?: boolean }).__gpCarried) return;
     const q = new URLSearchParams(location.search);
     const clickTypes = TOUCH_CLICK_KEYS.filter((k) => q.get(k));
     let refHost: string | null = null;
