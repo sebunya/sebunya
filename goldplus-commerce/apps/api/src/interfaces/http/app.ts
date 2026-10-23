@@ -437,6 +437,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/legal',
   '/admin/loyalty',
   '/admin/measurement',
+  '/admin/measurement/mmm',
   '/admin/measurement-control-tower',
   '/admin/measurement/gtm',
   '/admin/measurement/paid-social',

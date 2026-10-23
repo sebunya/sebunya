@@ -27,13 +27,16 @@ def require(module_names: list[str], requirements_file: str, engine: str):
     installed on the production host or on a full disk, so they are imported
     lazily, here, and nowhere at module import time.
     """
-    import importlib
+    import importlib.util
 
+    # Availability check only (no import of a name chosen at run time); the engines import their
+    # libraries with ordinary literal import statements once this has passed.
     missing = []
     for name in module_names:
         try:
-            importlib.import_module(name)
-        except ImportError:
+            if importlib.util.find_spec(name) is None:
+                missing.append(name)
+        except (ImportError, ValueError):
             missing.append(name)
     if missing:
         raise MissingEngineError(

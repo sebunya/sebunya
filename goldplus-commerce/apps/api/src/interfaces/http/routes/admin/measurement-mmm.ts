@@ -48,8 +48,11 @@ routes.get('/controls', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c
 
 routes.post('/controls', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => null);
-  const r = await registry().mmmDataset.setManualControl({ day: String(body?.day ?? ''), key: String(body?.key ?? ''), value: Number(body?.value), note: body?.note ? String(body.note).slice(0, 200) : null, actorId: actorId(c) ?? '' });
-  return r.ok ? c.json({ success: true, data: { saved: true } }) : bad(c, r.message);
+  const input = { day: String(body?.day ?? ''), key: String(body?.key ?? ''), value: Number(body?.value), note: body?.note ? String(body.note).slice(0, 200) : null, actorId: actorId(c) ?? '' };
+  const r = await registry().mmmDataset.setManualControl(input);
+  if (!r.ok) return bad(c, r.message);
+  await registry().createAuditLogUseCase.execute({ actorId: input.actorId, action: 'MEASUREMENT_CONTROL_SET', entity: 'measurement_control_series', entityId: `${input.day}:${input.key}`, newState: { value: input.value, note: input.note } });
+  return c.json({ success: true, data: { saved: true } });
 });
 
 routes.get('/settings', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
@@ -81,6 +84,7 @@ routes.get('/reconciliation', requirePermissions([PERMISSIONS.REPORTS_READ]), as
 /** Run the nightly now (costs, dataset, holdout outcomes, GA4 check). Bounded by the same lock as the schedule. */
 routes.post('/run', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const r = await runMeasurementNightlyOnce(new Date(), 'admin');
+  await registry().createAuditLogUseCase.execute({ actorId: actorId(c) ?? '', action: 'MEASUREMENT_NIGHTLY_RUN', entity: 'measurement_nightly', entityId: new Date().toISOString().slice(0, 10), newState: { status: r.status } });
   return c.json({ success: true, data: r });
 });
 
