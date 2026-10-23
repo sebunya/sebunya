@@ -33,7 +33,14 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   const med = (t.medium ?? '').toLowerCase().trim();
   const clicks = new Set((t.clickIdTypes ?? []).map((c) => c.toLowerCase()));
   if (clicks.has('gclid') || clicks.has('gbraid') || clicks.has('wbraid') || clicks.has('msclkid')) return 'paid_search';
-  if (clicks.has('fbclid') || clicks.has('ttclid') || clicks.has('twclid') || clicks.has('sccid') || clicks.has('li_fat_id') || clicks.has('epik')) return 'paid_social';
+  // Only ids an ad network adds to its OWN ad clicks prove an ad. Facebook adds fbclid to every outbound link on
+  // Facebook, Instagram and Messenger, a customer's share included (X's twclid and Pinterest's epik are not ad-only
+  // either): with no ad ever run, 10 of 10 fbclid arrivals in 30 days were shares counted as paid (2026-10-23).
+  // Those count as paid only when their tags say so (utm_medium below); untagged, they are organic social.
+  if (clicks.has('ttclid') || clicks.has('sccid') || clicks.has('li_fat_id')) return 'paid_social';
+  // A social network with a cost medium is a social ad (GA4's own rule), not search: Meta's {{site_source_name}}
+  // gives fb, ig, msg (Messenger) and an (Audience Network).
+  if (/^(cpc|ppc|cpm|paid.*|retargeting)$/.test(med) && ((SOCIAL_SOURCE.test(src) && !/^youtube/.test(src)) || /^(meta|msg|messenger|an)$/.test(src))) return 'paid_social';
   if (/^(cpc|ppc|paid[_-]?search|sem)$/.test(med)) return 'paid_search';
   if (/^(paid[_-]?social|social[_-]?paid|paidsocial|cpm[_-]?social)$/.test(med)) return 'paid_social';
   if (/^(display|banner|cpm|programmatic|video|audio)$/.test(med)) return 'display';
@@ -58,6 +65,8 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   // in an X or Instagram bio, a post) is that network's organic traffic. It
   // used to fall through to "other" and vanish from the social rows.
   if (!med && SOCIAL_SOURCE.test(src)) return 'organic_social';
+  // A social network's own click id and no tags: a link shared or posted there (see the paid rule above).
+  if (!src && !med && (clicks.has('fbclid') || clicks.has('twclid') || clicks.has('epik'))) return 'organic_social';
   if (src || med) return 'other';
   const ref = (t.referrerHost ?? '').toLowerCase();
   if (!ref || PAYMENT_OR_SELF_HOST.test(ref)) return 'direct';

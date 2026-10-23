@@ -185,7 +185,10 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
              character), rewritten to utm_source/utm_medium/utm_campaign. Channels: s SMS, w WhatsApp, e email,
              m Messenger, i Instagram, a the installed app.
           2. A social app's own browser sends no referrer but names itself (lib/inAppBrowser.ts, same list, kept in
-             step by a test): the landing is credited to that network.
+             step by a test): the landing is credited to that network. So is an untagged link that carries a social
+             network's own click id (fbclid, twclid, epik): those are added to shares too, not only to ads, so they
+             say "from Facebook", never "an ad" (no ad has ever run; 10 of 10 fbclid arrivals were shares, 2026-10-23).
+             GA4 itself ignores them: without a referrer it filed those visits as Direct.
           3. The tag loads late (mobile LCP), so a visitor who taps on before it loads used to lose the landing. Until
              GA4 has seen the visit (sessionStorage gp_ga_seen, set when gtm.js loads), the landing's campaign and
              click ids (gp_land, 30 minutes) are put on the next page's URL and its referrer is set as page_referrer.
@@ -202,7 +205,7 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         var ua = navigator.userAgent || '';
         if (navigator.webdriver === true || /GoldPlusSyntheticProbe|HeadlessChrome|Chrome-Lighthouse|PageSpeed|PTST|GTmetrix|Pingdom|Playwright/i.test(ua)
           || /(?:^|; )(?:gp_probe|gp_staff)=/.test(document.cookie)) return;
-        var CAMPAIGN = /^(utm_[a-z]+|gclid|gbraid|wbraid|dclid|fbclid|ttclid|twclid|msclkid|li_fat_id|sccid|epik)$/;
+        var CAMPAIGN = /^(utm_[a-z]+|gclid|gbraid|wbraid|dclid|fbclid|ttclid|twclid|msclkid|li_fat_id|sccid|epik)$/i;
         var CH = { s: ['sms', 'sms'], w: ['whatsapp', 'chat'], e: ['goldplus', 'email'], m: ['messenger', 'chat'], i: ['instagram', 'chat'], a: ['app', 'pwa'] };
         try {
           var u = new URL(location.href), gt = u.searchParams.get('ch');
@@ -217,10 +220,14 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
           var ref = '';
           var PAY = /(^|\.)pesapal\.com$/i, rh = '';
           try { rh = new URL(document.referrer).hostname; if (!/(^|\.)shopgoldplus\.com$/.test(rh) && !PAY.test(rh)) ref = document.referrer; } catch (e) {}
-          if (!ref && !q.length && !document.referrer) {
+          var tagged = q.some(function (kv) { return /^(utm_|gclid$|gbraid$|wbraid$|dclid$|msclkid$|ttclid$|li_fat_id$|sccid$)/i.test(kv[0]); });
+          if (!ref && !tagged && !document.referrer) {
+            var SOC = { fbclid: 'facebook.com', twclid: 'x.com', epik: 'pinterest.com' }, soc = '';
+            q.forEach(function (kv) { if (!soc && SOC[kv[0].toLowerCase()]) soc = SOC[kv[0].toLowerCase()]; });
             var IAB = [[/\bSnapchat\/\d/i, 'snapchat.com'], [/\bInstagram\s\d/i, 'instagram.com'], [/\bFBAN\/|\bFBAV\/|\bFB_IAB\//, 'facebook.com'],
               [/\bmusical_ly|\bBytedanceWebview|\bTikTok\b/i, 'tiktok.com'], [/\bLinkedInApp\b/i, 'linkedin.com'], [/\bPinterest\/\d/i, 'pinterest.com']];
             for (var i = 0; i < IAB.length; i++) if (IAB[i][0].test(ua)) { ref = 'https://' + IAB[i][1] + '/'; window.__gpLandingReferrer = ref; break; }
+            if (!ref && soc) { ref = 'https://' + soc + '/'; window.__gpLandingReferrer = ref; }
           }
           var land = null; try { land = JSON.parse(sessionStorage.getItem('gp_land') || 'null'); } catch (e) {}
           if (land && Date.now() - land.t > 30 * 60e3) { land = null; sessionStorage.removeItem('gp_land'); }

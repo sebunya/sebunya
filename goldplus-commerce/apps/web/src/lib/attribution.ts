@@ -45,12 +45,22 @@ function readUtm(): Record<string, string> {
 function paidNetworkOnUrl(p: URLSearchParams): string {
   if (p.get('gclid') || p.get('gbraid') || p.get('wbraid')) return 'google';
   if (p.get('msclkid')) return 'microsoft';
-  if (p.get('fbclid')) return 'facebook';
   if (p.get('ttclid')) return 'tiktok';
-  if (p.get('twclid')) return 'x';
   if (p.get('li_fat_id')) return 'linkedin';
   if (p.get('ScCid')) return 'snapchat';
-  if (p.get('epik')) return 'pinterest';
+  return '';
+}
+
+/**
+ * The social network whose own click id is on this URL, when that id is NOT proof of an ad (2026-10-23). Facebook adds
+ * fbclid to every link clicked on Facebook, Instagram and Messenger, a customer's share included; X's twclid and
+ * Pinterest's epik are not ad-only either. With no ad ever run, every fbclid arrival was a share and was recorded as
+ * facebook / paid_social. Untagged, it is that network's organic traffic (its referrer); tagged, the tags decide.
+ */
+function socialNetworkOnUrl(p: URLSearchParams): string {
+  if (p.get('fbclid')) return 'facebook.com';
+  if (p.get('twclid')) return 'x.com';
+  if (p.get('epik')) return 'pinterest.com';
   return '';
 }
 
@@ -60,8 +70,12 @@ export function captureAttribution(): void {
     const paid = paidNetworkOnUrl(new URLSearchParams(location.search));
     const hasUtm = Object.keys(utm).length > 0 || !!paid;
     let ref = externalReferrer();
-    // No referrer, no campaign, no click id, but opened in Snapchat's own browser: a Snapchat visit.
-    if (!ref && !hasUtm && !/[?&]ScCid=/.test(location.search)) { const h = inAppReferrerHost(navigator.userAgent || ''); if (h) ref = `https://${h}/`; }
+    // No referrer and no campaign, but opened in a social app's own browser, or carrying a social network's click id:
+    // a visit from that network (the app it was opened in first; Instagram links carry fbclid too).
+    if (!ref && !hasUtm) {
+      const h = inAppReferrerHost(navigator.userAgent || '') || socialNetworkOnUrl(new URLSearchParams(location.search));
+      if (h) ref = `https://${h}/`;
+    }
     const now = new Date().toISOString();
     const touch = { ...utm, ...(paid ? { paid } : {}), referrer: ref, landingPath: location.pathname.slice(0, 300), at: now };
 
@@ -93,6 +107,8 @@ function sourceFromReferrer(ref: string): string {
     if (is(/(^|\.)tiktok\.com$/)) return 'tiktok';
     if (is(/(^|\.)snapchat\.com$/)) return 'snapchat';
     if (is(/(^|\.)(youtube\.com|youtu\.be)$/)) return 'youtube';
+    if (is(/(^|\.)(pinterest\.[a-z.]+|pin\.it)$/)) return 'pinterest';
+    if (is(/(^|\.)(linkedin\.com|lnkd\.in)$/)) return 'linkedin';
     if (is(/(^|\.)(wa\.me|whatsapp\.com)$/)) return 'whatsapp';
     return host;
   } catch {
@@ -195,7 +211,7 @@ export function getCheckoutAttribution(): CheckoutAttribution | null {
     // A referral from a social network is organic social and one from a search
     // engine is organic search (the answers the landing-touch classifier gives),
     // not a generic referral.
-    const medium = last.utm_medium || (last.paid && !last.utm_source ? (/^(google|microsoft)$/.test(last.paid) ? 'cpc' : 'paid_social') : null) || (last.utm_source ? 'campaign' : last.referrer ? (/^(facebook|instagram|x|tiktok|youtube|snapchat)$/.test(refSource) ? 'social' : /^(google|bing|duckduckgo|yahoo|ecosia|brave|yandex)$/.test(refSource) ? 'organic' : 'referral') : null) || null;
+    const medium = last.utm_medium || (last.paid && !last.utm_source ? (/^(google|microsoft)$/.test(last.paid) ? 'cpc' : 'paid_social') : null) || (last.utm_source ? 'campaign' : last.referrer ? (/^(facebook|instagram|x|tiktok|youtube|snapchat|pinterest|linkedin)$/.test(refSource) ? 'social' : /^(google|bing|duckduckgo|yahoo|ecosia|brave|yandex)$/.test(refSource) ? 'organic' : 'referral') : null) || null;
     return {
       source,
       medium,

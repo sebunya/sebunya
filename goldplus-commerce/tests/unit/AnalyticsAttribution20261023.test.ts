@@ -280,3 +280,42 @@ describe('loose ends (second pass)', () => {
     expect(layout.match(/\/\(\?:\^\|; \)\(\?:gp_probe\|gp_staff\)=\/\.test\(document\.cookie\)/g)).toHaveLength(2);
   });
 });
+
+describe('a social network\'s click id is not an ad (no ad has ever run; 10 of 10 fbclid arrivals were shares)', () => {
+  it('our reports: fbclid / twclid / epik untagged are organic social; tagged paid, they are paid social', () => {
+    for (const c of ['fbclid', 'twclid', 'epik']) {
+      expect(classifyChannel({ clickIdTypes: [c] }), c).toBe('organic_social');
+      expect(classifyChannel({ clickIdTypes: [c], referrerHost: 'm.facebook.com' }), c).toBe('organic_social');
+    }
+    expect(classifyChannel({ clickIdTypes: ['fbclid'], source: 'fb', medium: 'paid_social' })).toBe('paid_social');
+    expect(classifyChannel({ clickIdTypes: ['fbclid'], source: 'facebook', medium: 'cpc' })).toBe('paid_social');
+    expect(classifyChannel({ source: 'ig', medium: 'paid' })).toBe('paid_social');
+    // Ad-only ids still prove an ad; Google's stay paid search; a YouTube cpc tag stays where it was.
+    for (const c of ['ttclid', 'sccid', 'li_fat_id']) expect(classifyChannel({ clickIdTypes: [c] }), c).toBe('paid_social');
+    expect(classifyChannel({ clickIdTypes: ['gclid'] })).toBe('paid_search');
+    expect(classifyChannel({ source: 'youtube', medium: 'cpc' })).toBe('paid_search');
+    expect(classifyChannel({ source: 'google', medium: 'cpc' })).toBe('paid_search');
+  });
+
+  it('GA4: an untagged fbclid visit with no referrer is credited to Facebook (it was Direct); Instagram\'s browser wins', () => {
+    expect(sets(page('https://shopgoldplus.com/products/x?fbclid=IwAR123').dl)).toEqual({ page_referrer: 'https://facebook.com/' });
+    expect(sets(page('https://shopgoldplus.com/products/x?fbclid=IwAR123', { ua: 'Mozilla/5.0 (iPhone) Instagram 312.0.0.0' }).dl)).toEqual({ page_referrer: 'https://instagram.com/' });
+    // Its own referrer, or campaign tags, are left alone.
+    expect(sets(page('https://shopgoldplus.com/?fbclid=IwAR123', { referrer: 'https://m.facebook.com/' }).dl)).toEqual({});
+    expect(sets(page('https://shopgoldplus.com/?fbclid=IwAR1&utm_source=fb&utm_medium=paid_social').dl)).toEqual({});
+  });
+
+  it('Snapchat\'s click id (ScCid, mixed case) is carried to the next page like the others', () => {
+    const store = new Map<string, string>();
+    page('https://shopgoldplus.com/?ScCid=abc', { store });
+    const next = page('https://shopgoldplus.com/shop', { referrer: 'https://shopgoldplus.com/', store });
+    expect(new URL(next.loc.href).searchParams.get('ScCid')).toBe('abc');
+  });
+
+  it('the order source and the landing touch agree: fbclid without tags names Facebook, not paid', () => {
+    const a = read('apps/web/src/lib/attribution.ts');
+    expect(a).not.toMatch(/if \(p\.get\('fbclid'\)\) return 'facebook';\n\s*if \(p\.get\('ttclid'\)\)/);
+    expect(a).toMatch(/function socialNetworkOnUrl[\s\S]{0,200}fbclid'\)\) return 'facebook\.com'/);
+    expect(read('apps/web/src/lib/telemetry.ts')).toMatch(/const adClick = clickTypes\.some\(\(k\) => !\['fbclid', 'twclid', 'epik'\]\.includes\(k\)\)/);
+  });
+});

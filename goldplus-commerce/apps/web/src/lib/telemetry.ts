@@ -527,7 +527,12 @@ export function recordLandingTouch(): void {
     let refHost: string | null = null;
     // A return from the payment gateway (or our own subdomain) is not an arrival.
     try { const h = document.referrer ? new URL(document.referrer).host : ''; refHost = h && !isInternalReferrerHost(h, location.host) ? h.slice(0, 253) : null; } catch { /* no referrer */ }
-    if (!refHost && !q.get('utm_source') && !q.get('utm_medium') && !clickTypes.length) refHost = inAppReferrerHost(navigator.userAgent || '');
+    // A social network's own click id (fbclid, twclid, epik) is added to shares too, not only to ads: without tags
+    // it names the network the visitor came from (lib/attribution socialNetworkOnUrl), it does not make the visit paid.
+    const adClick = clickTypes.some((k) => !['fbclid', 'twclid', 'epik'].includes(k));
+    if (!refHost && !q.get('utm_source') && !q.get('utm_medium') && !adClick) {
+      refHost = inAppReferrerHost(navigator.userAgent || '') || (q.get('fbclid') ? 'facebook.com' : q.get('twclid') ? 'x.com' : q.get('epik') ? 'pinterest.com' : null);
+    }
     const hasCampaign = !!(q.get('utm_source') || q.get('utm_medium') || clickTypes.length || refHost);
     let seen = false;
     try { seen = sessionStorage.getItem('_gp_touch') === '1'; sessionStorage.setItem('_gp_touch', '1'); } catch { /* storage off */ }

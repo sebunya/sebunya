@@ -43,6 +43,16 @@ privacy (#analytics) and cookies pages state all of this. Supersedes the 2026-08
   (…/chat), a the installed app (app/pwa). Campaign = where the link goes (track, review, gift, loyalty, reset, pay,
   product, shop) or `goldie` for Goldie's replies. An SMS is tagged only if it costs no extra part. Referral links
   (`/r/<code>`) and the gift card share link carry utm_source=customer_share / customer_invite, utm_medium=friend.
+- **A social network's click id is not an ad.** Facebook adds `fbclid` to every link clicked on Facebook, Instagram and
+  Messenger, shares included (X `twclid`, Pinterest `epik` likewise). No ad has ever run, and all 10 fbclid arrivals in
+  30 days (2026-10-23) were shares that our reports filed as paid social. Now: untagged, they are that network's organic
+  social (our reports, the order source, and GA4's page_referrer when none came); paid social needs the tags to say
+  so, or an ad-only id (ttclid, ScCid, li_fat_id). gclid/gbraid/wbraid/msclkid stay paid search. A social source with
+  a cost medium (cpc, paid…) is paid social, as in GA4.
+- **When ads start:** every Meta ad gets URL parameters
+  `utm_source={{site_source_name}}&utm_medium=paid_social&utm_campaign={{campaign.name}}&utm_content={{ad.name}}`,
+  TikTok `utm_source=tiktok&utm_medium=paid_social&utm_campaign=__CAMPAIGN_NAME__&utm_content=__CID_NAME__`, X and
+  LinkedIn the same pattern. Without them GA4 cannot tell an ad from a share.
 - **Social apps' own browsers** (Instagram, Facebook/Messenger, TikTok, Snapchat, LinkedIn, Pinterest) send no
   referrer but name themselves: with no referrer and no campaign the landing is credited to that network
   (lib/inAppBrowser.ts, mirrored in BaseLayout, kept in step by a test). WhatsApp has no such marker.
