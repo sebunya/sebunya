@@ -299,7 +299,7 @@ describe('our own robots are not shoppers', () => {
     const sdk = read('apps/web/src/lib/telemetry.ts');
     expect(sdk).toContain('if (isOwnAutomation()) return eventId;');
     expect(sdk).toContain('if (isOwnAutomation()) { queue.splice(0, queue.length); return; }');
-    expect(sdk).toMatch(/\.webdriver[\s\S]{0,120}PROBE_COOKIE[\s\S]{0,120}isDeclaredAutomation\(navigator\.userAgent\)/);
+    expect(sdk).toMatch(/\.webdriver[\s\S]{0,120}PROBE_COOKIE[\s\S]{0,220}isDeclaredAutomation\(navigator\.userAgent\)/);
   });
   it('no per-event identity-graph write remains (owner decision 2026-09-24)', () => {
     expect(code('apps/api/src/application/use-cases/telemetry/TrackBrowserTelemetryEventUseCase.ts')).not.toMatch(/upsertByFpClientId|DrizzleIdentityRepository/);

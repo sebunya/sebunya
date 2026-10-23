@@ -9,6 +9,7 @@ import * as client from 'prom-client';
 import { ga4CollectHit } from './Ga4CollectHit';
 import { fanOutAdConversions } from '../advertising/AdConversionDispatch';
 import { DEAD_LETTER_STATE } from '../../domain/outbox/TerminalState';
+import { environmentOf } from '../../domain/measurement/BusinessEvents';
 
 const gtmOutboundLatency = new client.Histogram({
   name: 'goldplus_gtm_outbound_latency_seconds',
@@ -28,6 +29,12 @@ const gtmMatchingSignals = new client.Counter({
   labelNames: ['signal_type', 'event_name'],
 });
 
+const ga4SkippedNoSession = new client.Counter({
+  name: 'goldplus_ga4_skipped_no_session_total',
+  help: 'Browsing events not sent to GA4 because they carried no GA4 session id',
+  labelNames: ['event_name'],
+});
+
 const registerMetricSafe = (m: client.Metric) => {
   try {
     client.register.registerMetric(m);
@@ -39,6 +46,7 @@ const registerMetricSafe = (m: client.Metric) => {
 registerMetricSafe(gtmOutboundLatency);
 registerMetricSafe(gtmConversionFailures);
 registerMetricSafe(gtmMatchingSignals);
+registerMetricSafe(ga4SkippedNoSession);
 
 /**
  * PHASE 6–11 + PHASE 12 — TELEMETRY DISPATCH SERVICE
@@ -236,6 +244,18 @@ export class TelemetryDispatchService {
     // ad blockers and does not depend on browser cookies. The web container no
     // longer sends ecommerce events (its GA4 event tag is paused), so nothing
     // is counted twice; it still sends page views.
+
+    // Production only: a staging or local API with GA4_MEASUREMENT_ID set and a reachable tagging server sent its
+    // browsing events into the live property (purchases were already gated in DeliveryService).
+    if (environmentOf(process.env.NODE_ENV) !== 'production' && process.env.MEASUREMENT_ALLOW_NONPROD_DELIVERY !== 'true') return;
+    // Only inside a GA4 visit. A browsing event without the visit's session id (the browser had no `_ga_<stream>`
+    // cookie yet: the tag loads after the page, our beacon 500 ms after the action) made GA4 count a user with no
+    // session, no source and neither new nor returning: 562 of 1,306 users in the 90 days to 2026-10-22, all
+    // "Direct". Without the visit it says nothing GA4 can use; our own records and the ad platforms above have it.
+    if (!event.user_data?.ga_session_id) {
+      ga4SkippedNoSession.inc({ event_name: event.event_name });
+      return;
+    }
 
     const measurementId = (env.ga4MeasurementId ?? '').trim();
     if (!/^G-[A-Z0-9]+$/.test(measurementId)) throw new Error('GTM_NOT_CONFIGURED: GA4_MEASUREMENT_ID is not set; server-side measurement is not configured.');

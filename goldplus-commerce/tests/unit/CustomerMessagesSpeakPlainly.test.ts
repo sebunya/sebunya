@@ -102,7 +102,10 @@ describe('the words themselves', () => {
   it('WhatsApp carries the same substance as the SMS', () => {
     for (const t of TEMPLATES) {
       const sms = smsText(t, DATA)!.replace(/^GoldPlus: /, '');
-      expect(whatsappText(t, DATA), t).toContain(sms);
+      // The same words; WhatsApp's shop links say WhatsApp (?ch=w.<campaign>, shared/links/shopLinkTag).
+      const wa = whatsappText(t, DATA)!;
+      expect(wa.replace(/[?&]ch=w\.[a-z0-9_-]+/g, ''), t).toContain(sms);
+      if (/https:\/\/(www\.)?shopgoldplus\.com/.test(sms)) expect(wa, t).toMatch(/[?&]ch=w\.[a-z]+/);
     }
   });
 });

@@ -1,4 +1,5 @@
 import { gsmPlain } from '../../domain/fulfilment/PaidOrderAlert';
+import { tagShopLinks } from '@goldplus/shared';
 
 /**
  * Every message GoldPlus sends a customer, in one place, in three shapes.
@@ -360,7 +361,8 @@ export function whatsappText(template: string, d: CustomerMessageData = {}): str
   // WhatsApp has room for a greeting and a reply prompt; the substance is the
   // same sentence the SMS carries, so the two channels never disagree.
   const body = sms.replace(`${SHOP_NAME}: `, '');
-  return `${greeting(d.customerName)}\n\n${body}\n\nReply to this message and a person at ${SHOP_NAME} will answer.`;
+  // Its shop links say WhatsApp (shared/links/shopLinkTag); the SMS adapter tags its own as SMS.
+  return tagShopLinks(`${greeting(d.customerName)}\n\n${body}\n\nReply to this message and a person at ${SHOP_NAME} will answer.`, 'w');
 }
 
 /* ------------------------------------------------------------------------ */

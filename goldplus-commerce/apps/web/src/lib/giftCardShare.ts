@@ -57,8 +57,9 @@ export function captionSuggestions(occasion: string): string[] {
   return [...(own[occasion] ?? []), ...general];
 }
 
-/** The public page for buying a gift card (never the recipient's own link). */
-export const PUBLIC_BUY_URL = 'https://shopgoldplus.com/gift-card/buy';
+/** The public page for buying a gift card (never the recipient's own link). Tagged like the referral links: a friend
+ *  who taps it in a WhatsApp status or a chat arrives with no referrer, and GA4 called it Direct (2026-10-23). */
+export const PUBLIC_BUY_URL = 'https://shopgoldplus.com/gift-card/buy?utm_source=customer_share&utm_medium=friend&utm_campaign=gift_card';
 
 export function shareFileName(occasion: string, size: ShareSize): string {
   return `goldplus-gift-${giftCardTheme(occasion).key.replace(/_/g, '-')}-${size}.png`;

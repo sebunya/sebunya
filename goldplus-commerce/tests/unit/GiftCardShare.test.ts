@@ -49,7 +49,7 @@ describe('Share your gift: what may reach the picture', () => {
       expect(c).toContain('This made my day. Thank you ❤️');
       expect(c.join(' ')).not.toMatch(/#|@|shopgoldplus/);
     }
-    expect(PUBLIC_BUY_URL).toBe('https://shopgoldplus.com/gift-card/buy');
+    expect(PUBLIC_BUY_URL).toBe('https://shopgoldplus.com/gift-card/buy?utm_source=customer_share&utm_medium=friend&utm_campaign=gift_card');
   });
 
   it('the photo reaches the picture only when chosen, and only from the shop’s own photo address', () => {

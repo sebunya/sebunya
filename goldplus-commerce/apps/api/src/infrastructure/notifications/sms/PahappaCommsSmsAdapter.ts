@@ -9,6 +9,7 @@ import {
   OUTCOME_UNKNOWN_PROVIDER_CODE,
 } from '../../../application/ports/INotificationProvider';
 import { resilientFetch, sendMayHaveReachedProvider } from '../../http/HttpClient';
+import { tagShopLinksInSms } from '@goldplus/shared';
 
 export class PahappaCommsSmsAdapter implements INotificationProvider {
   /**
@@ -125,7 +126,9 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
     // 4. The text. A producer may attach one; otherwise it comes from the one
     // customer wording table. It used to fall back to `payload.template`, which
     // would have put "LOYALTY_EXPIRY_WARNING" on a customer's phone.
-    const text = String(payload.data?.message || smsText(payload.template, (payload.data || {}) as never) || '').trim();
+    // Our shop links say they came from an SMS (shared/links/shopLinkTag): SMS apps send no referrer. Never at the
+    // price of one more SMS part: a message the tag would push over the boundary goes as it was.
+    const text = tagShopLinksInSms(String(payload.data?.message || smsText(payload.template, (payload.data || {}) as never) || '').trim());
     if (!text) {
       return {
         status: 'FAILED' as NotificationStatus,

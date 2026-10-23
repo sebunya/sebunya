@@ -223,6 +223,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
     if (!(await holderIsAdmin(context.request))) {
       return context.redirect(`/admin/login?returnTo=${encodeURIComponent(adminPath)}`, 303);
     }
+    // This browser belongs to staff: the shop's tag and beacons leave it out of GA4 and the shopper records
+    // (BaseLayout, lib/telemetry). Staff browsing the shop was counted as customers (2026-10-23 audit).
+    if (!context.cookies.get('gp_staff')) context.cookies.set('gp_staff', '1', { path: '/', maxAge: 60 * 60 * 24 * 395, sameSite: 'lax', secure: true, httpOnly: false });
   }
 
   // Asset and API-relay requests keep whatever cookie state they arrived

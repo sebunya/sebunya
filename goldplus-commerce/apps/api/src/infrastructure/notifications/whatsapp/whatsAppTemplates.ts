@@ -3,6 +3,7 @@ import {
   supportPhoneDisplay,
   trackOrderUrl,
 } from '../../../application/notifications/CustomerMessages';
+import { tagShopUrl } from '@goldplus/shared';
 
 /**
  * The ONE list of GoldPlus WhatsApp templates, sent directly through Meta's WhatsApp Cloud API (owner,
@@ -57,7 +58,7 @@ const V: Record<string, WhatsAppVariable> = {
     example: 'UGX 145,000',
     value: (d) => (Number.isFinite(Number(d.totalUgx)) && Number(d.totalUgx) > 0 ? formatUgx(Number(d.totalUgx)) : null),
   },
-  trackUrl: { name: 'track_url', example: 'https://shopgoldplus.com/track-order?reference=GP-10427', value: (d) => (str(d.orderNumber) ? trackOrderUrl(str(d.orderNumber)!) : null) },
+  trackUrl: { name: 'track_url', example: 'https://shopgoldplus.com/track-order?reference=GP-10427', value: (d) => (str(d.orderNumber) ? tagShopUrl(trackOrderUrl(str(d.orderNumber)!), 'w') : null) },
   supportPhone: { name: 'support_phone', example: '0705 004545', value: () => supportPhoneDisplay() },
   reference: { name: 'reference', example: 'SR-2041', value: (d) => str(d.reference) },
   code: { name: 'code', example: '482913', value: (d) => str(d.code) },

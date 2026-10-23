@@ -1,4 +1,5 @@
 import { emailCopy, whatsappText, smsText, trackOrderUrl, supportPhoneDisplay, type EmailCopy } from '../../notifications/CustomerMessages';
+import { tagShopUrl } from '@goldplus/shared';
 
 export type NotificationTemplateKey =
   | 'ORDER_RECEIVED_UNPAID'
@@ -604,7 +605,7 @@ You are getting this because of order ${order.orderNumber}.`;
       : 'ORDER_RECEIVED_UNPAID';
     return (
       whatsappText(template, { customerName: order.customerName, orderNumber: order.orderNumber, totalUgx: Number(order.totalUgx || 0) })
-      ?? `Hello,\n\nThere is an update on your GoldPlus order ${order.orderNumber}. Track it here: ${trackOrderUrl(order.orderNumber)}`
+      ?? `Hello,\n\nThere is an update on your GoldPlus order ${order.orderNumber}. Track it here: ${tagShopUrl(trackOrderUrl(order.orderNumber), 'w')}`
     );
   }
 }

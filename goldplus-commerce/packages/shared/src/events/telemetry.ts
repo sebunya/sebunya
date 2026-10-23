@@ -203,10 +203,30 @@ export type BrowserTelemetryEvent   = z.infer<typeof BrowserTelemetryEventSchema
  * checkout (web) and the telemetry collector (api): the cookie is set on the
  * registrable domain, so it reaches api.shopgoldplus.com with the beacon.
  */
-export function gaSessionFromCookieHeader(cookieHeader: string | null | undefined): { gaSessionId: string; gaSessionNumber: number } | null {
-  const raw = (cookieHeader ?? '').match(/(?:^|;\s*)_ga_[A-Z0-9]+=([^;]+)/)?.[1] ?? '';
-  const m = raw.match(/^GS1\.\d\.(\d{1,20})\.(\d{1,7})/) ?? raw.match(/^GS2\.\d\.s(\d{1,20})\$o(\d{1,7})/);
-  return m ? { gaSessionId: m[1], gaSessionNumber: Number(m[2]) } : null;
+export function gaSessionFromCookieHeader(cookieHeader: string | null | undefined, measurementId?: string | null): { gaSessionId: string; gaSessionNumber: number } | null {
+  const all = gaSessionCookies(cookieHeader);
+  if (!all.length) return null;
+  // Our own stream's cookie when we know it; else the most recently active one. It used to take the FIRST `_ga_*`
+  // cookie, so a browser that also carried another property's (an older stream on this domain) could file our
+  // events and sales under that property's session (2026-10-23 audit).
+  const stream = (measurementId ?? '').trim().replace(/^G-/, '');
+  const pick = (stream && all.find((c) => c.stream === stream)) || [...all].sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0) || Number(b.gaSessionId) - Number(a.gaSessionId))[0];
+  return { gaSessionId: pick.gaSessionId, gaSessionNumber: pick.gaSessionNumber };
+}
+
+/** Every `_ga_<stream>` session cookie in a Cookie header, with the last activity (epoch seconds) when it says. */
+export function gaSessionCookies(cookieHeader: string | null | undefined): Array<{ stream: string; gaSessionId: string; gaSessionNumber: number; lastActivity: number | null }> {
+  const out: Array<{ stream: string; gaSessionId: string; gaSessionNumber: number; lastActivity: number | null }> = [];
+  for (const m of (cookieHeader ?? '').matchAll(/(?:^|;\s*)_ga_([A-Z0-9]+)=([^;]+)/g)) {
+    const raw = m[2];
+    const g1 = raw.match(/^GS1\.\d\.(\d{1,20})\.(\d{1,7})\.\d+\.(\d{1,20})/) ?? raw.match(/^GS1\.\d\.(\d{1,20})\.(\d{1,7})/);
+    const g2 = g1 ? null : raw.match(/^GS2\.\d\.s(\d{1,20})\$o(\d{1,7})/);
+    const hit = g1 ?? g2;
+    if (!hit) continue;
+    const t = g1 ? g1[3] : raw.match(/\$t(\d{1,20})/)?.[1];
+    out.push({ stream: m[1], gaSessionId: hit[1], gaSessionNumber: Number(hit[2]), lastActivity: t ? Number(t) : null });
+  }
+  return out;
 }
 
 /**

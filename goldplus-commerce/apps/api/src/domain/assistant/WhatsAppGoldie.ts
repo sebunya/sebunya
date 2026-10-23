@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { tagShopLinks } from '@goldplus/shared';
 
 /**
  * Goldie on WhatsApp: what a customer sent (from the signed Cloud API
@@ -238,7 +239,8 @@ export function formatWhatsAppReply(r: ReplyParts): string {
   }
   const links = (r.links ?? []).filter((l) => !/#goldie-team$/.test(l.url) && !/wa\.me\//.test(l.url) && !/\/wa$/.test(l.url)).slice(0, 2);
   if (links.length) { lines.push(''); for (const l of links) lines.push(`${l.label}: ${l.url}`); }
-  const out = lines.join('\n').trim();
+  // Goldie's shop links say WhatsApp, campaign goldie (shared/links/shopLinkTag): WhatsApp sends no referrer.
+  const out = tagShopLinks(lines.join('\n').trim(), 'w', 'goldie');
   return out.length <= WHATSAPP_MAX ? out : `${out.slice(0, WHATSAPP_MAX - 1).trimEnd()}…`;
 }
 

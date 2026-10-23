@@ -212,6 +212,7 @@ function escapeHtml(str: string | null | undefined): string {
 
 import { formatUgx } from '../../../lib/money';
 import { orderLoadError, orderFulfilmentTransitionOptions, DISPATCH_ON_TASK_STATUSES } from '../../../lib/adminOrderPage';
+import { tagShopLinks } from '@goldplus/shared';
 // UGX code format via the single money source (en-UG's currency symbol is "USh").
 const formatter = { format: (n: unknown) => formatUgx(n) };
 
@@ -449,6 +450,8 @@ if (order && !previewData.whatsappText) {
   } else if (previewData.template === 'ORDER_FULFILLMENT_COMPLETED') {
     fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nYour order has been *Delivered and Settled* successfully.\n\nThank you for choosing GoldPlus Online Store!`;
   }
+  // The customer taps these in WhatsApp: tagged so the visit is not counted as Direct (shared/links/shopLinkTag).
+  fallbackWaText = tagShopLinks(fallbackWaText, 'w');
   
   previewData.whatsappText = fallbackWaText;
 }

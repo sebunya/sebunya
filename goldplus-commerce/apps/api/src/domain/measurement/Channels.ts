@@ -44,6 +44,10 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   // WhatsApp or SMS with no referrer, which used to read as direct.
   if (med === 'friend') return 'friend_referral';
   if (src === 'whatsapp' || med === 'whatsapp') return 'whatsapp';
+  // Our own tagged links (shared/links/shopLinkTag, 2026-10-23): Goldie's replies in Messenger and Instagram are a
+  // conversation with our page (organic social); the installed app's start page is a returning customer (direct).
+  if (med === 'chat' && /^(messenger|instagram)$/.test(src)) return 'organic_social';
+  if (med === 'pwa') return 'direct';
   if (/^(organic|seo)$/.test(med)) return 'organic_search';
   if (/^(social|social[_-]?organic)$/.test(med)) return 'organic_social';
   // Assistants tag links with their own source and at most a referral medium.

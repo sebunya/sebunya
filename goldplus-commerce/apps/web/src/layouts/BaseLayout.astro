@@ -176,11 +176,56 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         link with the hero image and cost mobile LCP. gtm.start keeps the real
         page-start time and dataLayer queues anything pushed meanwhile, so no event
         is lost; sales events are sent server-side regardless. */}
+    {/* Tag loader notes (kept out of the script: inline scripts ship as written). Audit 2026-10-23: 94.6% "Direct".
+        - Not loaded for automation (same list as lib/declaredAutomation.ts, plus the gp_probe cookie) or for staff
+          (gp_staff, set when the admin opens).
+        - Where the visit came from, settled before anything reads the URL:
+          1. Our own links carry ?ch=<channel>.<campaign> (shared/links/shopLinkTag; short because SMS is paid by the
+             character), rewritten to utm_source/utm_medium/utm_campaign. Channels: s SMS, w WhatsApp, e email,
+             m Messenger, i Instagram, a the installed app.
+          2. A social app's own browser sends no referrer but names itself (lib/inAppBrowser.ts, same list, kept in
+             step by a test): the landing is credited to that network.
+          3. The tag loads late (mobile LCP), so a visitor who taps on before it loads used to lose the landing. Until
+             GA4 has seen the visit (sessionStorage gp_ga_seen, set when gtm.js loads), the landing's campaign and
+             click ids (gp_land, 30 minutes) are put on the next page's URL and its referrer is set as page_referrer.
+        - The _fp_cid fallback is Domain-scoped like the server's (visitorCookieDomain): a host-only copy beside it
+          made two ids, read differently by the tag and the collector.
+        - The tag loads after load + idle, or at the first touch, key or scroll if sooner (the hero has painted). */}
     {measurement.configured && (
       <script nonce={Astro.locals.cspNonce} define:vars={{ metricsUrl: measurement.metricsUrl, gtmId: measurement.gtmId, userId: Astro.locals.gpUserId ?? null, adSignals: siteVerification.googleAdsRemarketing }}>
         (function () {
         var ua = navigator.userAgent || '';
-        if (navigator.webdriver === true || /HeadlessChrome|Chrome-Lighthouse|PTST|GTmetrix|Pingdom/i.test(ua)) return;
+        if (navigator.webdriver === true || /GoldPlusSyntheticProbe|HeadlessChrome|Chrome-Lighthouse|PageSpeed|PTST|GTmetrix|Pingdom|Playwright/i.test(ua)
+          || /(?:^|; )(?:gp_probe|gp_staff)=/.test(document.cookie)) return;
+        var CAMPAIGN = /^(utm_[a-z]+|gclid|gbraid|wbraid|dclid|fbclid|ttclid|twclid|msclkid|li_fat_id|sccid|epik)$/;
+        var CH = { s: ['sms', 'sms'], w: ['whatsapp', 'chat'], e: ['goldplus', 'email'], m: ['messenger', 'chat'], i: ['instagram', 'chat'], a: ['app', 'pwa'] };
+        try {
+          var u = new URL(location.href), gt = u.searchParams.get('ch');
+          var g = gt && /^([swemia])\.([a-z0-9_-]{1,40})$/.exec(gt);
+          if (g && !u.searchParams.has('utm_source')) {
+            u.searchParams.delete('ch');
+            u.searchParams.set('utm_source', CH[g[1]][0]); u.searchParams.set('utm_medium', CH[g[1]][1]); u.searchParams.set('utm_campaign', g[2]);
+            history.replaceState(history.state, '', u.toString());
+          }
+          var here = new URL(location.href), q = [];
+          here.searchParams.forEach(function (v, k) { if (CAMPAIGN.test(k)) q.push([k, v]); });
+          var ref = '';
+          try { var rh = new URL(document.referrer).hostname; if (!/(^|\.)shopgoldplus\.com$/.test(rh)) ref = document.referrer; } catch (e) {}
+          if (!ref && !q.length && !document.referrer) {
+            var IAB = [[/\bSnapchat\/\d/i, 'snapchat.com'], [/\bInstagram\s\d/i, 'instagram.com'], [/\bFBAN\/|\bFBAV\/|\bFB_IAB\//, 'facebook.com'],
+              [/\bmusical_ly|\bBytedanceWebview|\bTikTok\b/i, 'tiktok.com'], [/\bLinkedInApp\b/i, 'linkedin.com'], [/\bPinterest\/\d/i, 'pinterest.com']];
+            for (var i = 0; i < IAB.length; i++) if (IAB[i][0].test(ua)) { ref = 'https://' + IAB[i][1] + '/'; window.__gpLandingReferrer = ref; break; }
+          }
+          var land = null; try { land = JSON.parse(sessionStorage.getItem('gp_land') || 'null'); } catch (e) {}
+          if (land && Date.now() - land.t > 30 * 60e3) { land = null; sessionStorage.removeItem('gp_land'); }
+          if (sessionStorage.getItem('gp_ga_seen') !== '1') {
+            if (q.length || ref) sessionStorage.setItem('gp_land', JSON.stringify({ q: q, r: ref, t: Date.now() }));
+            else if (land) {
+              if (land.q.length) { land.q.forEach(function (kv) { here.searchParams.set(kv[0], kv[1]); }); history.replaceState(history.state, '', here.toString()); }
+              if (land.r) window.__gpLandingReferrer = land.r;
+            }
+          }
+        } catch (e) {}
         window.dataLayer = window.dataLayer || [];
         window.gtag = window.gtag || function () { dataLayer.push(arguments); };
         var noCookies = /(?:^|; )gp_consent=a0/.test(document.cookie);
@@ -194,19 +239,23 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         var cid = m ? decodeURIComponent(m[1]) : null;
         if (!cid) {
           cid = 'fp.' + Date.now() + '.' + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
-          document.cookie = '_fp_cid=' + cid + '; expires=' + new Date(Date.now() + 365 * 864e5).toUTCString() + '; path=/; SameSite=Lax; Secure';
+          var dom = /(^|\.)shopgoldplus\.com$/.test(location.hostname) ? '; Domain=shopgoldplus.com' : '';
+          document.cookie = '_fp_cid=' + cid + '; expires=' + new Date(Date.now() + 365 * 864e5).toUTCString() + '; path=/' + dom + '; SameSite=Lax; Secure';
         }
         dataLayer.push(userId ? { fp_client_id: cid, user_id: userId } : { fp_client_id: cid });
+        if (window.__gpLandingReferrer) gtag('set', { page_referrer: window.__gpLandingReferrer });
         window.dataLayer.push({'gtm.start': new Date().getTime(), event: 'gtm.js'});
         var gtmLoaded = false;
         function loadGtm(){
           if (gtmLoaded) return; gtmLoaded = true;
           var j = document.createElement('script'); j.async = true;
           j.src = metricsUrl + '/gtm.js?id=' + gtmId;
+          j.onload = function () { try { sessionStorage.setItem('gp_ga_seen', '1'); sessionStorage.removeItem('gp_land'); } catch (e) {} };
           document.head.appendChild(j);
         }
         function whenIdle(){ (window.requestIdleCallback || function(f){ setTimeout(f, 1); })(loadGtm, { timeout: 2500 }); }
         if (document.readyState === 'complete') whenIdle(); else addEventListener('load', whenIdle);
+        ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(function (t) { addEventListener(t, loadGtm, { once: true, passive: true }); });
         })();
       </script>
     )}

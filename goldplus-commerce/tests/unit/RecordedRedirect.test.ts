@@ -71,7 +71,7 @@ describe('the routes that 404 ask for a recorded redirect first', () => {
     const notFound = src.indexOf("return Astro.redirect('/404', 404)");
     expect(lookup).toBeGreaterThan(0);
     expect(notFound).toBeGreaterThan(lookup);
-    expect(src).toMatch(/if \(recorded\) return Astro\.redirect\(recorded\.target, recorded\.status\);/);
+    expect(src).toMatch(/if \(recorded\) return Astro\.redirect\(carryQuery\(recorded\.target, Astro\.url\.search\), recorded\.status\);/);
   });
 
   it('products/[slug].astro (slug changes) asks before EVERY 404 it returns, and never on the 503', () => {
@@ -87,7 +87,7 @@ describe('the routes that 404 ask for a recorded redirect first', () => {
       // between them is the once-published "not listed right now" answer, which is a 404 too.
       const before = src.slice(Math.max(0, at - 320), at);
       expect(before).toContain(lookup);
-      expect(before).toMatch(/if \(recorded\) return Astro\.redirect\(recorded\.target, recorded\.status\);\s*(const unlisted = await notListedResponse\(res\);\s*if \(unlisted\) return unlisted;\s*)?$/);
+      expect(before).toMatch(/if \(recorded\) return Astro\.redirect\(carryQuery\(recorded\.target, Astro\.url\.search\), recorded\.status\);\s*(const unlisted = await notListedResponse\(res\);\s*if \(unlisted\) return unlisted;\s*)?$/);
       at = src.indexOf(notFound, at + 1);
     }
     expect(count).toBe(2);
