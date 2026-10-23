@@ -3,7 +3,7 @@
   "name": "GoldPlus Commerce",
   "short_name": "GoldPlus",
   "description": "Quality electronics in Uganda.",
-  "start_url": "/",
+  "start_url": "/?ch=a.homescreen",
   "scope": "/",
   "display": "standalone",
   "background_color": "#F7F7F7",

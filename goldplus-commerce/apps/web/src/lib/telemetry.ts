@@ -83,6 +83,8 @@ function isOwnAutomation(): boolean {
   try {
     return !!(navigator as { webdriver?: boolean }).webdriver
       || new RegExp(`(^|;\\s*)${PROBE_COOKIE}=`).test(document.cookie)
+      // Staff (set when the admin opens, middleware): not a shopper either.
+      || /(^|;\s*)gp_staff=/.test(document.cookie)
       || isDeclaredAutomation(navigator.userAgent);
   } catch {
     return false;
@@ -230,9 +232,37 @@ interface QueuedEvent {
 const queue: QueuedEvent[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
+/**
+ * The API forwards an event to GA4 only with the visit's GA4 session id, read from the `_ga_<stream>` cookie on this
+ * request (2026-10-23 audit: events sent before the tag had made one became users with no session, all "Direct").
+ * The tag loads after the page, so a first page's events wait for that cookie, up to GA_SESSION_WAIT_MS. Leaving
+ * the page sends them at once (pagehide), and a page without the tag (staff, a probe, measurement off) never waits.
+ */
+const GA_SESSION_WAIT_MS = 10_000;
+let firstQueuedAt = 0;
+
+function gaSessionReady(): boolean {
+  return /(?:^|;\s*)_ga_[A-Z0-9]+=/.test(document.cookie);
+}
+
+function gaTagExpected(): boolean {
+  const dl = (window as { dataLayer?: unknown[] }).dataLayer;
+  return Array.isArray(dl) && dl.some((e) => !!e && typeof e === 'object' && (e as { event?: unknown }).event === 'gtm.js');
+}
+
+function flushWhenGaReady(): void {
+  flushTimer = null;
+  if (queue.length && gaTagExpected() && !gaSessionReady() && Date.now() - firstQueuedAt < GA_SESSION_WAIT_MS) {
+    flushTimer = setTimeout(flushWhenGaReady, BATCH_FLUSH_MS);
+    return;
+  }
+  flushQueue();
+}
+
 function scheduleFlush(): void {
   if (flushTimer) return;
-  flushTimer = setTimeout(flushQueue, BATCH_FLUSH_MS);
+  firstQueuedAt = Date.now();
+  flushTimer = setTimeout(flushWhenGaReady, BATCH_FLUSH_MS);
 }
 
 function flushQueue(): void {

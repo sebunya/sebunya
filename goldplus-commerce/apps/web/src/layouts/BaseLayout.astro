@@ -180,7 +180,42 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
       <script nonce={Astro.locals.cspNonce} define:vars={{ metricsUrl: measurement.metricsUrl, gtmId: measurement.gtmId, userId: Astro.locals.gpUserId ?? null, adSignals: siteVerification.googleAdsRemarketing }}>
         (function () {
         var ua = navigator.userAgent || '';
-        if (navigator.webdriver === true || /HeadlessChrome|Chrome-Lighthouse|PTST|GTmetrix|Pingdom/i.test(ua)) return;
+        // Same list as lib/declaredAutomation.ts (our probes name themselves GoldPlusSyntheticProbe, or carry the
+        // gp_probe cookie), plus staff: a browser that opened the admin carries gp_staff and is not a customer.
+        if (navigator.webdriver === true || /GoldPlusSyntheticProbe|HeadlessChrome|Chrome-Lighthouse|PageSpeed|PTST|GTmetrix|Pingdom|Playwright/i.test(ua)
+          || /(?:^|; )(?:gp_probe|gp_staff)=/.test(document.cookie)) return;
+        // Where this visit came from, for GA4 (2026-10-23 audit: 94.6% "Direct").
+        // 1. Our own messages carry a short tag (?ch=s.track: SMS costs by the character; shared/links/shopLinkTag); it becomes the utm_* GA4
+        //    reads, before anything reads the URL. Channels: s SMS, w WhatsApp, e email, m Messenger, i Instagram, a app.
+        // 2. The tag loads after the page (mobile LCP). A visitor who taps on before it loads used to lose the landing:
+        //    the first page GA4 saw had our own site as referrer and no campaign, so Direct. The landing's campaign and
+        //    referrer are kept for this tab until GA4 has seen the visit, and handed to the first page it does see.
+        var CAMPAIGN = /^(utm_[a-z]+|gclid|gbraid|wbraid|dclid|fbclid|ttclid|twclid|msclkid|li_fat_id|sccid|epik)$/;
+        var CH = { s: ['sms', 'sms'], w: ['whatsapp', 'chat'], e: ['goldplus', 'email'], m: ['messenger', 'chat'], i: ['instagram', 'chat'], a: ['app', 'pwa'] };
+        try {
+          var u = new URL(location.href), gt = u.searchParams.get('ch');
+          var g = gt && /^([swemia])\.([a-z0-9_-]{1,40})$/.exec(gt);
+          if (g && !u.searchParams.has('utm_source')) {
+            u.searchParams.delete('ch');
+            u.searchParams.set('utm_source', CH[g[1]][0]); u.searchParams.set('utm_medium', CH[g[1]][1]); u.searchParams.set('utm_campaign', g[2]);
+            history.replaceState(history.state, '', u.toString());
+          }
+          var here = new URL(location.href), q = [];
+          here.searchParams.forEach(function (v, k) { if (CAMPAIGN.test(k)) q.push([k, v]); });
+          var ref = '';
+          try { var rh = new URL(document.referrer).hostname; if (!/(^|\.)shopgoldplus\.com$/.test(rh)) ref = document.referrer; } catch (e) {}
+          var land = null; try { land = JSON.parse(sessionStorage.getItem('gp_land') || 'null'); } catch (e) {}
+          if (land && Date.now() - land.t > 30 * 60e3) { land = null; sessionStorage.removeItem('gp_land'); }
+          if (sessionStorage.getItem('gp_ga_seen') !== '1') {
+            if (q.length || ref) sessionStorage.setItem('gp_land', JSON.stringify({ q: q, r: ref, t: Date.now() }));
+            else if (land) {
+              // A later page of the same visit, before GA4 saw any: carry the landing's campaign onto this URL (GA4
+              // reads campaign and click ids from it) and its referrer onto this page's hits.
+              if (land.q.length) { land.q.forEach(function (kv) { here.searchParams.set(kv[0], kv[1]); }); history.replaceState(history.state, '', here.toString()); }
+              if (land.r) window.__gpLandingReferrer = land.r;
+            }
+          }
+        } catch (e) {}
         window.dataLayer = window.dataLayer || [];
         window.gtag = window.gtag || function () { dataLayer.push(arguments); };
         var noCookies = /(?:^|; )gp_consent=a0/.test(document.cookie);
@@ -194,19 +229,28 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         var cid = m ? decodeURIComponent(m[1]) : null;
         if (!cid) {
           cid = 'fp.' + Date.now() + '.' + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
-          document.cookie = '_fp_cid=' + cid + '; expires=' + new Date(Date.now() + 365 * 864e5).toUTCString() + '; path=/; SameSite=Lax; Secure';
+          // Domain-scoped like the server's (visitorCookieDomain): a host-only copy beside it made two _fp_cid cookies,
+          // and the tag and the collector could read different ones (one person, two GA4 users).
+          var dom = /(^|\.)shopgoldplus\.com$/.test(location.hostname) ? '; Domain=shopgoldplus.com' : '';
+          document.cookie = '_fp_cid=' + cid + '; expires=' + new Date(Date.now() + 365 * 864e5).toUTCString() + '; path=/' + dom + '; SameSite=Lax; Secure';
         }
         dataLayer.push(userId ? { fp_client_id: cid, user_id: userId } : { fp_client_id: cid });
+        if (window.__gpLandingReferrer) gtag('set', { page_referrer: window.__gpLandingReferrer });
         window.dataLayer.push({'gtm.start': new Date().getTime(), event: 'gtm.js'});
         var gtmLoaded = false;
         function loadGtm(){
           if (gtmLoaded) return; gtmLoaded = true;
           var j = document.createElement('script'); j.async = true;
           j.src = metricsUrl + '/gtm.js?id=' + gtmId;
+          // From here GA4 has this visit: the landing has done its job.
+          j.onload = function () { try { sessionStorage.setItem('gp_ga_seen', '1'); sessionStorage.removeItem('gp_land'); } catch (e) {} };
           document.head.appendChild(j);
         }
         function whenIdle(){ (window.requestIdleCallback || function(f){ setTimeout(f, 1); })(loadGtm, { timeout: 2500 }); }
         if (document.readyState === 'complete') whenIdle(); else addEventListener('load', whenIdle);
+        // Or at the first touch, key or scroll, whichever is sooner: by then the hero has painted, and a visitor who
+        // reads and taps on is counted on the page they landed on.
+        ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(function (t) { addEventListener(t, loadGtm, { once: true, passive: true }); });
         })();
       </script>
     )}

@@ -1,3 +1,4 @@
 ---
-return Astro.redirect('/quote-request', 308);
+import { carryQuery } from '../lib/carryQuery';
+return Astro.redirect(carryQuery('/quote-request', Astro.url.search), 308);
 ---

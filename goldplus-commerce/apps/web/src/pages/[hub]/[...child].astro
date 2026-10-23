@@ -21,6 +21,7 @@ import { dedupeProductsById, isApprovedDiscoveryProduct, getProductSubcategory, 
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import { fetchApprovedCatalogue } from '../../lib/catalogue';
 import { findRecordedRedirect } from '../../lib/recordedRedirect';
+import { carryQuery } from '../../lib/carryQuery';
 import { offerPriceUgx } from '../../lib/offerPrice';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../../lib/storefrontDiscount';
 
@@ -40,7 +41,7 @@ if (!hub || (childParam && !child) || childParam.includes('/')) {
   // over to 404.astro cannot redirect: Astro keeps this 404 status and merges
   // the 404 page's Location into it, so the shopper got a blank 404.
   const recorded = await findRecordedRedirect(Astro.url.pathname);
-  if (recorded) return Astro.redirect(recorded.target, recorded.status);
+  if (recorded) return Astro.redirect(carryQuery(recorded.target, Astro.url.search), recorded.status);
   // Same pattern as products/[slug].astro — an unregistered path is a 404.
   return Astro.redirect('/404', 404);
 }

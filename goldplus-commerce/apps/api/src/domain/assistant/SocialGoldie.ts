@@ -1,4 +1,5 @@
 import { productsToList, type ReplyParts } from './WhatsAppGoldie';
+import { tagShopLinks } from '@goldplus/shared';
 
 /**
  * Goldie on Facebook Messenger and Instagram Direct (Meta's Messenger Platform). Pure: parsing Meta's webhook
@@ -66,7 +67,8 @@ export function formatSocialReply(r: ReplyParts, platform: SocialPlatform): stri
   }
   const links = (r.links ?? []).filter((l) => !/#goldie-team$/.test(l.url)).slice(0, 2);
   if (links.length) { lines.push(''); for (const l of links) lines.push(`${l.label}: ${l.url}`); }
-  const out = lines.join('\n').trim();
+  // Goldie's shop links say Messenger or Instagram, campaign goldie (shared/links/shopLinkTag).
+  const out = tagShopLinks(lines.join('\n').trim(), platform === 'messenger' ? 'm' : 'i', 'goldie');
   const max = SOCIAL_MAX[platform];
   return out.length <= max ? out : `${out.slice(0, max - 1).trimEnd()}…`;
 }

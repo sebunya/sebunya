@@ -42,7 +42,7 @@ describe('server-side GA4: sessions, refunds, consent', () => {
     expect(layout).toMatch(/analytics_storage: noCookies \? 'denied' : 'granted'/);
     expect(layout).not.toMatch(/globalPrivacyControl/);
     expect(layout.indexOf("gtag('consent', 'default'")).toBeLessThan(layout.indexOf("'/gtm.js?id='"));
-    expect(layout).toMatch(/navigator\.webdriver === true \|\| \/HeadlessChrome\|Chrome-Lighthouse/);
+    expect(layout).toMatch(/navigator\.webdriver === true \|\| \/GoldPlusSyntheticProbe\|HeadlessChrome\|Chrome-Lighthouse/);
     const mw = readFileSync(resolve(__dirname, '../../apps/web/src/middleware.ts'), 'utf8');
     expect(mw).toMatch(/context\.cookies\.set\('_fp_cid'/);
     expect(mw).not.toMatch(/sec-gpc/);

@@ -13,6 +13,7 @@ import {
 import { NotificationTemplateRenderer } from '../../../application/use-cases/notifications/NotificationTemplateRenderer';
 import { resilientFetch, sendMayHaveReachedProvider } from '../../http/HttpClient';
 import { classifyTransactionalEmailFailure } from '../../../application/services/consent/TransactionalEmailFailureForensics';
+import { tagShopLinks } from '@goldplus/shared';
 
 export class ZeptoMailAdapter implements INotificationProvider {
   private readonly renderer = new NotificationTemplateRenderer();
@@ -270,6 +271,10 @@ export class ZeptoMailAdapter implements INotificationProvider {
         .map(([k, v]) => `${k}: ${String(v)}`)
         .join('\n')}`;
     }
+
+    // Our shop links say they came from an email (shared/links/shopLinkTag); admin links are left alone.
+    htmlContent = tagShopLinks(htmlContent, 'e');
+    textContent = tagShopLinks(textContent, 'e');
 
     // 5. Simulate, if that is what the decision said. The message is rendered first so
     //    a dry run exercises the same rendering path a live send would — a simulation

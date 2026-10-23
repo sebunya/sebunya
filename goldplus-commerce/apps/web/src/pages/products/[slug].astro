@@ -32,6 +32,7 @@ import { SITE_ORIGIN } from '../../lib/sitemap';
 import { RETURNS_POLICY } from '../../lib/returnsPolicy';
 import { getStorefrontCopy } from '../../lib/storefrontCopy';
 import { findRecordedRedirect } from '../../lib/recordedRedirect';
+import { carryQuery } from '../../lib/carryQuery';
 import { isLikelyHuman } from '../../lib/humanTraffic';
 import { getProductReviews, aggregateRatingNode, starsText } from '../../lib/reviews';
 
@@ -96,7 +97,7 @@ try {
     // to 404.astro cannot redirect, because Astro keeps this 404 status.
     {
       const recorded = await findRecordedRedirect(Astro.url.pathname);
-      if (recorded) return Astro.redirect(recorded.target, recorded.status);
+      if (recorded) return Astro.redirect(carryQuery(recorded.target, Astro.url.search), recorded.status);
       const unlisted = await notListedResponse(res);
       if (unlisted) return unlisted;
       return Astro.redirect('/404', 404);
@@ -136,7 +137,7 @@ if (!product) {
   // Not the 503 above: an unreachable API is not a missing product.
   {
     const recorded = await findRecordedRedirect(Astro.url.pathname);
-    if (recorded) return Astro.redirect(recorded.target, recorded.status);
+    if (recorded) return Astro.redirect(carryQuery(recorded.target, Astro.url.search), recorded.status);
     return Astro.redirect('/404', 404);
   }
 }
@@ -177,7 +178,7 @@ try {
   if (lcJson.success && lcJson.data?.decided && lcJson.data.outcome) {
     const o = lcJson.data.outcome;
     if (o.httpStatus === 301 && lcJson.data.successorSlug) {
-      return Astro.redirect(`/products/${lcJson.data.successorSlug}`, 301);
+      return Astro.redirect(carryQuery(`/products/${lcJson.data.successorSlug}`, Astro.url.search), 301);
     }
     // A real 410 page. Astro.redirect('/404', 410) is not a redirect Astro can
     // reroute (only 404/500 are), so it answered 410 with `location: /404` and
