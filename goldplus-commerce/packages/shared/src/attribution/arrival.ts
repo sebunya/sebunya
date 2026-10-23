@@ -56,6 +56,18 @@ export const IN_APP_BROWSERS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bPinterest\/\d/i, 'pinterest.com'],
 ];
 
+/**
+ * Dark social: a link one person copies from the address bar into WhatsApp, Telegram or an SMS. Those apps send no
+ * referrer and the link carries no tag, so it counted as Direct: the commonest way a product travels between people
+ * here. Each shareable page's address carries the visitor's own random share token after the `#` (`#s=k3j9q2`): never
+ * sent to the server, ignored by GA4 and search engines, never a person or an account. Opened by someone whose token
+ * differs, untagged and with no outside referrer, it is a copied link: SHARE_TAGS. Reopened by its owner, nothing.
+ */
+export const SHARE_FRAGMENT = /^#s=([a-z0-9]{6})$/;
+/** Pages whose address is never shared or must not change: checkout, account, order and gift card pages, payment. */
+export const SHARE_PAGE_DENY = /^\/(checkout|cart|account|admin|login|register|reset-password|forgot|gift-card\/(open|bought)|track-order|review|returns|invite|r\/|pay|api\/|wa$|consent|preferences|dealers)/;
+export const SHARE_TAGS = { utm_source: 'shared_link', utm_medium: 'friend', utm_campaign: 'copied_link' } as const;
+
 /** The payment gateway sending the shopper back: never an arrival (GA4's "unwanted referral"). */
 export const PAYMENT_HOST = /(^|\.)pesapal\.com$/i;
 
@@ -120,12 +132,13 @@ export function landingTouch(input: { search: string; referrer: string; ua: stri
 }
 
 /** The same rules as plain data, for the inline tag loader (BaseLayout `define:vars`), which cannot import modules. */
-export function loaderRules(): { campaign: string; tagged: string; pay: string; iab: Array<[string, string, string]>; soc: Record<string, string> } {
+export function loaderRules(): { campaign: string; tagged: string; pay: string; iab: Array<[string, string, string]>; soc: Record<string, string>; share: { frag: string; deny: string; tags: Record<string, string> } } {
   return {
     campaign: CAMPAIGN_PARAM.source,
     tagged: TAGGED_OR_AD_PARAM.source,
     pay: PAYMENT_HOST.source,
     iab: IN_APP_BROWSERS.map(([re, host]) => [re.source, re.flags, host]),
     soc: { ...SOCIAL_SHARE_CLICK_IDS },
+    share: { frag: SHARE_FRAGMENT.source, deny: SHARE_PAGE_DENY.source, tags: { ...SHARE_TAGS } },
   };
 }

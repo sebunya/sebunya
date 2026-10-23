@@ -200,6 +200,10 @@ const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, 
           codes and tokens in this page's address and its referrer are replaced by "redacted". A return from Pesapal
           is not an arrival: its referrer is our own origin (GA4 would otherwise start a "pesapal.com / referral" visit).
           A page that carried the landing's campaign is marked (__gpCarried) so our own landing touch is not filed twice.
+        - Dark social (the rulebook's SHARE_*): a shareable page's address carries this visitor's own random token after
+          the # (#s=xxxxxx; localStorage gp_st), added before the tag loads so GA4 sees no change. A link copied into
+          WhatsApp, Telegram or SMS and opened by someone else, untagged and with no outside referrer, gets the
+          rulebook's SHARE_TAGS (a friend referral); its owner reopening it is nothing. The # never reaches the server.
         - The _fp_cid fallback is Domain-scoped like the server's (visitorCookieDomain): a host-only copy beside it
           made two ids, read differently by the tag and the collector.
         - The tag loads after load + idle, or at the first touch, key or scroll if sooner (the hero has painted). */}
@@ -226,6 +230,17 @@ const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, 
           try { rh = new URL(document.referrer).hostname; if (!/(^|\.)shopgoldplus\.com$/.test(rh) && !PAY.test(rh)) ref = document.referrer; } catch (e) {}
           var TAGGED = new RegExp(rules.tagged, 'i'), tagged = false;
           here.searchParams.forEach(function (v, k) { if (v && TAGGED.test(k)) tagged = true; });
+          var own = null;
+          try { own = localStorage.getItem('gp_st'); if (!/^[a-z0-9]{6}$/.test(own || '')) { own = (Math.random().toString(36).slice(2) + '000000').slice(0, 6); localStorage.setItem('gp_st', own); } } catch (e) { own = null; }
+          var sm = new RegExp(rules.share.frag).exec(location.hash);
+          if (sm) {
+            here.hash = '';
+            if (sm[1] !== own && !tagged && !ref) {
+              Object.keys(rules.share.tags).forEach(function (k) { here.searchParams.set(k, rules.share.tags[k]); q.push([k, rules.share.tags[k]]); });
+              tagged = true;
+            }
+            history.replaceState(history.state, '', here.toString());
+          }
           if (!ref && !tagged && !document.referrer) {
             var soc = '';
             Object.keys(rules.soc).forEach(function (k) { if (!soc && here.searchParams.get(k)) soc = rules.soc[k]; });
@@ -241,6 +256,7 @@ const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, 
               if (land.r) window.__gpLandingReferrer = land.r;
             }
           }
+          if (own && !location.hash && !new RegExp(rules.share.deny).test(location.pathname)) history.replaceState(history.state, '', location.href.replace(/#$/, '') + '#s=' + own);
         } catch (e) {}
         window.dataLayer = window.dataLayer || [];
         window.gtag = window.gtag || function () { dataLayer.push(arguments); };

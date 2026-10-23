@@ -18,11 +18,20 @@ function loaderSource(): string {
   return layout.slice(start, end + '        })();'.length);
 }
 
-export function page(href: string, opts: { referrer?: string; cookie?: string; store?: Map<string, string>; ua?: string } = {}) {
+export function page(href: string, opts: { referrer?: string; cookie?: string; store?: Map<string, string>; local?: Map<string, string>; ua?: string } = {}) {
   const store = opts.store ?? new Map<string, string>();
+  const local = opts.local ?? new Map<string, string>();
   const scripts: Array<{ src?: string; onload?: () => void }> = [];
   const listeners: Record<string, Array<() => void>> = {};
-  const loc = { href, hostname: new URL(href).hostname, origin: new URL(href).origin };
+  // A live Location: its parts follow href, as history.replaceState changes it.
+  const loc = {
+    href,
+    get hostname() { return new URL(this.href).hostname; },
+    get origin() { return new URL(this.href).origin; },
+    get pathname() { return new URL(this.href).pathname; },
+    get search() { return new URL(this.href).search; },
+    get hash() { return new URL(this.href).hash; },
+  };
   const win: Record<string, unknown> = {};
   const ctx: Record<string, unknown> = {
     window: win, URL, JSON, Date, Math, RegExp, crypto: globalThis.crypto, decodeURIComponent, encodeURIComponent, Array, Object,
@@ -30,6 +39,7 @@ export function page(href: string, opts: { referrer?: string; cookie?: string; s
     location: loc,
     history: { state: null, replaceState: (_s: unknown, _t: string, u: string) => { loc.href = u; } },
     sessionStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) },
+    localStorage: { getItem: (k: string) => local.get(k) ?? null, setItem: (k: string, v: string) => local.set(k, v), removeItem: (k: string) => local.delete(k) },
     document: {
       cookie: opts.cookie ?? '_fp_cid=fp.1.00000000-0000-4000-8000-000000000000', referrer: opts.referrer ?? '', readyState: 'loading',
       createElement: () => { const s: { src?: string; onload?: () => void; async?: boolean } = {}; scripts.push(s); return s; },
@@ -45,7 +55,7 @@ export function page(href: string, opts: { referrer?: string; cookie?: string; s
   const proxy = new Proxy(ctx, { get: (t, k) => (k in t ? t[k as string] : win[k as string]), set: (t, k, v) => { t[k as string] = v; win[k as string] = v; return true; } });
   (proxy as Record<string, unknown>).window = proxy;
   runInNewContext(loaderSource(), proxy as never);
-  return { loc, store, scripts, listeners, win, dl: (win.dataLayer ?? (proxy as Record<string, unknown>).dataLayer) as unknown[] };
+  return { loc, store, local, scripts, listeners, win, dl: (win.dataLayer ?? (proxy as Record<string, unknown>).dataLayer) as unknown[] };
 }
 
 /** What the page told the Google tag with gtag('set', …) before it loaded. */

@@ -47,6 +47,9 @@ const ROWS: Row[] = [
   { name: 'A customer\'s invite link', url: '/invite?code=AB12&utm_source=customer_invite&utm_medium=friend&utm_campaign=refer_a_friend', ga4Referrer: null, ga4Utm: ['customer_invite', 'friend'], ga4Channel: 'Friend referrals (GoldPlus channels)', channel: 'friend_referral', order: ['customer_invite', 'friend'] },
   { name: 'Installed app', url: '/?ch=a.homescreen', ga4Referrer: null, ga4Utm: ['app', 'pwa'], ga4Channel: 'App (GoldPlus channels)', channel: 'direct', order: ['app', 'pwa'] },
   { name: 'Untagged WhatsApp link (WhatsApp sends nothing)', url: '/products/x', ga4Referrer: null, ga4Channel: 'Direct', channel: 'direct', order: [null, null] },
+  { name: 'A product link someone copied into WhatsApp (dark social), opened by a friend', url: '/products/x#s=k3j9q2', ga4Referrer: null, ga4Utm: ['shared_link', 'friend'], ga4Channel: 'Friend referrals (GoldPlus channels)', channel: 'friend_referral', order: ['shared_link', 'friend'] },
+  { name: 'A copied link that also came through Facebook (its referrer wins)', url: '/products/x#s=k3j9q2', referrer: 'https://l.facebook.com/', ga4Referrer: null, ga4Channel: 'Organic Social', channel: 'organic_social', order: ['facebook', 'social'] },
+  { name: 'A copied link that already carries tags (the tags win)', url: '/products/x?ch=s.track#s=k3j9q2', ga4Referrer: null, ga4Utm: ['sms', 'sms'], ga4Channel: 'SMS', channel: 'sms', order: ['sms', 'sms'] },
   { name: 'Back from Pesapal after paying', url: '/checkout/pesapal/callback?OrderTrackingId=abc', referrer: 'https://pay.pesapal.com/iframe/x', ga4Referrer: 'https://shopgoldplus.com/', ga4Channel: '(continues the visit)', channel: 'direct', order: [null, null] },
 ];
 
@@ -84,12 +87,28 @@ describe('the attribution contract: every reader says the same thing about each 
     });
   }
 
+  it('dark social: the sharer reopening their own copied link is not a share; the marker never lands on private pages', () => {
+    const local = new Map<string, string>([['gp_st', 'k3j9q2']]);
+    const own = page('https://shopgoldplus.com/products/x#s=k3j9q2', { local });
+    expect(new URL(own.loc.href).searchParams.get('utm_source')).toBeNull();
+    expect(own.loc.href).toBe('https://shopgoldplus.com/products/x#s=k3j9q2');
+    // Every shareable page gets the visitor's own marker; checkout, account, order and gift card pages never do.
+    const fresh = new Map<string, string>();
+    expect(page('https://shopgoldplus.com/products/x', { local: fresh }).loc.href).toMatch(/\/products\/x#s=[a-z0-9]{6}$/);
+    expect(fresh.get('gp_st')).toMatch(/^[a-z0-9]{6}$/);
+    for (const path of ['/checkout', '/account/orders', '/track-order?reference=GP-1', '/gift-card/open', '/r/AB12', '/login']) {
+      expect(page(`https://shopgoldplus.com${path}`, { local: new Map() }).loc.hash, path).toBe('');
+    }
+    // A page that already uses its # (an anchor) is left alone.
+    expect(page('https://shopgoldplus.com/faq#returns', { local: new Map() }).loc.hash).toBe('#returns');
+  });
+
   it('no reader keeps its own copy of the rules', async () => {
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');
     const src = (f: string) => readFileSync(resolve(__dirname, '../..', f), 'utf8');
     // The lists live only in the rulebook; the readers import it (the loader receives it as data).
-    const lists = /pesapal\\\.com|FB_IAB|Instagram\\s|'twclid'|fbclid: '|ordertrackingid/;
+    const lists = /pesapal\\\.com|FB_IAB|Instagram\\s|'twclid'|fbclid: '|ordertrackingid|shared_link|copied_link/;
     for (const f of ['apps/web/src/layouts/BaseLayout.astro', 'apps/web/src/lib/attribution.ts', 'apps/web/src/lib/telemetry.ts', 'apps/web/src/lib/inAppBrowser.ts', 'apps/web/src/lib/internalReferrer.ts', 'apps/api/src/domain/measurement/Channels.ts']) {
       expect(src(f), f).not.toMatch(lists);
     }

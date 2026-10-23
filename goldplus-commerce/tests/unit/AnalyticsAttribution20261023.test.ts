@@ -128,7 +128,8 @@ describe('the tag loader (BaseLayout), run for real', () => {
     expect(store.get('gp_ga_seen')).toBe('1');
     expect(store.has('gp_land')).toBe(false);
     const next = page('https://shopgoldplus.com/shop', { referrer: 'https://shopgoldplus.com/', store });
-    expect(next.loc.href).toBe('https://shopgoldplus.com/shop');
+    // Only the visitor's own share marker (#s=…) is added: no campaign carried over.
+    expect(next.loc.href.replace(/#s=[a-z0-9]{6}$/, '')).toBe('https://shopgoldplus.com/shop');
   });
 
   it('loads on the first touch, key or scroll, as well as after load', () => {

@@ -57,6 +57,12 @@ privacy (#analytics) and cookies pages state all of this. Supersedes the 2026-08
 - **Social apps' own browsers** (Instagram, Facebook/Messenger, TikTok, Snapchat, LinkedIn, Pinterest) send no
   referrer but name themselves: with no referrer and no campaign the landing is credited to that network
   (lib/inAppBrowser.ts, mirrored in BaseLayout, kept in step by a test). WhatsApp has no such marker.
+- **Dark social (copied links):** every shareable page's address carries the visitor's own random token after `#`
+  (`#s=k3j9q2`, rulebook SHARE_*), added before the tag loads. Someone else opening a copied link (WhatsApp, Telegram,
+  SMS), untagged and with no outside referrer, is `shared_link / friend / copied_link` (GA4: Friend referrals; ours:
+  friend_referral); the owner reopening it is nothing. Not on checkout/account/order/gift card/payment pages, never
+  over an existing `#`. Checked in Chrome vs the live container: one page_view, tags in dl, no # in dl.
+  Limits: the same person on two devices counts as a share; a received link reopened by its recipient keeps its tags.
 - **Links staff share by hand** (WhatsApp status, groups, a printed QR): add `?ch=w.status`, `?ch=w.group`,
   `?ch=s.<name>` etc. to any shop URL; the page turns it into utm_*. Longer campaigns: /admin/utm-builder.
 - **Which GA4 cookie:** our stream's `_ga_YVV0KLGMQJ` when the API knows the id, else the most recently active one
