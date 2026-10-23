@@ -89,6 +89,7 @@ import metricsRoutes from './routes/metrics';
 import consentRoutes from './routes/consent';
 import measurementRoutes from './routes/measurement';
 import adminMeasurementRoutes from './routes/admin/measurement';
+import adminMeasurementMmmRoutes from './routes/admin/measurement-mmm';
 import { measurementGtmRoutes } from './routes/admin/measurement-gtm';
 import { controlledActivationRoutes } from './routes/admin/controlled-activation';
 import measurementPaidSocialRoutes from './routes/admin/measurement-paid-social';
@@ -305,6 +306,7 @@ app.route('/health', healthRoutes);
 app.route('/metrics', metricsRoutes);
 app.route('/consent', consentRoutes);
 app.route('/measurement', measurementRoutes);
+app.route('/admin/measurement/mmm', adminMeasurementMmmRoutes);
 app.route('/admin/measurement', adminMeasurementRoutes);
 app.route('/admin/measurement/gtm', measurementGtmRoutes);
 app.route('/admin/measurement/paid-social', measurementPaidSocialRoutes);
@@ -435,6 +437,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/legal',
   '/admin/loyalty',
   '/admin/measurement',
+  '/admin/measurement/mmm',
   '/admin/measurement-control-tower',
   '/admin/measurement/gtm',
   '/admin/measurement/paid-social',

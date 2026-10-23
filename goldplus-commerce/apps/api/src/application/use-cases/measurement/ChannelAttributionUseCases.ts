@@ -32,8 +32,13 @@ export class AttributeOrderUseCase {
     let facts = await this.store.loadOrder(orderId);
     if (!facts) return { status: 'NOT_FOUND', linked: 0, credits: 0 };
     let linked = 0;
-    const visitors = new Map<string, 'visitor' | 'whatsapp_ref'>();
+    const visitors = new Map<string, 'visitor' | 'whatsapp_ref' | 'stitched'>();
     if (facts.visitorId) visitors.set(facts.visitorId, 'visitor');
+    // Cross-device (2026-10-23): the customer's other browsers, from the identity graph (0155). A touch on the
+    // phone and an order on the laptop are one journey. Best-effort: an unreadable graph links the order as before.
+    let stitched: string[] = [];
+    try { stitched = await this.store.stitchedVisitorIds(orderId); } catch { stitched = []; }
+    for (const v of stitched) if (!visitors.has(v)) visitors.set(v, 'stitched');
     for (const v of opts.extraVisitorIds ?? []) if (v && !visitors.has(v)) visitors.set(v, 'whatsapp_ref');
     // Every WhatsApp reference ever recorded on the order keeps its visitor linked.
     for (const r of facts.reports) {

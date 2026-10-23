@@ -67,7 +67,15 @@ export class DrizzleChannelAttributionStore implements ChannelAttributionStore {
     };
   }
 
-  async linkVisitorTouches(input: { orderId: string; visitorId: string; orderAt: Date; lookbackDays: number; method: 'visitor' | 'whatsapp_ref' }): Promise<number> {
+  async stitchedVisitorIds(orderId: string): Promise<string[]> {
+    // Behaviour links only (customer_identity_links): a browser that refused personalisation (consent anchors) is not one.
+    const r = rows(await db.execute(sql`select distinct substr(v.identifier_key, 4) as fp
+      from customer_identity_links ol join customer_identity_links v on v.canonical_customer_id = ol.canonical_customer_id and v.signal_type = 'STABLE_ANONYMOUS_ID' and v.identifier_key like 'fp:%' and v.status = 'ACTIVE'
+      where ol.signal_type = 'ORDER_CUSTOMER_RELATIONSHIP' and ol.identifier_key = 'order:' || ${orderId}::text`));
+    return r.map((x) => String(x.fp)).filter((x) => /^fp\.\d{10,16}\.[0-9a-f-]{36}$/.test(x));
+  }
+
+  async linkVisitorTouches(input: { orderId: string; visitorId: string; orderAt: Date; lookbackDays: number; method: 'visitor' | 'whatsapp_ref' | 'stitched' }): Promise<number> {
     const r = rows(await db.execute(sql`
       insert into measurement.order_touch_link (order_id, touch_id, link_method)
       select ${input.orderId}::uuid, t.touch_id, ${input.method}

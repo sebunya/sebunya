@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { fpClientIdFromCookieHeader } from '@goldplus/shared';
 import { customerSessionMiddleware } from '../middleware/customerSession';
 import { normaliseReferralCode, referralRefusalWords, referralStage, REFERRAL_STAGE_WORDS, type ReferralStatus } from '../../../domain/loyalty/Referral';
 import { Registry } from '../../../infrastructure/Registry';
@@ -393,7 +394,7 @@ routes.post('/phone/verify', async (c) => {
   const phoneEarn = await registry.earnForPhoneVerificationUseCase.execute({ userId }).catch(() => null);
   // First-party identity (0157): a freshly verified phone is the proof that
   // links this account to guest orders placed with the same number. Never blocks.
-  stitchInBackground({ moment: 'PHONE_VERIFIED', accountUserId: userId });
+  stitchInBackground({ moment: 'PHONE_VERIFIED', accountUserId: userId, fpClientId: fpClientIdFromCookieHeader(c.req.header('cookie')) ?? undefined });
   return c.json({
     success: true,
     data: {

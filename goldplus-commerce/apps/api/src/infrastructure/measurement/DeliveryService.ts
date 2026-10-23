@@ -264,6 +264,11 @@ async function killSwitchOn(): Promise<boolean> {
 export const buyerIsInUganda = (phone: unknown): boolean => (normalisePhoneUg(typeof phone === 'string' ? phone : '') ?? '').startsWith('256');
 
 /** Just-in-time identity: order contact + visitor/click context. Never queued, never logged. */
+/** measurement.config ga4_assisted_orders = on (MeasurementConfig registry). */
+async function assistedOrdersOn(): Promise<boolean> {
+  try { const r = rows(await db.execute(sql`select config_value from measurement.config where config_key = 'ga4_assisted_orders'`))[0]; return String(r?.config_value ?? '').toLowerCase() === 'on'; } catch { return false; }
+}
+
 async function loadIdentity(orderId: string) {
   const o = rows(await db.execute(sql`select user_id, customer_email, customer_phone, customer_name, delivery_location, created_at from orders where id = ${orderId}::uuid`))[0] ?? {};
   // New or returning, from our own orders: any earlier paid or delivered order by the same account or the same
@@ -277,10 +282,23 @@ async function loadIdentity(orderId: string) {
     : null;
   const loc = (typeof o.delivery_location === 'string' ? (() => { try { return JSON.parse(o.delivery_location); } catch { return null; } })() : o.delivery_location) ?? {};
   const a = rows(await db.execute(sql`select fp_client_id, client_ip, user_agent, ga_session_id, ga_session_number, click_ids from order_attribution where order_id = ${orderId}::uuid`))[0] ?? {};
+  // Assisted orders (2026-10-23, switch ga4_assisted_orders in measurement settings): an order with no browser
+  // identity is sent to GA4 under source "assisted" / medium "staff", with the customer's own browser id when the
+  // identity graph knows one (the sale then joins their history), else a deterministic id for the order. Off by
+  // default: such orders stay out of GA4 and are counted in the channel report only.
+  let assisted: { fp: string; dl: string } | null = null;
+  if (!a.fp_client_id && (await assistedOrdersOn())) {
+    const known = rows(await db.execute(sql`select substr(v.identifier_key, 4) as fp from customer_identity_links ol
+      join customer_identity_links v on v.canonical_customer_id = ol.canonical_customer_id and v.signal_type = 'STABLE_ANONYMOUS_ID' and v.identifier_key like 'fp:%' and v.status = 'ACTIVE'
+      where ol.signal_type = 'ORDER_CUSTOMER_RELATIONSHIP' and ol.identifier_key = 'order:' || ${orderId}::text order by v.updated_at desc limit 1`))[0];
+    const fp = known?.fp ? String(known.fp) : `assisted.${createHash('sha256').update(orderId).digest('hex').slice(0, 32)}`;
+    assisted = { fp, dl: `${storefrontOrigin() ?? 'https://shopgoldplus.com'}/checkout?utm_source=assisted&utm_medium=staff&utm_campaign=assisted_order` };
+  }
   const ck: Record<string, string> = (typeof a.click_ids === 'string' ? JSON.parse(a.click_ids) : a.click_ids) ?? {};
   const netParam = ck.clickid ? 'clickid' : ck.click_id ? 'click_id' : undefined;
   return {
-    user_id: o.user_id ?? undefined, fp_client_id: a.fp_client_id ?? undefined, ip_address: a.client_ip ?? undefined, user_agent: a.user_agent ?? undefined,
+    user_id: o.user_id ?? undefined, fp_client_id: a.fp_client_id ?? assisted?.fp ?? undefined, ip_address: a.client_ip ?? undefined, user_agent: a.user_agent ?? undefined,
+    ...(assisted ? { assisted_page_location: assisted.dl } : {}),
     ga_session_id: a.ga_session_id ?? undefined, ga_session_number: a.ga_session_number ?? undefined,
     hashed_email: hashEmail(o.customer_email), hashed_email_google: hashEmailGoogle(o.customer_email), hashed_email_microsoft: hashEmailMicrosoft(o.customer_email),
     hashed_phone: hashPhone(o.customer_phone), hashed_phone_plus: hashPhonePlus(o.customer_phone),
@@ -314,8 +332,8 @@ export function toCanonical(ev: { event_id: string; event_name: string; occurred
     source: 'server',
     // Where the sale happened. Meta requires it for a website event; it was
     // absent from every purchase until 2026-10-01.
-    ...(storefrontOrigin() ? { page_location: `${storefrontOrigin()}/checkout` } : {}),
-    user_data: Object.fromEntries(Object.entries(identity).filter(([, v]) => v != null && v !== '')) as never,
+    ...(typeof identity.assisted_page_location === 'string' ? { page_location: identity.assisted_page_location } : storefrontOrigin() ? { page_location: `${storefrontOrigin()}/checkout` } : {}),
+    user_data: Object.fromEntries(Object.entries(identity).filter(([k, v]) => v != null && v !== '' && k !== 'assisted_page_location')) as never,
     ecommerce: { transaction_id: p.orderNumber, value, currency: 'UGX', ...(isRefund ? {} : { items }), ...(Number(p.collectedDeliveryUGX) > 0 ? { shipping: Number(p.collectedDeliveryUGX) } : {}) },
   } as CanonicalTelemetryEvent;
 }

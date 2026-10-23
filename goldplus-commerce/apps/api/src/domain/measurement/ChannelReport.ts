@@ -71,6 +71,7 @@ export const CHANNEL_LABELS: Record<string, string> = {
   offline_media: 'Radio, TV and print (customer said)',
   returning_customer: 'Returning customer (customer said)',
   unattributed: 'No recorded source',
+  loyalty: 'Loyalty points and rewards',
 };
 export const channelLabel = (c: string): string => CHANNEL_LABELS[c] ?? c;
 
@@ -216,6 +217,10 @@ export type SpendInput =
 export function reportChannelForSpend(mediaChannel: string, platform: string): string {
   const ch = (mediaChannel ?? '').toLowerCase();
   const p = (platform ?? '').toLowerCase();
+  // Owned and earned channels whose cost the nightly derives (0203, 2026-10-23): messages, loyalty, referrals,
+  // creators, print. Checked first: "Meta WhatsApp" is a message platform, not paid social.
+  if (['sms', 'whatsapp', 'email', 'print', 'loyalty', 'creator'].includes(ch)) return ch;
+  if (ch === 'friend_referral' || ch === 'referral') return 'friend_referral';
   if (/google|microsoft|bing/.test(p)) return 'paid_search';
   if (ch === 'paid_social' || /meta|facebook|instagram|tiktok|snap|pinterest|linkedin|twitter|\bx\b/.test(p)) return 'paid_social';
   if (['paid_search', 'paid_shopping', 'paid_pmax'].includes(ch)) return 'paid_search';

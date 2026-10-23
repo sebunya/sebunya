@@ -1,6 +1,7 @@
 import { db } from '../db/client';
 import { attributionTouchpoints } from '../db/schema/measurement';
-import { eq, gte, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
+import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { MATCH_SIGNALS } from '../../application/ports/measurement/AttributionRepository';
 import type { AttributionRepository, AttributionTouchpointRow, MatchQualitySummary, MatchSignal } from '../../application/ports/measurement/AttributionRepository';
 
@@ -30,35 +31,39 @@ export class DrizzleAttributionRepository implements AttributionRepository {
   }
 
   /**
-   * Aggregated in SQL (#19): it used to load every touchpoint row in the window
-   * into memory to average one column. No rows -> null rates, never 0%.
+   * Match quality from the LIVE tables (2026-10-23). It used to read public.attribution_touchpoints, which nothing
+   * has ever written (its writer, ConversionRouter.routeAndRecord, has no caller), so the card said "No data" for
+   * ever. Now: one row per confirmed sale in the window; a signal is present when the order carries it (email,
+   * phone, a browser id for fbp, click ids, the checkout IP). Score = the weights of the signals present, so an
+   * order with email + phone + IP scores 60 and one that also arrived from an ad click scores 80 or more.
    */
   async getMatchQualitySummary(days: number): Promise<MatchQualitySummary> {
-    const since = new Date(Date.now() - days * 86_400_000);
-
-    const [row] = await db
-      .select({
-        total: sql<number>`count(*)::int`,
-        avg: sql<string | null>`avg(${attributionTouchpoints.matchScore})`,
-        below40: sql<number>`count(*) filter (where ${attributionTouchpoints.matchScore} < 40)::int`,
-        above80: sql<number>`count(*) filter (where ${attributionTouchpoints.matchScore} >= 80)::int`,
-        hashedEmail: sql<number>`count(*) filter (where ${attributionTouchpoints.hasHashedEmail})::int`,
-        hashedPhone: sql<number>`count(*) filter (where ${attributionTouchpoints.hasHashedPhone})::int`,
-        fbp: sql<number>`count(*) filter (where ${attributionTouchpoints.hasFbp})::int`,
-        fbc: sql<number>`count(*) filter (where ${attributionTouchpoints.hasFbc})::int`,
-        gclid: sql<number>`count(*) filter (where ${attributionTouchpoints.hasGclid})::int`,
-        ttclid: sql<number>`count(*) filter (where ${attributionTouchpoints.hasTtclid})::int`,
-        ipAddress: sql<number>`count(*) filter (where ${attributionTouchpoints.hasIpAddress})::int`,
-      })
-      .from(attributionTouchpoints)
-      .where(gte(attributionTouchpoints.eventTime, since));
-
+    const r = (await db.execute(sql`
+      with o as (
+        select e.event_id, oa.fp_client_id, oa.client_ip, coalesce(oa.click_ids, '{}'::jsonb) as ck, ord.customer_email, ord.customer_phone
+        from measurement.business_event e
+        left join orders ord on ord.id::text = e.aggregate_id
+        left join order_attribution oa on oa.order_id = ord.id
+        where e.event_name = 'order_confirmed' and e.environment = ${environmentOf(process.env.NODE_ENV)} and e.occurred_at >= now() - make_interval(days => ${days})
+      ), s as (
+        select (customer_email is not null and customer_email <> '') as has_email, (customer_phone is not null and customer_phone <> '') as has_phone,
+               (fp_client_id is not null) as has_fbp, (ck ? 'fbc') as has_fbc, (ck ? 'gclid' or ck ? 'gbraid' or ck ? 'wbraid') as has_gclid, (ck ? 'ttclid') as has_ttclid, (client_ip is not null) as has_ip
+        from o
+      ), scored as (
+        select *, (case when has_email then 25 else 0 end + case when has_phone then 25 else 0 end + case when has_ip then 10 else 0 end + case when has_fbp then 10 else 0 end
+                 + case when has_fbc then 15 else 0 end + case when has_gclid then 20 else 0 end + case when has_ttclid then 15 else 0 end) as score from s
+      )
+      select count(*)::int as total, avg(least(score, 100)) as avg, count(*) filter (where score < 40)::int as below40, count(*) filter (where score >= 80)::int as above80,
+             count(*) filter (where has_email)::int as "hashedEmail", count(*) filter (where has_phone)::int as "hashedPhone", count(*) filter (where has_fbp)::int as fbp,
+             count(*) filter (where has_fbc)::int as fbc, count(*) filter (where has_gclid)::int as gclid, count(*) filter (where has_ttclid)::int as ttclid, count(*) filter (where has_ip)::int as "ipAddress"
+      from scored`)) as unknown;
+    const row: Record<string, unknown> = (Array.isArray(r) ? r : ((r as { rows?: Array<Record<string, unknown>> }).rows ?? []))[0] ?? {};
     return summariseMatchQuality({
-      total: Number(row?.total ?? 0),
-      avg: row?.avg === null || row?.avg === undefined ? null : Number(row.avg),
-      below40: Number(row?.below40 ?? 0),
-      above80: Number(row?.above80 ?? 0),
-      signals: Object.fromEntries(MATCH_SIGNALS.map((k) => [k, Number(row?.[k] ?? 0)])) as Record<MatchSignal, number>,
+      total: Number(row.total ?? 0),
+      avg: row.avg === null || row.avg === undefined ? null : Number(row.avg),
+      below40: Number(row.below40 ?? 0),
+      above80: Number(row.above80 ?? 0),
+      signals: Object.fromEntries(MATCH_SIGNALS.map((k) => [k, Number(row[k] ?? 0)])) as Record<MatchSignal, number>,
     });
   }
 }

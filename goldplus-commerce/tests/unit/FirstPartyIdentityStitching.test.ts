@@ -214,7 +214,7 @@ describe('identity stitching — use case', () => {
   });
 
   it('0157: verifying a phone stitches at once, so the verified number folds that person\'s guest orders', async () => {
-    expect(read('apps/api/src/interfaces/http/routes/account.ts')).toMatch(/stitchInBackground\(\{ moment: 'PHONE_VERIFIED', accountUserId: userId \}\)/);
+    expect(read('apps/api/src/interfaces/http/routes/account.ts')).toMatch(/stitchInBackground\(\{ moment: 'PHONE_VERIFIED', accountUserId: userId, fpClientId: fpClientIdFromCookieHeader\(c\.req\.header\('cookie'\)\) \?\? undefined \}\)/);
     const w = new World();
     const { stitch } = build(w);
     const guest = await stitch.execute({ moment: 'ORDER_PLACED', orderId: randomUUID(), contactPhone: '0772123456' });

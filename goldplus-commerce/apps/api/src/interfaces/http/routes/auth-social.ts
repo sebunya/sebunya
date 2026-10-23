@@ -1,4 +1,5 @@
 import { signInTokens } from './auth';
+import { fpClientIdFromCookieHeader } from '@goldplus/shared';
 import { Hono } from 'hono';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { ApiResponse } from '@goldplus/shared';
@@ -311,7 +312,7 @@ routes.post('/:provider/exchange', async (c) => {
   // session store answers; the 7-day token only as the fallback.
   const tokens = await signInTokens(registry, user, c, { token: longToken, expiresAt: new Date(Date.now() + ttlSeconds * 1000) });
   // 0155: the provider verified this email only when it says so.
-  stitchInBackground({ moment: 'SOCIAL_SIGN_IN', accountUserId: user.id, accountEmailVerified: verified.identity.emailVerified === true });
+  stitchInBackground({ moment: 'SOCIAL_SIGN_IN', accountUserId: user.id, accountEmailVerified: verified.identity.emailVerified === true, fpClientId: fpClientIdFromCookieHeader(c.req.header('cookie')) ?? undefined });
 
   await registry.createAuditLogUseCase
     .execute({

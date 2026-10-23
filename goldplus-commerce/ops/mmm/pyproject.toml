@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "goldplus_mmm"
+version = "0.1.0"
+description = "Marketing mix modelling for shopgoldplus.com (Uganda, UGX) with PyMC-Marketing or Google Meridian. Runs off-host only."
+readme = "README.md"
+# The base package (contract, readiness, synthetic, CLI) runs on any modern
+# Python. The model extras (pymc, meridian) are pinned to 3.10-3.12 because
+# JAX / TensorFlow Probability wheels lag newer interpreters; see README.
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+# Install ONE of these on a Python >=3.10,<3.13 interpreter (Colab, CI, or a
+# dedicated venv on the owner's Mac). Never on the production host.
+pymc = [
+    "pymc-marketing>=0.12,<1.0",
+    "arviz>=0.17",
+]
+meridian = [
+    "google-meridian>=1.0",
+]
+test = [
+    "pytest>=7",
+]
+
+[project.scripts]
+goldplus-mmm = "goldplus_mmm.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["goldplus_mmm*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

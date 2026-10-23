@@ -43,14 +43,22 @@ async function acquireLease(holder: string, minutes: number): Promise<boolean> {
 }
 const releaseLease = (holder: string) => db.execute(sql`update measurement.analytics_lease set lease_until = now() where name = 'analytics' and holder = ${holder}`);
 
-interface OrderIn { orderId: string; visitor: string | null; at: Date; valueUGX: bigint }
+interface OrderIn { orderId: string; visitor: string | null; visitors: string[]; at: Date; valueUGX: bigint }
 
 async function loadInputs(env: string) {
   const orders: OrderIn[] = rows(await db.execute(sql`
-    select e.aggregate_id as order_id, oa.fp_client_id as visitor, e.occurred_at, e.payload->>'netMerchandiseUGX' as value
+    select e.aggregate_id as order_id, oa.fp_client_id as visitor, e.occurred_at, e.payload->>'netMerchandiseUGX' as value,
+      coalesce((select json_agg(distinct substr(v.identifier_key, 4)) from customer_identity_links ol
+        join customer_identity_links v on v.canonical_customer_id = ol.canonical_customer_id and v.signal_type = 'STABLE_ANONYMOUS_ID' and v.identifier_key like 'fp:%' and v.status = 'ACTIVE'
+        where ol.signal_type = 'ORDER_CUSTOMER_RELATIONSHIP' and ol.identifier_key = 'order:' || e.aggregate_id), '[]'::json) as stitched
     from measurement.business_event e left join order_attribution oa on oa.order_id::text = e.aggregate_id
     where e.environment = ${env} and e.event_name = 'order_confirmed' and e.occurred_at > now() - make_interval(days => ${ORDER_WINDOW_DAYS})
-    order by e.occurred_at`)).map((r) => ({ orderId: String(r.order_id), visitor: r.visitor ? String(r.visitor) : null, at: new Date(r.occurred_at), valueUGX: BigInt(r.value ?? '0') }));
+    order by e.occurred_at`)).map((r) => {
+      // Cross-device (2026-10-23): the order's own browser plus every browser the identity graph ties to the customer.
+      const stitched: string[] = (typeof r.stitched === 'string' ? JSON.parse(r.stitched) : r.stitched) ?? [];
+      const visitor = r.visitor ? String(r.visitor) : null;
+      return { orderId: String(r.order_id), visitor, visitors: [...new Set([visitor, ...stitched.map(String)].filter((v): v is string => !!v))], at: new Date(r.occurred_at), valueUGX: BigInt(r.value ?? '0') };
+    });
   const touches = rows(await db.execute(sql`
     select anonymous_id, channel, occurred_at from measurement.touchpoint
     where environment = ${env} and traffic_class = 'customer' and occurred_at > now() - make_interval(days => ${ORDER_WINDOW_DAYS + LOOKBACK_DAYS})
@@ -79,8 +87,10 @@ async function compute(env: string, batchStats: Record<string, unknown>) {
   }
   const lookbackMs = LOOKBACK_DAYS * 86_400_000;
     // Two tabs opened from the same place are one arrival, not two.
-  const journeysFor = (o: OrderIn) => (o.visitor ? collapse((byVisitor.get(o.visitor) ?? []).filter((t) => t.at <= o.at && o.at.getTime() - t.at.getTime() <= lookbackMs)) : []);
-  const unidentified = orders.filter((o) => !o.visitor).length;
+  const journeysFor = (o: OrderIn) => (o.visitors.length
+    ? collapse(o.visitors.flatMap((v) => byVisitor.get(v) ?? []).filter((t) => t.at <= o.at && o.at.getTime() - t.at.getTime() <= lookbackMs).sort((a, b) => a.at.getTime() - b.at.getTime()))
+    : []);
+  const unidentified = orders.filter((o) => !o.visitors.length).length;
   batchStats.orders = orders.length; batchStats.visitors = byVisitor.size;
 
   // Rule-based: one run per method; an order without a touch is UNATTRIBUTED, never spread.
@@ -110,7 +120,7 @@ async function compute(env: string, batchStats: Record<string, unknown>) {
   }
 
   // Markov / Shapley: converting journeys + MATURE non-converting ones.
-  const convertedVisitors = new Set(orders.map((o) => o.visitor).filter(Boolean) as string[]);
+  const convertedVisitors = new Set(orders.flatMap((o) => o.visitors));
   const journeys: Journey[] = orders.map((o) => journeysFor(o)).filter((t) => t.length).map((t) => ({ path: t.map((x) => x.channel), converted: true }));
   const matureCut = Date.now() - MATURE_DAYS * 86_400_000;
   let censored = 0;

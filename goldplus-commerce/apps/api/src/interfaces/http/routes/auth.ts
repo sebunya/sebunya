@@ -1,4 +1,5 @@
 import { Hono, Context } from 'hono';
+import { fpClientIdFromCookieHeader } from '@goldplus/shared';
 import { createHash } from 'node:crypto';
 import { Registry } from '../../../infrastructure/Registry';
 import { AuthenticateUserUseCase } from '../../../application/use-cases/identity/AuthenticateUserUseCase';
@@ -109,7 +110,7 @@ routes.post('/login', async (c) => {
 
   const tokens = await signInTokens(registry, result.user, c, { token: result.token, expiresAt: result.expiresAt });
   // 0155: link the account to its customer profile (never blocks the login).
-  stitchInBackground({ moment: 'SIGN_IN', accountUserId: result.user.id });
+  stitchInBackground({ moment: 'SIGN_IN', accountUserId: result.user.id, fpClientId: fpClientIdFromCookieHeader(c.req.header('cookie')) ?? undefined });
 
   const res: ApiResponse<{
     token: string;
@@ -170,7 +171,7 @@ routes.post('/register', async (c) => {
   // storefront handles both flows with one code path.
   const tokens = await signInTokens(registry, result.user, c, { token: result.token, expiresAt: result.expiresAt });
   // 0155: a new account gets its customer profile (never blocks registration).
-  stitchInBackground({ moment: 'REGISTRATION', accountUserId: result.user.id });
+  stitchInBackground({ moment: 'REGISTRATION', accountUserId: result.user.id, fpClientId: fpClientIdFromCookieHeader(c.req.header('cookie')) ?? undefined });
 
   const res: ApiResponse<{
     token: string;

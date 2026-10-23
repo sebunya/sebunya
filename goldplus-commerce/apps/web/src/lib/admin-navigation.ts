@@ -283,6 +283,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Weekly sales, revenue, spend, ROAS and cost per order by channel (ads, creators, promo codes, WhatsApp, what customers said), with a model switcher and CSV.',
   },
   {
+    label: 'Marketing mix and incrementality',
+    href: '/admin/measurement/mmm',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Is a marketing mix model worth fitting yet (and the dataset to fit it off-server), what our own messages cause (holdouts), whether GA4 agrees with the shop, and the measurement settings.',
+  },
+  {
     label: 'Advertising platforms',
     href: '/admin/advertising',
     group: 'Measurement',
