@@ -8,7 +8,7 @@
  * third party, no cookies beyond first-party storage.
  */
 import { isInternalReferrerHost } from './internalReferrer';
-import { inAppReferrerHost } from './inAppBrowser';
+import { CLICK_ID_PARAMS, adNetworkOnUrl, untaggedArrivalHost } from '@goldplus/shared/src/attribution/arrival';
 
 const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'] as const;
 const FIRST = 'gp_attr_first';
@@ -43,15 +43,9 @@ function readUtm(): Record<string, string> {
  * social. Our server's channel report already went by the click id; the order's own source/medium now agree.
  */
 function paidNetworkOnUrl(p: URLSearchParams): string {
-  if (p.get('gclid') || p.get('gbraid') || p.get('wbraid')) return 'google';
-  if (p.get('msclkid')) return 'microsoft';
-  if (p.get('fbclid')) return 'facebook';
-  if (p.get('ttclid')) return 'tiktok';
-  if (p.get('twclid')) return 'x';
-  if (p.get('li_fat_id')) return 'linkedin';
-  if (p.get('ScCid')) return 'snapchat';
-  if (p.get('epik')) return 'pinterest';
-  return '';
+  // Ad click ids (the rulebook's AD_CLICK_IDS). Facebook's fbclid is not one: it is added to shares too, and names
+  // Facebook as referrer instead (untaggedArrivalHost below).
+  return adNetworkOnUrl(p);
 }
 
 export function captureAttribution(): void {
@@ -60,8 +54,12 @@ export function captureAttribution(): void {
     const paid = paidNetworkOnUrl(new URLSearchParams(location.search));
     const hasUtm = Object.keys(utm).length > 0 || !!paid;
     let ref = externalReferrer();
-    // No referrer, no campaign, no click id, but opened in Snapchat's own browser: a Snapchat visit.
-    if (!ref && !hasUtm && !/[?&]ScCid=/.test(location.search)) { const h = inAppReferrerHost(navigator.userAgent || ''); if (h) ref = `https://${h}/`; }
+    // No referrer and no campaign, but opened in a social app's own browser, or carrying a social network's click id:
+    // a visit from that network (the app it was opened in first; Instagram links carry fbclid too).
+    if (!ref && !hasUtm) {
+      const h = untaggedArrivalHost(new URLSearchParams(location.search), navigator.userAgent || '');
+      if (h) ref = `https://${h}/`;
+    }
     const now = new Date().toISOString();
     const touch = { ...utm, ...(paid ? { paid } : {}), referrer: ref, landingPath: location.pathname.slice(0, 300), at: now };
 
@@ -93,6 +91,8 @@ function sourceFromReferrer(ref: string): string {
     if (is(/(^|\.)tiktok\.com$/)) return 'tiktok';
     if (is(/(^|\.)snapchat\.com$/)) return 'snapchat';
     if (is(/(^|\.)(youtube\.com|youtu\.be)$/)) return 'youtube';
+    if (is(/(^|\.)(pinterest\.[a-z.]+|pin\.it)$/)) return 'pinterest';
+    if (is(/(^|\.)(linkedin\.com|lnkd\.in)$/)) return 'linkedin';
     if (is(/(^|\.)(wa\.me|whatsapp\.com)$/)) return 'whatsapp';
     return host;
   } catch {
@@ -113,7 +113,8 @@ export interface CheckoutAttribution {
   clickIds?: Record<string, string>;
 }
 
-const CLICK_KEYS = ['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik', 'msclkid', 'ScCid', 'clickid', 'click_id'];
+/** The rulebook's click ids, less fbclid: Meta's click is stored as the fbc built from it (recordAdClick). */
+const CLICK_KEYS = CLICK_ID_PARAMS.filter((k) => k !== 'fbclid');
 /** What the record holds: the URL parameters above, plus Meta's click id built from `fbclid`. */
 const STORED_CLICK_KEYS = [...CLICK_KEYS, 'fbc'];
 /**
@@ -195,7 +196,7 @@ export function getCheckoutAttribution(): CheckoutAttribution | null {
     // A referral from a social network is organic social and one from a search
     // engine is organic search (the answers the landing-touch classifier gives),
     // not a generic referral.
-    const medium = last.utm_medium || (last.paid && !last.utm_source ? (/^(google|microsoft)$/.test(last.paid) ? 'cpc' : 'paid_social') : null) || (last.utm_source ? 'campaign' : last.referrer ? (/^(facebook|instagram|x|tiktok|youtube|snapchat)$/.test(refSource) ? 'social' : /^(google|bing|duckduckgo|yahoo|ecosia|brave|yandex)$/.test(refSource) ? 'organic' : 'referral') : null) || null;
+    const medium = last.utm_medium || (last.paid && !last.utm_source ? (/^(google|microsoft)$/.test(last.paid) ? 'cpc' : 'paid_social') : null) || (last.utm_source ? 'campaign' : last.referrer ? (/^(facebook|instagram|x|tiktok|youtube|snapchat|pinterest|linkedin)$/.test(refSource) ? 'social' : /^(google|bing|duckduckgo|yahoo|ecosia|brave|yandex)$/.test(refSource) ? 'organic' : 'referral') : null) || null;
     return {
       source,
       medium,

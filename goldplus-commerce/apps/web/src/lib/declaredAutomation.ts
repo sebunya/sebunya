@@ -8,7 +8,7 @@
  * sender's events are not recorded, so lying about it only opts the liar out.
  * Undeclared automation is a measured residual, not something guessed at here.
  */
-const DECLARED = /GoldPlusSyntheticProbe|Chrome-Lighthouse|HeadlessChrome|PageSpeed|GTmetrix|PTST\/|Playwright/i;
+export const DECLARED = /GoldPlusSyntheticProbe|Chrome-Lighthouse|HeadlessChrome|PageSpeed|GTmetrix|PTST\/|Playwright|Pingdom/i;
 
 /**
  * Our own Playwright audits keep each engine's REAL user agent (that is what

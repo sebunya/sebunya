@@ -1,5 +1,7 @@
 ---
 import '../styles/global.css';
+import { ANALYTICS_REDACTED_PARAMS, loaderRules } from '@goldplus/shared';
+import { DECLARED } from '../lib/declaredAutomation';
 import GpNav from '../components/GpNav.astro';
 import WebMcpTools from '../components/WebMcpTools.astro';
 import ShopAssistant from '../components/ShopAssistant.astro';
@@ -87,6 +89,9 @@ const clarityId = /^[a-z0-9]{6,20}$/.test(import.meta.env.PUBLIC_CLARITY_ID ?? '
 // public catalogue (home, shop, products, categories, blog, info pages), so a
 // name, phone or quote shown back on any other page is never recorded.
 const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|search|batteries|deals|about|faq|delivery|returns|warranty|contact)(\/|$|\?)/.test(Astro.url.pathname);
+/** The attribution rulebook (packages/shared/src/attribution/arrival.ts) as data for the inline tag loader. */
+const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, bots: DECLARED.source };
+
 ---
 
 <!doctype html>
@@ -145,9 +150,9 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         never for robots, our probes or staff (same gate as the GA4 tag). Clarity masks typed input by default; checkout and
         account pages are masked entirely (data-clarity-mask on <body>). */}
     {clarityId && (
-      <script nonce={Astro.locals.cspNonce} define:vars={{ clarityId }}>
+      <script nonce={Astro.locals.cspNonce} define:vars={{ clarityId, bots: arrivalRules.bots }}>
         (function () {
-          if (navigator.webdriver === true || /GoldPlusSyntheticProbe|HeadlessChrome|Chrome-Lighthouse|PageSpeed|PTST|GTmetrix|Pingdom|Playwright/i.test(navigator.userAgent || '')
+          if (navigator.webdriver === true || new RegExp(bots, 'i').test(navigator.userAgent || '')
             || /(?:^|; )(?:gp_probe|gp_staff)=/.test(document.cookie)) return;
           (function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
           t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
@@ -182,10 +187,12 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
           (gp_staff, set when the admin opens).
         - Where the visit came from, settled before anything reads the URL:
           1. Our own links carry ?ch=<channel>.<campaign> (shared/links/shopLinkTag; short because SMS is paid by the
-             character), rewritten to utm_source/utm_medium/utm_campaign. Channels: s SMS, w WhatsApp, e email,
-             m Messenger, i Instagram, a the installed app.
+             character), rewritten to utm_source/utm_medium/utm_campaign (the rulebook's CHANNEL_TAGS: SMS, WhatsApp,
+             email, Messenger, Instagram, the installed app, print/QR).
           2. A social app's own browser sends no referrer but names itself (lib/inAppBrowser.ts, same list, kept in
-             step by a test): the landing is credited to that network.
+             step by a test): the landing is credited to that network. So is an untagged link carrying Facebook's
+             fbclid: it is added to shares too, so it says "from Facebook", never "an ad" (no ad has ever run; 10 of
+             10 fbclid arrivals were shares, 2026-10-23). GA4 ignores it: without a referrer it filed those as Direct.
           3. The tag loads late (mobile LCP), so a visitor who taps on before it loads used to lose the landing. Until
              GA4 has seen the visit (sessionStorage gp_ga_seen, set when gtm.js loads), the landing's campaign and
              click ids (gp_land, 30 minutes) are put on the next page's URL and its referrer is set as page_referrer.
@@ -193,20 +200,24 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
           codes and tokens in this page's address and its referrer are replaced by "redacted". A return from Pesapal
           is not an arrival: its referrer is our own origin (GA4 would otherwise start a "pesapal.com / referral" visit).
           A page that carried the landing's campaign is marked (__gpCarried) so our own landing touch is not filed twice.
+        - Dark social (the rulebook's SHARE_*): a shareable page's address carries this visitor's own random token after
+          the # (#s=xxxxxx; localStorage gp_st), added before the tag loads so GA4 sees no change. A link copied into
+          WhatsApp, Telegram or SMS and opened by someone else, untagged and with no outside referrer, gets the
+          rulebook's SHARE_TAGS (a friend referral); its owner reopening it is nothing. The # never reaches the server.
         - The _fp_cid fallback is Domain-scoped like the server's (visitorCookieDomain): a host-only copy beside it
           made two ids, read differently by the tag and the collector.
         - The tag loads after load + idle, or at the first touch, key or scroll if sooner (the hero has painted). */}
     {measurement.configured && (
-      <script nonce={Astro.locals.cspNonce} define:vars={{ metricsUrl: measurement.metricsUrl, gtmId: measurement.gtmId, userId: Astro.locals.gpUserId ?? null, adSignals: siteVerification.googleAdsRemarketing }}>
+      <script nonce={Astro.locals.cspNonce} define:vars={{ metricsUrl: measurement.metricsUrl, gtmId: measurement.gtmId, userId: Astro.locals.gpUserId ?? null, adSignals: siteVerification.googleAdsRemarketing, rules: arrivalRules }}>
         (function () {
         var ua = navigator.userAgent || '';
-        if (navigator.webdriver === true || /GoldPlusSyntheticProbe|HeadlessChrome|Chrome-Lighthouse|PageSpeed|PTST|GTmetrix|Pingdom|Playwright/i.test(ua)
+        if (navigator.webdriver === true || new RegExp(rules.bots, 'i').test(ua)
           || /(?:^|; )(?:gp_probe|gp_staff)=/.test(document.cookie)) return;
-        var CAMPAIGN = /^(utm_[a-z]+|gclid|gbraid|wbraid|dclid|fbclid|ttclid|twclid|msclkid|li_fat_id|sccid|epik)$/;
-        var CH = { s: ['sms', 'sms'], w: ['whatsapp', 'chat'], e: ['goldplus', 'email'], m: ['messenger', 'chat'], i: ['instagram', 'chat'], a: ['app', 'pwa'] };
+        var CAMPAIGN = new RegExp(rules.campaign, 'i');
+        var CH = rules.ch;
         try {
           var u = new URL(location.href), gt = u.searchParams.get('ch');
-          var g = gt && /^([swemia])\.([a-z0-9_-]{1,40})$/.exec(gt);
+          var g = gt && new RegExp('^([' + Object.keys(CH).join('') + '])\\.([a-z0-9_-]{1,40})$').exec(gt);
           if (g && !u.searchParams.has('utm_source')) {
             u.searchParams.delete('ch');
             u.searchParams.set('utm_source', CH[g[1]][0]); u.searchParams.set('utm_medium', CH[g[1]][1]); u.searchParams.set('utm_campaign', g[2]);
@@ -215,12 +226,26 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
           var here = new URL(location.href), q = [];
           here.searchParams.forEach(function (v, k) { if (CAMPAIGN.test(k)) q.push([k, v]); });
           var ref = '';
-          var PAY = /(^|\.)pesapal\.com$/i, rh = '';
+          var PAY = new RegExp(rules.pay, 'i'), rh = '';
           try { rh = new URL(document.referrer).hostname; if (!/(^|\.)shopgoldplus\.com$/.test(rh) && !PAY.test(rh)) ref = document.referrer; } catch (e) {}
-          if (!ref && !q.length && !document.referrer) {
-            var IAB = [[/\bSnapchat\/\d/i, 'snapchat.com'], [/\bInstagram\s\d/i, 'instagram.com'], [/\bFBAN\/|\bFBAV\/|\bFB_IAB\//, 'facebook.com'],
-              [/\bmusical_ly|\bBytedanceWebview|\bTikTok\b/i, 'tiktok.com'], [/\bLinkedInApp\b/i, 'linkedin.com'], [/\bPinterest\/\d/i, 'pinterest.com']];
-            for (var i = 0; i < IAB.length; i++) if (IAB[i][0].test(ua)) { ref = 'https://' + IAB[i][1] + '/'; window.__gpLandingReferrer = ref; break; }
+          var TAGGED = new RegExp(rules.tagged, 'i'), tagged = false;
+          here.searchParams.forEach(function (v, k) { if (v && TAGGED.test(k)) tagged = true; });
+          var own = null;
+          try { own = localStorage.getItem('gp_st'); if (!/^[a-z0-9]{6}$/.test(own || '')) { own = (Math.random().toString(36).slice(2) + '000000').slice(0, 6); localStorage.setItem('gp_st', own); } } catch (e) { own = null; }
+          var sm = new RegExp(rules.share.frag).exec(location.hash);
+          if (sm) {
+            here.hash = '';
+            if (sm[1] !== own && !tagged && !ref) {
+              Object.keys(rules.share.tags).forEach(function (k) { here.searchParams.set(k, rules.share.tags[k]); q.push([k, rules.share.tags[k]]); });
+              tagged = true;
+            }
+            history.replaceState(history.state, '', here.toString());
+          }
+          if (!ref && !tagged && !document.referrer) {
+            var soc = '';
+            Object.keys(rules.soc).forEach(function (k) { if (!soc && here.searchParams.get(k)) soc = rules.soc[k]; });
+            for (var i = 0; i < rules.iab.length; i++) if (new RegExp(rules.iab[i][0], rules.iab[i][1]).test(ua)) { ref = 'https://' + rules.iab[i][2] + '/'; window.__gpLandingReferrer = ref; break; }
+            if (!ref && soc) { ref = 'https://' + soc + '/'; window.__gpLandingReferrer = ref; }
           }
           var land = null; try { land = JSON.parse(sessionStorage.getItem('gp_land') || 'null'); } catch (e) {}
           if (land && Date.now() - land.t > 30 * 60e3) { land = null; sessionStorage.removeItem('gp_land'); }
@@ -231,6 +256,7 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
               if (land.r) window.__gpLandingReferrer = land.r;
             }
           }
+          if (own && !location.hash && !new RegExp(rules.share.deny).test(location.pathname)) history.replaceState(history.state, '', location.href.replace(/#$/, '') + '#s=' + own);
         } catch (e) {}
         window.dataLayer = window.dataLayer || [];
         window.gtag = window.gtag || function () { dataLayer.push(arguments); };
@@ -249,7 +275,7 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
           document.cookie = '_fp_cid=' + cid + '; expires=' + new Date(Date.now() + 365 * 864e5).toUTCString() + '; path=/' + dom + '; SameSite=Lax; Secure';
         }
         dataLayer.push(userId ? { fp_client_id: cid, user_id: userId } : { fp_client_id: cid });
-        var RED = /^(ref|reference|u|code|token|otp|ordertrackingid|ordermerchantreference|trackingid|phone|email)$/i;
+        var RED = new RegExp(rules.red, 'i');
         function safeUrl(h) {
           try { var x = new URL(h), keys = []; x.searchParams.forEach(function (v, k) { if (RED.test(k) && keys.indexOf(k) < 0) keys.push(k); });
             if (!keys.length) return null; keys.forEach(function (k) { x.searchParams.set(k, 'redacted'); }); return x.toString(); } catch (e) { return null; }
@@ -257,7 +283,7 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         var safePl = safeUrl(location.href);
         if (safePl) gtag('set', { page_location: safePl });
         var pr = window.__gpLandingReferrer || null;
-        if (!pr && document.referrer) { try { if (/(^|\.)pesapal\.com$/i.test(new URL(document.referrer).hostname)) pr = location.origin + '/'; } catch (e) {} }
+        if (!pr && document.referrer) { try { if (new RegExp(rules.pay, 'i').test(new URL(document.referrer).hostname)) pr = location.origin + '/'; } catch (e) {} }
         if (!pr && document.referrer) pr = safeUrl(document.referrer);
         if (pr) gtag('set', { page_referrer: pr });
         window.dataLayer.push({'gtm.start': new Date().getTime(), event: 'gtm.js'});

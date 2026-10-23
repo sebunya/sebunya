@@ -50,5 +50,5 @@ describe('2026-10-22 review: leftovers', () => {
       expect(v.width).toBe({ thumb: 160, card: 480, pdp: 1024, zoom: 2048 }[v.purpose]);
       expect(Math.abs(v.height - (v.width * 4) / 3)).toBeLessThanOrEqual(1);
     }
-  });
+  }, 30_000); // a real 12 MP decode into 12 renditions (AVIF included): ~5 s locally, more on CI
 });

@@ -24,9 +24,8 @@
 // Configuration — resolved at SDK load time from Astro env injection
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { inAppReferrerHost } from './inAppBrowser';
 import { isDeclaredAutomation, PROBE_COOKIE } from './declaredAutomation';
-import { isInternalReferrerHost } from './internalReferrer';
+import { CLICK_ID_PARAMS, landingTouch } from '@goldplus/shared/src/attribution/arrival';
 import { visitorCookieDomain } from './visitorCookieDomain';
 import { recentAdClickIds } from './attribution';
 
@@ -123,7 +122,8 @@ export function extractClickIds(): Record<string, string> {
   // msclkid: Microsoft Ads; ScCid: Snapchat; clickid/click_id: the network
   // click id Opera, Transsion (Eagllwin), Boomplay and most ad networks append
   // for server-to-server postbacks.
-  const clickIdKeys = ['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik', 'msclkid', 'ScCid', 'clickid', 'click_id'];
+  // The rulebook's click ids, less fbclid (Meta's is the fbc built from it, below and in lib/attribution).
+  const clickIdKeys = CLICK_ID_PARAMS.filter((k) => k !== 'fbclid');
   for (const key of clickIdKeys) {
     const val = params.get(key);
     if (val) ids[key] = val;
@@ -505,7 +505,6 @@ if (typeof window !== 'undefined') {
 // classifies the channel and keeps it for attribution; it is never forwarded
 // to GA4 or an ad platform. Automation (webdriver) is not a visit.
 // ─────────────────────────────────────────────────────────────────────────────
-const TOUCH_CLICK_KEYS = ['gclid', 'gbraid', 'wbraid', 'msclkid', 'fbclid', 'ttclid', 'twclid', 'ScCid', 'li_fat_id', 'epik', 'clickid', 'click_id'];
 
 /**
  * For lib/whatsappClicks, the WhatsApp tap handler. It is registered by the
@@ -523,11 +522,12 @@ export function recordLandingTouch(): void {
     // arrival was already filed on the landing page itself.
     if ((window as { __gpCarried?: boolean }).__gpCarried) return;
     const q = new URLSearchParams(location.search);
-    const clickTypes = TOUCH_CLICK_KEYS.filter((k) => q.get(k));
-    let refHost: string | null = null;
-    // A return from the payment gateway (or our own subdomain) is not an arrival.
-    try { const h = document.referrer ? new URL(document.referrer).host : ''; refHost = h && !isInternalReferrerHost(h, location.host) ? h.slice(0, 253) : null; } catch { /* no referrer */ }
-    if (!refHost && !q.get('utm_source') && !q.get('utm_medium') && !clickTypes.length) refHost = inAppReferrerHost(navigator.userAgent || '');
+    // The rulebook decides (packages/shared/src/attribution/arrival.ts, the same rules as the tag loader, the order
+    // source and the channel report): a return from the payment gateway is not an arrival; an untagged visit with no
+    // referrer is credited to the social app it was opened in, or the network whose own click id it carries.
+    const t = landingTouch({ search: location.search, referrer: document.referrer, ua: navigator.userAgent || '', selfHost: location.host });
+    const clickTypes = t.clickIdTypes;
+    const refHost = t.referrerHost;
     const hasCampaign = !!(q.get('utm_source') || q.get('utm_medium') || clickTypes.length || refHost);
     let seen = false;
     try { seen = sessionStorage.getItem('_gp_touch') === '1'; sessionStorage.setItem('_gp_touch', '1'); } catch { /* storage off */ }
@@ -541,13 +541,12 @@ export function recordLandingTouch(): void {
       if (prev && prev.sig === signature && Date.now() - prev.at < 30 * 60 * 1000) return;
       localStorage.setItem('_gp_touch_last', JSON.stringify({ sig: signature, at: Date.now() }));
     } catch { /* storage off: record the touch rather than lose it */ }
-    const clip = (v: string | null, n: number) => (v ? v.slice(0, n) : null);
     const body = JSON.stringify({
       batchId: crypto.randomUUID(), schemaVersion: 1,
       events: [{
         event_name: 'landing_touch', event_id: crypto.randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'browser',
         user_data: { fp_client_id: getFpClientId() },
-        touch: { source: clip(q.get('utm_source'), 100), medium: clip(q.get('utm_medium'), 100), campaign: clip(q.get('utm_campaign'), 150),
+        touch: { source: t.source, medium: t.medium, campaign: t.campaign,
           referrer_host: refHost, landing_path: location.pathname.slice(0, 300), click_id_types: clickTypes },
       }],
     });

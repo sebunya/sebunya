@@ -315,7 +315,9 @@ describe('a return from the payment gateway is not a new arrival', () => {
     expect(isInternalReferrerHost('l.facebook.com', 'shopgoldplus.com')).toBe(false);
     expect(isInternalReferrerHost('notpesapal.com', 'shopgoldplus.com')).toBe(false);
     expect(read('apps/web/src/lib/attribution.ts')).toContain('!isInternalReferrerHost(host, location.host)');
-    expect(read('apps/web/src/lib/telemetry.ts')).toContain('!isInternalReferrerHost(h, location.host)');
+    // The landing touch reads the rulebook's landingTouch, which applies the same rule (AttributionContract.test.ts).
+    expect(read('apps/web/src/lib/telemetry.ts')).toContain('landingTouch({ search: location.search, referrer: document.referrer');
+    expect(read('packages/shared/src/attribution/arrival.ts')).toContain('!isInternalReferrerHost(h, input.selfHost)');
   });
   it('server safety net: those hosts classify as direct, a real referrer as referral', () => {
     expect(classifyChannel({ referrerHost: 'pay.pesapal.com' })).toBe('direct');

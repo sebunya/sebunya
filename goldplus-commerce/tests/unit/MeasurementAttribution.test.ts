@@ -63,7 +63,9 @@ describe('rule-based methods', () => {
 describe('channel classification', () => {
   it('click ids beat utm, utm beats referrer', () => {
     expect(classifyChannel({ clickIdTypes: ['gclid'], medium: 'email' })).toBe('paid_search');
-    expect(classifyChannel({ clickIdTypes: ['fbclid'] })).toBe('paid_social');
+    expect(classifyChannel({ clickIdTypes: ['ttclid'] })).toBe('paid_social');
+    // fbclid is added to shares too (no ad ever ran; every fbclid arrival was a share, 2026-10-23): not proof of an ad.
+    expect(classifyChannel({ clickIdTypes: ['fbclid'] })).toBe('organic_social');
     expect(classifyChannel({ medium: 'cpc' })).toBe('paid_search');
     expect(classifyChannel({ source: 'whatsapp' })).toBe('whatsapp');
     expect(classifyChannel({ referrerHost: 'www.google.com' })).toBe('organic_search');

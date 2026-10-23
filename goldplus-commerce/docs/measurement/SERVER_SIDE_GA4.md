@@ -43,9 +43,34 @@ privacy (#analytics) and cookies pages state all of this. Supersedes the 2026-08
   (…/chat), a the installed app (app/pwa). Campaign = where the link goes (track, review, gift, loyalty, reset, pay,
   product, shop) or `goldie` for Goldie's replies. An SMS is tagged only if it costs no extra part. Referral links
   (`/r/<code>`) and the gift card share link carry utm_source=customer_share / customer_invite, utm_medium=friend.
+- **Facebook's click id is not an ad.** Facebook adds `fbclid` to every link clicked on Facebook, Instagram and
+  Messenger, shares included. No ad has ever run, and all 10 fbclid arrivals in 30 days (2026-10-23) were shares that
+  our reports filed as paid social. Now: untagged, fbclid is Facebook's organic social (our reports, the order source,
+  and GA4's page_referrer when none came); paid social needs tags saying so. Ad click ids (ttclid, ScCid, li_fat_id,
+  twclid, epik) still prove a social ad: they are documented as such and there is no evidence of them on shares.
+  gclid/gbraid/wbraid/msclkid stay paid search. A social source with a cost medium (cpc, paid…) is paid social, as in
+  GA4. ONE rulebook: packages/shared/src/attribution/arrival.ts; the contract test runs every reader through it.
+- **When ads start:** every Meta ad gets URL parameters
+  `utm_source={{site_source_name}}&utm_medium=paid_social&utm_campaign={{campaign.name}}&utm_content={{ad.name}}`,
+  TikTok `utm_source=tiktok&utm_medium=paid_social&utm_campaign=__CAMPAIGN_NAME__&utm_content=__CID_NAME__`, X and
+  LinkedIn the same pattern. Without them GA4 cannot tell an ad from a share.
 - **Social apps' own browsers** (Instagram, Facebook/Messenger, TikTok, Snapchat, LinkedIn, Pinterest) send no
   referrer but name themselves: with no referrer and no campaign the landing is credited to that network
   (lib/inAppBrowser.ts, mirrored in BaseLayout, kept in step by a test). WhatsApp has no such marker.
+- **Dark social (copied links):** every shareable page's address carries the visitor's own random token after `#`
+  (`#s=k3j9q2`, rulebook SHARE_*), added before the tag loads. Someone else opening a copied link (WhatsApp, Telegram,
+  SMS), untagged and with no outside referrer, is `shared_link / friend / copied_link` (GA4: Friend referrals; ours:
+  friend_referral); the owner reopening it is nothing. Not on checkout/account/order/gift card/payment pages, never
+  over an existing `#`. Checked in Chrome vs the live container: one page_view, tags in dl, no # in dl.
+  Limits: the same person on two devices counts as a share; a received link reopened by its recipient keeps its tags.
+- **Share this product** (product page: Share on WhatsApp, Share, Copy link): `customer_share / friend / product_share`,
+  `utm_content` = whatsapp | share | copy (rulebook PRODUCT_SHARE_TAGS, productShareUrl). The WhatsApp share has no
+  number, so it never gets a chat reference code or a lead.
+- **QR codes and print:** any shop URL + `?ch=q.<where>` (e.g. `https://shopgoldplus.com/?ch=q.packaging`,
+  `?ch=q.receipt`, `?ch=q.window`, `?ch=q.flyer_oct26`) = `qr / print / <where>`; our channel "Print and QR codes";
+  in GA4 the GoldPlus channels group's "Print and QR" channel (medium exactly print).
+- **Google Business Profile website link:** `https://shopgoldplus.com/?utm_source=google&utm_medium=organic&utm_campaign=gbp_website`
+  (medium organic keeps it in Organic Search; the campaign tells it apart from the search results).
 - **Links staff share by hand** (WhatsApp status, groups, a printed QR): add `?ch=w.status`, `?ch=w.group`,
   `?ch=s.<name>` etc. to any shop URL; the page turns it into utm_*. Longer campaigns: /admin/utm-builder.
 - **Which GA4 cookie:** our stream's `_ga_YVV0KLGMQJ` when the API knows the id, else the most recently active one

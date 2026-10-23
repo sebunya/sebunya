@@ -77,7 +77,7 @@ describe('the browser: a Google ad click is paid, names its campaign, and lasts 
     let a = await import('../../apps/web/src/lib/attribution');
     a.captureAttribution(); a.recordAdClick();
     expect(a.getCheckoutAttribution()!.clickIds).not.toHaveProperty('gad_campaignid');
-    expect(a.getCheckoutAttribution()).toMatchObject({ source: 'facebook', medium: 'paid_social' });
+    expect(a.getCheckoutAttribution()).toMatchObject({ source: 'facebook', medium: 'social' }); // fbclid alone: a Facebook visit, not an ad (2026-10-23)
     const rec = JSON.parse(store.get('_gp_ad_click')!);
     store.set('_gp_ad_click', JSON.stringify({ ...rec, at: Date.now() - 45 * 864e5 }));
     expect(a.getCheckoutAttribution()!.clickIds).toEqual({});

@@ -7,15 +7,6 @@
  * shopper's real last touch (say, a Facebook ad) with pay.pesapal.com /
  * referral, and the next order was credited to the payment page.
  *
- * Mirrors PAYMENT_OR_SELF_HOST in apps/api/src/domain/measurement/Channels.ts,
- * the server-side safety net.
+ * The rule lives in the one attribution rulebook (packages/shared/src/attribution/arrival.ts).
  */
-const PAYMENT_HOST = /(^|\.)pesapal\.com$/i;
-
-export function isInternalReferrerHost(host: string, selfHost: string): boolean {
-  const h = host.toLowerCase().replace(/\.$/, '');
-  if (!h) return false;
-  if (PAYMENT_HOST.test(h)) return true;
-  const self = selfHost.toLowerCase().replace(/^www\./, '');
-  return h === self || h.endsWith(`.${self}`);
-}
+export { isInternalReferrerHost } from '@goldplus/shared/src/attribution/arrival';

@@ -5,10 +5,11 @@
  * utm_source / utm_medium / utm_campaign before the tag reads the URL (BaseLayout). Short on purpose: an SMS is paid
  * by the character.
  *
- * Channels: s SMS, w WhatsApp, e email, m Messenger, i Instagram, a the installed app.
+ * Channels (the rulebook's CHANNEL_TAGS): s SMS, w WhatsApp, e email, m Messenger, i Instagram, a the installed app,
+ * q print (a QR code).
  * Not tagged: links to the admin (staff), and a link that already says where it came from (ch= or utm_).
  */
-export type ShopLinkChannel = 's' | 'w' | 'e' | 'm' | 'i' | 'a';
+export type ShopLinkChannel = 's' | 'w' | 'e' | 'm' | 'i' | 'a' | 'q';
 
 const SHOP_URL = /https?:\/\/(?:www\.)?shopgoldplus\.com(?:\/[^\s"'<>]*)?/g;
 
