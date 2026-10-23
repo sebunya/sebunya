@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
+import { page, sets } from './helpers/tagLoader';
 import { smsSegments, tagShopLinks, tagShopLinksInSms, tagShopUrl } from '../../packages/shared/src/links/shopLinkTag';
 import { carryQuery } from '../../apps/web/src/lib/carryQuery';
 import { formatWhatsAppReply } from '../../apps/api/src/domain/assistant/WhatsAppGoldie';
@@ -100,43 +100,6 @@ describe('server events reach GA4 only inside a GA4 visit, and only from product
   });
 });
 
-/** The real loader from BaseLayout, run against a fake page. */
-function loaderSource(): string {
-  const layout = read('apps/web/src/layouts/BaseLayout.astro');
-  const start = layout.indexOf('        (function () {\n        var ua = navigator.userAgent');
-  const end = layout.indexOf('        })();', start);
-  return layout.slice(start, end + '        })();'.length);
-}
-
-function page(href: string, opts: { referrer?: string; cookie?: string; store?: Map<string, string>; ua?: string } = {}) {
-  const store = opts.store ?? new Map<string, string>();
-  const scripts: Array<{ src?: string; onload?: () => void }> = [];
-  const listeners: Record<string, Array<() => void>> = {};
-  const loc = { href, hostname: new URL(href).hostname, origin: new URL(href).origin };
-  const win: Record<string, unknown> = {};
-  const ctx: Record<string, unknown> = {
-    window: win, URL, JSON, Date, Math, crypto: globalThis.crypto, decodeURIComponent, encodeURIComponent, Array, Object,
-    navigator: { userAgent: opts.ua ?? 'Mozilla/5.0 (Linux; Android 14) Chrome/130 Mobile', webdriver: false },
-    location: loc,
-    history: { state: null, replaceState: (_s: unknown, _t: string, u: string) => { loc.href = u; } },
-    sessionStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) },
-    document: {
-      cookie: opts.cookie ?? '_fp_cid=fp.1.00000000-0000-4000-8000-000000000000', referrer: opts.referrer ?? '', readyState: 'loading',
-      createElement: () => { const s: { src?: string; onload?: () => void; async?: boolean } = {}; scripts.push(s); return s; },
-      head: { appendChild: () => undefined },
-    },
-    addEventListener: (t: string, f: () => void) => { (listeners[t] ??= []).push(f); },
-    metricsUrl: 'https://metrics.shopgoldplus.com', gtmId: 'GTM-TEST', userId: null, adSignals: false,
-  };
-  Object.assign(win, ctx);
-  ctx.dataLayer = undefined;
-  // `window.x = …` and bare `x` must be the same binding, as in a browser.
-  const proxy = new Proxy(ctx, { get: (t, k) => (k in t ? t[k as string] : win[k as string]), set: (t, k, v) => { t[k as string] = v; win[k as string] = v; return true; } });
-  (proxy as Record<string, unknown>).window = proxy;
-  runInNewContext(loaderSource(), proxy as never);
-  return { loc, store, scripts, listeners, win, dl: (win.dataLayer ?? (proxy as Record<string, unknown>).dataLayer) as unknown[] };
-}
-
 describe('the tag loader (BaseLayout), run for real', () => {
   it('?ch=s.track becomes utm_source=sms, utm_medium=sms, utm_campaign=track before the tag reads the URL', () => {
     const p = page('https://shopgoldplus.com/track-order?reference=GP-1&ch=s.track');
@@ -213,7 +176,6 @@ describe('the tag loader (BaseLayout), run for real', () => {
   });
 });
 
-const sets = (dl: unknown[]) => Object.assign({}, ...dl.filter((e) => (e as IArguments)[0] === 'set').map((e) => (e as IArguments)[1]));
 
 describe('what GA4 may see of an address (second pass)', () => {
   it('identifier values are replaced, names and campaigns kept', () => {
@@ -243,9 +205,11 @@ describe('what GA4 may see of an address (second pass)', () => {
     expect(store.has('gp_land')).toBe(false);
   });
 
-  it('the loader\'s list is the shared list', () => {
+  it('the loader\'s lists come from the rulebook, as data (it has none of its own)', () => {
     const layout = read('apps/web/src/layouts/BaseLayout.astro');
-    expect(layout).toContain(`var RED = ${ANALYTICS_REDACTED_PARAMS.toString()};`);
+    expect(layout).toContain('var RED = new RegExp(rules.red, \'i\');');
+    expect(layout).toContain("const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, bots: DECLARED.source };");
+    expect(layout).not.toMatch(/pesapal\\\.com|FB_IAB|fbclid: 'facebook\.com'|ordertrackingid/);
   });
 
   it('a page that carried the landing is marked, and our landing recorder does not file it again', () => {
@@ -282,16 +246,14 @@ describe('loose ends (second pass)', () => {
 });
 
 describe('a social network\'s click id is not an ad (no ad has ever run; 10 of 10 fbclid arrivals were shares)', () => {
-  it('our reports: fbclid / twclid / epik untagged are organic social; tagged paid, they are paid social', () => {
-    for (const c of ['fbclid', 'twclid', 'epik']) {
-      expect(classifyChannel({ clickIdTypes: [c] }), c).toBe('organic_social');
-      expect(classifyChannel({ clickIdTypes: [c], referrerHost: 'm.facebook.com' }), c).toBe('organic_social');
-    }
+  it('our reports: fbclid untagged is organic social; tagged paid, it is paid social; ad click ids stay paid', () => {
+    expect(classifyChannel({ clickIdTypes: ['fbclid'] })).toBe('organic_social');
+    expect(classifyChannel({ clickIdTypes: ['fbclid'], referrerHost: 'm.facebook.com' })).toBe('organic_social');
     expect(classifyChannel({ clickIdTypes: ['fbclid'], source: 'fb', medium: 'paid_social' })).toBe('paid_social');
     expect(classifyChannel({ clickIdTypes: ['fbclid'], source: 'facebook', medium: 'cpc' })).toBe('paid_social');
     expect(classifyChannel({ source: 'ig', medium: 'paid' })).toBe('paid_social');
     // Ad-only ids still prove an ad; Google's stay paid search; a YouTube cpc tag stays where it was.
-    for (const c of ['ttclid', 'sccid', 'li_fat_id']) expect(classifyChannel({ clickIdTypes: [c] }), c).toBe('paid_social');
+    for (const c of ['ttclid', 'sccid', 'li_fat_id', 'twclid', 'epik']) expect(classifyChannel({ clickIdTypes: [c] }), c).toBe('paid_social');
     expect(classifyChannel({ clickIdTypes: ['gclid'] })).toBe('paid_search');
     expect(classifyChannel({ source: 'youtube', medium: 'cpc' })).toBe('paid_search');
     expect(classifyChannel({ source: 'google', medium: 'cpc' })).toBe('paid_search');
@@ -315,7 +277,8 @@ describe('a social network\'s click id is not an ad (no ad has ever run; 10 of 1
   it('the order source and the landing touch agree: fbclid without tags names Facebook, not paid', () => {
     const a = read('apps/web/src/lib/attribution.ts');
     expect(a).not.toMatch(/if \(p\.get\('fbclid'\)\) return 'facebook';\n\s*if \(p\.get\('ttclid'\)\)/);
-    expect(a).toMatch(/function socialNetworkOnUrl[\s\S]{0,200}fbclid'\)\) return 'facebook\.com'/);
-    expect(read('apps/web/src/lib/telemetry.ts')).toMatch(/const adClick = clickTypes\.some\(\(k\) => !\['fbclid', 'twclid', 'epik'\]\.includes\(k\)\)/);
+    // Both read the one rulebook (behaviour is proven in AttributionContract.test.ts).
+    expect(a).toMatch(/untaggedArrivalHost\(new URLSearchParams\(location\.search\), navigator\.userAgent/);
+    expect(read('apps/web/src/lib/telemetry.ts')).toMatch(/const t = landingTouch\(\{ search: location\.search/);
   });
 });

@@ -1,3 +1,4 @@
+import { AD_CLICK_IDS, PAYMENT_HOST, SOCIAL_SHARE_CLICK_IDS } from '@goldplus/shared';
 /**
  * Acquisition channel of a landing (dossier §8.1): paid click ids first, then
  * utm medium/source, then the referrer. Deterministic and pure; the same
@@ -9,10 +10,10 @@ export type Channel = typeof CHANNELS[number];
 /**
  * A referrer from the payment gateway (the shopper coming back after paying)
  * or from our own hosts is not an acquisition source. The storefront already
- * drops these (apps/web/src/lib/internalReferrer.ts); this is the server-side
+ * drops these (the rulebook's isInternalReferrerHost); this is the server-side
  * safety net so an older page or another client cannot file them as referral.
  */
-const PAYMENT_OR_SELF_HOST = /(^|\.)(pesapal\.com|shopgoldplus\.com)$/i;
+const SELF_HOST = /(^|\.)shopgoldplus\.com$/i;
 
 /**
  * AI assistants that link shoppers to the store. ChatGPT tags its links with
@@ -28,16 +29,21 @@ const SOCIAL = /(^|\.)(facebook|fb|instagram|tiktok|twitter|x|t|linkedin|lnkd|pi
 /** utm_source values that name a social network: the bare name, or its domain. */
 const SOCIAL_SOURCE = /^(x|twitter|t\.co|facebook|fb|instagram|ig|tiktok|linkedin|pinterest|snapchat|snap|youtube|threads|reddit)(\.com)?$/i;
 
+const lower = (ks: string[]) => ks.map((k) => k.toLowerCase());
+const AD_KIND_SEARCH = lower(Object.entries(AD_CLICK_IDS).filter(([, v]) => v.kind === 'search').map(([k]) => k));
+const AD_KIND_SOCIAL = lower(Object.entries(AD_CLICK_IDS).filter(([, v]) => v.kind === 'social').map(([k]) => k));
+const SOCIAL_SHARE_IDS = lower(Object.keys(SOCIAL_SHARE_CLICK_IDS));
+
 export function classifyChannel(t: { source?: string | null; medium?: string | null; referrerHost?: string | null; clickIdTypes?: string[] }): Channel {
   const src = (t.source ?? '').toLowerCase().trim();
   const med = (t.medium ?? '').toLowerCase().trim();
   const clicks = new Set((t.clickIdTypes ?? []).map((c) => c.toLowerCase()));
-  if (clicks.has('gclid') || clicks.has('gbraid') || clicks.has('wbraid') || clicks.has('msclkid')) return 'paid_search';
-  // Only ids an ad network adds to its OWN ad clicks prove an ad. Facebook adds fbclid to every outbound link on
-  // Facebook, Instagram and Messenger, a customer's share included (X's twclid and Pinterest's epik are not ad-only
-  // either): with no ad ever run, 10 of 10 fbclid arrivals in 30 days were shares counted as paid (2026-10-23).
-  // Those count as paid only when their tags say so (utm_medium below); untagged, they are organic social.
-  if (clicks.has('ttclid') || clicks.has('sccid') || clicks.has('li_fat_id')) return 'paid_social';
+  // Only ids an ad network adds to its OWN ad clicks prove an ad (the rulebook's AD_CLICK_IDS). Facebook adds fbclid
+  // to every outbound link on Facebook, Instagram and Messenger, a customer's share included: with no ad ever run,
+  // 10 of 10 fbclid arrivals in 30 days were shares counted as paid (2026-10-23). fbclid counts as paid only when
+  // its tags say so; untagged, it is organic social (SOCIAL_SHARE_CLICK_IDS).
+  if (AD_KIND_SEARCH.some((k) => clicks.has(k))) return 'paid_search';
+  if (AD_KIND_SOCIAL.some((k) => clicks.has(k))) return 'paid_social';
   // A social network with a cost medium is a social ad (GA4's own Paid Social rule, same medium pattern), not search: Meta's {{site_source_name}}
   // gives fb, ig, msg (Messenger) and an (Audience Network).
   if (/^(.*cp.*|ppc|retargeting|paid.*)$/.test(med) && ((SOCIAL_SOURCE.test(src) && !/^youtube/.test(src)) || /^(meta|msg|messenger|an)$/.test(src))) return 'paid_social';
@@ -66,10 +72,10 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   // used to fall through to "other" and vanish from the social rows.
   if (!med && SOCIAL_SOURCE.test(src)) return 'organic_social';
   // A social network's own click id and no tags: a link shared or posted there (see the paid rule above).
-  if (!src && !med && (clicks.has('fbclid') || clicks.has('twclid') || clicks.has('epik'))) return 'organic_social';
+  if (!src && !med && SOCIAL_SHARE_IDS.some((k) => clicks.has(k))) return 'organic_social';
   if (src || med) return 'other';
   const ref = (t.referrerHost ?? '').toLowerCase();
-  if (!ref || PAYMENT_OR_SELF_HOST.test(ref)) return 'direct';
+  if (!ref || PAYMENT_HOST.test(ref) || SELF_HOST.test(ref)) return 'direct';
   if (AI_ASSISTANT_HOST.test(ref)) return 'ai_assistant';
   if (SEARCH.test(ref)) return 'organic_search';
   if (SOCIAL.test(ref) || /(^|\.)(l\.facebook|lm\.facebook|m\.facebook)\.com$/.test(ref)) return 'organic_social';

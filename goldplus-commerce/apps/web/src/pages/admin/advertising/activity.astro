@@ -176,7 +176,7 @@ const anyActivity = daily.some((d) => totalOf(d) > 0);
             <li class="rounded-2xl border border-gray-200 bg-white p-4">
               <p class="text-xs font-bold text-gray-600">1 · Arrived from {who}</p>
               <p class="mt-1 text-3xl font-black text-brand-dark tabular-nums">{n(a.funnel.arrivals)}</p>
-              <p class="mt-1 text-xs text-gray-600">{a.funnel.clickParam ? <>Landings whose link carried <code>{a.funnel.clickParam}</code>.{/^(fbclid|twclid|epik)$/.test(a.funnel.clickParam) ? " The network adds it to shared links too, so these are not all ad clicks." : ""}</> : "This platform has no click id to count arrivals by."}</p>
+              <p class="mt-1 text-xs text-gray-600">{a.funnel.clickParam ? <>Landings whose link carried <code>{a.funnel.clickParam}</code>.{a.funnel.clickParam === "fbclid" ? " Facebook adds it to shared links too, so these are not all ad clicks." : ""}</> : "This platform has no click id to count arrivals by."}</p>
             </li>
             <li class="rounded-2xl border border-gray-200 bg-white p-4">
               <p class="text-xs font-bold text-gray-600">2 · Recognised</p>

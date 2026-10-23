@@ -8,7 +8,7 @@
  * third party, no cookies beyond first-party storage.
  */
 import { isInternalReferrerHost } from './internalReferrer';
-import { inAppReferrerHost } from './inAppBrowser';
+import { CLICK_ID_PARAMS, adNetworkOnUrl, untaggedArrivalHost } from '@goldplus/shared/src/attribution/arrival';
 
 const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'] as const;
 const FIRST = 'gp_attr_first';
@@ -43,25 +43,9 @@ function readUtm(): Record<string, string> {
  * social. Our server's channel report already went by the click id; the order's own source/medium now agree.
  */
 function paidNetworkOnUrl(p: URLSearchParams): string {
-  if (p.get('gclid') || p.get('gbraid') || p.get('wbraid')) return 'google';
-  if (p.get('msclkid')) return 'microsoft';
-  if (p.get('ttclid')) return 'tiktok';
-  if (p.get('li_fat_id')) return 'linkedin';
-  if (p.get('ScCid')) return 'snapchat';
-  return '';
-}
-
-/**
- * The social network whose own click id is on this URL, when that id is NOT proof of an ad (2026-10-23). Facebook adds
- * fbclid to every link clicked on Facebook, Instagram and Messenger, a customer's share included; X's twclid and
- * Pinterest's epik are not ad-only either. With no ad ever run, every fbclid arrival was a share and was recorded as
- * facebook / paid_social. Untagged, it is that network's organic traffic (its referrer); tagged, the tags decide.
- */
-function socialNetworkOnUrl(p: URLSearchParams): string {
-  if (p.get('fbclid')) return 'facebook.com';
-  if (p.get('twclid')) return 'x.com';
-  if (p.get('epik')) return 'pinterest.com';
-  return '';
+  // Ad click ids (the rulebook's AD_CLICK_IDS). Facebook's fbclid is not one: it is added to shares too, and names
+  // Facebook as referrer instead (untaggedArrivalHost below).
+  return adNetworkOnUrl(p);
 }
 
 export function captureAttribution(): void {
@@ -73,7 +57,7 @@ export function captureAttribution(): void {
     // No referrer and no campaign, but opened in a social app's own browser, or carrying a social network's click id:
     // a visit from that network (the app it was opened in first; Instagram links carry fbclid too).
     if (!ref && !hasUtm) {
-      const h = inAppReferrerHost(navigator.userAgent || '') || socialNetworkOnUrl(new URLSearchParams(location.search));
+      const h = untaggedArrivalHost(new URLSearchParams(location.search), navigator.userAgent || '');
       if (h) ref = `https://${h}/`;
     }
     const now = new Date().toISOString();
@@ -129,7 +113,8 @@ export interface CheckoutAttribution {
   clickIds?: Record<string, string>;
 }
 
-const CLICK_KEYS = ['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik', 'msclkid', 'ScCid', 'clickid', 'click_id'];
+/** The rulebook's click ids, less fbclid: Meta's click is stored as the fbc built from it (recordAdClick). */
+const CLICK_KEYS = CLICK_ID_PARAMS.filter((k) => k !== 'fbclid');
 /** What the record holds: the URL parameters above, plus Meta's click id built from `fbclid`. */
 const STORED_CLICK_KEYS = [...CLICK_KEYS, 'fbc'];
 /**
