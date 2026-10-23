@@ -38,9 +38,9 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   // either): with no ad ever run, 10 of 10 fbclid arrivals in 30 days were shares counted as paid (2026-10-23).
   // Those count as paid only when their tags say so (utm_medium below); untagged, they are organic social.
   if (clicks.has('ttclid') || clicks.has('sccid') || clicks.has('li_fat_id')) return 'paid_social';
-  // A social network with a cost medium is a social ad (GA4's own rule), not search: Meta's {{site_source_name}}
+  // A social network with a cost medium is a social ad (GA4's own Paid Social rule, same medium pattern), not search: Meta's {{site_source_name}}
   // gives fb, ig, msg (Messenger) and an (Audience Network).
-  if (/^(cpc|ppc|cpm|paid.*|retargeting)$/.test(med) && ((SOCIAL_SOURCE.test(src) && !/^youtube/.test(src)) || /^(meta|msg|messenger|an)$/.test(src))) return 'paid_social';
+  if (/^(.*cp.*|ppc|retargeting|paid.*)$/.test(med) && ((SOCIAL_SOURCE.test(src) && !/^youtube/.test(src)) || /^(meta|msg|messenger|an)$/.test(src))) return 'paid_social';
   if (/^(cpc|ppc|paid[_-]?search|sem)$/.test(med)) return 'paid_search';
   if (/^(paid[_-]?social|social[_-]?paid|paidsocial|cpm[_-]?social)$/.test(med)) return 'paid_social';
   if (/^(display|banner|cpm|programmatic|video|audio)$/.test(med)) return 'display';
