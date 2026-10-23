@@ -43,6 +43,16 @@ privacy (#analytics) and cookies pages state all of this. Supersedes the 2026-08
   (…/chat), a the installed app (app/pwa). Campaign = where the link goes (track, review, gift, loyalty, reset, pay,
   product, shop) or `goldie` for Goldie's replies. An SMS is tagged only if it costs no extra part. Referral links
   (`/r/<code>`) and the gift card share link carry utm_source=customer_share / customer_invite, utm_medium=friend.
+- **Social apps' own browsers** (Instagram, Facebook/Messenger, TikTok, Snapchat, LinkedIn, Pinterest) send no
+  referrer but name themselves: with no referrer and no campaign the landing is credited to that network
+  (lib/inAppBrowser.ts, mirrored in BaseLayout, kept in step by a test). WhatsApp has no such marker.
+- **Links staff share by hand** (WhatsApp status, groups, a printed QR): add `?ch=w.status`, `?ch=w.group`,
+  `?ch=s.<name>` etc. to any shop URL; the page turns it into utm_*. Longer campaigns: /admin/utm-builder.
+- **Which GA4 cookie:** our stream's `_ga_YVV0KLGMQJ` when the API knows the id, else the most recently active one
+  (a browser can also carry another property's). A cookie idle for 30+ minutes is the previous visit's: the browser
+  waits for the tag to renew it before sending.
+- **Coverage check (read-only):** ops/measurement/ga4-session-coverage.sql (share of events and orders with a GA4
+  visit). Metric `goldplus_ga4_skipped_no_session_total` counts events kept from GA4 for want of one.
 - **Redirects keep the query** (lib/carryQuery): recorded redirects, a product's successor, /quotes, /consent, 404.
 - **Not counted:** staff (any browser that opened the admin carries `gp_staff`; delete that cookie to be counted
   again), our probes (GoldPlusSyntheticProbe UA or `gp_probe`), declared automation.

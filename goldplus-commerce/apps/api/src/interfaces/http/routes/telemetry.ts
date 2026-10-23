@@ -10,6 +10,7 @@ import { exceedsBrowserValueCeiling, withoutBrowserAuthority } from '../../../ap
 import { isDeclaredAutomationUa } from '../../../application/use-cases/telemetry/DeclaredAutomation';
 import { clientIp, proxyConfig } from '../clientAddress';
 import { Registry } from '../../../infrastructure/Registry';
+import { env } from '../../../config/env';
 
 const routes = new Hono();
 const trackUseCase = new TrackBrowserTelemetryEventUseCase();
@@ -64,7 +65,7 @@ routes.post('/collect', collectLimit, botDetectionMiddleware, async (c) => {
   if (isDeclaredAutomationUa(realUa)) return c.json({ success: true, event_id: parsed.data.event_id }, 202);
 
   try {
-    await trackUseCase.execute(event, realIp, realUa, gaSessionFromCookieHeader(c.req.header('cookie')));
+    await trackUseCase.execute(event, realIp, realUa, gaSessionFromCookieHeader(c.req.header('cookie'), env.ga4MeasurementId));
     return c.json({ success: true, event_id: parsed.data.event_id }, 202);
   } catch (err) {
     logger.error({ err, eventId: parsed.data.event_id }, '[Telemetry] Enqueue failed');
@@ -88,7 +89,7 @@ routes.post('/collect/batch', batchLimit, botDetectionMiddleware, async (c) => {
   if (body && !Array.isArray(body) && typeof body === 'object' && 'batchId' in body) {
     const realIp = clientIp(c);
     const realUa = c.req.header('user-agent') || '';
-    const gaSession = gaSessionFromCookieHeader(c.req.header('cookie'));
+    const gaSession = gaSessionFromCookieHeader(c.req.header('cookie'), env.ga4MeasurementId);
     const serverVisitorId = fpClientIdFromCookieHeader(c.req.header('cookie'));
     // Declared automation: its landing touch is still filed (as 'automated'),
     // but no behavioural event is enqueued for GA4 or the ad platforms.
@@ -153,7 +154,7 @@ routes.post('/collect/batch', batchLimit, botDetectionMiddleware, async (c) => {
         withoutBrowserAuthority(parsed.data, fpClientIdFromCookieHeader(c.req.header('cookie'))),
         realIp,
         realUa,
-        gaSessionFromCookieHeader(c.req.header('cookie')),
+        gaSessionFromCookieHeader(c.req.header('cookie'), env.ga4MeasurementId),
       );
       results.push({ event_id: parsed.data.event_id, ok: true });
     } catch (err) {

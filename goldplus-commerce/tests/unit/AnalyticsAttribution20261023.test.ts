@@ -6,6 +6,8 @@ import { smsSegments, tagShopLinks, tagShopLinksInSms, tagShopUrl } from '../../
 import { carryQuery } from '../../apps/web/src/lib/carryQuery';
 import { formatWhatsAppReply } from '../../apps/api/src/domain/assistant/WhatsAppGoldie';
 import { formatSocialReply } from '../../apps/api/src/domain/assistant/SocialGoldie';
+import { classifyChannel } from '../../apps/api/src/domain/measurement/Channels';
+import { inAppReferrerHost } from '../../apps/web/src/lib/inAppBrowser';
 
 const read = (p: string) => readFileSync(resolve(__dirname, '../..', p), 'utf8');
 
@@ -85,9 +87,10 @@ describe('server events reach GA4 only inside a GA4 visit, and only from product
     expect(gate).toBeLessThan(send);
   });
 
-  it('the browser holds its beacons for the GA4 session cookie (up to 10 s), never past leaving the page', () => {
+  it('the browser holds its beacons for a current GA4 session cookie (up to 15 s), never past hiding or leaving the page', () => {
     const t = read('apps/web/src/lib/telemetry.ts');
-    expect(t).toMatch(/const GA_SESSION_WAIT_MS = 10_000;/);
+    expect(t).toMatch(/const GA_SESSION_WAIT_MS = 15_000;/);
+    expect(t).toMatch(/visibilitychange[\s\S]{0,200}flushQueue\(\)/);
     expect(t).toMatch(/flushTimer = setTimeout\(flushWhenGaReady, BATCH_FLUSH_MS\)/);
     expect(t).toMatch(/addEventListener\('pagehide'[\s\S]{0,200}flushQueue\(\)/);
     expect(t).toMatch(/gp_staff=/);
@@ -168,6 +171,36 @@ describe('the tag loader (BaseLayout), run for real', () => {
     p.listeners.touchstart[0]();
     p.listeners.scroll[0]();
     expect(p.scripts.filter((s) => s.src?.includes('/gtm.js?id=GTM-TEST'))).toHaveLength(1);
+  });
+
+  it('every channel tag lands in the right channel of our own reports', () => {
+    const want: Record<string, string> = { s: 'sms', w: 'whatsapp', e: 'email', m: 'organic_social', i: 'organic_social', a: 'direct' };
+    for (const [c, channel] of Object.entries(want)) {
+      const u = new URL(page(`https://shopgoldplus.com/?ch=${c}.track`).loc.href);
+      expect(classifyChannel({ source: u.searchParams.get('utm_source'), medium: u.searchParams.get('utm_medium') }), c).toBe(channel);
+    }
+  });
+
+  it('a social app\'s own browser (no referrer) is credited to that network, the same in GA4 and our records', () => {
+    const uas: Record<string, string | null> = {
+      'Mozilla/5.0 (iPhone) Mobile/15E148 Instagram 312.0.0.0 (iPhone14,5; iOS 17_0)': 'instagram.com',
+      'Mozilla/5.0 (Linux; Android 14) Chrome/130 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/480.0.0.0;]': 'facebook.com',
+      'Mozilla/5.0 (Linux; Android 14) Chrome/130 Mobile [FB_IAB/Orca-Android;FBAV/440.0;]': 'facebook.com',
+      'Mozilla/5.0 (Linux; Android 14) Chrome/130 Mobile musical_ly_2023 BytedanceWebview/d8a21c6': 'tiktok.com',
+      'Mozilla/5.0 (iPhone) Snapchat/13.10.0.40 (like Safari)': 'snapchat.com',
+      'Mozilla/5.0 (Linux; Android 14) Chrome/130 Mobile Safari/537.36': null,
+    };
+    for (const [ua, host] of Object.entries(uas)) {
+      expect(inAppReferrerHost(ua), ua).toBe(host);
+      const store = new Map<string, string>();
+      const p = page('https://shopgoldplus.com/products/x', { ua, store });
+      const set = p.dl.find((e) => (e as IArguments)[0] === 'set') as IArguments | undefined;
+      expect(set?.[1] ?? null, ua).toEqual(host ? { page_referrer: `https://${host}/` } : null);
+      if (host) expect(classifyChannel({ referrerHost: host }), ua).toBe('organic_social');
+    }
+    // A tagged link keeps its own source.
+    const tagged = page('https://shopgoldplus.com/?utm_source=newsletter&utm_medium=email', { ua: 'Mozilla/5.0 Instagram 312.0.0.0' });
+    expect(tagged.dl.find((e) => (e as IArguments)[0] === 'set')).toBeUndefined();
   });
 
   it('staff and our own probes: no tag at all', () => {

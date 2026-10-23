@@ -204,6 +204,13 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
           here.searchParams.forEach(function (v, k) { if (CAMPAIGN.test(k)) q.push([k, v]); });
           var ref = '';
           try { var rh = new URL(document.referrer).hostname; if (!/(^|\.)shopgoldplus\.com$/.test(rh)) ref = document.referrer; } catch (e) {}
+          // 3. A social app's own browser sends no referrer but names itself (lib/inAppBrowser.ts, same list): the
+          //    landing is credited to that network, for GA4 as for our own records.
+          if (!ref && !q.length && !document.referrer) {
+            var IAB = [[/\bSnapchat\/\d/i, 'snapchat.com'], [/\bInstagram\s\d/i, 'instagram.com'], [/\bFBAN\/|\bFBAV\/|\bFB_IAB\//, 'facebook.com'],
+              [/\bmusical_ly|\bBytedanceWebview|\bTikTok\b/i, 'tiktok.com'], [/\bLinkedInApp\b/i, 'linkedin.com'], [/\bPinterest\/\d/i, 'pinterest.com']];
+            for (var i = 0; i < IAB.length; i++) if (IAB[i][0].test(ua)) { ref = 'https://' + IAB[i][1] + '/'; window.__gpLandingReferrer = ref; break; }
+          }
           var land = null; try { land = JSON.parse(sessionStorage.getItem('gp_land') || 'null'); } catch (e) {}
           if (land && Date.now() - land.t > 30 * 60e3) { land = null; sessionStorage.removeItem('gp_land'); }
           if (sessionStorage.getItem('gp_ga_seen') !== '1') {

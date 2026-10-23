@@ -50,7 +50,7 @@ export function tagShopLinks(text: string, channel: ShopLinkChannel, campaign?: 
   });
 }
 
-const GSM7 = /^[@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞ\x1BÆæßÉ !"#¤%&'()*+,\-./0-9:;<=>?¡A-ZÄÖÑÜ§¿a-zäöñüà^{}\\[~\]|€]*$/;
+const GSM7 = /^[@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&'()*+,\-./0-9:;<=>?¡A-ZÄÖÑÜ§¿a-zäöñüà^{}\\[~\]|€]*$/;
 const GSM7_EXT = /[\^{}\\[~\]|€]/g;
 
 /** How many SMS parts a text is billed as: GSM-7 (160, then 153 per part; ^{}\[~]|€ count twice) or UCS-2 (70, then 67). */
