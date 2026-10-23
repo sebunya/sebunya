@@ -1429,6 +1429,13 @@
       "when": 1790140000081,
       "tag": "0204_creator_negotiated_costs",
       "breakpoints": true
+    },
+    {
+      "idx": 204,
+      "version": "5",
+      "when": 1790140000082,
+      "tag": "0205_ga4_daily_series",
+      "breakpoints": true
     }
   ]
 }

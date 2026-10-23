@@ -4,8 +4,7 @@ import { logger } from '../logging/logger';
 import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { effectiveNumber } from '../../domain/measurement/MeasurementConfig';
 import type { MeasurementConfigPort } from '../../application/ports/measurement/MeasurementConfigPort';
-import { getServiceAccountToken, parseServiceAccountJson } from '../seo/adapters/GoogleServiceAccountAuth';
-import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
+import { Ga4DataApi, type Ga4Reporter, type SeoRepo } from './Ga4DataApi';
 
 const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
 export const RECONCILE_DAYS = 8;
@@ -16,47 +15,17 @@ export interface Ga4DayReport { day: string; purchases: number; revenue: number 
 export interface Ga4Reader { purchasesByDay(from: string, to: string): Promise<Ga4DayReport[] | { unavailable: string }> }
 export interface Alarm { raise(message: string): Promise<void> }
 
-interface SeoRepo { findConnectionWithActiveCredential(providerId: string): Promise<any>; getActiveCredential(connectionId: string): Promise<any> }
-
-/** GA4 Data API runReport (transactions + purchaseRevenue by date); credential vault-first, then env. */
+/** GA4 Data API runReport (transactions + purchaseRevenue by date) through the shared Ga4DataApi client. */
 export class HttpGa4Reader implements Ga4Reader {
-  constructor(private readonly seoRepo: SeoRepo, private readonly fetchImpl: typeof fetch = fetch) {}
-
-  private async credential(): Promise<{ json: string; propertyId: string } | { unavailable: string }> {
-    let json: string | null = null; let propertyId = '';
-    try {
-      const connection = await this.seoRepo.findConnectionWithActiveCredential('google-analytics-4');
-      if (connection) {
-        const credential = await this.seoRepo.getActiveCredential(connection.id);
-        const vault = IntegrationCredentialVault.fromEnv();
-        if (credential && vault) {
-          const secret = vault.decrypt<Record<string, unknown>>(credential.ciphertext);
-          json = typeof secret.serviceAccountJson === 'string' ? secret.serviceAccountJson : secret.serviceAccountJson ? JSON.stringify(secret.serviceAccountJson) : null;
-          propertyId = String((connection.config ?? {}).propertyId ?? connection.property_ref ?? connection.propertyRef ?? '');
-        }
-      }
-    } catch (err) { logger.warn({ err: (err as Error).message }, '[ga4-reconcile] vault credential unavailable; trying env'); }
-    if (!json) json = (process.env.GA4_SERVICE_ACCOUNT_JSON ?? '').trim() || null;
-    if (!propertyId) propertyId = (process.env.GA4_PROPERTY_ID ?? '').trim();
-    propertyId = propertyId.replace(/^properties\//, '');
-    if (!json) return { unavailable: 'No GA4 service-account credential (vault connection google-analytics-4 or GA4_SERVICE_ACCOUNT_JSON).' };
-    if (!propertyId) return { unavailable: 'No GA4 property id (connection config propertyId or GA4_PROPERTY_ID).' };
-    return { json, propertyId };
+  private readonly api: Ga4Reporter;
+  constructor(seoRepoOrApi: SeoRepo | Ga4Reporter, fetchImpl: typeof fetch = fetch) {
+    this.api = 'runReport' in seoRepoOrApi ? seoRepoOrApi : new Ga4DataApi(seoRepoOrApi, fetchImpl);
   }
 
   async purchasesByDay(from: string, to: string) {
-    const cred = await this.credential();
-    if ('unavailable' in cred) return cred;
-    let token: string;
-    try { token = await getServiceAccountToken(parseServiceAccountJson(cred.json), 'https://www.googleapis.com/auth/analytics.readonly'); }
-    catch (err) { return { unavailable: `GA4 credential refused: ${(err as Error).message}`.slice(0, 300) }; }
-    const res = await this.fetchImpl(`https://analyticsdata.googleapis.com/v1beta/properties/${cred.propertyId}:runReport`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(30_000),
-      body: JSON.stringify({ dateRanges: [{ startDate: from, endDate: to }], dimensions: [{ name: 'date' }], metrics: [{ name: 'transactions' }, { name: 'purchaseRevenue' }], limit: 400 }),
-    });
-    if (!res.ok) return { unavailable: `GA4 runReport failed (HTTP ${res.status}). Is the service account a Viewer on property ${cred.propertyId}?` };
-    const body = await res.json() as { rows?: Array<{ dimensionValues: Array<{ value: string }>; metricValues: Array<{ value: string }> }> };
-    return (body.rows ?? []).map((r) => { const d = r.dimensionValues[0].value; return { day: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`, purchases: Number(r.metricValues[0].value), revenue: Math.round(Number(r.metricValues[1].value)) }; });
+    const r = await this.api.runReport({ dateRanges: [{ startDate: from, endDate: to }], dimensions: [{ name: 'date' }], metrics: [{ name: 'transactions' }, { name: 'purchaseRevenue' }] });
+    if ('unavailable' in r) return r;
+    return r.rows.map((row) => { const d = row.dimensionValues[0].value; return { day: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`, purchases: Number(row.metricValues[0].value), revenue: Math.round(Number(row.metricValues[1].value)) }; });
   }
 }
 

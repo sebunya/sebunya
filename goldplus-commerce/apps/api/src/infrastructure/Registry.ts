@@ -27,6 +27,8 @@ import { HoldoutGate } from '../application/use-cases/measurement/HoldoutGate';
 import { MmmDataset } from './measurement/MmmDataset';
 import { MarketingCostDerivation } from './measurement/MarketingCostDerivation';
 import { ControlFeeds } from './measurement/ControlFeeds';
+import { Ga4DataApi } from './measurement/Ga4DataApi';
+import { Ga4DailyPull } from './measurement/Ga4DailyPull';
 import { DrizzleCreatorCostStore } from './measurement/DrizzleCreatorCostStore';
 import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
 import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRepository';
@@ -899,6 +901,9 @@ export class Registry {
   public readonly mmmDataset = new MmmDataset(this.measurementConfig, this.controlFeeds);
   public readonly marketingCostDerivation = new MarketingCostDerivation(this.measurementConfig, this.controlFeeds);
   public readonly creatorCostStore = new DrizzleCreatorCostStore();
+  /** GA4 Data API (service account) shared by the reconciliation and the daily series pull (0205). */
+  public readonly ga4DataApi = new Ga4DataApi(this.seoIntegrationRepo);
+  public readonly ga4DailyPull = new Ga4DailyPull(this.ga4DataApi);
   // Advertising destinations (0138): server-side conversion APIs, token vault-encrypted.
   // Measurement delivery operations (0140/0141): queue, replay, quarantine, kill switch.
   /** Collector contract v2 (0141); the per-event durable write is the caller's tracking path. */

@@ -9,6 +9,7 @@ import { CONTROL_HELP, CONTROL_KEYS, MANUAL_CONTROL_KEYS } from '../../../../inf
 import { Ga4Reconciliation, HttpGa4Reader, careDeskAlarm } from '../../../../infrastructure/measurement/Ga4Reconciliation';
 import { lastMeasurementNightly, runMeasurementNightlyOnce } from '../../../../infrastructure/scheduler/MeasurementNightlyTicker';
 import { storeZip } from '../../../../infrastructure/measurement/storeZip';
+import { GA4_REPORTS, type Ga4ReportKey } from '../../../../infrastructure/measurement/Ga4DailyPull';
 
 /**
  * Marketing mix modelling inputs, owned-channel holdouts, measurement settings and the GA4 reconciliation
@@ -23,11 +24,11 @@ const bad = (c: Context, message: string, status: 400 | 403 = 400) => c.json({ s
 
 routes.get('/status', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   const r = registry();
-  const [readiness, nightly, counts, values, fxFeed] = await Promise.all([r.mmmDataset.readiness(), lastMeasurementNightly(), r.holdoutStore.assignmentCounts(), r.measurementConfig.values(), r.controlFeeds.latestFx()]);
+  const [readiness, nightly, counts, values, fxFeed, ga4Series] = await Promise.all([r.mmmDataset.readiness(), lastMeasurementNightly(), r.holdoutStore.assignmentCounts(), r.measurementConfig.values(), r.controlFeeds.latestFx(), r.ga4DailyPull.summary()]);
   const fx = resolveUgxPerUsd(values, fxFeed, new Date().toISOString().slice(0, 10));
   const whatsapp = whatsappCostUgx(values, fx.rate);
   const costs = { ugxPerUsd: fx.rate, fxBasis: fx.basis, fxDetail: fx.detail, smsUgx: effectiveNumber(values, 'sms_cost_ugx_per_message'), whatsappMarketingUgx: whatsapp.marketing, whatsappUtilityUgx: whatsapp.utility, whatsappBasis: whatsapp.basis };
-  return c.json({ success: true, data: { readiness, nightly, holdoutAssignments: counts, settingsSet: Object.keys(values).filter((k) => k !== 'holdout_salt'), costs } });
+  return c.json({ success: true, data: { readiness, nightly, holdoutAssignments: counts, settingsSet: Object.keys(values).filter((k) => k !== 'holdout_salt'), costs, ga4Series } });
 });
 
 /** Creator payments agreed outside a contract record (0204). Listed with the creators to choose from. */
@@ -50,6 +51,13 @@ routes.delete('/creator-costs/:id', requirePermissions([PERMISSIONS.SETTINGS_MAN
   if (!r.ok) return bad(c, r.message);
   await registry().createAuditLogUseCase.execute({ actorId: actorId(c) ?? '', action: 'CREATOR_COST_ENDED', entity: 'creator_negotiated_costs', entityId: id, newState: { ended: r.wasLive } });
   return c.json({ success: true, data: { ended: r.wasLive } });
+});
+
+/** The shop's copy of GA4's daily series (0205): one report over a window. */
+routes.get('/ga4-series', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  const report = String(c.req.query('report') ?? 'channel');
+  if (!(report in GA4_REPORTS)) return bad(c, `report is one of ${Object.keys(GA4_REPORTS).join(', ')}.`);
+  return c.json({ success: true, data: { report, rows: await registry().ga4DailyPull.series(report as Ga4ReportKey, Math.min(400, Number(c.req.query('days') ?? 28) || 28)) } });
 });
 
 routes.get('/readiness', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => c.json({ success: true, data: await registry().mmmDataset.readiness() }));
@@ -102,7 +110,7 @@ routes.get('/holdouts', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c
 
 routes.get('/reconciliation', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   const r = registry();
-  const rec = new Ga4Reconciliation(r.measurementConfig, new HttpGa4Reader(r.seoIntegrationRepo), careDeskAlarm(r.careDeskUseCases));
+  const rec = new Ga4Reconciliation(r.measurementConfig, new HttpGa4Reader(r.ga4DataApi), careDeskAlarm(r.careDeskUseCases));
   return c.json({ success: true, data: await rec.latest() });
 });
 

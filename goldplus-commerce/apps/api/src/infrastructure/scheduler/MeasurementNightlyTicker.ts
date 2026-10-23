@@ -8,7 +8,8 @@ import { Ga4Reconciliation, HttpGa4Reader, careDeskAlarm } from '../measurement/
 /**
  * Measurement nightly (0203, 2026-10-23), after the attribution batch and the first-party run (03:30–05:59
  * Kampala), once a day, one replica at a time:
- *  0. control feeds (market dollar rate, Kampala rain) into measurement.control_series;
+ *  0. control feeds (market dollar rate, Kampala rain) into measurement.control_series, then GA4's daily series
+ *     (sessions, users, purchases by channel, source, landing page, device) into measurement.ga4_daily_series;
  *  1. derived marketing costs (SMS, WhatsApp, loyalty, referrals, creators) into media_cost_facts;
  *  2. the MMM daily dataset and its control series;
  *  3. holdout outcomes (treated versus held, 14 and 28 days);
@@ -48,10 +49,11 @@ export async function runMeasurementNightlyOnce(now = new Date(), trigger: 'sche
       try { stats[name] = await fn(); } catch (err) { stats[name] = { error: String((err as Error).message ?? err).slice(0, 300) }; logger.error({ err: (err as Error).message, step: name }, '[measurement-nightly] step failed'); }
     };
     await step('feeds', () => registry.controlFeeds.run(now));
+    await step('ga4_series', () => registry.ga4DailyPull.run(now));
     await step('costs', () => registry.marketingCostDerivation.derive(35, now));
     await step('mmm', () => registry.mmmDataset.rebuild(now));
     await step('holdouts', () => registry.holdoutStore.computeOutcomes(now));
-    const reconciliation = new Ga4Reconciliation(registry.measurementConfig, new HttpGa4Reader(registry.seoIntegrationRepo), careDeskAlarm(registry.careDeskUseCases));
+    const reconciliation = new Ga4Reconciliation(registry.measurementConfig, new HttpGa4Reader(registry.ga4DataApi), careDeskAlarm(registry.careDeskUseCases));
     await step('ga4', () => reconciliation.run(now));
     logger.info(stats, '[measurement-nightly] run');
     return { status: 'RAN', stats };
