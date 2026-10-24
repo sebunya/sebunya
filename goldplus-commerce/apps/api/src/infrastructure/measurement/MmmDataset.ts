@@ -10,7 +10,7 @@ import { kampalaDay } from './MarketingCostDerivation';
 
 const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
 export const MMM_WINDOW_DAYS = 400;
-export const CONTROL_KEYS = ['holiday', 'school_term', 'stockout_share', 'price_index', 'usd_ugx', 'rain_mm', 'momo_outage', 'delivery_fee_index', 'promo_depth', 'power_outage', 'competitor_promo', 'fuel_price_index'] as const;
+export const CONTROL_KEYS = ['holiday', 'school_term', 'stockout_share', 'price_index', 'usd_ugx', 'usd_ugx_bou', 'rain_mm', 'momo_outage', 'delivery_fee_index', 'promo_depth', 'power_outage', 'competitor_promo', 'fuel_price_index'] as const;
 export type ControlKey = typeof CONTROL_KEYS[number];
 /** Typed in by a person. No public feed exists for Uganda's load-shedding, competitor promotions or pump prices. */
 export const MANUAL_CONTROL_KEYS: readonly ControlKey[] = ['momo_outage', 'delivery_fee_index', 'promo_depth', 'power_outage', 'competitor_promo', 'fuel_price_index'];
@@ -19,7 +19,8 @@ export const CONTROL_HELP: Record<ControlKey, string> = {
   school_term: 'School term in session (calendar)',
   stockout_share: 'Share of listed products not in stock (measured nightly)',
   price_index: 'Mean retail price, UGX (measured nightly)',
-  usd_ugx: 'Market shillings per dollar (fed nightly, no margin)',
+  usd_ugx: 'Market shillings per dollar (open feed, nightly, no margin)',
+  usd_ugx_bou: 'Bank of Uganda mid rate, shillings per dollar (read from bou.or.ug at 1 pm, no margin)',
   rain_mm: 'Rain in Kampala, mm (fed nightly)',
   momo_outage: 'Mobile money down that day: 1',
   delivery_fee_index: 'Delivery fee relative to normal, e.g. 1.2 for 20% up',
@@ -60,14 +61,16 @@ export class MmmDataset {
     for (const r of rows(await db.execute(sql`select platform, config->>'ugxPerUsd' as rate from ad_destinations`))) {
       const n = Number(r.rate); if (Number.isFinite(n) && n > 0) rates.set(String(r.platform), n);
     }
-    // A day's dollar spend is converted at that day's fed market rate plus the margin (the feed series is the
-    // market rate without it). Days before the feed started, or with no reading, use the resolved fallback. A
-    // hand-set rate pins every day, as the settings help says.
+    // A day's dollar spend is converted at that day's rate plus the margin: the Bank of Uganda mid (usd_ugx_bou,
+    // read at 1 pm) where there is one, else the fed market rate (both series are without the margin). Days with
+    // no reading use the resolved fallback. A hand-set rate pins every day, as the settings help says.
     const margin = effectiveNumber(values, 'usd_ugx_margin') ?? 0;
     const dayRates = new Map<string, number>();
     if (fx.basis !== 'manual') {
-      for (const r of rows(await db.execute(sql`select day::text as day, value from measurement.control_series where control_key = 'usd_ugx' and source = 'feed' and day >= ${from}::date and day <= ${to}::date`))) {
-        const n = Number(r.value); if (Number.isFinite(n) && n > 0) dayRates.set(String(r.day), Math.round(n + margin));
+      for (const r of rows(await db.execute(sql`select day::text as day, value, control_key from measurement.control_series
+          where ((control_key = 'usd_ugx' and source = 'feed') or (control_key = 'usd_ugx_bou' and source = 'bou')) and day >= ${from}::date and day <= ${to}::date
+          order by day, (control_key = 'usd_ugx_bou')`))) {
+        const n = Number(r.value); if (Number.isFinite(n) && n > 0) dayRates.set(String(r.day), Math.round(n + margin)); // the bou row sorts last and wins
       }
     }
     const rateFor = (platform: string, day: string): number => {

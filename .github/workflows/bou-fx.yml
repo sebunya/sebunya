@@ -1,0 +1,45 @@
+name: Bank of Uganda dollar rate
+
+# Reads the day's USD/UGX mid, buying and selling rates off bou.or.ug (a Power BI report with no JSON feed) in a
+# real browser at 13:00 Kampala, Monday to Friday, and posts them to the shop (POST /internal/fx/bou, shared
+# secret BOU_FX_TOKEN). The shop's nightly cost run then prices dollar spend at the Bank of Uganda mid rate plus
+# the owner's margin, falling back to the open market feed when no fresh BoU reading exists (weekends, holidays,
+# a failed run). Also on demand (workflow_dispatch; tick dry run to only print the reading).
+on:
+  schedule:
+    - cron: '0 10 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Only print the reading, do not post it'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: goldplus-commerce
+
+jobs:
+  read-and-post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4, pinned 2026-10-07
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4, pinned 2026-10-07
+        with:
+          version: 9.1.4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4, pinned 2026-10-07
+        with:
+          node-version: 22
+          cache: 'pnpm'
+          cache-dependency-path: goldplus-commerce/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Read bou.or.ug and post the reading
+        env:
+          API_URL: https://api.shopgoldplus.com
+          BOU_FX_TOKEN: ${{ secrets.BOU_FX_TOKEN }}
+        run: node scripts/bou-fx.mjs ${{ inputs.dry_run && '--dry-run' || '' }}

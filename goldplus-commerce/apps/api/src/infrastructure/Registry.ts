@@ -30,6 +30,7 @@ import { ControlFeeds } from './measurement/ControlFeeds';
 import { Ga4DataApi } from './measurement/Ga4DataApi';
 import { Ga4DailyPull } from './measurement/Ga4DailyPull';
 import { DrizzleMediaPlacementStore } from './measurement/DrizzleMediaPlacementStore';
+import { RecordBouFxReadingUseCase } from '../application/use-cases/measurement/RecordBouFxReadingUseCase';
 import { YouTubeViewsPull } from './measurement/YouTubeViewsPull';
 import { DrizzleCreatorCostStore } from './measurement/DrizzleCreatorCostStore';
 import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
@@ -908,6 +909,8 @@ export class Registry {
   public readonly ga4DailyPull = new Ga4DailyPull(this.ga4DataApi);
   /** Paid placements on YouTube channels, radio, TV (0206) and the nightly YouTube view counts (API key). */
   public readonly mediaPlacementStore = new DrizzleMediaPlacementStore();
+  /** Bank of Uganda rate posted by the 1 pm job; kept in control_series via ControlFeeds. */
+  public readonly recordBouFxReadingUseCase = new RecordBouFxReadingUseCase(this.controlFeeds);
   public readonly youtubeViewsPull = new YouTubeViewsPull(process.env.YOUTUBE_API_KEY);
   // Advertising destinations (0138): server-side conversion APIs, token vault-encrypted.
   // Measurement delivery operations (0140/0141): queue, replay, quarantine, kill switch.

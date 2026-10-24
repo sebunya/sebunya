@@ -18,6 +18,7 @@ import quoteRoutes from './routes/quotes';
 import adminQuoteRequestRoutes from './routes/admin/quote-requests';
 import webhookRoutes from './routes/webhooks';
 import internalLighthouseRoutes from './routes/internal/lighthouse';
+import internalFxRoutes from './routes/internal/fx';
 import internalAssistantRoutes from './routes/internal/assistant';
 import adminAssistantRoutes from './routes/admin/assistant';
 import adminCareRoutes from './routes/admin/care';
@@ -237,6 +238,7 @@ app.route('/admin/quote-requests', adminQuoteRequestRoutes);
 app.route('/webhooks', webhookRoutes);
 // Lighthouse Watch ingest: machine token, not an admin session (see the route file).
 app.route('/internal/lighthouse', internalLighthouseRoutes);
+app.route('/internal/fx', internalFxRoutes);
 // Shop assistant: admission + spend ledger for the web container (internal key), and its admin surface.
 app.route('/internal/assistant', internalAssistantRoutes);
 app.route('/admin/assistant', adminAssistantRoutes);
@@ -490,6 +492,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/telemetry',
   '/webhooks',
   '/internal/lighthouse',
+  '/internal/fx',
   '/internal/assistant',
   '/admin/assistant',
   '/admin/care',

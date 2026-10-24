@@ -21,6 +21,8 @@ import type { FxFeedReading } from '../../domain/measurement/MeasurementConfig';
  * stats; no reading is ever invented.
  */
 export const FEED_CONTROL_KEYS = ['usd_ugx', 'rain_mm'] as const;
+/** BoU posts no rate on weekends and public holidays; a reading older than this falls back to the market feed. */
+export const BOU_MAX_AGE_DAYS = 5;
 const FX_URL = 'https://open.er-api.com/v6/latest/USD';
 const RAIN_URL = 'https://archive-api.open-meteo.com/v1/archive';
 const KAMPALA = { latitude: 0.3476, longitude: 32.5825 };
@@ -34,8 +36,19 @@ export class ControlFeeds {
 
   /** The newest fed dollar rate, for resolveUgxPerUsd. */
   async latestFx(): Promise<FxFeedReading | null> {
+    // The Bank of Uganda mid rate (usd_ugx_bou, posted by the 1 pm job) wins while it is fresh: it is the rate
+    // Ugandan banks and the revenue authority work from. The open market feed is the fallback (BoU posts no
+    // weekend or holiday rate, and the job can fail).
+    const bou = rows(await db.execute(sql`select day::text as day, value from measurement.control_series where control_key = 'usd_ugx_bou' and source = 'bou' and day >= current_date - ${BOU_MAX_AGE_DAYS}::int order by day desc limit 1`))[0];
+    if (bou) return { day: String(bou.day), ugxPerUsd: Number(bou.value), source: 'bou' };
     const r = rows(await db.execute(sql`select day::text as day, value from measurement.control_series where control_key = 'usd_ugx' and source = 'feed' order by day desc limit 1`))[0];
-    return r ? { day: String(r.day), ugxPerUsd: Number(r.value) } : null;
+    return r ? { day: String(r.day), ugxPerUsd: Number(r.value), source: 'feed' } : null;
+  }
+
+  /** A Bank of Uganda reading posted by scripts/bou-fx.mjs (mid, buying, selling per dollar), dated by BoU's own day. */
+  async recordBou(reading: { day: string; mid: number; buying: number | null; selling: number | null; note: string }): Promise<void> {
+    await db.execute(sql`insert into measurement.control_series (day, control_key, value, source, note) values (${reading.day}::date, 'usd_ugx_bou', ${reading.mid}, 'bou', ${reading.note})
+      on conflict (day, control_key) do update set value = excluded.value, note = excluded.note, updated_at = now() where measurement.control_series.source = 'bou'`);
   }
 
   async run(now = new Date(), windowDays = 400): Promise<FeedResult> {

@@ -44,5 +44,7 @@ describe('measurement keys reach the api container', () => {
     const api = compose.slice(compose.indexOf('\n  api:'), compose.indexOf('\n  web:'));
     expect(api).toContain('- YOUTUBE_API_KEY=${YOUTUBE_API_KEY:-}');
     expect(example).toContain('YOUTUBE_API_KEY=');
+    expect(api).toContain('- BOU_FX_TOKEN=${BOU_FX_TOKEN:-}');
+    expect(example).toContain('BOU_FX_TOKEN=');
   });
 });

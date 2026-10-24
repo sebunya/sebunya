@@ -99,6 +99,30 @@ convention count as one part). A negotiated creator payment that overlaps a cont
 creator is flagged "also under contract" on the admin page, because the two may be the same money; the
 owner ends one of them.
 
+## 4b. The dollar rate: Bank of Uganda at 1 pm (2026-10-24)
+
+Dollar-priced costs (WhatsApp templates, any USD ad spend without a platform rate) are turned into shillings
+at one rate a day. Order of precedence, in `resolveUgxPerUsd`:
+
+1. a rate set by hand on the MMM page (`ugx_per_usd`), if any;
+2. the **Bank of Uganda mid rate** for the latest business day within five days (`usd_ugx_bou`), plus the
+   safety margin (`usd_ugx_margin`, owner's figure 200: banks sell dollars above the BoU mid);
+3. the open market feed (`usd_ugx`, open.er-api.com, nightly) plus the same margin;
+4. 3,800, only if nothing above exists.
+
+BoU publishes its rates at bou.or.ug/interest_rates_exchange_rates as a **Power BI report** with no documented
+JSON feed (the site hands out a public embed token at `/api/power-bi/token`; the old `bouwebsite` endpoints now
+return the same JS shell). So `.github/workflows/bou-fx.yml` runs `scripts/bou-fx.mjs` at 10:00 UTC (13:00 EAT)
+Monday to Friday: Chromium opens the page, the Power BI client on the page exports the "Major Exchange Rates"
+table, the `U.S. Dollar/Uganda Shillings (UGX)` row gives mid (BoU's "Cross Rates"), buying and selling, and the
+script posts them to `POST /internal/fx/bou` with the shared secret `BOU_FX_TOKEN` (GitHub secret and prod env;
+the endpoint answers 503 without it). The use case refuses an implausible rate or a stale day. The reading is
+dated by the Kampala day of the run; weekends and holidays get no reading, so the five-day freshness window
+carries a Friday rate over a long weekend before the market feed takes over.
+
+Sanity figures 2026-10-24: BoU mid 4,303.81 (buying 4,298.81, selling 4,308.81); open.er-api 4,166.17. The open
+feed ran about 140 shillings below BoU that day, which is why BoU is preferred.
+
 ## 4a. Paid placements: YouTube channels, radio, TV (0206, 2026-10-24)
 
 The campaigns buy slots **from top YouTube channels**, not from YouTube: a dedicated video, an integration,
