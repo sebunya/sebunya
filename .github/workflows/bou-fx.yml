@@ -42,4 +42,6 @@ jobs:
         env:
           API_URL: https://api.shopgoldplus.com
           BOU_FX_TOKEN: ${{ secrets.BOU_FX_TOKEN }}
-        run: node scripts/bou-fx.mjs ${{ inputs.dry_run && '--dry-run' || '' }}
+          DRY_RUN: ${{ inputs.dry_run == true }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then node scripts/bou-fx.mjs --dry-run; else node scripts/bou-fx.mjs; fi
