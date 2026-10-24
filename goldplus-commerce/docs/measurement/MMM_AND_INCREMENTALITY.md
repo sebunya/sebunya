@@ -110,6 +110,15 @@ at one rate a day. Order of precedence, in `resolveUgxPerUsd`:
 3. the open market feed (`usd_ugx`, open.er-api.com, nightly) plus the same margin;
 4. 3,800, only if nothing above exists.
 
+**How the reading gets in (owner's choice 2026-10-24: the AllRatesToday key, no browser job needed).** The api
+calls `allratestoday.com/api/v1/central-bank/bou/latest?source=USD&target=UGX` with `ALLRATES_API_KEY` at
+13:00 Kampala (`runBouRateOnce`) and again in the nightly feeds step, keeps the `reference` (mid) rate under
+BoU's own `rate_date`, and refuses anything that is not the BoU USD/UGX reference or is older than five days.
+Known limit: the mirror lags BoU by about two days (on 2026-10-24 it served BoU's 22 October table, 4,209.76,
+while bou.or.ug showed 4,303.81), so the reading in use is the newest BoU day the mirror has. The direct
+browser path below reads bou.or.ug itself and writes the same control key; whichever has the newer BoU day
+wins.
+
 BoU publishes its rates at bou.or.ug/interest_rates_exchange_rates as a **Power BI report** with no documented
 JSON feed (the site hands out a public embed token at `/api/power-bi/token`; the old `bouwebsite` endpoints now
 return the same JS shell). So `.github/workflows/bou-fx.yml` runs `scripts/bou-fx.mjs` at 10:00 UTC (13:00 EAT)

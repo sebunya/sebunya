@@ -43,7 +43,7 @@ describe('control feeds', () => {
       }
       throw new Error(`unexpected ${u}`);
     });
-    const feeds = new ControlFeeds(fetchImpl as unknown as typeof fetch);
+    const feeds = new ControlFeeds(fetchImpl as unknown as typeof fetch, '');
     const r = await feeds.run(new Date('2026-10-23T01:00:00Z'));
     expect(r.usd_ugx).toEqual({ day: '2026-10-23', rate: 4126.431341 });
     expect(r.rain_mm).toMatchObject({ days: 2, to: '2026-10-22' });
@@ -60,7 +60,7 @@ describe('control feeds', () => {
       if (u.startsWith('https://open.er-api.com/')) return json({ result: 'success', rates: { UGX: 12 } });
       return json({ error: true }, 503);
     });
-    const r = await new ControlFeeds(fetchImpl as unknown as typeof fetch).run(new Date('2026-10-23T01:00:00Z'));
+    const r = await new ControlFeeds(fetchImpl as unknown as typeof fetch, '').run(new Date('2026-10-23T01:00:00Z'));
     expect(r.usd_ugx).toMatchObject({ error: expect.stringContaining('no usable UGX rate') });
     expect(r.rain_mm).toMatchObject({ error: expect.stringContaining('HTTP 503') });
     expect(executed.filter((q) => q.includes('insert'))).toHaveLength(0);
@@ -71,7 +71,7 @@ describe('control feeds', () => {
       if (String(url).startsWith('https://open.er-api.com/')) throw new Error('ECONNRESET');
       return json({ daily: { time: ['2026-10-22'], precipitation_sum: [0] } });
     });
-    const r = await new ControlFeeds(fetchImpl as unknown as typeof fetch).run(new Date('2026-10-23T01:00:00Z'));
+    const r = await new ControlFeeds(fetchImpl as unknown as typeof fetch, '').run(new Date('2026-10-23T01:00:00Z'));
     expect(r.usd_ugx).toEqual({ error: 'ECONNRESET' });
     expect(r.rain_mm).toMatchObject({ days: 1 });
   });

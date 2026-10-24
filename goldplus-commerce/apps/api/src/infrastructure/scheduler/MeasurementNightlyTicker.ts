@@ -8,7 +8,7 @@ import { Ga4Reconciliation, HttpGa4Reader, careDeskAlarm } from '../measurement/
 /**
  * Measurement nightly (0203, 2026-10-23), after the attribution batch and the first-party run (03:30–05:59
  * Kampala), once a day, one replica at a time:
- *  0. control feeds (market dollar rate, Kampala rain) into measurement.control_series, then GA4's daily series
+ *  0. control feeds (market dollar rate, the Bank of Uganda rate, Kampala rain) into measurement.control_series, then GA4's daily series
  *     (sessions, users, purchases by channel, source, landing page, device) into measurement.ga4_daily_series;
  *  1. derived marketing costs (SMS, WhatsApp, loyalty, referrals, creators) into media_cost_facts;
  *  2. the MMM daily dataset and its control series;
@@ -70,9 +70,25 @@ export async function lastMeasurementNightly(): Promise<{ startedAt: string; fin
   return r ? { startedAt: new Date(r.started_at).toISOString(), finishedAt: r.finished_at ? new Date(r.finished_at).toISOString() : null, state: String(r.state), stats: r.stats ?? {} } : null;
 }
 
+/** 13:00–13:59 Kampala: the owner's chosen time for the day's Bank of Uganda rate (BoU posts its midday rates by then). */
+export function inBouWindow(now: Date): boolean { return (now.getUTCHours() + 3) % 24 === 13; }
+let bouRanOn = '';
+export async function runBouRateOnce(now = new Date()): Promise<{ status: 'RAN' | 'SKIPPED_WINDOW' | 'SKIPPED_DONE'; result?: unknown }> {
+  if (!inBouWindow(now)) return { status: 'SKIPPED_WINDOW' };
+  const day = new Date(now.getTime() + 3 * 3600_000).toISOString().slice(0, 10);
+  if (bouRanOn === day) return { status: 'SKIPPED_DONE' };
+  bouRanOn = day;
+  const result = await Registry.getInstance().controlFeeds.bouSafe(now);
+  logger.info({ result }, '[measurement-nightly] 1 pm Bank of Uganda rate');
+  return { status: 'RAN', result };
+}
+
 export function startMeasurementNightlyTicker(): void {
   if (timer) return;
-  const tick = () => void runMeasurementNightlyOnce().catch((err) => logger.error({ err: (err as Error).message }, '[measurement-nightly] run failed'));
+  const tick = () => {
+    void runMeasurementNightlyOnce().catch((err) => logger.error({ err: (err as Error).message }, '[measurement-nightly] run failed'));
+    void runBouRateOnce().catch((err) => logger.error({ err: (err as Error).message }, '[measurement-nightly] bou rate failed'));
+  };
   setTimeout(tick, START_DELAY_MS).unref?.();
   timer = setInterval(tick, CHECK_INTERVAL_MS);
   timer.unref?.();

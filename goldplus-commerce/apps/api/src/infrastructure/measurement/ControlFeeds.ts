@@ -25,14 +25,16 @@ export const FEED_CONTROL_KEYS = ['usd_ugx', 'rain_mm'] as const;
 export const BOU_MAX_AGE_DAYS = 5;
 const FX_URL = 'https://open.er-api.com/v6/latest/USD';
 const RAIN_URL = 'https://archive-api.open-meteo.com/v1/archive';
+/** AllRatesToday's mirror of the Bank of Uganda table (owner's key, 2026-10-24): one call gives the USD/UGX reference (mid) rate and BoU's own date. */
+const BOU_URL = 'https://allratestoday.com/api/v1/central-bank/bou/latest?source=USD&target=UGX';
 const KAMPALA = { latitude: 0.3476, longitude: 32.5825 };
 const TIMEOUT_MS = 15_000;
 const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
 
-export interface FeedResult { usd_ugx: { day: string; rate: number } | { error: string }; rain_mm: { days: number; from: string; to: string } | { error: string } }
+export interface FeedResult { usd_ugx: { day: string; rate: number } | { error: string }; usd_ugx_bou: { day: string; rate: number; ageDays: number } | { error: string } | { skipped: string }; rain_mm: { days: number; from: string; to: string } | { error: string } }
 
 export class ControlFeeds {
-  constructor(private readonly fetchImpl: typeof fetch = fetch) {}
+  constructor(private readonly fetchImpl: typeof fetch = fetch, private readonly allRatesKey: string | undefined = process.env.ALLRATES_API_KEY) {}
 
   /** The newest fed dollar rate, for resolveUgxPerUsd. */
   async latestFx(): Promise<FxFeedReading | null> {
@@ -52,8 +54,9 @@ export class ControlFeeds {
   }
 
   async run(now = new Date(), windowDays = 400): Promise<FeedResult> {
-    const out: FeedResult = { usd_ugx: { error: 'not run' }, rain_mm: { error: 'not run' } };
+    const out: FeedResult = { usd_ugx: { error: 'not run' }, usd_ugx_bou: { error: 'not run' }, rain_mm: { error: 'not run' } };
     try { out.usd_ugx = await this.fx(now); } catch (err) { out.usd_ugx = { error: String((err as Error).message ?? err).slice(0, 200) }; logger.warn({ err: (err as Error).message }, '[control-feeds] usd_ugx failed'); }
+    out.usd_ugx_bou = await this.bouSafe(now);
     try { out.rain_mm = await this.rain(now, windowDays); } catch (err) { out.rain_mm = { error: String((err as Error).message ?? err).slice(0, 200) }; logger.warn({ err: (err as Error).message }, '[control-feeds] rain_mm failed'); }
     return out;
   }
@@ -69,6 +72,28 @@ export class ControlFeeds {
     await db.execute(sql`insert into measurement.control_series (day, control_key, value, source, note) values (${day}::date, 'usd_ugx', ${rate}, 'feed', 'open.er-api.com, market rate without margin')
       on conflict (day, control_key) do update set value = excluded.value, note = excluded.note, updated_at = now() where measurement.control_series.source = 'feed'`);
     return { day, rate };
+  }
+
+  /** The Bank of Uganda reading on its own (the 1 pm tick); never throws. */
+  async bouSafe(now = new Date()): Promise<FeedResult['usd_ugx_bou']> {
+    try { return await this.bou(now); } catch (err) { logger.warn({ err: (err as Error).message }, '[control-feeds] usd_ugx_bou failed'); return { error: String((err as Error).message ?? err).slice(0, 200) }; }
+  }
+
+  private async bou(now: Date): Promise<{ day: string; rate: number; ageDays: number } | { skipped: string }> {
+    const key = (this.allRatesKey ?? '').trim();
+    if (!key) return { skipped: 'ALLRATES_API_KEY is not set: the Bank of Uganda rate is not fetched' };
+    const res = await this.fetchImpl(BOU_URL, { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { Accept: 'application/json', Authorization: `Bearer ${key}` } });
+    if (!res.ok) throw new Error(`allratestoday.com answered HTTP ${res.status}`);
+    const json = await res.json() as { bank?: string; rate_date?: string; rate?: number; rate_type?: string; source?: string; target?: string; age_days?: number };
+    const rate = Number(json?.rate);
+    if (json?.bank !== 'bou' || json?.source !== 'USD' || json?.target !== 'UGX' || json?.rate_type !== 'reference') throw new Error(`allratestoday.com gave something other than the BoU USD/UGX reference rate (${JSON.stringify({ bank: json?.bank, source: json?.source, target: json?.target, rate_type: json?.rate_type })})`);
+    if (!Number.isFinite(rate) || rate < 1000 || rate > 20000) throw new Error(`allratestoday.com gave no usable BoU rate (${String(json?.rate)})`);
+    const day = String(json?.rate_date ?? '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error(`allratestoday.com gave no rate_date (${day})`);
+    const ageDays = Math.round((Date.parse(`${kampalaDay(now)}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / 86_400_000);
+    if (ageDays > BOU_MAX_AGE_DAYS) throw new Error(`BoU reading dated ${day} is ${ageDays} days old; not kept`);
+    await this.recordBou({ day, mid: rate, buying: null, selling: null, note: `Bank of Uganda reference (mid) rate via allratestoday.com, BoU date ${day}` });
+    return { day, rate, ageDays };
   }
 
   private async rain(now: Date, windowDays: number): Promise<{ days: number; from: string; to: string }> {
@@ -98,3 +123,5 @@ export class ControlFeeds {
     return { days: n, from, to };
   }
 }
+
+const kampalaDay = (d: Date): string => new Date(d.getTime() + 3 * 3600_000).toISOString().slice(0, 10);

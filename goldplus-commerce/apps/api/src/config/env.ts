@@ -67,6 +67,7 @@ export interface Config {
   ga4ApiSecret?: string;
   youtubeApiKey?: string;
   bouFxToken?: string;
+  allRatesApiKey?: string;
   googleAdsConversionId?: string;
   metaPixelId?: string;
   metaAccessToken?: string;
@@ -127,6 +128,7 @@ export const configSchema = z.object({
   ga4ApiSecret: z.string().optional(),
   youtubeApiKey: z.string().optional(),
   bouFxToken: z.string().optional(),
+  allRatesApiKey: z.string().optional(),
   googleAdsConversionId: z.string().optional(),
   metaPixelId: z.string().optional(),
   metaAccessToken: z.string().optional(),
@@ -160,6 +162,7 @@ const SECRET_KEYS = new Set<keyof Config>([
   'ga4ApiSecret',
   'youtubeApiKey',
   'bouFxToken',
+  'allRatesApiKey',
   'metaAccessToken',
   'tiktokAccessToken',
   'posthogProjectApiKey',
@@ -333,6 +336,7 @@ export function validateEnv(): Config {
     ga4ApiSecret: process.env.GA4_API_SECRET,
     youtubeApiKey: process.env.YOUTUBE_API_KEY,
     bouFxToken: process.env.BOU_FX_TOKEN,
+    allRatesApiKey: process.env.ALLRATES_API_KEY,
     googleAdsConversionId: process.env.GOOGLE_ADS_CONVERSION_ID,
     metaPixelId: process.env.META_PIXEL_ID,
     metaAccessToken: process.env.META_ACCESS_TOKEN,
