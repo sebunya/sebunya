@@ -10,6 +10,7 @@ import { Ga4Reconciliation, HttpGa4Reader, careDeskAlarm } from '../../../../inf
 import { lastMeasurementNightly, runMeasurementNightlyOnce } from '../../../../infrastructure/scheduler/MeasurementNightlyTicker';
 import { storeZip } from '../../../../infrastructure/measurement/storeZip';
 import { GA4_REPORTS, type Ga4ReportKey } from '../../../../infrastructure/measurement/Ga4DailyPull';
+import { MEDIUM_LABELS, PLACEMENT_MEDIA, PLACEMENT_TYPES } from '../../../../infrastructure/measurement/DrizzleMediaPlacementStore';
 
 /**
  * Marketing mix modelling inputs, owned-channel holdouts, measurement settings and the GA4 reconciliation
@@ -58,6 +59,29 @@ routes.get('/ga4-series', requirePermissions([PERMISSIONS.REPORTS_READ]), async 
   const report = String(c.req.query('report') ?? 'channel');
   if (!(report in GA4_REPORTS)) return bad(c, `report is one of ${Object.keys(GA4_REPORTS).join(', ')}.`);
   return c.json({ success: true, data: { report, rows: await registry().ga4DailyPull.series(report as Ga4ReportKey, Math.min(400, Number(c.req.query('days') ?? 28) || 28)) } });
+});
+
+/** Paid placements on YouTube channels, radio, TV (0206). */
+routes.get('/placements', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => c.json({ success: true, data: {
+  rows: await registry().mediaPlacementStore.list(Math.min(800, Number(c.req.query('days') ?? 400) || 400)), media: PLACEMENT_MEDIA, mediumLabels: MEDIUM_LABELS, types: PLACEMENT_TYPES,
+  viewsConfigured: Boolean((process.env.YOUTUBE_API_KEY ?? '').trim()) } }));
+routes.post('/placements', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const b = await c.req.json().catch(() => null);
+  const num = (v: unknown): number | null => (v === '' || v == null ? null : Number(v));
+  const input = { medium: String(b?.medium ?? ''), outlet: String(b?.outlet ?? ''), outletUrl: b?.outletUrl ? String(b.outletUrl) : null, title: String(b?.title ?? ''), placementType: String(b?.placementType ?? ''),
+    videoUrl: b?.videoUrl ? String(b.videoUrl) : null, publishDate: String(b?.publishDate ?? ''), flightDays: num(b?.flightDays), costUgx: Number(b?.costUgx), payee: b?.payee ? String(b.payee) : null,
+    promoCode: b?.promoCode ? String(b.promoCode) : null, expectedViews: num(b?.expectedViews), expectedOrders: num(b?.expectedOrders), audienceUgShare: num(b?.audienceUgShare), note: b?.note ? String(b.note) : null, actorId: actorId(c) ?? '' };
+  const r = await registry().mediaPlacementStore.add(input);
+  if (!r.ok) return bad(c, r.message);
+  await registry().createAuditLogUseCase.execute({ actorId: input.actorId, action: 'MEDIA_PLACEMENT_ADDED', entity: 'media_placements', entityId: r.id, newState: { medium: input.medium, outlet: input.outlet, title: input.title, publishDate: input.publishDate, flightDays: input.flightDays, costUgx: input.costUgx } });
+  return c.json({ success: true, data: { id: r.id, link: r.link } });
+});
+routes.delete('/placements/:id', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const r = await registry().mediaPlacementStore.end(id, actorId(c) ?? '');
+  if (!r.ok) return bad(c, r.message);
+  await registry().createAuditLogUseCase.execute({ actorId: actorId(c) ?? '', action: 'MEDIA_PLACEMENT_ENDED', entity: 'media_placements', entityId: id, newState: { ended: r.wasLive } });
+  return c.json({ success: true, data: { ended: r.wasLive } });
 });
 
 routes.get('/readiness', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => c.json({ success: true, data: await registry().mmmDataset.readiness() }));

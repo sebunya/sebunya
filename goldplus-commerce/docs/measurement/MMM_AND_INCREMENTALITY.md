@@ -99,6 +99,43 @@ convention count as one part). A negotiated creator payment that overlaps a cont
 creator is flagged "also under contract" on the admin page, because the two may be the same money; the
 owner ends one of them.
 
+## 4a. Paid placements: YouTube channels, radio, TV (0206, 2026-10-24)
+
+The campaigns buy slots **from top YouTube channels**, not from YouTube: a dedicated video, an integration,
+a mention or a short, paid to the channel or its agency. That money, the viewers it sends, the orders with the
+code the channel was given and the customers who say so must land on one row, or the model sees cost on one
+channel and sales on another. The shop runs no YouTube ads, so nothing competes for the name.
+
+- **Ledger** `media_placements`: one row per placement (medium youtube/radio/tv/billboard/podcast/press, outlet,
+  title, kind, video link, publish date, flight days, cost, payee, promo code, expected views and orders, the
+  channel's Uganda audience share, note). Recorded on the MMM admin page; ended, never deleted.
+- **Cost timing**: a video's cost sits on its publish day (flight days default 1) and the view counts give the
+  model the shape of its exposure; a radio or TV booking is spread over its booked days. The nightly
+  (`MarketingCostDerivation`) writes it to `media_cost_facts` under channel `youtube` (platform "YouTube channel",
+  campaign "outlet: title") or `offline_media`.
+- **Arrivals**: every placement gets a description link
+  `?utm_source=youtube&utm_medium=sponsorship&utm_campaign=<slug>`; `classifyChannel` files any visit tagged
+  source youtube with no ad medium, or referred by youtube.com / youtu.be, as `youtube`; a cost medium is an ad and stays paid. The touch's detail is
+  the slug, so credit is per placement.
+- **Promo code**: an order redeeming the code recorded on a placement is a `youtube` (or `offline_media`) touch
+  named "outlet: title" (`codeTouchFrom`), not a generic promo code. A creator's own code still means the creator.
+- **Customer answer**: "A YouTube video" at checkout (`heard_about = youtube`) is `youtube` (customer said).
+- **Exposure**: `YouTubeViewsPull` reads each sponsored video's public views, likes and comments nightly
+  (YouTube Data API v3 `videos.list`, API key `YOUTUBE_API_KEY`; that API does not take service accounts) for
+  180 days after publish. The dataset turns consecutive readings into the day's new views, scaled by the Uganda
+  audience share when the owner has it from the channel's YouTube Studio geography, and writes them as the
+  `youtube` channel's impressions. Without the key nothing is read and the page says so. A placement recorded
+  late lands its views to date on its first reading day: record placements before the video goes out.
+- **Scorecard** on the page, per placement: arrivals through the link, last-click orders and revenue credited
+  to it (link or code), cost per order, against expected views and orders. At the shop's order volume the mix
+  model cannot see one video for months; the scorecard can, the day after.
+- **Model**: `youtube` is its own media channel in daily.csv, apart from `creator` (TikTok and Instagram
+  people) and `paid_social`. Radio, TV and the rest share `offline_media`.
+
+Not done, by design: reading a channel's analytics (only its owner can), knowing how many viewers of one video
+were in Uganda (the share is the channel's, entered by hand), and paying channels (the ledger records what was
+paid, it does not pay).
+
 ## 5. Cross-device identity in attribution
 
 Sign-in, registration, social sign-in and phone verification now pass the browser id to the identity graph
