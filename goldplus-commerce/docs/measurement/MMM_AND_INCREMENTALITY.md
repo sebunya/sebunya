@@ -159,8 +159,10 @@ and on demand. A red run there is the signal to bump a pin; the Mac never instal
      feeds and pulls sessions, total and new users, engaged sessions, key events, purchases and purchase
      revenue per Kampala day by channel group, source/medium, landing page and device from the GA4 Data
      API into `measurement.ga4_daily_series` (one row per day, report and dimension value). The first run
-     backfills 400 days; every later run re-pulls the last three days, because GA4 fills a day in for up to
-     48 hours. It uses the same service account as the GA4 reconciliation (vault connection
+     asks for 400 days and keeps whatever the property holds (property 549232812 has data from mid-September
+     2026, so the first pull on 2026-10-24 held 35 days); every later run re-pulls the last three days,
+     because GA4 fills a day in for up to 48 hours. Live since 2026-10-24: connection READY, nightly step
+     `ga4_series` ran, reconciliation reads GA4 and agrees. It uses the same service account as the GA4 reconciliation (vault connection
      google-analytics-4, else `GA4_SERVICE_ACCOUNT_JSON` + `GA4_PROPERTY_ID`), read-only; a missing or
      refused credential writes nothing and shows as "unavailable" in the nightly stats and on the admin
      page. The admin page lists the last week by channel; `GET /admin/measurement/mmm/ga4-series?report=`
