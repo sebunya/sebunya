@@ -59,6 +59,7 @@ export const CHANNEL_LABELS: Record<string, string> = {
   ai_assistant: 'AI assistants',
   friend_referral: 'Shared or invited by a customer',
   print: 'Print and QR codes',
+  youtube: 'YouTube channels',
   referral: 'Referral',
   direct: 'Direct',
   other_paid: 'Other paid',
@@ -84,6 +85,7 @@ export function declaredChannel(a: HeardAboutAnswer): { channel: string; detail:
     case 'facebook': case 'instagram': case 'tiktok': return { channel: 'social_declared', detail: a };
     case 'whatsapp': return { channel: 'whatsapp', detail: 'customer said' };
     case 'creator': return { channel: 'creator', detail: 'customer said' };
+    case 'youtube': return { channel: 'youtube', detail: 'customer said' };
     case 'friend': return { channel: 'word_of_mouth', detail: '' };
     case 'radio_tv': return { channel: 'offline_media', detail: '' };
     // Offline-order rule (staff answers): their own channels, never "direct", never spread.
@@ -95,15 +97,18 @@ export function declaredChannel(a: HeardAboutAnswer): { channel: string; detail:
 }
 
 export interface ObservedTouch { touchId: string; channel: string; detail: string; at: Date }
-export interface CodeTouch { kind: 'creator' | 'promo_code'; detail: string }
+export interface CodeTouch { kind: 'creator' | 'promo_code' | 'youtube' | 'offline_media'; detail: string }
 export type CreditBasis = 'observed' | 'declared';
 
 /** Which code on an order counts, and as what. A creator code or a creator attribution is a creator. */
-export function codeTouchFrom(r: { creator_handle?: unknown; attributed_handle?: unknown; code?: unknown; code_type?: unknown; promotion_name?: unknown } | undefined): CodeTouch | null {
+export function codeTouchFrom(r: { creator_handle?: unknown; attributed_handle?: unknown; code?: unknown; code_type?: unknown; promotion_name?: unknown; placement_detail?: unknown; placement_medium?: unknown } | undefined): CodeTouch | null {
   if (!r) return null;
   const handle = (r.attributed_handle ?? r.creator_handle) as string | null | undefined;
   if (handle) return { kind: 'creator', detail: String(handle).slice(0, 80) };
   if (!r.code) return null;
+  // A code given to a YouTube channel, a radio station or a paper for its placement (0206) is that placement's
+  // channel, named "outlet: title", so the money and the sales it brought sit on one row.
+  if (r.placement_detail) return { kind: r.placement_medium === 'youtube' ? 'youtube' : 'offline_media', detail: String(r.placement_detail).slice(0, 80) };
   // A batch of single-use codes is one campaign; naming each code would split it into hundreds of rows.
   const detail = r.code_type === 'bulk_batch' && r.promotion_name ? String(r.promotion_name) : String(r.code).toUpperCase();
   return { kind: 'promo_code', detail: detail.slice(0, 80) };
@@ -224,7 +229,7 @@ export function reportChannelForSpend(mediaChannel: string, platform: string): s
   const p = (platform ?? '').toLowerCase();
   // Owned and earned channels whose cost the nightly derives (0203, 2026-10-23): messages, loyalty, referrals,
   // creators, print. Checked first: "Meta WhatsApp" is a message platform, not paid social.
-  if (['sms', 'whatsapp', 'email', 'print', 'loyalty', 'creator'].includes(ch)) return ch;
+  if (['sms', 'whatsapp', 'email', 'print', 'loyalty', 'creator', 'youtube', 'offline_media'].includes(ch)) return ch;
   if (ch === 'friend_referral' || ch === 'referral') return 'friend_referral';
   if (/google|microsoft|bing/.test(p)) return 'paid_search';
   if (ch === 'paid_social' || /meta|facebook|instagram|tiktok|snap|pinterest|linkedin|twitter|\bx\b/.test(p)) return 'paid_social';
@@ -343,7 +348,7 @@ export function buildWeeklyChannelReport(input: {
     if (!weekSet.has(week)) continue;
     credited.add(c.orderId);
     add(c.channel, week, c.weight, c.creditedUGX, c.basis === 'declared');
-    if ((c.channel === 'creator' || c.channel === 'promo_code') && c.detail) {
+    if (['creator', 'promo_code', 'youtube', 'offline_media'].includes(c.channel) && c.detail) {
       const k = `${c.channel}${KEY_SEP}${c.detail}`;
       const d = details.get(k) ?? { channel: c.channel, detail: c.detail, orders: 0, revenue: 0n };
       d.orders += c.weight; d.revenue += c.creditedUGX; details.set(k, d);

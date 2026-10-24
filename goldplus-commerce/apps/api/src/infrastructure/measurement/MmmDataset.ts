@@ -39,7 +39,7 @@ export function mmmChannelKey(channel: string, platform: string): string {
   if (/meta|facebook|instagram/.test(p) && !/whatsapp/.test(p)) return 'meta';
   if (/tiktok/.test(p)) return 'tiktok';
   const ch = (channel ?? '').toLowerCase();
-  if (['sms', 'whatsapp', 'email', 'print', 'loyalty', 'creator', 'friend_referral', 'referral', 'affiliate'].includes(ch)) return ch;
+  if (['sms', 'whatsapp', 'email', 'print', 'loyalty', 'creator', 'youtube', 'offline_media', 'friend_referral', 'referral', 'affiliate'].includes(ch)) return ch;
   return reportChannelForSpend(channel, platform);
 }
 
@@ -97,6 +97,17 @@ export class MmmDataset {
       c.spend += ugx;
       if (r.impressions != null) c.impressions = (c.impressions ?? 0) + Number(r.impressions);
       if (r.clicks != null) c.clicks = (c.clicks ?? 0) + Number(r.clicks);
+    }
+
+    // YouTube exposure (0206): the day's new views on every sponsored video, from the nightly view counts, scaled by
+    // the channel's Uganda audience share when known, as the channel's impressions. A video's cost sits on its publish
+    // day; its views keep arriving after it, and that is the shape the model should see.
+    for (const r of rows(await db.execute(sql`select day::text as day, sum(greatest(views - prev, 0) * share)::bigint as views from (
+        select v.day, v.views, coalesce(lag(v.views) over (partition by v.placement_id order by v.day), 0) as prev, coalesce(p.audience_ug_share, 1) as share
+        from media_placement_views v join media_placements p on p.id = v.placement_id where p.medium = 'youtube' and p.deleted_at is null) d
+      where day >= ${from}::date and day <= ${to}::date group by 1`))) {
+      const c = cell(String(r.day), 'youtube');
+      c.impressions = (c.impressions ?? 0) + Math.max(0, Number(r.views));
     }
 
     for (const r of rows(await db.execute(sql`select (occurred_at at time zone 'Africa/Kampala')::date::text as day, channel, count(distinct anonymous_id)::int as sessions

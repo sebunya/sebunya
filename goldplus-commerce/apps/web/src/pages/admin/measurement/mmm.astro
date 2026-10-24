@@ -32,6 +32,8 @@ if (Astro.request.method === "POST") {
   else if (action === "unset") r = await call("DELETE", `/settings/${encodeURIComponent(String(f.get("key") ?? ""))}`);
   else if (action === "control") r = await call("POST", "/controls", { day: String(f.get("day") ?? ""), key: String(f.get("key") ?? ""), value: Number(f.get("value")), note: String(f.get("note") ?? "") || null });
   else if (action === "run") r = await call("POST", "/run");
+  else if (action === "placement") r = await call("POST", "/placements", { medium: f.get("medium"), outlet: f.get("outlet"), outletUrl: f.get("outletUrl"), title: f.get("title"), placementType: f.get("placementType"), videoUrl: f.get("videoUrl"), publishDate: f.get("publishDate"), flightDays: f.get("flightDays"), costUgx: f.get("costUgx"), payee: f.get("payee"), promoCode: f.get("promoCode"), expectedViews: f.get("expectedViews"), expectedOrders: f.get("expectedOrders"), audienceUgShare: f.get("audienceUgShare"), note: f.get("note") });
+  else if (action === "placement-end") r = await call("DELETE", `/placements/${encodeURIComponent(String(f.get("id") ?? ""))}`);
   else if (action === "creator-cost") r = await call("POST", "/creator-costs", { creatorId: String(f.get("creatorId") ?? ""), label: String(f.get("label") ?? ""), amountUgx: Number(f.get("amountUgx")), startDate: String(f.get("startDate") ?? ""), endDate: String(f.get("endDate") ?? "") || String(f.get("startDate") ?? ""), note: String(f.get("note") ?? "") || null });
   else if (action === "creator-cost-end") r = await call("DELETE", `/creator-costs/${encodeURIComponent(String(f.get("id") ?? ""))}`);
   else r = { ok: false as const, message: "Unknown action." };
@@ -39,7 +41,7 @@ if (Astro.request.method === "POST") {
   else formError = r.message;
 }
 
-const [status, settings, holdouts, recon, controls, creatorCosts, ga4Series] = await Promise.all([call("GET", "/status"), call("GET", "/settings"), call("GET", "/holdouts"), call("GET", "/reconciliation"), call("GET", "/controls?days=30"), call("GET", "/creator-costs"), call("GET", "/ga4-series?report=channel&days=7")]);
+const [status, settings, holdouts, recon, controls, creatorCosts, ga4Series, placements] = await Promise.all([call("GET", "/status"), call("GET", "/settings"), call("GET", "/holdouts"), call("GET", "/reconciliation"), call("GET", "/controls?days=30"), call("GET", "/creator-costs"), call("GET", "/ga4-series?report=channel&days=7"), call("GET", "/placements")]);
 const ga4Summary = status.ok ? status.data.ga4Series : null;
 const costs = status.ok ? status.data.costs : null;
 const fxBasisText: Record<string, string> = { manual: "set by hand", feed: "market rate from the nightly feed plus the safety margin", default: "the documented default; no feed reading yet" };
@@ -173,6 +175,44 @@ const statusText: Record<string, string> = { ok: "Agree", alarm: "GA4 missing pu
               <tbody>{creatorCosts.data.rows.map((r: any) => (
                 <tr class="border-t border-gray-100"><td class="py-2 pr-4">@{r.handle}</td><td class="py-2 pr-4">{r.label}</td><td class="py-2 pr-4">{formatUgx(r.amountUgx)}</td><td class="py-2 pr-4">{r.startDate}{r.endDate !== r.startDate ? ` to ${r.endDate}` : ""}</td><td class="py-2 pr-4">{r.note ?? ""}{r.overlapsContractFee && <span class="ml-1 rounded bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900" title="This creator also has a contract flat fee over these days, which the nightly already counts. If this is the same money, remove one.">also under contract</span>}</td>
                   <td class="py-2 pr-4"><form method="POST"><input type="hidden" name="action" value="creator-cost-end" /><input type="hidden" name="id" value={r.id} /><button class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-4 text-xs font-bold text-brand-dark">Remove</button></form></td></tr>))}</tbody>
+            </table></div>
+          )}
+        </>
+      )}
+    </section>
+
+    <section class="mb-8 rounded-2xl border border-gray-200 bg-white p-5">
+      <h3 class="text-lg font-black text-brand-dark mb-1">Paid placements: YouTube channels, radio, TV</h3>
+      <p class="text-sm text-gray-600 mb-3">Slots bought from an outlet rather than from an ad platform: a dedicated video or an integration on a top YouTube channel, a radio or TV spot. Record what was paid, to whom and when it went out, and what you expected of it. A video's cost sits on its publish day and the nightly view counts give the model its shape; a radio or TV booking is spread over its days. The money sits on its own channel (YouTube channels, or offline media). Each placement gets a link for the video description; arrivals through it, orders with the promo code you gave the channel, and the customer answer "A YouTube video" at checkout all land on the same row, so the scorecard below is per placement: arrivals, orders, revenue and cost per order against what you expected. At two orders a week the mix model cannot see one video for a long time; this scorecard can.{placements.ok && !placements.data.viewsConfigured && " View counts are not fetched: set YOUTUBE_API_KEY on the server (a YouTube Data API key from the Goldplus Google Cloud project) and the nightly will read each video's public views."}</p>
+      {!placements.ok ? <p role="alert" class="text-sm text-red-900">{placements.message}</p> : (
+        <>
+          <form method="POST" class="mb-4 grid gap-3 md:grid-cols-6 items-end">
+            <input type="hidden" name="action" value="placement" />
+            <label class="text-xs font-bold text-gray-700">Where<select name="medium" required class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal">{placements.data.media.map((m: string) => <option value={m}>{placements.data.mediumLabels[m]}</option>)}</select></label>
+            <label class="text-xs font-bold text-gray-700 md:col-span-2">Channel, station or paper<input name="outlet" required maxlength="120" placeholder="e.g. the channel's name" class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700 md:col-span-3">What it was<input name="title" required maxlength="160" placeholder="e.g. Dedicated review of the 20,000 mAh power bank" class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700">Kind<select name="placementType" required class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal">{placements.data.types.map((t: string) => <option value={t}>{t}</option>)}</select></label>
+            <label class="text-xs font-bold text-gray-700 md:col-span-2">Video link (YouTube)<input name="videoUrl" placeholder="https://youtu.be/…" class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700">Went out on<input name="publishDate" type="date" required class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700">Flight days (blank = 1 for a video, 7 otherwise)<input name="flightDays" type="number" min="1" max="90" class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700">Cost (UGX)<input name="costUgx" type="number" min="1" step="1" required class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700 md:col-span-2">Paid to (channel or agency)<input name="payee" maxlength="120" class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700">Promo code used<input name="promoCode" maxlength="40" class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700">Expected views<input name="expectedViews" type="number" min="0" class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700">Expected orders<input name="expectedOrders" type="number" min="0" class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700">Uganda share of audience (0 to 1)<input name="audienceUgShare" type="number" min="0.001" max="1" step="0.001" placeholder="e.g. 0.6" class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700 md:col-span-2">Outlet link<input name="outletUrl" maxlength="300" placeholder="https://youtube.com/@…" class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <label class="text-xs font-bold text-gray-700 md:col-span-3">Note<input name="note" maxlength="300" class="mt-1 block w-full min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-normal" /></label>
+            <button class="inline-flex min-h-11 items-center justify-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Record placement</button>
+          </form>
+          {placements.data.rows.length === 0 ? <p class="text-sm text-gray-700">No placements recorded yet.</p> : (
+            <div class="overflow-x-auto max-h-96"><table class="min-w-full text-sm">
+              <thead><tr class="text-left text-xs font-bold uppercase tracking-wide text-gray-600"><th class="py-2 pr-4">Outlet</th><th class="py-2 pr-4">What</th><th class="py-2 pr-4">Went out</th><th class="py-2 pr-4">Cost</th><th class="py-2 pr-4">Views</th><th class="py-2 pr-4">Arrivals</th><th class="py-2 pr-4">Orders</th><th class="py-2 pr-4">Revenue</th><th class="py-2 pr-4">Cost per order</th><th class="py-2 pr-4">Link for the description</th><th class="py-2 pr-4"></th></tr></thead>
+              <tbody>{placements.data.rows.map((r: any) => (
+                <tr class="border-t border-gray-100 align-top"><td class="py-2 pr-4">{r.outlet}<div class="text-xs text-gray-600">{placements.data.mediumLabels[r.medium]}{r.payee ? ` · paid to ${r.payee}` : ""}</div></td><td class="py-2 pr-4">{r.title}<div class="text-xs text-gray-600">{r.placementType}{r.promoCode ? ` · code ${r.promoCode}` : ""}{r.note ? ` · ${r.note}` : ""}</div></td><td class="py-2 pr-4">{r.publishDate}<div class="text-xs text-gray-600">{r.flightDays} flight day{r.flightDays === 1 ? "" : "s"}</div></td><td class="py-2 pr-4">{formatUgx(r.costUgx)}</td>
+                  <td class="py-2 pr-4">{r.medium !== "youtube" ? "–" : !r.videoId ? <span class="text-xs text-amber-900">no video link yet</span> : r.latestViews === null ? <span class="text-xs text-gray-600">not read yet</span> : <>{new Intl.NumberFormat("en-GB").format(r.latestViews)}<div class="text-xs text-gray-600">on {r.viewsDay}{r.expectedViews ? ` · expected ${new Intl.NumberFormat("en-GB").format(r.expectedViews)}` : ""}{r.latestLikes != null ? ` · ${r.latestLikes} likes` : ""}{r.audienceUgShare != null ? ` · ${Math.round(r.audienceUgShare * 100)}% Uganda` : ""}</div></>}</td>
+                  <td class="py-2 pr-4">{r.arrivals}</td><td class="py-2 pr-4">{r.orders}{r.expectedOrders != null ? <div class="text-xs text-gray-600">expected {r.expectedOrders}</div> : null}</td><td class="py-2 pr-4">{formatUgx(r.revenueUgx)}</td><td class="py-2 pr-4">{r.costPerOrderUgx === null ? "–" : formatUgx(r.costPerOrderUgx)}</td><td class="py-2 pr-4"><code class="block max-w-xs break-all text-xs">{r.link}</code></td>
+                  <td class="py-2 pr-4"><form method="POST"><input type="hidden" name="action" value="placement-end" /><input type="hidden" name="id" value={r.id} /><button class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-4 text-xs font-bold text-brand-dark">Remove</button></form></td></tr>))}</tbody>
             </table></div>
           )}
         </>

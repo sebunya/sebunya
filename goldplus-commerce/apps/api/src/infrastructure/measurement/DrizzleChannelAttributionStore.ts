@@ -25,7 +25,9 @@ export class DrizzleChannelAttributionStore implements ChannelAttributionStore {
       where o.id = ${orderId}::uuid`))[0];
     if (!o) return null;
     const touches = rows(await db.execute(sql`
-      select t.touch_id, t.channel, coalesce(nullif(t.source, ''), t.referrer_host, '') as detail, t.occurred_at
+      select t.touch_id, t.channel,
+        case when t.channel in ('youtube', 'offline_media') and nullif(t.campaign, '') is not null then t.campaign else coalesce(nullif(t.source, ''), t.referrer_host, '') end as detail,
+        t.occurred_at
       from measurement.order_touch_link l join measurement.touchpoint t on t.touch_id = l.touch_id
       where l.order_id = ${orderId}::uuid
       order by t.occurred_at, t.touch_id`));
@@ -33,7 +35,8 @@ export class DrizzleChannelAttributionStore implements ChannelAttributionStore {
       select
         (select c.handle from creator_attributions a join creators c on c.id = a.creator_id
           where a.order_id = ${orderId}::uuid and a.is_primary limit 1) as attributed_handle,
-        cr.handle as creator_handle, cc.code, cc.code_type, pd.name as promotion_name
+        cr.handle as creator_handle, cc.code, cc.code_type, pd.name as promotion_name,
+        mp.outlet || ': ' || mp.title as placement_detail, mp.medium as placement_medium
       from (select 1) as one
       left join lateral (
         select r.coupon_id from coupon_redemptions r
@@ -41,7 +44,8 @@ export class DrizzleChannelAttributionStore implements ChannelAttributionStore {
       ) red on true
       left join coupon_codes cc on cc.id = red.coupon_id
       left join creators cr on cr.id = cc.assigned_to_creator_id
-      left join promotion_definitions pd on pd.id = cc.promotion_definition_id`))[0];
+      left join promotion_definitions pd on pd.id = cc.promotion_definition_id
+      left join lateral (select outlet, title, medium from media_placements mp where mp.promo_code = upper(cc.code) and mp.deleted_at is null order by mp.publish_date desc limit 1) mp on true`))[0];
     const reports = rows(await db.execute(sql`
       select reported_by, answer, whatsapp_ref, note, created_at from measurement.order_source_report
       where order_id = ${orderId}::uuid order by created_at desc, report_id desc limit 50`));

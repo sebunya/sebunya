@@ -152,3 +152,7 @@ Microsoft spend is `paid_search`; Meta/TikTok/Snap/Pinterest/LinkedIn/X is
 
 Sources: WhatsApp click to chat (`wa.me/<number>?text=<urlencodedtext>`):
 https://faq.whatsapp.com/5913398998672934
+
+## YouTube channels (2026-10-24)
+
+The shop buys placements on YouTube channels and pays the channel, not YouTube. Channel `youtube` is its own key: a visit tagged `utm_source=youtube` (each placement's description link, detail = the placement slug) or referred by youtube.com, an order redeeming the promo code recorded on a placement (detail = "outlet: title"), and the checkout answer "A YouTube video" (`heard_about = youtube`) all file there, beside the placement's cost from `media_placements` (0206). Never `organic_social` or `paid_social`. See MMM_AND_INCREMENTALITY.md §4a.

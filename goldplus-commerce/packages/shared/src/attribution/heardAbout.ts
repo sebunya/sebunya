@@ -14,6 +14,9 @@ export const HEARD_ABOUT_ANSWERS = [
   'facebook',
   'instagram',
   'tiktok',
+  // A sponsored placement on a YouTube channel (2026-10-24): its own answer, because the shop pays channels per
+  // video and wants that money judged apart from TikTok and Instagram creators.
+  'youtube',
   'whatsapp',
   'creator',
   'friend',
@@ -41,6 +44,7 @@ export const HEARD_ABOUT_LABELS: Record<HeardAboutAnswer, string> = {
   facebook: 'Facebook',
   instagram: 'Instagram',
   tiktok: 'TikTok',
+  youtube: 'A YouTube video',
   whatsapp: 'WhatsApp',
   creator: 'A creator or influencer',
   friend: 'A friend or family member',

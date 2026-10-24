@@ -3,6 +3,7 @@ import { db } from '../db/client';
 import { classifyTemplate } from '../notifications/messageClassification';
 import { effectiveNumber, resolveUgxPerUsd, whatsappCostUgx, type FxFeedReading } from '../../domain/measurement/MeasurementConfig';
 import type { MeasurementConfigPort } from '../../application/ports/measurement/MeasurementConfigPort';
+import { MEDIUM_LABELS, placementChannel, type PlacementMedium } from './DrizzleMediaPlacementStore';
 
 const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
 export const DERIVED_SOURCE = 'derived';
@@ -20,7 +21,9 @@ interface CostRow { day: string; channel: string; platform: string; campaign: st
  *  - friend referrals: referral bonus points × the point value;
  *  - loyalty bonuses: mission, birthday, draw and verification points × the point value;
  *  - creators: commissions approved or paid, and flat fees spread evenly over the contract days.
- * Print, radio and anything paid off-platform stay a CSV upload (channel 'print', platform of choice).
+ *  - placements (0206): slots bought on YouTube channels, radio, TV and the like, spread evenly over each
+ *    placement's flight days; YouTube on its own channel, the rest as offline media.
+ * Anything else paid off-platform stays a CSV upload (channel 'print', platform of choice).
  */
 export class MarketingCostDerivation {
   constructor(private readonly config: MeasurementConfigPort, private readonly fxFeed: { latestFx(): Promise<FxFeedReading | null> } = { latestFx: async () => null }) {}
@@ -93,6 +96,11 @@ export class MarketingCostDerivation {
       from creator_negotiated_costs n join creators c on c.id = n.creator_id, generate_series(greatest(n.start_date, ${from}::date), least(n.end_date, ${to}::date), interval '1 day') d
       where n.deleted_at is null and n.end_date >= ${from}::date and n.start_date <= ${to}::date group by 1, 2, 3`));
     for (const r of negotiated) out.push({ day: iso(r.day), channel: 'creator', platform: 'Creators', campaign: `${String(r.handle)}: ${String(r.label)}`.slice(0, 120), spendUgx: Number(r.ugx) });
+
+    const placements = rows(await db.execute(sql`select d::date as day, p.medium, p.outlet, p.title, (p.cost_ugx::numeric / p.flight_days) as ugx
+      from media_placements p, generate_series(greatest(p.publish_date, ${from}::date), least(p.publish_date + (p.flight_days - 1), ${to}::date), interval '1 day') d
+      where p.deleted_at is null and p.publish_date + (p.flight_days - 1) >= ${from}::date and p.publish_date <= ${to}::date`));
+    for (const r of placements) out.push({ day: iso(r.day), channel: placementChannel(String(r.medium)), platform: MEDIUM_LABELS[String(r.medium) as PlacementMedium] ?? String(r.medium), campaign: `${String(r.outlet)}: ${String(r.title)}`.slice(0, 120), spendUgx: Number(r.ugx) });
 
     const keep = out.filter((r) => r.spendUgx > 0 && r.day >= from && r.day <= to);
     await db.transaction(async (tx) => {

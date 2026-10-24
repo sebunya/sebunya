@@ -4,7 +4,7 @@ import { AD_CLICK_IDS, PAYMENT_HOST, SOCIAL_SHARE_CLICK_IDS } from '@goldplus/sh
  * utm medium/source, then the referrer. Deterministic and pure; the same
  * inputs always give the same channel. "direct" means no evidence, not "no ad".
  */
-export const CHANNELS = ['paid_search', 'paid_social', 'display', 'affiliate', 'email', 'sms', 'whatsapp', 'organic_search', 'organic_social', 'ai_assistant', 'friend_referral', 'print', 'referral', 'direct', 'other_paid', 'other'] as const;
+export const CHANNELS = ['paid_search', 'paid_social', 'display', 'affiliate', 'email', 'sms', 'whatsapp', 'organic_search', 'organic_social', 'ai_assistant', 'friend_referral', 'print', 'youtube', 'referral', 'direct', 'other_paid', 'other'] as const;
 export type Channel = typeof CHANNELS[number];
 
 /**
@@ -24,6 +24,14 @@ const AI_ASSISTANT_HOST = /(^|\.)(chatgpt\.com|chat\.openai\.com|gemini\.google\
 const AI_ASSISTANT_SOURCE = /^(chatgpt\.com|chat\.openai\.com|perplexity(\.ai)?|gemini\.google\.com|copilot\.microsoft\.com|claude\.ai)$/i;
 
 const SEARCH = /(^|\.)(google|bing|yahoo|duckduckgo|yandex|baidu|ecosia|brave)\./i;
+/**
+ * YouTube is its own channel (2026-10-24): the shop buys placements on YouTube channels (a dedicated video, an
+ * integration, a mention) and pays the channel, not YouTube. A visit tagged utm_source=youtube (the link each
+ * placement gets for the description) or referred by youtube.com is that channel, whatever the medium says, so
+ * the model sees placement spend and placement traffic on the same row. The shop runs no YouTube ads.
+ */
+const YOUTUBE_HOST = /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/i;
+const YOUTUBE_SOURCE = /^(youtube|yt)(\.com)?$/i;
 const SOCIAL = /(^|\.)(facebook|fb|instagram|tiktok|twitter|x|t|linkedin|lnkd|pinterest|snapchat|youtube|reddit|threads)\.(com|co|net|in|me)$/i;
 
 /** utm_source values that name a social network: the bare name, or its domain. */
@@ -44,6 +52,7 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   // its tags say so; untagged, it is organic social (SOCIAL_SHARE_CLICK_IDS).
   if (AD_KIND_SEARCH.some((k) => clicks.has(k))) return 'paid_search';
   if (AD_KIND_SOCIAL.some((k) => clicks.has(k))) return 'paid_social';
+  if (YOUTUBE_SOURCE.test(src)) return 'youtube';
   // A social network with a cost medium is a social ad (GA4's own Paid Social rule, same medium pattern), not search: Meta's {{site_source_name}}
   // gives fb, ig, msg (Messenger) and an (Audience Network).
   if (/^(.*cp.*|ppc|retargeting|paid.*)$/.test(med) && ((SOCIAL_SOURCE.test(src) && !/^youtube/.test(src)) || /^(meta|msg|messenger|an)$/.test(src))) return 'paid_social';
@@ -80,6 +89,7 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   if (!ref || PAYMENT_HOST.test(ref) || SELF_HOST.test(ref)) return 'direct';
   if (AI_ASSISTANT_HOST.test(ref)) return 'ai_assistant';
   if (SEARCH.test(ref)) return 'organic_search';
+  if (YOUTUBE_HOST.test(ref)) return 'youtube';
   if (SOCIAL.test(ref) || /(^|\.)(l\.facebook|lm\.facebook|m\.facebook)\.com$/.test(ref)) return 'organic_social';
   if (/(^|\.)(wa\.me|whatsapp\.com)$/.test(ref)) return 'whatsapp';
   return 'referral';

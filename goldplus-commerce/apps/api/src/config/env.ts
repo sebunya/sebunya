@@ -65,6 +65,7 @@ export interface Config {
   gtmApiRefreshToken?: string;
   ga4MeasurementId?: string;
   ga4ApiSecret?: string;
+  youtubeApiKey?: string;
   googleAdsConversionId?: string;
   metaPixelId?: string;
   metaAccessToken?: string;
@@ -123,6 +124,7 @@ export const configSchema = z.object({
   gtmApiRefreshToken: z.string().optional(),
   ga4MeasurementId: z.string().optional(),
   ga4ApiSecret: z.string().optional(),
+  youtubeApiKey: z.string().optional(),
   googleAdsConversionId: z.string().optional(),
   metaPixelId: z.string().optional(),
   metaAccessToken: z.string().optional(),
@@ -154,6 +156,7 @@ const SECRET_KEYS = new Set<keyof Config>([
   'gtmApiClientSecret',
   'gtmApiRefreshToken',
   'ga4ApiSecret',
+  'youtubeApiKey',
   'metaAccessToken',
   'tiktokAccessToken',
   'posthogProjectApiKey',
@@ -325,6 +328,7 @@ export function validateEnv(): Config {
     gtmApiRefreshToken: process.env.GTM_API_REFRESH_TOKEN,
     ga4MeasurementId: process.env.GA4_MEASUREMENT_ID,
     ga4ApiSecret: process.env.GA4_API_SECRET,
+    youtubeApiKey: process.env.YOUTUBE_API_KEY,
     googleAdsConversionId: process.env.GOOGLE_ADS_CONVERSION_ID,
     metaPixelId: process.env.META_PIXEL_ID,
     metaAccessToken: process.env.META_ACCESS_TOKEN,
