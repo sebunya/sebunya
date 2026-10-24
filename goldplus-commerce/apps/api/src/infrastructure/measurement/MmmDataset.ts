@@ -21,7 +21,7 @@ export const CONTROL_HELP: Record<ControlKey, string> = {
   stockout_share: 'Share of listed products not in stock (measured nightly)',
   price_index: 'Mean retail price, UGX (measured nightly)',
   usd_ugx: 'Market shillings per dollar (open feed, nightly, no margin)',
-  usd_ugx_bou: 'Bank of Uganda mid rate, shillings per dollar (read from bou.or.ug at 1 pm, no margin)',
+  usd_ugx_bou: 'Bank of Uganda selling rate, shillings per dollar (what we pay to buy dollars; read at 1 pm, no margin)',
   rain_mm: 'Rain in Kampala, mm (fed nightly)',
   momo_outage: 'Mobile money down that day: 1',
   delivery_fee_index: 'Delivery fee relative to normal, e.g. 1.2 for 20% up',

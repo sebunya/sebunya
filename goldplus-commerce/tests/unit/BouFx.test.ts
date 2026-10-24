@@ -39,8 +39,8 @@ describe('Bank of Uganda dollar rate', () => {
     const stored: unknown[] = [];
     const uc = new RecordBouFxReadingUseCase({ recordBou: async (r) => { stored.push(r); } });
     const today = new Date().toISOString().slice(0, 10);
-    expect(await uc.execute({ day: today, mid: 4303.81, buying: 4298.81, selling: 4308.81 })).toEqual({ ok: true, day: today, mid: 4303.81 });
-    expect(stored[0]).toMatchObject({ day: today, mid: 4303.81, buying: 4298.81, selling: 4308.81, note: expect.stringContaining('Bank of Uganda mid rate') });
+    expect(await uc.execute({ day: today, mid: 4303.81, buying: 4298.81, selling: 4308.81 })).toEqual({ ok: true, day: today, mid: 4308.81 });
+    expect(stored[0]).toMatchObject({ day: today, mid: 4308.81, buying: 4298.81, selling: 4308.81, note: expect.stringContaining('Bank of Uganda selling rate') }); // the selling rate is what we pay
     expect((await uc.execute({ day: today, mid: 43 })).ok).toBe(false);
     expect((await uc.execute({ day: '2020-01-01', mid: 4300 })).ok).toBe(false);
     expect((await uc.execute({ day: 'today', mid: 4300 })).ok).toBe(false);
@@ -54,7 +54,7 @@ describe('Bank of Uganda dollar rate', () => {
     expect(await feeds.latestFx()).toEqual({ day: '2026-10-24', ugxPerUsd: 4303.81, source: 'bou' });
     expect(executed[0]).toContain('current_date - 5');
     const r = resolveUgxPerUsd({ usd_ugx_margin: '200' }, { day: '2026-10-24', ugxPerUsd: 4303.81, source: 'bou' }, '2026-10-24');
-    expect(r).toEqual({ rate: 4504, basis: 'feed', detail: 'Bank of Uganda mid 4304 on 2026-10-24 + 200 margin' });
+    expect(r).toEqual({ rate: 4504, basis: 'feed', detail: 'Bank of Uganda selling 4304 on 2026-10-24 + 200 margin' });
     canned = [{ match: "control_key = 'usd_ugx' and source = 'feed'", rows: [{ day: '2026-10-24', value: '4166.17' }] }];
     expect(await feeds.latestFx()).toEqual({ day: '2026-10-24', ugxPerUsd: 4166.17, source: 'feed' });
     expect(resolveUgxPerUsd({}, { day: '2026-10-24', ugxPerUsd: 4166.17, source: 'feed' }, '2026-10-24').detail).toBe('market 4166 on 2026-10-24 + 100 margin');
@@ -69,26 +69,29 @@ describe('Bank of Uganda dollar rate', () => {
     expect(w).toContain("where measurement.control_series.source = 'bou'");
   });
 
-  it('the api fetches the BoU reference rate from the AllRatesToday mirror with the key, dated by BoU, and refuses a stale or wrong answer', async () => {
+  it('the api fetches the BoU table from the AllRatesToday mirror with the key, keeps the USD selling rate dated by BoU, and refuses a stale or wrong answer', async () => {
     const json = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body }) as unknown as Response;
-    const good = { bank: 'bou', rate_date: '2026-10-22', source: 'USD', target: 'UGX', rate: 4209.76, rate_type: 'reference', age_days: 2 };
+    const usd = (t: string, v: number) => ({ base: 'USD', quote: 'UGX', type: t, value: v });
+    const good = { bank: 'bou', rate_date: '2026-10-22', rates: [{ base: 'AED', quote: 'UGX', type: 'sell', value: 1147 }, usd('buy', 4204.76), usd('reference', 4209.76), usd('sell', 4214.76)] };
     const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      expect(String(_url)).toBe('https://allratestoday.com/api/v1/central-bank/bou/latest?source=USD&target=UGX');
+      expect(String(_url)).toBe('https://allratestoday.com/api/v1/central-bank/bou/latest');
       expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer art_live_test');
       return json(good);
     });
     const r = await new ControlFeeds(fetchImpl as unknown as typeof fetch, 'art_live_test').bouSafe(new Date('2026-10-24T10:00:00Z'));
-    expect(r).toEqual({ day: '2026-10-22', rate: 4209.76, ageDays: 2 });
+    expect(r).toEqual({ day: '2026-10-22', rate: 4214.76, ageDays: 2 }); // selling, not mid: we buy dollars
     const w = executed.find((q) => q.includes('insert into measurement.control_series'));
     expect(w).toContain("'usd_ugx_bou'");
     expect(w).toContain('2026-10-22');
-    expect(w).toContain('4209.76');
+    expect(w).toContain('4214.76');
+    expect(w).toContain('mid 4209.76; buying 4204.76');
     executed.length = 0;
     expect(await new ControlFeeds(fetchImpl as unknown as typeof fetch, '').bouSafe()).toEqual({ skipped: 'ALLRATES_API_KEY is not set: the Bank of Uganda rate is not fetched' });
-    expect(await new ControlFeeds(vi.fn(async () => json({ ...good, rate_type: 'sell' })) as unknown as typeof fetch, 'k').bouSafe()).toMatchObject({ error: expect.stringContaining('reference rate') });
+    expect(await new ControlFeeds(vi.fn(async () => json({ ...good, rates: [usd('reference', 4209.76)] })) as unknown as typeof fetch, 'k').bouSafe(new Date('2026-10-24T10:00:00Z'))).toMatchObject({ rate: 4209.76 }); // mid only if no selling rate
+    expect(await new ControlFeeds(vi.fn(async () => json({ ...good, rates: [{ base: 'AED', quote: 'UGX', type: 'sell', value: 1147 }] })) as unknown as typeof fetch, 'k').bouSafe()).toMatchObject({ error: expect.stringContaining('no usable BoU USD/UGX') });
     expect(await new ControlFeeds(vi.fn(async () => json({ ...good, rate_date: '2026-10-10' })) as unknown as typeof fetch, 'k').bouSafe(new Date('2026-10-24T10:00:00Z'))).toMatchObject({ error: expect.stringContaining('days old') });
     expect(await new ControlFeeds(vi.fn(async () => json({ error: 'nope' }, 401)) as unknown as typeof fetch, 'k').bouSafe()).toMatchObject({ error: 'allratestoday.com answered HTTP 401' });
-    expect(executed.filter((q) => q.includes('insert into'))).toHaveLength(0);
+    expect(executed.filter((q) => q.includes('insert into') && q.includes('2026-10-10'))).toHaveLength(0);
   });
 
   it('the 1 pm tick runs only in the 13:00 Kampala hour', () => {

@@ -21,8 +21,10 @@ export class RecordBouFxReadingUseCase {
     const buying = side(input.buying), selling = side(input.selling);
     if (buying !== null && selling !== null && (buying > mid + 1 || selling < mid - 1)) return { ok: false, message: 'buying must not exceed mid and selling must not be below it' };
     const src = String(input.source ?? 'bou.or.ug').slice(0, 60);
-    const note = `Bank of Uganda mid rate from ${src}${buying !== null ? `; buying ${buying}` : ''}${selling !== null ? `; selling ${selling}` : ''}`;
-    await this.store.recordBou({ day: input.day, mid: Math.round(mid * 100) / 100, buying, selling, note });
-    return { ok: true, day: input.day, mid };
+    // The shop buys dollars to pay for adverts, so the rate kept is the bank's selling rate when the reading has one.
+    const kept = Math.round((selling ?? mid) * 100) / 100;
+    const note = `Bank of Uganda ${selling !== null ? 'selling' : 'mid'} rate from ${src}; mid ${mid}${buying !== null ? `; buying ${buying}` : ''}`;
+    await this.store.recordBou({ day: input.day, mid: kept, buying, selling, note });
+    return { ok: true, day: input.day, mid: kept };
   }
 }

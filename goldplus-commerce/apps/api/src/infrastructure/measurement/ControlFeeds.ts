@@ -25,8 +25,12 @@ export const FEED_CONTROL_KEYS = ['usd_ugx', 'rain_mm'] as const;
 export const BOU_MAX_AGE_DAYS = 5;
 const FX_URL = 'https://open.er-api.com/v6/latest/USD';
 const RAIN_URL = 'https://archive-api.open-meteo.com/v1/archive';
-/** AllRatesToday's mirror of the Bank of Uganda table (owner's key, 2026-10-24): one call gives the USD/UGX reference (mid) rate and BoU's own date. */
-const BOU_URL = 'https://allratestoday.com/api/v1/central-bank/bou/latest?source=USD&target=UGX';
+/**
+ * AllRatesToday's mirror of the Bank of Uganda table (owner's key, 2026-10-24): the full table gives the USD/UGX
+ * buying, reference (mid) and selling rates with BoU's own date. The shop BUYS dollars to pay for adverts, so the
+ * rate kept is the bank's SELLING rate (owner 2026-10-24); mid and buying go into the note.
+ */
+const BOU_URL = 'https://allratestoday.com/api/v1/central-bank/bou/latest';
 const KAMPALA = { latitude: 0.3476, longitude: 32.5825 };
 const TIMEOUT_MS = 15_000;
 const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
@@ -47,7 +51,7 @@ export class ControlFeeds {
     return r ? { day: String(r.day), ugxPerUsd: Number(r.value), source: 'feed' } : null;
   }
 
-  /** A Bank of Uganda reading posted by scripts/bou-fx.mjs (mid, buying, selling per dollar), dated by BoU's own day. */
+  /** A Bank of Uganda reading (the rate kept is what the shop pays to buy a dollar: the bank's selling rate), dated by BoU's own day. */
   async recordBou(reading: { day: string; mid: number; buying: number | null; selling: number | null; note: string }): Promise<void> {
     await db.execute(sql`insert into measurement.control_series (day, control_key, value, source, note) values (${reading.day}::date, 'usd_ugx_bou', ${reading.mid}, 'bou', ${reading.note})
       on conflict (day, control_key) do update set value = excluded.value, note = excluded.note, updated_at = now() where measurement.control_series.source = 'bou'`);
@@ -84,15 +88,18 @@ export class ControlFeeds {
     if (!key) return { skipped: 'ALLRATES_API_KEY is not set: the Bank of Uganda rate is not fetched' };
     const res = await this.fetchImpl(BOU_URL, { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { Accept: 'application/json', Authorization: `Bearer ${key}` } });
     if (!res.ok) throw new Error(`allratestoday.com answered HTTP ${res.status}`);
-    const json = await res.json() as { bank?: string; rate_date?: string; rate?: number; rate_type?: string; source?: string; target?: string; age_days?: number };
-    const rate = Number(json?.rate);
-    if (json?.bank !== 'bou' || json?.source !== 'USD' || json?.target !== 'UGX' || json?.rate_type !== 'reference') throw new Error(`allratestoday.com gave something other than the BoU USD/UGX reference rate (${JSON.stringify({ bank: json?.bank, source: json?.source, target: json?.target, rate_type: json?.rate_type })})`);
-    if (!Number.isFinite(rate) || rate < 1000 || rate > 20000) throw new Error(`allratestoday.com gave no usable BoU rate (${String(json?.rate)})`);
+    const json = await res.json() as { bank?: string; rate_date?: string; rates?: Array<{ base?: string; quote?: string; type?: string; value?: number }> };
+    if (json?.bank !== 'bou' || !Array.isArray(json?.rates)) throw new Error('allratestoday.com gave something other than the BoU table');
+    const usd = json.rates.filter((r) => r.base === 'USD' && r.quote === 'UGX');
+    const pick = (t: string): number | null => { const v = Number(usd.find((r) => r.type === t)?.value); return Number.isFinite(v) && v >= 1000 && v <= 20000 ? v : null; };
+    const selling = pick('sell'), mid = pick('reference'), buying = pick('buy');
+    const rate = selling ?? mid;
+    if (rate === null) throw new Error(`allratestoday.com gave no usable BoU USD/UGX selling or reference rate (${JSON.stringify(usd)})`);
     const day = String(json?.rate_date ?? '');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error(`allratestoday.com gave no rate_date (${day})`);
     const ageDays = Math.round((Date.parse(`${kampalaDay(now)}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / 86_400_000);
     if (ageDays > BOU_MAX_AGE_DAYS) throw new Error(`BoU reading dated ${day} is ${ageDays} days old; not kept`);
-    await this.recordBou({ day, mid: rate, buying: null, selling: null, note: `Bank of Uganda reference (mid) rate via allratestoday.com, BoU date ${day}` });
+    await this.recordBou({ day, mid: rate, buying, selling, note: `Bank of Uganda ${selling !== null ? 'selling' : 'reference'} rate via allratestoday.com, BoU date ${day}${mid !== null ? `; mid ${mid}` : ''}${buying !== null ? `; buying ${buying}` : ''}` });
     return { day, rate, ageDays };
   }
 

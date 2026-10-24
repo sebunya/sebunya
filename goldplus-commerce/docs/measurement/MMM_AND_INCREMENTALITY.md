@@ -105,15 +105,16 @@ Dollar-priced costs (WhatsApp templates, any USD ad spend without a platform rat
 at one rate a day. Order of precedence, in `resolveUgxPerUsd`:
 
 1. a rate set by hand on the MMM page (`ugx_per_usd`), if any;
-2. the **Bank of Uganda mid rate** for the latest business day within five days (`usd_ugx_bou`), plus the
-   safety margin (`usd_ugx_margin`, owner's figure 200: banks sell dollars above the BoU mid);
+2. the **Bank of Uganda selling rate** (what the shop pays to buy a dollar for adverts; owner 2026-10-24) for the
+   latest business day within five days (`usd_ugx_bou`, carried over weekends and holidays), plus the safety
+   margin (`usd_ugx_margin`, owner's figure 200: commercial banks sell above BoU);
 3. the open market feed (`usd_ugx`, open.er-api.com, nightly) plus the same margin;
 4. 3,800, only if nothing above exists.
 
 **How the reading gets in (owner's choice 2026-10-24: the AllRatesToday key, no browser job needed).** The api
-calls `allratestoday.com/api/v1/central-bank/bou/latest?source=USD&target=UGX` with `ALLRATES_API_KEY` at
-13:00 Kampala (`runBouRateOnce`) and again in the nightly feeds step, keeps the `reference` (mid) rate under
-BoU's own `rate_date`, and refuses anything that is not the BoU USD/UGX reference or is older than five days.
+calls `allratestoday.com/api/v1/central-bank/bou/latest` (the full table) with `ALLRATES_API_KEY` at 13:00
+Kampala (`runBouRateOnce`) and again in the nightly feeds step, keeps the USD/UGX `sell` rate (mid and buying in
+the note) under BoU's own `rate_date`, and refuses a table with no usable USD row or one older than five days.
 Known limit: the mirror lags BoU by about two days (on 2026-10-24 it served BoU's 22 October table, 4,209.76,
 while bou.or.ug showed 4,303.81), so the reading in use is the newest BoU day the mirror has. The direct
 browser path below reads bou.or.ug itself and writes the same control key; whichever has the newer BoU day
