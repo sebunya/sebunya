@@ -70,7 +70,7 @@ export async function lastMeasurementNightly(): Promise<{ startedAt: string; fin
   return r ? { startedAt: new Date(r.started_at).toISOString(), finishedAt: r.finished_at ? new Date(r.finished_at).toISOString() : null, state: String(r.state), stats: r.stats ?? {} } : null;
 }
 
-/** 13:00–13:59 Kampala: the owner's chosen time for the day's Bank of Uganda rate (BoU posts its midday rates by then). */
+/** 13:00–13:59 Kampala: the owner's chosen time for the day's dollar rates (the market quote and the Bank of Uganda table, which is posted by then). */
 export function inBouWindow(now: Date): boolean { return (now.getUTCHours() + 3) % 24 === 13; }
 let bouRanOn = '';
 export async function runBouRateOnce(now = new Date()): Promise<{ status: 'RAN' | 'SKIPPED_WINDOW' | 'SKIPPED_DONE'; result?: unknown }> {
@@ -78,8 +78,9 @@ export async function runBouRateOnce(now = new Date()): Promise<{ status: 'RAN' 
   const day = new Date(now.getTime() + 3 * 3600_000).toISOString().slice(0, 10);
   if (bouRanOn === day) return { status: 'SKIPPED_DONE' };
   bouRanOn = day;
-  const result = await Registry.getInstance().controlFeeds.bouSafe(now);
-  logger.info({ result }, '[measurement-nightly] 1 pm Bank of Uganda rate');
+  const feeds = Registry.getInstance().controlFeeds;
+  const result = { market: await feeds.fxSafe(now), bou: await feeds.bouSafe(now) };
+  logger.info({ result }, '[measurement-nightly] 1 pm dollar rates');
   return { status: 'RAN', result };
 }
 

@@ -99,39 +99,33 @@ convention count as one part). A negotiated creator payment that overlaps a cont
 creator is flagged "also under contract" on the admin page, because the two may be the same money; the
 owner ends one of them.
 
-## 4b. The dollar rate: Bank of Uganda at 1 pm (2026-10-24)
+## 4b. The dollar rate: market quote first, Bank of Uganda as cover (owner 2026-10-24)
 
-Dollar-priced costs (WhatsApp templates, any USD ad spend without a platform rate) are turned into shillings
-at one rate a day. Order of precedence, in `resolveUgxPerUsd`:
+Ad platforms bill in dollars; the shop buys those dollars from a Ugandan bank, so the rate that matters is what
+a bank CHARGES for a dollar. Two readings are kept in `measurement.control_series`, both fetched by the api at
+13:00 Kampala (`runBouRateOnce`) and again in the nightly feeds step, using `ALLRATES_API_KEY`:
 
-1. a rate set by hand on the MMM page (`ugx_per_usd`), if any;
-2. the **Bank of Uganda selling rate** (what the shop pays to buy a dollar for adverts; owner 2026-10-24) for the
-   latest business day within five days (`usd_ugx_bou`, carried over weekends and holidays), plus the safety
-   margin (`usd_ugx_margin`, owner's figure 200: commercial banks sell above BoU);
-3. the open market feed (`usd_ugx`, open.er-api.com, nightly) plus the same margin;
-4. 3,800, only if nothing above exists.
+| key | what | when | margin |
+|---|---|---|---|
+| `usd_ugx` | allratestoday.com market quote, USD/UGX (`/api/v1/rates?source=USD&target=UGX`) | hourly, every day incl. weekends | none: already retail level |
+| `usd_ugx_bou` | Bank of Uganda **selling** rate (`/api/v1/central-bank/bou/latest`, row `type: sell`; mid and buying in the note) | BoU business days, dated by BoU's `rate_date`, carried forward up to 5 days | `usd_ugx_margin` (owner: +200) |
 
-**How the reading gets in (owner's choice 2026-10-24: the AllRatesToday key, no browser job needed).** The api
-calls `allratestoday.com/api/v1/central-bank/bou/latest` (the full table) with `ALLRATES_API_KEY` at 13:00
-Kampala (`runBouRateOnce`) and again in the nightly feeds step, keeps the USD/UGX `sell` rate (mid and buying in
-the note) under BoU's own `rate_date`, and refuses a table with no usable USD row or one older than five days.
-Known limit: the mirror lags BoU by about two days (on 2026-10-24 it served BoU's 22 October table, 4,209.76,
-while bou.or.ug showed 4,303.81), so the reading in use is the newest BoU day the mirror has. The direct
-browser path below reads bou.or.ug itself and writes the same control key; whichever has the newer BoU day
-wins.
+**Rule (`resolveUgxPerUsd`, and per day in the MMM dataset): the rate in use is the HIGHER of the two fresh
+candidates.** Evidence for the design, 24 October 2026 (a Saturday): market quote 4,419.95; BoU 22 October
+selling 4,214.76 + 200 = 4,414.76; the open interbank feed 4,166. The market quote and BoU + margin land within
+five shillings of each other, so the margin is NOT added to the market quote (that would count the bank spread
+twice). Each covers the other: a failed or stale market quote (older than 7 days) leaves BoU + margin; a weekend
+or holiday leaves Friday's BoU reading standing while the market quote keeps moving. A hand-set `ugx_per_usd`
+pins everything. Without the key the open feed is used with the margin, as before.
 
-BoU publishes its rates at bou.or.ug/interest_rates_exchange_rates as a **Power BI report** with no documented
-JSON feed (the site hands out a public embed token at `/api/power-bi/token`; the old `bouwebsite` endpoints now
-return the same JS shell). So `.github/workflows/bou-fx.yml` runs `scripts/bou-fx.mjs` at 10:00 UTC (13:00 EAT)
-Monday to Friday: Chromium opens the page, the Power BI client on the page exports the "Major Exchange Rates"
-table, the `U.S. Dollar/Uganda Shillings (UGX)` row gives mid (BoU's "Cross Rates"), buying and selling, and the
-script posts them to `POST /internal/fx/bou` with the shared secret `BOU_FX_TOKEN` (GitHub secret and prod env;
-the endpoint answers 503 without it). The use case refuses an implausible rate or a stale day. The reading is
-dated by the Kampala day of the run; weekends and holidays get no reading, so the five-day freshness window
-carries a Friday rate over a long weekend before the market feed takes over.
+BoU and the market quote are NOT the same source and do not move together day by day: BoU selling went 4,056.9
+(16 Oct) → 4,161.67 (20) → 4,185 (21) → 4,214.76 (22) while the open feed sat near 4,166. AllRatesToday mirrors
+BoU's own table about one business day late; dated BoU history is a paid plan there, and the open archive
+(github.com/AllRates-Today/central-bank-exchange-rates, `data/bou/daily/<date>.json`) has gaps.
 
-Sanity figures 2026-10-24: BoU mid 4,303.81 (buying 4,298.81, selling 4,308.81); open.er-api 4,166.17. The open
-feed ran about 140 shillings below BoU that day, which is why BoU is preferred.
+The direct browser path (`scripts/bou-fx.mjs`, workflow `bou-fx.yml`, `POST /internal/fx/bou`) reads bou.or.ug
+itself (a Power BI report with a public embed token) and writes the same `usd_ugx_bou` key, keeping the selling
+rate; it is optional now and off until `BOU_FX_TOKEN` is set.
 
 ## 4a. Paid placements: YouTube channels, radio, TV (0206, 2026-10-24)
 
