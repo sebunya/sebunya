@@ -37,7 +37,13 @@ const KAMPALA = { latitude: 0.3476, longitude: 32.5825 };
 const TIMEOUT_MS = 15_000;
 const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
 
-export interface FeedResult { usd_ugx: { day: string; rate: number } | { error: string }; usd_ugx_bou: { day: string; rate: number; ageDays: number } | { error: string } | { skipped: string }; rain_mm: { days: number; from: string; to: string } | { error: string } }
+export interface FeedResult {
+  usd_ugx: { day: string; rate: number } | { error: string };
+  usd_ugx_bou: { day: string; rate: number; ageDays: number } | { error: string } | { skipped: string };
+  /** Market quote against BoU selling: the quote should sit a few percent above the central bank; outside 0–10 % one of the two is wrong and the nightly log says so. */
+  fx_check?: { market: number; bou: number; gapPct: number; ok: boolean };
+  rain_mm: { days: number; from: string; to: string } | { error: string };
+}
 
 export class ControlFeeds {
   constructor(private readonly fetchImpl: typeof fetch = fetch, private readonly allRatesKey: string | undefined = process.env.ALLRATES_API_KEY) {}
@@ -53,7 +59,7 @@ export class ControlFeeds {
 
   /** A Bank of Uganda reading (the rate kept is what the shop pays to buy a dollar: the bank's selling rate), dated by BoU's own day. */
   async recordBou(reading: { day: string; mid: number; buying: number | null; selling: number | null; note: string }): Promise<void> {
-    await db.execute(sql`insert into measurement.control_series (day, control_key, value, source, note) values (${reading.day}::date, 'usd_ugx_bou', ${reading.mid}, 'bou', ${reading.note})
+    await db.execute(sql`insert into measurement.control_series (day, control_key, value, source, note) values (${reading.day}::date, 'usd_ugx_bou', ${reading.mid}, 'bou', ${reading.note.slice(0, 200)})
       on conflict (day, control_key) do update set value = excluded.value, note = excluded.note, updated_at = now() where measurement.control_series.source = 'bou'`);
   }
 
@@ -61,6 +67,7 @@ export class ControlFeeds {
     const out: FeedResult = { usd_ugx: { error: 'not run' }, usd_ugx_bou: { error: 'not run' }, rain_mm: { error: 'not run' } };
     try { out.usd_ugx = await this.fx(now); } catch (err) { out.usd_ugx = { error: String((err as Error).message ?? err).slice(0, 200) }; logger.warn({ err: (err as Error).message }, '[control-feeds] usd_ugx failed'); }
     out.usd_ugx_bou = await this.bouSafe(now);
+    out.fx_check = fxCheck(out) ?? undefined;
     try { out.rain_mm = await this.rain(now, windowDays); } catch (err) { out.rain_mm = { error: String((err as Error).message ?? err).slice(0, 200) }; logger.warn({ err: (err as Error).message }, '[control-feeds] rain_mm failed'); }
     return out;
   }
@@ -95,7 +102,7 @@ export class ControlFeeds {
     if (!row || !Number.isFinite(rate) || rate < 1000 || rate > 20000) throw new Error(`allratestoday.com gave no usable USD/UGX market quote (${JSON.stringify(json).slice(0, 120)})`);
     const at = row.time && Number.isFinite(Date.parse(row.time)) ? new Date(row.time) : now;
     const day = kampalaDay(at);
-    await db.execute(sql`insert into measurement.control_series (day, control_key, value, source, note) values (${day}::date, 'usd_ugx', ${rate}, 'feed', ${`${MARKET_NOTE}; quoted ${at.toISOString()}`})
+    await db.execute(sql`insert into measurement.control_series (day, control_key, value, source, note) values (${day}::date, 'usd_ugx', ${rate}, 'feed', ${`${MARKET_NOTE}; quoted ${at.toISOString()}`.slice(0, 200)})
       on conflict (day, control_key) do update set value = excluded.value, note = excluded.note, updated_at = now() where measurement.control_series.source = 'feed'`);
     return { day, rate };
   }
@@ -151,6 +158,16 @@ export class ControlFeeds {
     });
     return { days: n, from, to };
   }
+}
+
+/** The market quote should sit a few percent above the Bank of Uganda selling rate (the bank spread); 0–10 % is sane. */
+export function fxCheck(out: Pick<FeedResult, 'usd_ugx' | 'usd_ugx_bou'>): FeedResult['fx_check'] | null {
+  if (!('rate' in out.usd_ugx) || !('rate' in out.usd_ugx_bou)) return null;
+  const market = out.usd_ugx.rate, bou = out.usd_ugx_bou.rate;
+  const gapPct = Math.round(((market - bou) / bou) * 1000) / 10;
+  const ok = gapPct >= 0 && gapPct <= 10;
+  if (!ok) logger.warn({ market, bou, gapPct }, '[control-feeds] market quote and Bank of Uganda selling rate disagree beyond the bank spread; check both sources');
+  return { market, bou, gapPct, ok };
 }
 
 const kampalaDay = (d: Date): string => new Date(d.getTime() + 3 * 3600_000).toISOString().slice(0, 10);

@@ -4,6 +4,7 @@ import { logger } from '../logging/logger';
 import { db } from '../db/client';
 import { sql } from 'drizzle-orm';
 import { Ga4Reconciliation, HttpGa4Reader, careDeskAlarm } from '../measurement/Ga4Reconciliation';
+import { fxCheck } from '../measurement/ControlFeeds';
 
 /**
  * Measurement nightly (0203, 2026-10-23), after the attribution batch and the first-party run (03:30–05:59
@@ -79,7 +80,8 @@ export async function runBouRateOnce(now = new Date()): Promise<{ status: 'RAN' 
   if (bouRanOn === day) return { status: 'SKIPPED_DONE' };
   bouRanOn = day;
   const feeds = Registry.getInstance().controlFeeds;
-  const result = { market: await feeds.fxSafe(now), bou: await feeds.bouSafe(now) };
+  const usd_ugx = await feeds.fxSafe(now), usd_ugx_bou = await feeds.bouSafe(now);
+  const result = { market: usd_ugx, bou: usd_ugx_bou, check: fxCheck({ usd_ugx, usd_ugx_bou }) };
   logger.info({ result }, '[measurement-nightly] 1 pm dollar rates');
   return { status: 'RAN', result };
 }

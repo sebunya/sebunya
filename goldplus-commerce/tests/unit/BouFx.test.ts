@@ -3,6 +3,7 @@ import { resolveUgxPerUsd } from '../../apps/api/src/domain/measurement/Measurem
 import { RecordBouFxReadingUseCase } from '../../apps/api/src/application/use-cases/measurement/RecordBouFxReadingUseCase';
 import { parseUsdRow } from '../../scripts/bou-fx.mjs';
 import { inBouWindow } from '../../apps/api/src/infrastructure/scheduler/MeasurementNightlyTicker';
+import { fxCheck } from '../../apps/api/src/infrastructure/measurement/ControlFeeds';
 
 /**
  * The Bank of Uganda dollar rate (2026-10-24): read off bou.or.ug at 1 pm by scripts/bou-fx.mjs, posted to
@@ -116,6 +117,13 @@ describe('Bank of Uganda dollar rate', () => {
     expect(await new ControlFeeds(vi.fn(async () => json([{ rate: 0.89, source: 'USD', target: 'EUR' }])) as unknown as typeof fetch, 'k').fxSafe()).toMatchObject({ error: expect.stringContaining('no usable USD/UGX market quote') });
     const open = vi.fn(async (url: string | URL | Request) => { expect(String(url)).toBe('https://open.er-api.com/v6/latest/USD'); return json({ result: 'success', rates: { UGX: 4166.17 }, time_last_update_unix: 1792972800 }); });
     expect(await new ControlFeeds(open as unknown as typeof fetch, '').fxSafe()).toMatchObject({ rate: 4166.17 });
+  });
+
+  it('the market quote is checked against BoU selling: a few percent above is sane, below or far above is flagged', () => {
+    expect(fxCheck({ usd_ugx: { day: 'd', rate: 4419.95 }, usd_ugx_bou: { day: 'd', rate: 4214.76, ageDays: 2 } })).toEqual({ market: 4419.95, bou: 4214.76, gapPct: 4.9, ok: true });
+    expect(fxCheck({ usd_ugx: { day: 'd', rate: 4100 }, usd_ugx_bou: { day: 'd', rate: 4214.76, ageDays: 2 } })?.ok).toBe(false);
+    expect(fxCheck({ usd_ugx: { day: 'd', rate: 4800 }, usd_ugx_bou: { day: 'd', rate: 4214.76, ageDays: 2 } })?.ok).toBe(false);
+    expect(fxCheck({ usd_ugx: { error: 'down' }, usd_ugx_bou: { day: 'd', rate: 4214.76, ageDays: 2 } })).toBeNull();
   });
 
   it('the 1 pm tick runs only in the 13:00 Kampala hour', () => {
