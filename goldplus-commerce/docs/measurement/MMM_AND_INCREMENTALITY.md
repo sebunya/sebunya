@@ -99,6 +99,34 @@ convention count as one part). A negotiated creator payment that overlaps a cont
 creator is flagged "also under contract" on the admin page, because the two may be the same money; the
 owner ends one of them.
 
+## 4b. The dollar rate: market quote first, Bank of Uganda as cover (owner 2026-10-24)
+
+Ad platforms bill in dollars; the shop buys those dollars from a Ugandan bank, so the rate that matters is what
+a bank CHARGES for a dollar. Two readings are kept in `measurement.control_series`, both fetched by the api at
+13:00 Kampala (`runBouRateOnce`) and again in the nightly feeds step, using `ALLRATES_API_KEY`:
+
+| key | what | when | margin |
+|---|---|---|---|
+| `usd_ugx` | allratestoday.com market quote, USD/UGX (`/api/v1/rates?source=USD&target=UGX`) | hourly, every day incl. weekends | none: already retail level |
+| `usd_ugx_bou` | Bank of Uganda **selling** rate (`/api/v1/central-bank/bou/latest`, row `type: sell`; mid and buying in the note) | BoU business days, dated by BoU's `rate_date`, carried forward up to 5 days | `usd_ugx_margin` (owner: +200) |
+
+**Rule (`resolveUgxPerUsd`, and per day in the MMM dataset): the rate in use is the HIGHER of the two fresh
+candidates.** Evidence for the design, 24 October 2026 (a Saturday): market quote 4,419.95; BoU 22 October
+selling 4,214.76 + 200 = 4,414.76; the open interbank feed 4,166. The market quote and BoU + margin land within
+five shillings of each other, so the margin is NOT added to the market quote (that would count the bank spread
+twice). Each covers the other: a failed or stale market quote (older than 7 days) leaves BoU + margin; a weekend
+or holiday leaves Friday's BoU reading standing while the market quote keeps moving. A hand-set `ugx_per_usd`
+pins everything. Without the key the open feed is used with the margin, as before.
+
+BoU and the market quote are NOT the same source and do not move together day by day: BoU selling went 4,056.9
+(16 Oct) → 4,161.67 (20) → 4,185 (21) → 4,214.76 (22) while the open feed sat near 4,166. AllRatesToday mirrors
+BoU's own table about one business day late; dated BoU history is a paid plan there, and the open archive
+(github.com/AllRates-Today/central-bank-exchange-rates, `data/bou/daily/<date>.json`) has gaps.
+
+The direct browser path (`scripts/bou-fx.mjs`, workflow `bou-fx.yml`, `POST /internal/fx/bou`) reads bou.or.ug
+itself (a Power BI report with a public embed token) and writes the same `usd_ugx_bou` key, keeping the selling
+rate; it is optional now and off until `BOU_FX_TOKEN` is set.
+
 ## 4a. Paid placements: YouTube channels, radio, TV (0206, 2026-10-24)
 
 The campaigns buy slots **from top YouTube channels**, not from YouTube: a dedicated video, an integration,

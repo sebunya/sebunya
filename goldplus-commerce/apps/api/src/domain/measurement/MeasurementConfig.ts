@@ -36,8 +36,8 @@ export const MEASUREMENT_CONFIG_REGISTRY: readonly MeasurementConfigEntry[] = [
   { key: 'whatsapp_marketing_usd_per_message', type: 'usd', unit: 'USD', min: 0, max: 1, defaultValue: WHATSAPP_RATE_CARD.marketingUsd, label: 'WhatsApp marketing message (dollars)', help: `Meta's published per-message rate for marketing templates to Ugandan numbers (${WHATSAPP_RATE_CARD.region}, rate card effective ${WHATSAPP_RATE_CARD.effective}). Converted to shillings at the dollar rate below.` },
   { key: 'whatsapp_utility_usd_per_message', type: 'usd', unit: 'USD', min: 0, max: 1, defaultValue: WHATSAPP_RATE_CARD.utilityUsd, label: 'WhatsApp utility message (dollars)', help: `Meta's published rate for utility and authentication templates (order updates, codes) to Ugandan numbers (${WHATSAPP_RATE_CARD.region}, effective ${WHATSAPP_RATE_CARD.effective}). Replies inside a customer-opened 24-hour window are free and are not sent as templates.` },
   { key: 'whatsapp_cost_ugx_per_message', type: 'integer', unit: 'UGX', min: 1, max: 5000, label: 'WhatsApp cost override (shillings, every message)', help: 'Only if Meta\'s invoice disagrees with the rate card: one shilling figure applied to every delivered template message, marketing and utility alike. Unset: the two dollar rates above apply.' },
-  { key: 'ugx_per_usd', type: 'integer', unit: 'UGX per USD', min: 1000, max: 20000, defaultValue: DEFAULT_UGX_PER_USD, label: 'Shillings per US dollar (manual override)', help: `Leave unset: the nightly feed takes the day's market rate and adds the safety margin below. Set a number only to pin the rate by hand; it then wins over the feed. With no feed and nothing set, ${DEFAULT_UGX_PER_USD} is used. A platform's own rate on its advertising form wins over all of these for that platform's spend.` },
-  { key: 'usd_ugx_margin', type: 'integer', unit: 'UGX', min: 0, max: 1000, defaultValue: DEFAULT_FX_MARGIN_UGX, label: 'Safety margin on the dollar rate', help: 'Added to the fed market rate so dollar spend is never understated in shillings (owner: +100).' },
+  { key: 'ugx_per_usd', type: 'integer', unit: 'UGX per USD', min: 1000, max: 20000, defaultValue: DEFAULT_UGX_PER_USD, label: 'Shillings per US dollar (manual override)', help: `Leave unset: the rate in use is the higher of the day's market quote (allratestoday.com, every day, retail level, no margin) and the Bank of Uganda selling rate plus the safety margin below. Set a number only to pin the rate by hand; it then wins over the feed. With no feed and nothing set, ${DEFAULT_UGX_PER_USD} is used. A platform's own rate on its advertising form wins over all of these for that platform's spend.` },
+  { key: 'usd_ugx_margin', type: 'integer', unit: 'UGX', min: 0, max: 1000, defaultValue: DEFAULT_FX_MARGIN_UGX, label: 'Safety margin on the dollar rate', help: 'Added to the Bank of Uganda selling rate (and to the open interbank feed when no market quote exists) so dollar spend is never understated: commercial banks sell dollars above BoU (owner 2026-10-24: +200). Not added to the retail market quote, which already sits at that level.' },
   { key: 'ga4_reconciliation_tolerance_pct', type: 'integer', unit: '%', min: 1, max: 100, defaultValue: 20, label: 'GA4 reconciliation tolerance', help: 'When GA4 reports fewer purchases than we sent it by more than this share of a day, the nightly check raises an alarm.' },
   { key: 'ga4_assisted_orders', type: 'switch', unit: 'on/off', label: 'Send assisted orders to GA4', help: 'An order with no browser identity (placed with help from staff, or from a browser without the visitor cookie) is sent to GA4 under source "assisted", medium "staff". Unset: such orders never reach GA4 (they stay in the channel report).' },
 ];
@@ -74,7 +74,16 @@ export function effectiveNumber(values: Record<string, string>, key: string): nu
 export const switchOn = (values: Record<string, string>, key: string): boolean => (values[key] ?? '').toLowerCase() === 'on';
 
 /** The latest market rate the nightly feed stored, if any. */
-export interface FxFeedReading { day: string; ugxPerUsd: number }
+/**
+ * The fed dollar rates on hand (2026-10-24). `source`: 'market' is a retail-level quote (allratestoday.com, hourly, every day,
+ * already about what a Ugandan bank charges, so NO margin); 'feed' is the open interbank-level feed (margin applies);
+ * 'bou' is the Bank of Uganda selling rate (business days only, margin applies). `cover` is the BoU reading kept
+ * beside a market reading: the rate in use is the HIGHER of the two fresh candidates, so dollar spend is never
+ * understated whichever source moved first, and a stale or failed market feed falls back to BoU + margin.
+ */
+export interface FxFeedReading { day: string; ugxPerUsd: number; source?: 'bou' | 'market' | 'feed'; cover?: { day: string; ugxPerUsd: number } }
+/** BoU posts no rate on weekends and public holidays; its last reading stands this long. */
+export const BOU_MAX_AGE_DAYS = 5;
 export const FX_FEED_MAX_AGE_DAYS = 7;
 
 /**
@@ -88,8 +97,18 @@ export function resolveUgxPerUsd(values: Record<string, string>, feed: FxFeedRea
   const manual = values['ugx_per_usd'] !== undefined ? Number(values['ugx_per_usd']) : NaN;
   if (Number.isFinite(manual) && manual > 0) return { rate: manual, basis: 'manual', detail: `set by hand` };
   const margin = effectiveNumber(values, 'usd_ugx_margin') ?? DEFAULT_FX_MARGIN_UGX;
-  if (feed && feed.ugxPerUsd > 0 && daysBetween(feed.day, today) <= FX_FEED_MAX_AGE_DAYS) {
-    return { rate: Math.round(feed.ugxPerUsd + margin), basis: 'feed', detail: `market ${feed.ugxPerUsd.toFixed(0)} on ${feed.day} + ${margin} margin` };
+  const candidates: Array<{ rate: number; text: string }> = [];
+  if (feed && feed.ugxPerUsd > 0 && daysBetween(feed.day, today) <= (feed.source === 'bou' ? BOU_MAX_AGE_DAYS : FX_FEED_MAX_AGE_DAYS)) {
+    if (feed.source === 'market') candidates.push({ rate: Math.round(feed.ugxPerUsd), text: `market ${feed.ugxPerUsd.toFixed(0)} on ${feed.day} (retail quote, no margin)` });
+    else candidates.push({ rate: Math.round(feed.ugxPerUsd + margin), text: `${feed.source === 'bou' ? 'Bank of Uganda selling' : 'market'} ${feed.ugxPerUsd.toFixed(0)} on ${feed.day} + ${margin} margin` });
+  }
+  if (feed?.cover && feed.cover.ugxPerUsd > 0 && daysBetween(feed.cover.day, today) <= BOU_MAX_AGE_DAYS) {
+    candidates.push({ rate: Math.round(feed.cover.ugxPerUsd + margin), text: `Bank of Uganda selling ${feed.cover.ugxPerUsd.toFixed(0)} on ${feed.cover.day} + ${margin} margin` });
+  }
+  if (candidates.length) {
+    candidates.sort((a, b) => b.rate - a.rate);
+    const [best, ...rest] = candidates;
+    return { rate: best.rate, basis: 'feed', detail: rest.length ? `${best.text}; cover: ${rest.map((c) => `${c.text} = ${c.rate}`).join('; ')}` : best.text };
   }
   return { rate: DEFAULT_UGX_PER_USD, basis: 'default', detail: feed ? `feed reading from ${feed.day} is older than ${FX_FEED_MAX_AGE_DAYS} days` : 'no feed reading yet' };
 }
