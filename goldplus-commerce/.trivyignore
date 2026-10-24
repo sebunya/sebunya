@@ -1,4 +1,4 @@
-# Same five reviewed exceptions as pnpm.auditConfig.ignoreGhsas; evidence for
+# Same six reviewed exceptions as pnpm.auditConfig.ignoreGhsas; evidence for
 # each is in docs/security/audit-exceptions.md. Remove an entry when its fix lands.
 GHSA-26w7-cxv4-gfx2
 CVE-2026-102984
@@ -9,3 +9,6 @@ CVE-2026-93748
 GHSA-ch52-4w7c-c8xp
 CVE-2026-93687
 GHSA-vfj7-8cjw-p6xm
+# zod 3 has no fix (patched only on 4.x); Trivy names it by CVE, pnpm by GHSA.
+GHSA-mrhx-c7xc-m3w5
+CVE-2023-54404
