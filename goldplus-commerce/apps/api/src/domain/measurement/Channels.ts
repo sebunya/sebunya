@@ -27,8 +27,8 @@ const SEARCH = /(^|\.)(google|bing|yahoo|duckduckgo|yandex|baidu|ecosia|brave)\.
 /**
  * YouTube is its own channel (2026-10-24): the shop buys placements on YouTube channels (a dedicated video, an
  * integration, a mention) and pays the channel, not YouTube. A visit tagged utm_source=youtube (the link each
- * placement gets for the description) or referred by youtube.com is that channel, whatever the medium says, so
- * the model sees placement spend and placement traffic on the same row. The shop runs no YouTube ads.
+ * placement gets for the description) with no ad medium, or referred by youtube.com, is that channel, so the
+ * model sees placement spend and placement traffic on the same row. A cost medium (cpc, paid social) is an ad.
  */
 const YOUTUBE_HOST = /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/i;
 const YOUTUBE_SOURCE = /^(youtube|yt)(\.com)?$/i;
@@ -52,12 +52,14 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   // its tags say so; untagged, it is organic social (SOCIAL_SHARE_CLICK_IDS).
   if (AD_KIND_SEARCH.some((k) => clicks.has(k))) return 'paid_search';
   if (AD_KIND_SOCIAL.some((k) => clicks.has(k))) return 'paid_social';
-  if (YOUTUBE_SOURCE.test(src)) return 'youtube';
   // A social network with a cost medium is a social ad (GA4's own Paid Social rule, same medium pattern), not search: Meta's {{site_source_name}}
   // gives fb, ig, msg (Messenger) and an (Audience Network).
   if (/^(.*cp.*|ppc|retargeting|paid.*)$/.test(med) && ((SOCIAL_SOURCE.test(src) && !/^youtube/.test(src)) || /^(meta|msg|messenger|an)$/.test(src))) return 'paid_social';
   if (/^(cpc|ppc|paid[_-]?search|sem)$/.test(med)) return 'paid_search';
   if (/^(paid[_-]?social|social[_-]?paid|paidsocial|cpm[_-]?social)$/.test(med)) return 'paid_social';
+  // A sponsored video's description link (utm_medium=sponsorship) or any other non-ad YouTube tag is the YouTube
+  // channels lever. A cost medium above means a real ad (YouTube ads are bought through Google Ads) and stays paid.
+  if (YOUTUBE_SOURCE.test(src) && !/^(display|banner|cpm|programmatic)$/.test(med)) return 'youtube';
   if (/^(display|banner|cpm|programmatic|video|audio)$/.test(med)) return 'display';
   if (/^affiliate/.test(med)) return 'affiliate';
   if (/^e-?mail/.test(med)) return 'email';

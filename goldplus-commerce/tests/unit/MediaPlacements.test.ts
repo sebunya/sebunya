@@ -34,7 +34,8 @@ describe('YouTube is one channel for money, arrivals and the customer answer', (
     expect(CHANNELS).toContain('youtube');
     expect(classifyChannel({ source: 'youtube', medium: 'sponsorship' })).toBe('youtube');
     expect(classifyChannel({ source: 'YouTube', medium: 'video' })).toBe('youtube');
-    expect(classifyChannel({ source: 'youtube', medium: 'cpc' })).toBe('youtube'); // the shop runs no YouTube ads
+    expect(classifyChannel({ source: 'youtube', medium: 'cpc' })).toBe('paid_search'); // a real ad stays an ad
+    expect(classifyChannel({ source: 'youtube' })).toBe('youtube');
     expect(classifyChannel({ referrerHost: 'www.youtube.com' })).toBe('youtube');
     expect(classifyChannel({ referrerHost: 'youtu.be' })).toBe('youtube');
     expect(classifyChannel({ referrerHost: 'm.youtube.com' })).toBe('youtube');

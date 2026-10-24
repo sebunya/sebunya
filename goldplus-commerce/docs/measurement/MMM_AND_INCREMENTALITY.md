@@ -115,7 +115,7 @@ channel and sales on another. The shop runs no YouTube ads, so nothing competes 
   campaign "outlet: title") or `offline_media`.
 - **Arrivals**: every placement gets a description link
   `?utm_source=youtube&utm_medium=sponsorship&utm_campaign=<slug>`; `classifyChannel` files any visit tagged
-  source youtube, or referred by youtube.com / youtu.be, as `youtube` whatever the medium. The touch's detail is
+  source youtube with no ad medium, or referred by youtube.com / youtu.be, as `youtube`; a cost medium is an ad and stays paid. The touch's detail is
   the slug, so credit is per placement.
 - **Promo code**: an order redeeming the code recorded on a placement is a `youtube` (or `offline_media`) touch
   named "outlet: title" (`codeTouchFrom`), not a generic promo code. A creator's own code still means the creator.
