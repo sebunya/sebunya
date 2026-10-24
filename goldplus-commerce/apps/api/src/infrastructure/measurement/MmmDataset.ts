@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { BOU_MAX_AGE_DAYS } from './ControlFeeds';
 import { db } from '../db/client';
 import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { reportChannelForSpend } from '../../domain/measurement/ChannelReport';
@@ -67,10 +68,23 @@ export class MmmDataset {
     const margin = effectiveNumber(values, 'usd_ugx_margin') ?? 0;
     const dayRates = new Map<string, number>();
     if (fx.basis !== 'manual') {
+      // BoU publishes on business days only; its last rate stands over the weekend and holidays (carried forward
+      // up to BOU_MAX_AGE_DAYS), so a Saturday's dollar spend is priced like Friday's, not on another feed.
+      const feedByDay = new Map<string, number>(), bouByDay = new Map<string, number>();
       for (const r of rows(await db.execute(sql`select day::text as day, value, control_key from measurement.control_series
-          where ((control_key = 'usd_ugx' and source = 'feed') or (control_key = 'usd_ugx_bou' and source = 'bou')) and day >= ${from}::date and day <= ${to}::date
-          order by day, (control_key = 'usd_ugx_bou')`))) {
-        const n = Number(r.value); if (Number.isFinite(n) && n > 0) dayRates.set(String(r.day), Math.round(n + margin)); // the bou row sorts last and wins
+          where ((control_key = 'usd_ugx' and source = 'feed') or (control_key = 'usd_ugx_bou' and source = 'bou')) and day >= ${from}::date - ${BOU_MAX_AGE_DAYS}::int and day <= ${to}::date`))) {
+        const n = Number(r.value); if (!Number.isFinite(n) || n <= 0) continue;
+        (r.control_key === 'usd_ugx_bou' ? bouByDay : feedByDay).set(String(r.day), n);
+      }
+      let carried: { day: string; rate: number } | null = null;
+      for (let t = Date.parse(`${from}T00:00:00Z`) - BOU_MAX_AGE_DAYS * 86_400_000; t <= Date.parse(`${to}T00:00:00Z`); t += 86_400_000) {
+        const day = new Date(t).toISOString().slice(0, 10);
+        const bou = bouByDay.get(day);
+        if (bou !== undefined) carried = { day, rate: bou };
+        else if (carried && (t - Date.parse(`${carried.day}T00:00:00Z`)) / 86_400_000 > BOU_MAX_AGE_DAYS) carried = null;
+        if (day < from) continue;
+        const n = carried?.rate ?? feedByDay.get(day);
+        if (n !== undefined) dayRates.set(day, Math.round(n + margin));
       }
     }
     const rateFor = (platform: string, day: string): number => {
