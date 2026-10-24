@@ -38,3 +38,11 @@ describe('Goldie settings reach the api container', () => {
     expect({ missing, undocumented }).toEqual({ missing: [], undocumented: [] });
   });
 });
+
+describe('measurement keys reach the api container', () => {
+  it('YOUTUBE_API_KEY (0206) is passed through to the api service, else the key in .env.production never arrives', () => {
+    const api = compose.slice(compose.indexOf('\n  api:'), compose.indexOf('\n  web:'));
+    expect(api).toContain('- YOUTUBE_API_KEY=${YOUTUBE_API_KEY:-}');
+    expect(example).toContain('YOUTUBE_API_KEY=');
+  });
+});
