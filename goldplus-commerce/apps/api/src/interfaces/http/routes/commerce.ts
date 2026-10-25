@@ -1222,12 +1222,13 @@ routes.post('/reviews', async (c) => {
       rating: Number(body?.rating),
       title: typeof body?.title === 'string' ? body.title : null,
       body: typeof body?.body === 'string' ? body.body : null,
+      photoIds: body?.photoIds,
     });
     if (!result.ok) {
       const r = REVIEW_REFUSALS[result.reason] ?? { status: 400 as const, message: 'We could not take that review.' };
       return c.json({ success: false, error: { code: result.reason, message: r.message } }, r.status);
     }
-    return c.json({ success: true, data: { status: result.status } });
+    return c.json({ success: true, data: { status: result.status, photos: result.photos ?? 0 } });
   } catch {
     return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);
   }
@@ -1274,6 +1275,26 @@ routes.post('/orders/return-request', async (c) => {
 });
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** 0209: a photo for the review being written. Same pipeline and ceilings as a gift card photo; attached on submit. */
+routes.post('/reviews/photos', bodyLimit({
+  maxSize: GIFT_CARD_PHOTO_MAX_BYTES,
+  onError: (c) => c.json({ success: false, error: { code: 'TOO_LARGE', message: GIFT_CARD_PHOTO_REFUSAL_WORDS.too_large } }, 413),
+}), async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const bytes = Buffer.from(await c.req.arrayBuffer());
+  const result = await registry.reviewPhotoUseCases.upload(bytes, isInternalCall(c) ? null : clientKey(c));
+  if (!result.ok) return c.json({ success: false, error: { code: 'PHOTO_REFUSED', reason: result.reason, message: result.message } }, PHOTO_REFUSAL_STATUS[result.reason]);
+  return c.json({ success: true, data: { photoId: result.photoId } });
+});
+/** 0209: a published review's photo. Only published: moderation covers the picture as it covers the words. */
+routes.get('/reviews/photos/:id', async (c) => {
+  const image = await registry.reviewPhotoUseCases.image(c.req.param('id'));
+  if (!image) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No such photo.' } }, 404);
+  return c.body(new Uint8Array(image.buffer as ArrayBuffer, image.byteOffset, image.byteLength), 200, {
+    'Content-Type': 'image/jpeg', 'Content-Length': String(image.byteLength), 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff',
+  });
+});
+
 routes.get('/reviews/products/:productId', async (c) => {
   const productId = c.req.param('productId');
   // A malformed id is simply a product with no reviews — never a Postgres cast error.
@@ -1283,7 +1304,7 @@ routes.get('/reviews/products/:productId', async (c) => {
     c.header('Cache-Control', 'public, max-age=300');
     return c.json({ success: true, data: {
       aggregate: data.aggregate ? { count: data.aggregate.count, average: data.aggregate.average, distribution: data.aggregate.distribution } : null,
-      reviews: data.reviews.map((r) => ({ id: r.id, rating: r.rating, title: r.title, body: r.body, verified: r.isVerifiedPurchase, createdAt: r.createdAt, helpfulCount: r.helpfulCount })),
+      reviews: data.reviews.map((r) => ({ id: r.id, rating: r.rating, title: r.title, body: r.body, verified: r.isVerifiedPurchase, createdAt: r.createdAt, helpfulCount: r.helpfulCount, photoIds: r.photoIds ?? [] })),
     } });
   } catch {
     return c.json({ success: true, data: { aggregate: null, reviews: [] } });

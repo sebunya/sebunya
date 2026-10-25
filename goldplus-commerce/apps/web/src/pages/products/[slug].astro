@@ -1092,6 +1092,13 @@ if (product) {
                   <p class="flex items-center justify-between gap-2 text-sm"><span class="text-amber-500" aria-label={`${r.rating} out of 5 stars`}>{starsText(r.rating)}</span>{r.verified && <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-emerald-800">Verified buyer</span>}</p>
                   {r.title && <p class="mt-2 font-bold text-gray-900">{r.title}</p>}
                   {r.body && <p class="mt-1 text-sm leading-relaxed text-slate-700 whitespace-pre-line">{r.body}</p>}
+                  {Array.isArray(r.photoIds) && r.photoIds.length > 0 && (
+                    <ul class="mt-3 flex flex-wrap gap-2" aria-label="Photos from this buyer">
+                      {r.photoIds.slice(0, 3).map((pid) => (
+                        <li><a href={`/review-photo/${pid}`} target="_blank" rel="noopener"><img src={`/review-photo/${pid}`} alt={`Photo from a buyer of ${product.name}`} width="96" height="96" loading="lazy" decoding="async" class="h-24 w-24 rounded-xl border border-slate-200 object-cover" /></a></li>
+                      ))}
+                    </ul>
+                  )}
                   <div class="mt-2 flex items-center justify-between gap-2">
                     <p class="text-xs text-slate-500">{new Date(r.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' })}</p>
                     <form method="POST" action="/api/reviews/vote" data-review-vote>

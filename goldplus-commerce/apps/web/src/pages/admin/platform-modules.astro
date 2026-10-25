@@ -125,6 +125,7 @@ const HUB_CARDS = hub?.counts
                 <td class="align-top max-w-md">
                   <p class="font-semibold">{r.title || <span class="text-slate-600">(no title)</span>}</p>
                   {r.body && <p class="mt-1 whitespace-pre-line text-slate-700">{r.body}</p>}
+                  {Array.isArray(r.photoIds) && r.photoIds.length > 0 && <div class="mt-2 flex flex-wrap gap-2">{r.photoIds.map((pid: string) => <a href={`/admin/review-photo/${pid}`} target="_blank" rel="noopener"><img src={`/admin/review-photo/${pid}`} alt="Review photo" width="80" height="80" loading="lazy" class="h-20 w-20 rounded-lg border border-slate-200 object-cover" /></a>)}</div>}
                   {r.createdAt && <p class="mt-1 text-xs text-slate-500">{new Date(r.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Kampala" })}</p>}
                 </td>
                 <td class="align-top">{r.isVerifiedPurchase ? "✓" : "—"}</td>

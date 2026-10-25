@@ -24,6 +24,8 @@ export interface PublicReview {
   createdAt: Date;
   /** Shoppers who marked it helpful (gap analysis #10). */
   helpfulCount: number;
+  /** 0209: the review's photos, newest last (absent from fakes that predate photos). */
+  photoIds?: string[];
 }
 
 export interface IReviewRepository {
