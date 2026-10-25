@@ -68,6 +68,7 @@ export interface Config {
   youtubeApiKey?: string;
   bouFxToken?: string;
   allRatesApiKey?: string;
+  clarityExportToken?: string;
   googleAdsConversionId?: string;
   metaPixelId?: string;
   metaAccessToken?: string;
@@ -129,6 +130,7 @@ export const configSchema = z.object({
   youtubeApiKey: z.string().optional(),
   bouFxToken: z.string().optional(),
   allRatesApiKey: z.string().optional(),
+  clarityExportToken: z.string().optional(),
   googleAdsConversionId: z.string().optional(),
   metaPixelId: z.string().optional(),
   metaAccessToken: z.string().optional(),
@@ -163,6 +165,7 @@ const SECRET_KEYS = new Set<keyof Config>([
   'youtubeApiKey',
   'bouFxToken',
   'allRatesApiKey',
+  'clarityExportToken',
   'metaAccessToken',
   'tiktokAccessToken',
   'posthogProjectApiKey',
@@ -337,6 +340,7 @@ export function validateEnv(): Config {
     youtubeApiKey: process.env.YOUTUBE_API_KEY,
     bouFxToken: process.env.BOU_FX_TOKEN,
     allRatesApiKey: process.env.ALLRATES_API_KEY,
+    clarityExportToken: process.env.CLARITY_EXPORT_TOKEN,
     googleAdsConversionId: process.env.GOOGLE_ADS_CONVERSION_ID,
     metaPixelId: process.env.META_PIXEL_ID,
     metaAccessToken: process.env.META_ACCESS_TOKEN,

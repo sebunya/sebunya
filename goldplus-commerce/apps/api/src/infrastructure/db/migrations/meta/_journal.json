@@ -1443,6 +1443,13 @@
       "when": 1790140000083,
       "tag": "0206_media_placements",
       "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "5",
+      "when": 1790140000084,
+      "tag": "0207_clarity_insights",
+      "breakpoints": true
     }
   ]
 }

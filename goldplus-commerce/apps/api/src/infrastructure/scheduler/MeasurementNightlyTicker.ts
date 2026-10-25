@@ -55,6 +55,7 @@ export async function runMeasurementNightlyOnce(now = new Date(), trigger: 'sche
     await step('feeds', () => registry.controlFeeds.run(now));
     await step('ga4_series', () => registry.ga4DailyPull.run(now));
     await step('youtube_views', () => registry.youtubeViewsPull.run(now));
+    await step('clarity', () => registry.clarityInsightsPull.run(now));
     await step('costs', () => registry.marketingCostDerivation.derive(35, now));
     await step('mmm', () => registry.mmmDataset.rebuild(now));
     await step('holdouts', () => registry.holdoutStore.computeOutcomes(now));
