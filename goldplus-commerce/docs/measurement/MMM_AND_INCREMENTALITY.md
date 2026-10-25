@@ -164,6 +164,27 @@ Not done, by design: reading a channel's analytics (only its owner can), knowing
 were in Uganda (the share is the channel's, entered by hand), and paying channels (the ledger records what was
 paid, it does not pay).
 
+## 4c. Microsoft Clarity, server to server (0207, 2026-10-25)
+
+Two halves, and only one of them can be server side. **Recording** (sessions, heatmaps) exists only because the
+Clarity tag runs in the shopper's browser: `PUBLIC_CLARITY_ID` (project "Shop Goldplus", z18tt62qd2) is inlined
+into the web build (`docker-compose.production.yml` build arg, `Dockerfile.web`), so setting it needs a web image
+rebuild, not a restart. The loader (BaseLayout) never fires for robots, our probes or staff (same gate as GA4),
+and every page outside the public catalogue carries `data-clarity-mask` on `<body>`.
+
+**Numbers**, server to server: the nightly step `clarity` (`ClarityInsightsPull`) calls Clarity's Data Export
+API (`GET www.clarity.ms/export-data/api/v1/project-live-insights`, `Authorization: Bearer CLARITY_EXPORT_TOKEN`,
+token from Clarity > Settings > Data Export, project admin only) three times: totals, by URL, by Channel, with
+`numOfDays=1` (the 24 hours before the call, UTC; the nightly runs 00:30–02:59 UTC so that is the previous UTC
+day, which the rows are filed under). Every numeric field of every metric lands in
+`measurement.clarity_insights` (day, breakdown, breakdown_value, metric, field, value): traffic, scroll depth,
+engagement time, dead/rage/error clicks, quickbacks, script errors, popular pages, browsers, devices, countries,
+referrers. Clarity's limits, written into the code: ten calls a project a day (a second run on the same day is
+skipped, a 429 stops the night), 1–3 days back only, 1,000 rows, no paging. The MMM page card shows yesterday's
+totals, the twelve pages with most frustration and sessions by channel; the history outlives Clarity's
+three-day export window and sits beside the GA4 series for the same days. Clarity's own GA4 link (Settings >
+Setup > Google Analytics integration) is an owner click and separate from this.
+
 ## 5. Cross-device identity in attribution
 
 Sign-in, registration, social sign-in and phone verification now pass the browser id to the identity graph

@@ -32,6 +32,7 @@ import { Ga4DailyPull } from './measurement/Ga4DailyPull';
 import { DrizzleMediaPlacementStore } from './measurement/DrizzleMediaPlacementStore';
 import { RecordBouFxReadingUseCase } from '../application/use-cases/measurement/RecordBouFxReadingUseCase';
 import { YouTubeViewsPull } from './measurement/YouTubeViewsPull';
+import { ClarityInsightsPull } from './measurement/ClarityInsightsPull';
 import { DrizzleCreatorCostStore } from './measurement/DrizzleCreatorCostStore';
 import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
 import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRepository';
@@ -912,6 +913,7 @@ export class Registry {
   /** Bank of Uganda rate posted by the 1 pm job; kept in control_series via ControlFeeds. */
   public readonly recordBouFxReadingUseCase = new RecordBouFxReadingUseCase(this.controlFeeds);
   public readonly youtubeViewsPull = new YouTubeViewsPull(process.env.YOUTUBE_API_KEY);
+  public readonly clarityInsightsPull = new ClarityInsightsPull(process.env.CLARITY_EXPORT_TOKEN);
   // Advertising destinations (0138): server-side conversion APIs, token vault-encrypted.
   // Measurement delivery operations (0140/0141): queue, replay, quarantine, kill switch.
   /** Collector contract v2 (0141); the per-event durable write is the caller's tracking path. */

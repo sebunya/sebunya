@@ -61,6 +61,11 @@ routes.get('/ga4-series', requirePermissions([PERMISSIONS.REPORTS_READ]), async 
   return c.json({ success: true, data: { report, rows: await registry().ga4DailyPull.series(report as Ga4ReportKey, Math.min(400, Number(c.req.query('days') ?? 28) || 28)) } });
 });
 
+/** Microsoft Clarity's dashboard numbers, pulled server to server every night (0207). */
+routes.get('/clarity', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  return c.json({ success: true, data: { configured: Boolean((process.env.CLARITY_EXPORT_TOKEN ?? '').trim()), summary: await registry().clarityInsightsPull.summary() } });
+});
+
 /** Paid placements on YouTube channels, radio, TV (0206). */
 routes.get('/placements', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => c.json({ success: true, data: {
   rows: await registry().mediaPlacementStore.list(Math.min(800, Number(c.req.query('days') ?? 400) || 400)), media: PLACEMENT_MEDIA, mediumLabels: MEDIUM_LABELS, types: PLACEMENT_TYPES,

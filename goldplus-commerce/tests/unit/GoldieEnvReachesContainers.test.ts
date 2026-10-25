@@ -48,5 +48,7 @@ describe('measurement keys reach the api container', () => {
     expect(example).toContain('BOU_FX_TOKEN=');
     expect(api).toContain('- ALLRATES_API_KEY=${ALLRATES_API_KEY:-}');
     expect(example).toContain('ALLRATES_API_KEY=');
+    expect(api).toContain('- CLARITY_EXPORT_TOKEN=${CLARITY_EXPORT_TOKEN:-}');
+    expect(example).toContain('CLARITY_EXPORT_TOKEN=');
   });
 });

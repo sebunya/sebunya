@@ -41,7 +41,10 @@ if (Astro.request.method === "POST") {
   else formError = r.message;
 }
 
-const [status, settings, holdouts, recon, controls, creatorCosts, ga4Series, placements] = await Promise.all([call("GET", "/status"), call("GET", "/settings"), call("GET", "/holdouts"), call("GET", "/reconciliation"), call("GET", "/controls?days=30"), call("GET", "/creator-costs"), call("GET", "/ga4-series?report=channel&days=7"), call("GET", "/placements")]);
+const [status, settings, holdouts, recon, controls, creatorCosts, ga4Series, placements, clarity] = await Promise.all([call("GET", "/status"), call("GET", "/settings"), call("GET", "/holdouts"), call("GET", "/reconciliation"), call("GET", "/controls?days=30"), call("GET", "/creator-costs"), call("GET", "/ga4-series?report=channel&days=7"), call("GET", "/placements"), call("GET", "/clarity")]);
+const clarityData = clarity.ok ? clarity.data : null;
+const claritySummary = clarityData?.summary ?? null;
+const clarityTotal = (k: string): string => { const v = claritySummary?.totals?.[k]; return typeof v === "number" ? new Intl.NumberFormat("en-GB", { maximumFractionDigits: 1 }).format(v) : "–"; };
 const feedsOf = status.ok ? status.data.nightly?.stats?.feeds : null;
 const feedsLine: string | null = feedsOf && typeof feedsOf === "object" ? Object.entries(feedsOf as Record<string, unknown>).map(([k, v]) => `${k} ${JSON.stringify(v)}`).join("; ") : null;
 const ga4Summary = status.ok ? status.data.ga4Series : null;
@@ -128,6 +131,33 @@ const statusText: Record<string, string> = { ok: "Agree", alarm: "GA4 missing pu
           <tbody>{ga4Series.data.rows.map((d: any) => (
             <tr class="border-t border-gray-100"><td class="py-2 pr-4">{d.day}</td><td class="py-2 pr-4">{d.dimension}</td><td class="py-2 pr-4">{d.sessions}</td><td class="py-2 pr-4">{d.totalUsers}</td><td class="py-2 pr-4">{d.purchases}</td><td class="py-2 pr-4">{formatUgx(d.purchaseRevenueUGX)}</td></tr>))}</tbody>
         </table></div>
+      )}
+    </section>
+
+    <section class="mb-8 rounded-2xl border border-gray-200 bg-white p-5">
+      <h3 class="text-lg font-black text-brand-dark mb-1">Microsoft Clarity, kept here</h3>
+      <p class="text-sm text-gray-600 mb-3">Clarity records sessions and heatmaps in the browser (project z18tt62qd2). Every night the shop pulls Clarity's own dashboard numbers for the previous day through its Data Export API, server to server: traffic, scroll depth, engagement time and the frustration signals (rage clicks, dead clicks, error clicks, quickbacks, script errors), in total, by page and by channel. Three of Clarity's ten daily export calls; the history outlives Clarity's three-day export window.</p>
+      {!clarityData ? <p class="text-sm text-gray-700">Clarity summary unavailable.</p> : !clarityData.configured ? <p class="text-sm text-gray-700">Not configured: set CLARITY_EXPORT_TOKEN (Clarity &gt; Settings &gt; Data Export) and the nightly starts pulling.</p> : !claritySummary ? <p class="text-sm text-gray-700">Configured; nothing pulled yet. The first rows arrive after the next nightly run.</p> : (
+        <div>
+          <p class="text-sm text-gray-700 mb-3">Day {claritySummary.day} (UTC window), pulled {claritySummary.fetchedAt ? claritySummary.fetchedAt.slice(0, 16).replace("T", " ") : "–"} UTC.</p>
+          <dl class="mb-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+            <div><dt class="text-xs font-bold uppercase tracking-wide text-gray-600">Sessions</dt><dd>{clarityTotal("Traffic.totalSessionCount")} <span class="text-xs text-gray-500">({clarityTotal("Traffic.totalBotSessionCount")} bots)</span></dd></div>
+            <div><dt class="text-xs font-bold uppercase tracking-wide text-gray-600">Users</dt><dd>{clarityTotal("Traffic.distantUserCount")}</dd></div>
+            <div><dt class="text-xs font-bold uppercase tracking-wide text-gray-600">Pages per session</dt><dd>{clarityTotal("Traffic.PagesPerSessionPercentage")}</dd></div>
+            <div><dt class="text-xs font-bold uppercase tracking-wide text-gray-600">Scroll depth</dt><dd>{clarityTotal("ScrollDepth.averageScrollDepth")}%</dd></div>
+            <div><dt class="text-xs font-bold uppercase tracking-wide text-gray-600">Rage-click sessions</dt><dd>{clarityTotal("RageClickCount.sessionsCount")}</dd></div>
+            <div><dt class="text-xs font-bold uppercase tracking-wide text-gray-600">Dead-click sessions</dt><dd>{clarityTotal("DeadClickCount.sessionsCount")}</dd></div>
+            <div><dt class="text-xs font-bold uppercase tracking-wide text-gray-600">Quickback sessions</dt><dd>{clarityTotal("QuickbackClick.sessionsCount")}</dd></div>
+            <div><dt class="text-xs font-bold uppercase tracking-wide text-gray-600">Script-error sessions</dt><dd>{clarityTotal("ScriptErrorCount.sessionsCount")}</dd></div>
+          </dl>
+          {claritySummary.pages.length > 0 && (
+            <div class="overflow-x-auto"><table class="min-w-full text-sm">
+              <thead><tr class="text-left text-xs font-bold uppercase tracking-wide text-gray-600"><th class="py-2 pr-4">Page</th><th class="py-2 pr-4">Sessions</th><th class="py-2 pr-4">Rage</th><th class="py-2 pr-4">Dead</th><th class="py-2 pr-4">Quickback</th></tr></thead>
+              <tbody>{claritySummary.pages.map((p: any) => <tr class="border-t border-gray-100"><td class="py-2 pr-4 break-all">{p.url}</td><td class="py-2 pr-4">{p.sessions}</td><td class="py-2 pr-4">{p.rageClicks}</td><td class="py-2 pr-4">{p.deadClicks}</td><td class="py-2 pr-4">{p.quickbacks}</td></tr>)}</tbody>
+            </table></div>
+          )}
+          {claritySummary.channels.length > 0 && <p class="mt-3 text-xs text-gray-600">By channel: {claritySummary.channels.map((c: any) => `${c.channel} ${c.sessions}`).join(", ")}.</p>}
+        </div>
       )}
     </section>
 
