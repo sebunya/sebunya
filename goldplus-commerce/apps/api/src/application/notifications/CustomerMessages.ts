@@ -47,9 +47,15 @@ export type CustomerTemplate =
   | 'SUPPORT_REQUEST_RECEIVED'
   | 'QUOTE_REQUEST_RECEIVED'
   | 'DEALER_APPLICATION_RECEIVED'
-  | 'FAKE_REPORT_RECEIVED';
+  | 'FAKE_REPORT_RECEIVED'
+  | 'PRODUCT_QUESTION_RECEIVED'
+  | 'PRODUCT_QUESTION_ANSWERED';
 
 export interface CustomerMessageData {
+  /** 0208: the product a question was asked about, and the shop's answer. */
+  productName?: string | null;
+  productUrl?: string | null;
+  questionAnswer?: string | null;
   customerName?: string | null;
   orderNumber?: string | null;
   totalUgx?: number | null;
@@ -337,6 +343,11 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
         return `${SHOP_NAME}: your membership level is now ${d.tierName || 'updated'}. Your level follows the lifetime points on your account. See how yours add up: ${publicBaseUrl()}/account/loyalty`;
       }
       return `${SHOP_NAME}: you are now a ${d.tierName || 'new tier'} member. See what that gets you: ${publicBaseUrl()}/account/loyalty`;
+    case 'PRODUCT_QUESTION_RECEIVED':
+      return `${SHOP_NAME}: we have your question about ${d.productName ?? 'the product'}. A person at the shop will answer it and send the answer to this number. Need it sooner? Call ${phone}.`;
+    case 'PRODUCT_QUESTION_ANSWERED':
+      // The answer itself travels in the SMS, so the customer never has to open a page to get it.
+      return `${SHOP_NAME}: about ${d.productName ?? 'the product'} you asked us. Our answer: ${String(d.questionAnswer ?? '').slice(0, 320)}${d.productUrl ? ` See it: ${d.productUrl}` : ''} Any other question, call ${phone}.`;
     case 'SUPPORT_REQUEST_RECEIVED':
       return `${SHOP_NAME}: we have your request${d.reference ? ` (ref ${d.reference})` : ''}. Our team will call you on this number. Need us sooner? Call ${phone}.`;
     case 'QUOTE_REQUEST_RECEIVED':
@@ -570,6 +581,24 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         cta: { label: 'See your rewards', url: `${publicBaseUrl()}/account/rewards` },
         tone: 'success',
       };
+    case 'PRODUCT_QUESTION_RECEIVED':
+      return {
+        subject: `We have your question about ${d.productName ?? 'the product'}`,
+        preheader: 'A person at the shop will answer it.',
+        headline: 'We have your question',
+        body: `Thank you. We have your question about ${d.productName ?? 'the product'}. A person at the shop will answer it and send the answer to you. If you need it sooner, call ${phone}.`,
+        cta: d.productUrl ? { label: 'See the product', url: d.productUrl } : null,
+        tone: 'neutral',
+      };
+    case 'PRODUCT_QUESTION_ANSWERED':
+      return {
+        subject: `Our answer about ${d.productName ?? 'the product'}`,
+        preheader: String(d.questionAnswer ?? '').slice(0, 120),
+        headline: 'Our answer to your question',
+        body: `You asked us about ${d.productName ?? 'the product'}. Our answer: ${String(d.questionAnswer ?? '')} Any other question, call ${phone}.`,
+        cta: d.productUrl ? { label: 'See the product', url: d.productUrl } : null,
+        tone: 'neutral',
+      };
     case 'SUPPORT_REQUEST_RECEIVED':
       return {
         subject: `We have your request${d.reference ? ` (${d.reference})` : ''}`,
@@ -644,4 +673,6 @@ export const CUSTOMER_TRANSACTIONAL_TEMPLATES: readonly string[] = Object.freeze
   'QUOTE_REQUEST_RECEIVED',
   'DEALER_APPLICATION_RECEIVED',
   'FAKE_REPORT_RECEIVED',
+  'PRODUCT_QUESTION_RECEIVED',
+  'PRODUCT_QUESTION_ANSWERED',
 ]);

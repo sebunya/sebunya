@@ -63,6 +63,35 @@ routes.post('/reviews/:id/moderate', requirePermissions([PERMISSIONS.REVIEWS_MOD
   return ok(c, { productId: result.productId, status });
 });
 
+// ---- 0208: product questions (answer queue) ------------------------------
+routes.get('/questions', requirePermissions([PERMISSIONS.REVIEWS_MODERATE]), async (c) => {
+  const status = String(c.req.query('status') || 'pending');
+  if (!['pending', 'answered', 'rejected'].includes(status)) return bad(c, 'BAD_STATUS', 'status must be pending|answered|rejected.');
+  const registry = Registry.getInstance();
+  const [items, counts] = await Promise.all([registry.productQuestionRepo.listByStatus(status as 'pending', 100), registry.productQuestionRepo.countByStatus()]);
+  return ok(c, { items, counts });
+});
+routes.post('/questions/:id/answer', requirePermissions([PERMISSIONS.REVIEWS_MODERATE]), async (c) => {
+  const id = String(c.req.param('id'));
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const result = await registry.answerProductQuestionUseCase.execute({ id, answer: body?.answer, answeredBy: (c.get('user') as any).id });
+  if (!result.ok) {
+    if (result.reason === 'NOT_FOUND') return bad(c, 'NOT_FOUND', 'Question not found.', 404);
+    if (result.reason === 'ALREADY') return bad(c, 'ALREADY_ANSWERED', 'That question already has an answer.', 409);
+    return bad(c, 'BAD_ANSWER', 'Write the answer in 2 to 1,500 characters.');
+  }
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({ actorId: (c.get('user') as any).id, action: 'PRODUCT_QUESTION_ANSWERED', entity: 'product_question', entityId: id, newState: { status: 'answered', notified: result.notified } });
+  return ok(c, { status: 'answered', notified: result.notified });
+});
+routes.post('/questions/:id/reject', requirePermissions([PERMISSIONS.REVIEWS_MODERATE]), async (c) => {
+  const id = String(c.req.param('id'));
+  const registry = Registry.getInstance();
+  if (!(await registry.answerProductQuestionUseCase.reject(id, (c.get('user') as any).id))) return bad(c, 'NOT_FOUND', 'Question not found.', 404);
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({ actorId: (c.get('user') as any).id, action: 'PRODUCT_QUESTION_REJECTED', entity: 'product_question', entityId: id, newState: { status: 'rejected' } });
+  return ok(c, { status: 'rejected' });
+});
+
 // ---- U4: creators ------------------------------------------------------
 routes.get('/creators', requirePermissions([PERMISSIONS.PRICING_READ]), async (c) => {
   return ok(c, await Registry.getInstance().creatorRepo.adminOverview());

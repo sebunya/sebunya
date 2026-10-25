@@ -1310,6 +1310,42 @@ routes.post('/reviews/:id/vote', async (c) => {
   }
 });
 
+/**
+ * Questions and answers on product pages (0208, gap analysis #14). The storefront relays the visitor's signed visit
+ * token (as for review votes) so one visitor can ask a few a day; the use case saves, opens the desk task and
+ * acknowledges. Answered questions are public.
+ */
+const QUESTION_REFUSALS: Record<string, string> = {
+  NO_PRODUCT: 'That product is not available.',
+  NO_NAME: 'Tell us your name, so we know who we are answering.',
+  TOO_SHORT: 'Ask the question in a few more words.',
+  TOO_LONG: 'Keep the question under 500 characters.',
+  BAD_CONTACT: 'Check the phone number or email: we could not read it.',
+  TOO_MANY: 'You have asked a few questions today. Ask us the rest on WhatsApp.',
+};
+routes.post('/questions', async (c) => {
+  const askerIdentityHash = hashVisitToken(c.req.header('x-gp-visit') ?? '') ?? '';
+  if (!askerIdentityHash) return c.json({ success: false, error: { code: 'NO_VISITOR', message: 'Refresh the page and try again.' } }, 400);
+  const body = await c.req.json().catch(() => null);
+  try {
+    const result = await registry.askProductQuestionUseCase.execute({ productId: String(body?.productId ?? ''), askerIdentityHash, name: body?.name, question: body?.question, phone: body?.phone, email: body?.email });
+    if (!result.ok) return c.json({ success: false, error: { code: result.reason, message: QUESTION_REFUSALS[result.reason] ?? 'We could not take that question.' } }, result.reason === 'TOO_MANY' ? 429 : 400);
+    return c.json({ success: true, data: { received: true, id: result.id } });
+  } catch {
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);
+  }
+});
+routes.get('/questions/products/:productId', async (c) => {
+  const productId = c.req.param('productId');
+  if (!UUID_RE.test(productId)) return c.json({ success: true, data: { questions: [] } });
+  try {
+    c.header('Cache-Control', 'public, max-age=120');
+    return c.json({ success: true, data: { questions: await registry.productQuestionRepo.listAnswered(productId, 20) } });
+  } catch {
+    return c.json({ success: true, data: { questions: [] } });
+  }
+});
+
 routes.post('/orders/lookup/followup', async (c) => {
   const body = await c.req.json().catch(() => null);
   const verified = await verifyOrderByContact(
