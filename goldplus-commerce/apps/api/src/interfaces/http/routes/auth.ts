@@ -7,6 +7,7 @@ import { RegisterCustomerUseCase } from '../../../application/use-cases/identity
 import { ApiResponse } from '@goldplus/shared';
 import { logger } from '../../../infrastructure/logging/logger';
 import { clientIp } from '../clientAddress';
+import { BASKET_REMINDERS_COPY_VERSION } from '../../../domain/consent/BasketReminderConsent';
 import { SESSION_LIFETIMES } from '../../../domain/identity/SessionPolicy';
 
 import { CreateAuditLogUseCase } from '../../../application/use-cases/audit/CreateAuditLogUseCase';
@@ -167,6 +168,17 @@ routes.post('/register', async (c) => {
     referral = outcome && 'status' in outcome ? { applied: true } : { applied: false, reason: outcome?.code ?? 'REFERRAL_FAILED' };
   }
 
+  // 0210: the basket-reminders tick at sign-up is the customer's own consent, recorded as such (never fails registration).
+  let basketReminders: { applied: boolean } | undefined;
+  if (body.basketReminders === true) {
+    const r = await registry.basketReminderConsentUseCases.change({
+      userId: result.user.id, requested: 'granted', confirmationTicked: true, copyVersionId: BASKET_REMINDERS_COPY_VERSION, surface: 'registration',
+      idempotencyKey: `register:${result.user.id}`, correlationId: c.req.header('x-correlation-id')?.trim().slice(0, 120) || `register:${result.user.id}`,
+      ipAddress: clientIp(c), userAgent: c.req.header('x-shopper-user-agent') ?? c.req.header('user-agent') ?? null,
+    }).catch(() => null);
+    basketReminders = { applied: !!r && r.ok };
+  }
+
   // Registration IS a login: same durable session, same response shape, so the
   // storefront handles both flows with one code path.
   const tokens = await signInTokens(registry, result.user, c, { token: result.token, expiresAt: result.expiresAt });
@@ -180,12 +192,14 @@ routes.post('/register', async (c) => {
     refreshExpiresAt?: string;
     user: { id: string; email: string; phone: string | null };
     referral?: { applied: boolean; reason?: string };
+    basketReminders?: { applied: boolean };
   }> = {
     success: true,
     data: {
       ...tokens,
       user: result.user,
       ...(referral ? { referral } : {}),
+      ...(basketReminders ? { basketReminders } : {}),
     },
   };
   return c.json(res, 201);

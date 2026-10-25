@@ -104,6 +104,8 @@ if (Astro.request.method === 'POST') {
   const referralCodeTyped = String(form.get('referralCode') ?? '').trim();
   const referralCode = normaliseInviteCode(referralCodeTyped) ?? (referralCodeTyped ? referralCodeTyped.slice(0, 20) : '');
   const referralSource = referralCode && referralCode === rememberedCode ? 'link' : 'typed';
+  // 0210: an unticked box; a tick is the customer's own basket-reminders consent, recorded by the API.
+  const basketReminders = form.get('basketReminders') === 'yes';
   values = { email, phone };
 
   // The same checks the API makes, before the round trip, so each problem is
@@ -124,7 +126,7 @@ if (Astro.request.method === 'POST') {
         method: 'POST',
         signal: AbortSignal.timeout(8000),
         headers: jsonApiHeaders(clientAddress),
-        body: JSON.stringify({ email, phone, password, ...(referralCode ? { referralCode, referralSource } : {}) }),
+        body: JSON.stringify({ email, phone, password, ...(referralCode ? { referralCode, referralSource } : {}), ...(basketReminders ? { basketReminders: true } : {}) }),
       });
       const json: any = await res.json().catch(() => null);
 
@@ -225,6 +227,10 @@ const focusField = firstErrorField(fieldErrors);
           helperText={inviterName ? 'Filled in from your invite link. Your welcome points arrive with your first delivered order.' : undefined}
           defaultValue={referralCodeFromUrl}
         />
+        <label class="flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-800">
+          <input type="checkbox" name="basketReminders" value="yes" class="mt-0.5 h-5 w-5 shrink-0 accent-[#456B00]" />
+          <span>Yes, text me if I leave something in my basket, at the phone number on my account. At most one text a week. I can switch this off in My preferences at any time.</span>
+        </label>
         <button
           type="submit"
           class="w-full min-h-12 bg-brand-primary text-gray-950 py-3 rounded-full font-bold text-sm hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none cursor-pointer hover:scale-[1.005] active:scale-[0.985]"

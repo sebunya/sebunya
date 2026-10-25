@@ -49,9 +49,14 @@ export type CustomerTemplate =
   | 'DEALER_APPLICATION_RECEIVED'
   | 'FAKE_REPORT_RECEIVED'
   | 'PRODUCT_QUESTION_RECEIVED'
-  | 'PRODUCT_QUESTION_ANSWERED';
+  | 'PRODUCT_QUESTION_ANSWERED'
+  | 'BASKET_REMINDER';
 
 export interface CustomerMessageData {
+  /** 0210 BASKET_REMINDER: what the basket holds, in words ("X and 2 more items"), the basket page and where to stop reminders. */
+  basketItems?: string | null;
+  basketUrl?: string | null;
+  preferencesUrl?: string | null;
   /** 0208: the product a question was asked about, and the shop's answer. */
   productName?: string | null;
   productUrl?: string | null;
@@ -348,6 +353,9 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
     case 'PRODUCT_QUESTION_ANSWERED':
       // The answer itself travels in the SMS, so the customer never has to open a page to get it.
       return `${SHOP_NAME}: about ${d.productName ?? 'the product'} you asked us. Our answer: ${String(d.questionAnswer ?? '').slice(0, 320)}${d.productUrl ? ` See it: ${d.productUrl}` : ''} Any other question, call ${phone}.`;
+    case 'BASKET_REMINDER':
+      // Marketing, by the customer's own tick: short, names what they left, and says where to stop these.
+      return `${SHOP_NAME}: you left ${d.basketItems ?? 'some items'} in your basket. It is still here: ${d.basketUrl ?? `${publicBaseUrl()}/cart`} To stop basket reminders: ${d.preferencesUrl ?? `${publicBaseUrl()}/account/preferences`}`;
     case 'SUPPORT_REQUEST_RECEIVED':
       return `${SHOP_NAME}: we have your request${d.reference ? ` (ref ${d.reference})` : ''}. Our team will call you on this number. Need us sooner? Call ${phone}.`;
     case 'QUOTE_REQUEST_RECEIVED':
@@ -597,6 +605,15 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         headline: 'Our answer to your question',
         body: `You asked us about ${d.productName ?? 'the product'}. Our answer: ${String(d.questionAnswer ?? '')} Any other question, call ${phone}.`,
         cta: d.productUrl ? { label: 'See the product', url: d.productUrl } : null,
+        tone: 'neutral',
+      };
+    case 'BASKET_REMINDER':
+      return {
+        subject: 'Your GoldPlus basket is still here',
+        preheader: `You left ${d.basketItems ?? 'some items'} in your basket.`,
+        headline: 'Still thinking it over?',
+        body: `You left ${d.basketItems ?? 'some items'} in your basket. It is saved and ready whenever you are. You asked us for basket reminders; switch them off any time in My preferences: ${d.preferencesUrl ?? `${publicBaseUrl()}/account/preferences`}`,
+        cta: { label: 'Open my basket', url: d.basketUrl ?? `${publicBaseUrl()}/cart` },
         tone: 'neutral',
       };
     case 'SUPPORT_REQUEST_RECEIVED':

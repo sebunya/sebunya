@@ -174,3 +174,13 @@ export const KNOWN_TEMPLATE_CLASSES: ReadonlyArray<{ template: string; messageCl
   ...[...OPERATIONAL_TEMPLATES].map((template) => ({ template, messageClass: 'OPERATIONAL' as const })),
   ...[...TRANSACTIONAL_TEMPLATES].map((template) => ({ template, messageClass: 'TRANSACTIONAL' as const })),
 ];
+
+/**
+ * 0210: a MARKETING message sent on the customer's own recorded consent carries `consent: { granted: true }` in its
+ * payload (CustomerOutboxNotifier). True only for that exact shape; anything else is undefined, so the governance
+ * falls back to the class rule (marketing without a recorded consent is blocked).
+ */
+export function consentGrantedIn(data: Record<string, unknown> | null | undefined): true | undefined {
+  const c = data && typeof data === 'object' ? (data as { consent?: unknown }).consent : undefined;
+  return c && typeof c === 'object' && (c as { granted?: unknown }).granted === true && typeof (c as { purpose?: unknown }).purpose === 'string' ? true : undefined;
+}

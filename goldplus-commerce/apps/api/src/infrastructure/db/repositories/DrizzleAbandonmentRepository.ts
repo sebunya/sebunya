@@ -1,6 +1,7 @@
 import { and, desc, eq, gt, isNotNull, lt, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { cartAbandonments } from '../schema/abandonment';
+import type { BasketReminderCandidate, IBasketReminderCandidates } from '../../../application/use-cases/abandonment/SendBasketRemindersUseCase';
 import { carts, cartItems } from '../schema/commerce';
 import { products, productPrices } from '../schema/products';
 import {
@@ -22,7 +23,7 @@ const toRecord = (r: Row): AbandonmentRecord => ({
   lastActivityAt: r.lastActivityAt,
 });
 
-export class DrizzleAbandonmentRepository implements IAbandonmentRepository {
+export class DrizzleAbandonmentRepository implements IAbandonmentRepository, IBasketReminderCandidates {
   async findNewlyAbandoned(staleBefore: Date, limit: number, now: Date = new Date()): Promise<AbandonmentCandidate[]> {
     // Priced the same way the cart reads price: retail price-book entry first,
     // catalogue display price as fallback — the recorded subtotal matches what the
@@ -84,6 +85,31 @@ export class DrizzleAbandonmentRepository implements IAbandonmentRepository {
       )
       .returning({ id: cartAbandonments.id });
     return rows.length;
+  }
+
+  /** 0210: baskets due a reminder, with up to two product names each (biggest line first). */
+  async findDue(input: { classifiedBefore: Date; classifiedAfter: Date; noReminderSince: Date; limit: number }): Promise<BasketReminderCandidate[]> {
+    const rows = (await db.execute(sql`
+      select a.id as "abandonmentId", a.cart_id as "cartId", a.owner_id as "userId", a.item_count as "itemCount", a.subtotal_ugx as "subtotalUgx",
+             coalesce((select array_agg(p.name order by ci.quantity desc, p.name) from (
+                         select ci.product_id, ci.quantity from cart_items ci where ci.cart_id = a.cart_id order by ci.quantity desc limit 2) ci
+                       join products p on p.id = ci.product_id), '{}') as "itemNames"
+      from cart_abandonments a
+      where a.status = 'OPEN' and a.owner_kind = 'USER' and a.owner_id is not null and a.reminded_at is null
+        and a.classified_at <= ${input.classifiedBefore} and a.classified_at >= ${input.classifiedAfter}
+        and exists (select 1 from cart_items ci where ci.cart_id = a.cart_id)
+        and not exists (select 1 from cart_abandonments b where b.owner_id = a.owner_id and b.reminder_outcome = 'sent' and b.reminded_at > ${input.noReminderSince})
+      order by a.classified_at
+      limit ${input.limit}`)) as unknown as Array<{ abandonmentId: string; cartId: string; userId: string; itemCount: number; subtotalUgx: number | string; itemNames: string[] | null }>;
+    const list = Array.isArray(rows) ? rows : ((rows as { rows?: unknown[] }).rows ?? []) as typeof rows;
+    return list.map((r) => ({
+      abandonmentId: String(r.abandonmentId), cartId: String(r.cartId), userId: String(r.userId),
+      itemCount: Number(r.itemCount), subtotalUgx: Number(r.subtotalUgx), itemNames: Array.isArray(r.itemNames) ? r.itemNames.map(String) : [],
+    }));
+  }
+
+  async markReminded(abandonmentId: string, now: Date, outcome: 'sent' | 'not_opted_in' | 'no_phone' | 'suppressed'): Promise<void> {
+    await db.update(cartAbandonments).set({ remindedAt: now, reminderOutcome: outcome }).where(and(eq(cartAbandonments.id, abandonmentId), sql`${cartAbandonments.remindedAt} is null`));
   }
 
   async summary() {

@@ -43,4 +43,33 @@ routes.post('/whatsapp', async (c) => {
   return c.json({ success: true, data: r });
 });
 
+// 0210: basket reminders by text, the customer's own choice, same shape as WhatsApp offers.
+routes.get('/basket-reminders', async (c) => {
+  const data = await Registry.getInstance().basketReminderConsentUseCases.status(c.get('userId'));
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({ success: true, data });
+});
+
+routes.post('/basket-reminders', async (c) => {
+  const body = await c.req.json().catch(() => null) as { requested?: unknown; confirmation?: unknown; copyVersionId?: unknown } | null;
+  if (!body || (body.requested !== 'granted' && body.requested !== 'withdrawn')) {
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Choose to switch basket reminders on or off.' } }, 400);
+  }
+  const idempotencyKey = c.req.header('idempotency-key')?.trim() || randomUUID();
+  const correlationId = c.req.header('x-correlation-id')?.trim() || randomUUID();
+  const r = await Registry.getInstance().basketReminderConsentUseCases.change({
+    userId: c.get('userId'),
+    requested: body.requested,
+    confirmationTicked: body.confirmation === true,
+    copyVersionId: typeof body.copyVersionId === 'string' ? body.copyVersionId : null,
+    surface: 'preferenceCentre',
+    idempotencyKey: idempotencyKey.slice(0, 120),
+    correlationId: correlationId.slice(0, 120),
+    ipAddress: clientIp(c),
+    userAgent: c.req.header('x-shopper-user-agent') ?? c.req.header('user-agent') ?? null,
+  });
+  if (!r.ok) return c.json({ success: false, error: { code: r.code, message: r.message } }, r.code === 'SIGNED_IN_ACCOUNT_REQUIRED' ? 401 : 400);
+  return c.json({ success: true, data: r });
+});
+
 export default routes;

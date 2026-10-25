@@ -92,6 +92,8 @@ import { GetSalesFunnelUseCase } from '../application/use-cases/analytics/GetSal
 import { DrizzleSalesFunnelReader } from './db/repositories/DrizzleSalesFunnelReader';
 import { RequestReturnUseCase } from '../application/use-cases/commerce/RequestReturnUseCase';
 import { publicBaseUrl } from '../application/notifications/CustomerMessages';
+import { BasketReminderConsentUseCases } from '../application/use-cases/first-party/BasketReminderConsentUseCases';
+import { SendBasketRemindersUseCase, basketItemsWords } from '../application/use-cases/abandonment/SendBasketRemindersUseCase';
 import { AskProductQuestionUseCase, AnswerProductQuestionUseCase } from '../application/use-cases/questions/ProductQuestionUseCases';
 import { DrizzleProductQuestionRepository } from './questions/DrizzleProductQuestionRepository';
 import { DrizzleOrderDeliveredAt } from './commerce/DrizzleOrderDeliveredAt';
@@ -1662,6 +1664,8 @@ export class Registry {
   public readonly materialiseSegmentsUseCase = new MaterialiseSegmentsUseCase(this.segmentRepo, this.customerFactsReader, new DrizzleOrderIdentityBackfillReader(), this.stitchCustomerIdentityUseCase);
   public readonly getCustomerValueReportUseCase = new GetCustomerValueReportUseCase(this.customerFactsReader, this.segmentRepo, { orderLinkCoverage });
   public readonly whatsAppMarketingConsentUseCases = new WhatsAppMarketingConsentUseCases(new FirstPartyConsentRepository(), new DrizzleConsentEvidenceRepository(), this.accountIdentityReader, this.identifierHasher);
+  /** 0210: basket reminders by text, the customer's own tick (sign-up or preference centre), and the gate the reminder reads. */
+  public readonly basketReminderConsentUseCases = new BasketReminderConsentUseCases(new FirstPartyConsentRepository(), new DrizzleConsentEvidenceRepository(), this.accountIdentityReader, this.identifierHasher);
   /** THE segment → audience port (advertising audience sync, future messaging). */
   public readonly segmentAudienceSource = new SegmentAudienceService(this.segmentRepo, new DrizzleCustomerContactReader(), new AdvertisingRefusalReader(), this.whatsAppMarketingConsentUseCases);
   public readonly trafficExclusionStore = new TrafficExclusionStore();
@@ -2340,6 +2344,24 @@ export class Registry {
     new DrizzleUnpaidOrderReminderCandidates(),
     (orderId) => this.enqueueCustomerOrderMessage(orderId, 'ORDER_PAYMENT_REMINDER'),
     () => (process.env.ORDER_PAYMENT_REMINDERS || '').trim().toLowerCase() !== 'off',
+  );
+  /** 0210: the one text about a basket left behind, to a signed-in shopper who asked for such texts. */
+  public readonly sendBasketRemindersUseCase = new SendBasketRemindersUseCase(
+    this.abandonmentRepo,
+    this.basketReminderConsentUseCases,
+    async (c, phoneE164) => {
+      await this.customerOutboxNotifier.enqueue({
+        eventType: 'BASKET_REMINDER',
+        template: 'BASKET_REMINDER',
+        customerPhone: phoneE164,
+        data: { basketItems: basketItemsWords(c.itemNames, c.itemCount), basketUrl: `${publicBaseUrl()}/cart`, preferencesUrl: `${publicBaseUrl()}/account/preferences`, subtotalUgx: c.subtotalUgx },
+        idempotencyKey: `basket-reminder:${c.abandonmentId}`,
+        relatedEntity: 'cart',
+        relatedEntityId: c.cartId,
+        consent: { purpose: 'basket_reminders', granted: true },
+      });
+    },
+    () => (process.env.BASKET_REMINDERS || '').trim().toLowerCase() !== 'off',
   );
   /** The one review reminder per order, a few days after delivery or collection. */
   public readonly sendReviewRemindersUseCase = new SendReviewRemindersUseCase(

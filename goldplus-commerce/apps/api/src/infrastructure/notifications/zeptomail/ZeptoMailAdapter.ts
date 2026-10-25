@@ -1,7 +1,7 @@
 import { emailCopy } from '../../../application/notifications/CustomerMessages';
 import { outboundGovernance } from '../OutboundGovernanceService';
 import { failsReleaseReadiness } from '../../../domain/notifications/OutboundGovernancePolicy';
-import { classifyMessage } from '../messageClassification';
+import { classifyMessage, consentGrantedIn } from '../messageClassification';
 import { customerEmailData, hasEmailTemplate, renderEmailTemplate, type CustomerEmailSource, type RenderedEmail } from '../email/emailTemplateData';
 import {
   INotificationProvider,
@@ -142,6 +142,8 @@ export class ZeptoMailAdapter implements INotificationProvider {
       recipientClass: messageClass === 'OPERATIONAL'
         ? 'INTERNAL'
         : recipientAllowlisted ? 'TEST' : 'CUSTOMER',
+      // 0210: consent recorded by the sender (a basket reminder the customer ticked for). Absent = the class decides.
+      consentGranted: consentGrantedIn(payload.data),
       providerConfigured: Boolean(token && fromAddr),
       allowlistActive: allowlist.length > 0,
       recipientAllowlisted,
