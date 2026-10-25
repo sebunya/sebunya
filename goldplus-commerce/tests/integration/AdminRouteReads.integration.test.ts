@@ -60,7 +60,7 @@ suite('admin reads moved out of the routes (real PostgreSQL)', () => {
     const counts = await hub.counts();
     expect(Object.keys(counts).sort()).toEqual([
       'abandonmentOpen', 'campaignsRows', 'devices', 'flashSales', 'legalDrafts', 'legalPublished',
-      'mediaAssets', 'orders', 'products', 'productsMissingImages', 'redirects', 'reviewsPending',
+      'mediaAssets', 'orders', 'products', 'productsMissingImages', 'questionsPending', 'redirects', 'reviewsPending',
     ]);
     for (const [name, value] of Object.entries(counts)) expect(value, name).toBeGreaterThanOrEqual(0);
   });

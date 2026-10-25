@@ -225,7 +225,7 @@ const taxonomyP = settle(getTaxonomy());
 const bizP = settle(getBusinessInfo());
 // Started with the page's other parallel reads, so reviews never add a round trip.
 const productReviewsP = settle(getProductReviews(product!.id));
-const productQuestionsP = settle(getProductQuestions(product!.id));
+const answeredQuestionsP = settle(getProductQuestions(product!.id));
 // Bundles (gap analysis #9): approved promotions that need this product and others together, priced by the
 // evaluator (what is shown is what checkout charges). Started with the other reads.
 type PdpBundle = { promotionId: string; name: string; productIds: string[]; togetherUgx: number; separatelyUgx: number; savingUgx: number; endsAt: string; products: ProductPublicDto[] };
@@ -365,7 +365,7 @@ const bizForPdp = await bizP;
 // Published, verified-purchase reviews (none until a real buyer's review passes moderation).
 const productReviews = await productReviewsP;
 // Answered questions (0208): what other shoppers asked and what the shop said.
-const productQuestions = await productQuestionsP;
+const answeredQuestions = await answeredQuestionsP;
 const askedFlag = Astro.url.searchParams.get('asked');
 const ratingNode = aggregateRatingNode(productReviews, product.availability.kind === 'in_stock');
 const askAboutHref = `${bizForPdp.whatsappUrl}?text=${encodeURIComponent(`Hello GoldPlus, is the ${product.name} available?`)}`;
@@ -1139,9 +1139,9 @@ if (product) {
           <h2 id="questions-h" class="text-lg font-black tracking-tight text-gray-900">Questions about this {product.categoryName ? product.categoryName.toLowerCase() : 'product'}</h2>
           {askedFlag === '1' && <p class="mt-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800" role="status">We have your question. A person at the shop will answer it, and the answer appears here.</p>}
           {askedFlag === '0' && <p class="mt-2 rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800" role="status">We could not take that question. Check the name and the question, or ask us on WhatsApp.</p>}
-          {productQuestions.length > 0 ? (
+          {answeredQuestions.length > 0 ? (
             <ul class="mt-4 space-y-3">
-              {productQuestions.slice(0, 8).map((q) => (
+              {answeredQuestions.slice(0, 8).map((q) => (
                 <li class="rounded-2xl border border-slate-200 bg-white p-4">
                   <p class="text-sm font-bold text-gray-900"><span class="text-slate-500">Q:</span> {q.question}</p>
                   <p class="mt-2 text-sm leading-relaxed text-slate-700 whitespace-pre-line"><span class="font-bold text-slate-500">A:</span> {q.answer}</p>
