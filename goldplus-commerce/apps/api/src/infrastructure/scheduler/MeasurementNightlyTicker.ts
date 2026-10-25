@@ -36,7 +36,10 @@ export async function runMeasurementNightlyOnce(now = new Date(), trigger: 'sche
   if (running) return { status: 'SKIPPED_BUSY' };
   if (trigger === 'schedule' && !inWindow(now)) return { status: 'SKIPPED_WINDOW' };
   if (trigger === 'schedule') {
-    const recent = rows(await db.execute(sql`select 1 from measurement.batch_run where job = ${JOB} and state = 'COMPLETE' and started_at > now() - interval '20 hours' limit 1`));
+    // One scheduled run per Kampala day. (The old "within 20 hours" rule let an admin-triggered run after ~07:00 UTC
+    // cancel the next morning's whole 03:30–05:59 window, which is how 2026-10-25's run was lost.)
+    const recent = rows(await db.execute(sql`select 1 from measurement.batch_run where job = ${JOB} and state = 'COMPLETE' and coalesce(stats->>'trigger', 'schedule') = 'schedule'
+      and (started_at at time zone 'Africa/Kampala')::date = (now() at time zone 'Africa/Kampala')::date limit 1`));
     if (recent.length) return { status: 'SKIPPED_RECENT' };
   }
   const lock = await tryAcquireSessionLock(LOCK_ID);
@@ -44,7 +47,7 @@ export async function runMeasurementNightlyOnce(now = new Date(), trigger: 'sche
   running = true;
   const registry = Registry.getInstance();
   const stats: Record<string, unknown> = { trigger };
-  const runId = rows(await db.execute(sql`insert into measurement.batch_run (run_id, job, state, started_at, stats) values (gen_random_uuid(), ${JOB}, 'RUNNING', now(), '{}'::jsonb) returning run_id`))[0]?.run_id;
+  const runId = rows(await db.execute(sql`insert into measurement.batch_run (run_id, job, state, started_at, stats) values (gen_random_uuid(), ${JOB}, 'RUNNING', now(), ${JSON.stringify({ trigger })}::jsonb) returning run_id`))[0]?.run_id;
   try {
     const step = async (name: string, fn: () => Promise<unknown>) => {
       try { stats[name] = await fn(); } catch (err) { stats[name] = { error: String((err as Error).message ?? err).slice(0, 300) }; logger.error({ err: (err as Error).message, step: name }, '[measurement-nightly] step failed'); }
