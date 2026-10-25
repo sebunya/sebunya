@@ -362,7 +362,8 @@ export function modelToolText(name: string, out: Json): string | null {
   if (name === 'get_product' && s.product && typeof s.product === 'object') {
     const p = s.product as Json;
     const specs = p.specifications && typeof p.specifications === 'object' ? Object.entries(p.specifications as Json).slice(0, 12).map(([k, v]) => `${k}: ${v}`).join('; ') : '';
-    return [line(p), p.summary ? String(p.summary).slice(0, 400) : '', specs ? `Specs: ${specs}` : ''].filter(Boolean).join('\n');
+    const qa = Array.isArray(p.teamAnswers) ? (p.teamAnswers as Json[]).slice(0, 4).map((q) => `Q: ${String(q.question ?? '').slice(0, 160)} A: ${String(q.answer ?? '').slice(0, 240)}`).join(' | ') : '';
+    return [line(p), p.summary ? String(p.summary).slice(0, 400) : '', specs ? `Specs: ${specs}` : '', qa ? `Team answers: ${qa}` : ''].filter(Boolean).join('\n');
   }
   if (name === 'find_battery') {
     const kind = String(s.kind ?? '');
