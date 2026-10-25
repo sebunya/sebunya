@@ -71,6 +71,7 @@ const statusText: Record<string, string> = { ok: "Agree", alarm: "GA4 missing pu
             <a href="/api/admin/measurement/mmm-export.zip" class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-bold text-brand-dark">Download dataset (daily.csv + controls.csv)</a>
             <form method="POST"><input type="hidden" name="action" value="run" /><button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Rebuild now</button></form>
             <span class="text-xs text-gray-600">Last nightly run: {status.data.nightly ? `${status.data.nightly.startedAt.slice(0, 16).replace("T", " ")} UTC, ${status.data.nightly.state}` : "never"}. Run it on the dataset with <code>python -m goldplus_mmm readiness</code> in <code>ops/mmm</code>.</span>
+            {status.data.nightly?.stats?.feeds && <span class="block text-xs text-gray-600">Feeds in that run: {Object.entries(status.data.nightly.stats.feeds as Record<string, unknown>).map(([k, v]) => `${k} ${JSON.stringify(v)}`).join("; ")}</span>}
           </div>
         </>
       )}
