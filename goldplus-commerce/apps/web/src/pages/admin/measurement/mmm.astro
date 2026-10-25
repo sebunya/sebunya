@@ -42,6 +42,8 @@ if (Astro.request.method === "POST") {
 }
 
 const [status, settings, holdouts, recon, controls, creatorCosts, ga4Series, placements] = await Promise.all([call("GET", "/status"), call("GET", "/settings"), call("GET", "/holdouts"), call("GET", "/reconciliation"), call("GET", "/controls?days=30"), call("GET", "/creator-costs"), call("GET", "/ga4-series?report=channel&days=7"), call("GET", "/placements")]);
+const feedsOf = status.ok ? status.data.nightly?.stats?.feeds : null;
+const feedsLine: string | null = feedsOf && typeof feedsOf === "object" ? Object.entries(feedsOf as Record<string, unknown>).map(([k, v]) => `${k} ${JSON.stringify(v)}`).join("; ") : null;
 const ga4Summary = status.ok ? status.data.ga4Series : null;
 const costs = status.ok ? status.data.costs : null;
 const fxBasisText: Record<string, string> = { manual: "set by hand", feed: "market rate from the nightly feed plus the safety margin", default: "the documented default; no feed reading yet" };
@@ -71,7 +73,7 @@ const statusText: Record<string, string> = { ok: "Agree", alarm: "GA4 missing pu
             <a href="/api/admin/measurement/mmm-export.zip" class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-bold text-brand-dark">Download dataset (daily.csv + controls.csv)</a>
             <form method="POST"><input type="hidden" name="action" value="run" /><button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Rebuild now</button></form>
             <span class="text-xs text-gray-600">Last nightly run: {status.data.nightly ? `${status.data.nightly.startedAt.slice(0, 16).replace("T", " ")} UTC, ${status.data.nightly.state}` : "never"}. Run it on the dataset with <code>python -m goldplus_mmm readiness</code> in <code>ops/mmm</code>.</span>
-            {status.data.nightly?.stats?.feeds && <span class="block text-xs text-gray-600">Feeds in that run: {Object.entries(status.data.nightly.stats.feeds as Record<string, unknown>).map(([k, v]) => `${k} ${JSON.stringify(v)}`).join("; ")}</span>}
+            {feedsLine && <span class="block text-xs text-gray-600">Feeds in that run: {feedsLine}</span>}
           </div>
         </>
       )}
