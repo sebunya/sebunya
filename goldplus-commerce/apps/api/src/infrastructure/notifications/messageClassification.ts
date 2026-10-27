@@ -132,6 +132,16 @@ const TRANSACTIONAL_TEMPLATES = new Set([
 ]);
 
 /**
+ * Templates a human has decided ARE marketing (0210). They stay consent-gated: each is sent only with the customer's
+ * own recorded opt-in in its payload (consentGrantedIn), and refused without it. Listing them here records that
+ * decision, so the build guard below does not mistake them for a template nobody classified.
+ */
+const MARKETING_TEMPLATES = new Set([
+  // Basket reminder text: signed-in shoppers who ticked the unticked box at sign-up or in My preferences.
+  'BASKET_REMINDER',
+]);
+
+/**
  * Has a human decided what this template IS?
  *
  * The owner's instruction (2026-09-20) was that none of this shop's messages
@@ -147,12 +157,12 @@ const TRANSACTIONAL_TEMPLATES = new Set([
  *
  * So the runtime default stays fail-closed, and the guard moves to where it can
  * be seen: a test reads every template the producers hard-code and fails the
- * build if any of them is not named in one of the three lists above. An
+ * build if any of them is not named in one of the lists above. An
  * unclassified template can no longer reach production to be blocked there.
  */
 export function isTemplateClassified(template: string): boolean {
   const key = (template || '').trim().toUpperCase();
-  return OPERATIONAL_TEMPLATES.has(key) || TRANSACTIONAL_TEMPLATES.has(key);
+  return OPERATIONAL_TEMPLATES.has(key) || TRANSACTIONAL_TEMPLATES.has(key) || MARKETING_TEMPLATES.has(key);
 }
 
 export function classifyTemplate(template: string): MessageClass {
@@ -173,6 +183,7 @@ export function classifyMessage(payload: NotificationDispatchPayload): MessageCl
 export const KNOWN_TEMPLATE_CLASSES: ReadonlyArray<{ template: string; messageClass: MessageClass }> = [
   ...[...OPERATIONAL_TEMPLATES].map((template) => ({ template, messageClass: 'OPERATIONAL' as const })),
   ...[...TRANSACTIONAL_TEMPLATES].map((template) => ({ template, messageClass: 'TRANSACTIONAL' as const })),
+  ...[...MARKETING_TEMPLATES].map((template) => ({ template, messageClass: 'MARKETING' as const })),
 ];
 
 /**

@@ -70,6 +70,11 @@ describe('every template a producer can emit', () => {
     }
   });
 
+  it('keeps the basket reminder marketing, so it is sent only on a recorded opt-in (0210)', () => {
+    expect(isTemplateClassified('BASKET_REMINDER')).toBe(true);
+    expect(classifyTemplate('BASKET_REMINDER')).toBe('MARKETING');
+  });
+
   it('treats loyalty account notices as transactional (owner, 2026-09-24)', () => {
     // docs/loyalty-decisions.md: "warnings are transactional" (#15). As
     // MARKETING they were refused without an opt-in and points expired unwarned.
