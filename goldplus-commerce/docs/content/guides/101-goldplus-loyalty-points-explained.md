@@ -45,7 +45,7 @@ Points stay valid for **120 days** from the day they are earned. We warn you bef
 The programme page lists the complete set. If a way to earn is not on that page, it does not exist yet.
 
 - **Every delivered order:** 10 points per 1,000 UGX, placed while signed in.
-- **Verify a genuine product:** 25 points per scan of the hologram code on a GoldPlus product, including one you are checking before you buy it.
+- **Verify a genuine product:** 25 points per code. Scan the hologram code on a GoldPlus product while signed in. Each code earns once, the first time it is verified, for up to 5 codes a day.
 - **Report a counterfeit we confirm:** 250 points, awarded when our team confirms it. Support follows up with you.
 - **Verify your phone number:** 100 points, once. Your verified number is how we keep one account per customer.
 - **Introduce a friend:** 200 points when their first order is delivered, and they get 100 points too. Send your link; there is no code to type.
