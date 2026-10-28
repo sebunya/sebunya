@@ -43,8 +43,13 @@ const jsonLd = serializeJsonLd({
     logo: { '@type': 'ImageObject', url: `${SITE_ORIGIN}/icon-512.png` },
   },
   mainEntityOfPage: { '@type': 'WebPage', '@id': canonical },
-  ...(post.coverImageUrl ? { image: [/^https?:\/\//i.test(post.coverImageUrl) ? post.coverImageUrl : `${SITE_ORIGIN}${post.coverImageUrl}`] } : {}),
+  // Google's Article rich result wants an image; a guide without a cover photo
+  // carries the shop's own card (the same picture the page shares on WhatsApp).
+  image: [post.coverImageUrl ? (/^https?:\/\//i.test(post.coverImageUrl) ? post.coverImageUrl : `${SITE_ORIGIN}${post.coverImageUrl}`) : `${SITE_ORIGIN}/og-default.png`],
 });
+
+// A guide about phone batteries sends the reader to the battery finder, not the general product finder.
+const batteryGuide = /battery-finder|\bbatter(y|ies)\b/i.test(`${post.title} ${post.body}`);
 
 const breadcrumbs = serializeJsonLd(
   breadcrumbJsonLd([
@@ -118,9 +123,11 @@ const breadcrumbs = serializeJsonLd(
 
     <aside class="mt-14 rounded-2xl bg-brand-dark px-6 py-8 text-center text-white">
       <h2 class="text-lg font-black">Still not sure which one?</h2>
-      <p class="mx-auto mt-2 max-w-md text-sm text-slate-300">Tell us the device and we will tell you what fits. No guesswork.</p>
+      <p class="mx-auto mt-2 max-w-md text-sm text-slate-300">{batteryGuide ? 'Search your phone and see the batteries that fit it, with the pack code and the price.' : 'Tell us the device and we will tell you what fits. No guesswork.'}</p>
       <div class="mt-5 flex flex-wrap justify-center gap-3">
-        <a href="/product-finder" class="rounded-full bg-brand-primary px-6 py-3 text-sm font-bold text-brand-dark">Find the right product</a>
+        {batteryGuide
+          ? <a href="/battery-finder" class="rounded-full bg-brand-primary px-6 py-3 text-sm font-bold text-brand-dark">Find a battery for your phone</a>
+          : <a href="/product-finder" class="rounded-full bg-brand-primary px-6 py-3 text-sm font-bold text-brand-dark">Find the right product</a>}
         <a href="/shop" class="rounded-full border border-white/30 px-6 py-3 text-sm font-bold text-white">Browse the shop</a>
       </div>
     </aside>

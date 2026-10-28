@@ -284,7 +284,7 @@ async function faqDocument(): Promise<AgentDocument> {
     ['Where is the GoldPlus shop and when is it open?',
       `${biz.addressLine1.replace(/\.$/, '')} — ${biz.addressLine2.replace(/\.$/, '')}. Open ${biz.openDays}, ${biz.shopHours}. Phone and WhatsApp ${biz.phoneDisplay}. Online orders can be collected at the shop.`],
     ['How do I know which replacement battery fits my phone?',
-      `Search the phone in the battery finder (${SITE_ORIGIN}/battery-finder), match the code printed on the battery inside the phone to the code in the product name, or send the phone model on WhatsApp. GoldPlus confirms the fit before payment.`],
+      `Search the phone in the battery finder (${SITE_ORIGIN}/battery-finder), match the code printed on the battery inside the phone to the code in the product name, or send the phone model on WhatsApp and GoldPlus confirms the fit before you order.`],
     ['How can I pay?',
       'Paid online when you order: MTN or Airtel Mobile Money, or a Visa or Mastercard through PesaPal.'],
     ['Are GoldPlus products genuine, and what if something is faulty?',
@@ -444,7 +444,7 @@ async function batteryFinderDocument(): Promise<AgentDocument | null> {
   const named = batteries.filter((p) => /for |fits /i.test(p.name));
   const body = [
     '# Find the replacement battery that fits your phone', '',
-    `GoldPlus stocks ${batteries.length} replacement phone batteries. The fit is confirmed before you pay, every time.`, '',
+    `GoldPlus stocks ${batteries.length} replacement phone batteries. Each fit states its source (checked by GoldPlus, or the supplier's list); ask on WhatsApp and the fit is confirmed before you order.`, '',
     '## Three ways to identify the right one', '',
     `1. Search the phone model in the finder: ${SITE_ORIGIN}/battery-finder`,
     '2. Open the phone and read the code printed on the battery inside, then match it to the code in the product name.',
@@ -458,7 +458,7 @@ async function batteryFinderDocument(): Promise<AgentDocument | null> {
     '',
     ...termsBlock(),
   ].join('\n');
-  return { title: 'GoldPlus replacement phone batteries', description: `${batteries.length} replacement phone batteries; the fit is confirmed before payment.`, body };
+  return { title: 'GoldPlus replacement phone batteries', description: `${batteries.length} replacement phone batteries, listed by pack code and by the phones they fit.`, body };
 }
 
 /**

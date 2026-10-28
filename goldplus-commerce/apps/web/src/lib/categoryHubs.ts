@@ -351,11 +351,15 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
     intro: [
       'Match the battery to the phone, not just to a familiar model name. The battery code, the connector and the exact phone variant all matter. If the code on your old battery is already accessible, share it with the team along with the phone model; do not open a sealed phone just to find it.',
     ],
-    // The live taxonomy has no dedicated batteries category/subcategory; phone
-    // batteries sit under Power Devices — keyword-gathered and flagged.
+    // Phone batteries sit under Power Devices and are keyword-gathered (the
+    // taxonomy's phone-batteries subcategory is not yet set on the products).
     categorySlug: 'power-devices',
     keywordFilter: ['battery'],
     taxonomyMapped: false,
+    // The finder is the way in for a customer who knows the phone, not the code;
+    // the hub never linked to it (found 2026-10-28). The per-phone list below the
+    // products comes from the finder's fit index (pages/[hub]/[...child].astro).
+    extraTiles: [{ label: 'Find a battery by phone', href: '/battery-finder' }],
     buyingCriteria: [
       {
         heading: 'Match the exact model',

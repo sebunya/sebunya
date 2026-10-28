@@ -71,4 +71,4 @@ For GoldPlus products, every genuine product has a code on the security hologram
 
 # Find your battery
 
-Use the [battery finder](/battery-finder) to find the battery for your exact model, or browse all [phone batteries](/phone-batteries). We confirm the fit before you pay, and if a product is faulty, we replace it or refund you.
+Use the [battery finder](/battery-finder) to find the battery for your exact model, or browse all [phone batteries](/phone-batteries). WhatsApp 0705 004545 with your model and we confirm the fit before you order; if a product is faulty, we replace it or refund you.

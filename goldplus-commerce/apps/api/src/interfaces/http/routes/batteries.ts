@@ -33,6 +33,8 @@ async function run<T>(c: Ctx, fn: () => Promise<T>, maxAge = 60) {
 
 routes.get('/finder/config', (c) => run(c, async () => ({ config: await uc().config(), indexable: await uc().indexable() })));
 routes.get('/finder/brands', (c) => run(c, () => uc().brands()));
+// Every phone with a battery to buy, by brand: the hub list and the per-phone pages' sitemap.
+routes.get('/finder/fit-index', (c) => run(c, () => uc().fitIndex(), 120));
 routes.get('/finder/brands/:slug', (c) => run(c, () => uc().brand(param(c, 'slug'))));
 // ?record=0: a lookup that is not a customer's choice (the product page
 // resolving ?device=) is answered without counting as demand.
@@ -53,7 +55,11 @@ routes.get('/products/:slug', (c) => run(c, async () => {
   // use case answers for drafts too (the admin preview needs it), and this
   // route used to pass that straight through, exposing DRAFT, REVIEW and READY
   // batteries by slug with their code, price and every claimed device.
-  if (!found || !found.isPublished) throw new BatteryOperationError('NOT_FOUND', 'Battery not found.', 404);
+  // A record still in review whose supplier-listed fits are live is public
+  // already: the finder shows the same code, price and phones for it (owner
+  // policy 2026-10-12, the use case's `devices`). Hiding it here only emptied
+  // the product page's fit list for every such battery (found 2026-10-28).
+  if (!found || (!found.isPublished && found.devices.length === 0)) throw new BatteryOperationError('NOT_FOUND', 'Battery not found.', 404);
   return found;
 }, 30));
 

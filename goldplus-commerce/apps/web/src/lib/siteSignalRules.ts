@@ -6,9 +6,13 @@
 /** Set by the register page on success, read and cleared by the next page. Holds nothing about the person. */
 export const SIGNED_UP_COOKIE = 'gp_signed_up';
 
-/** The term of a storefront search on this URL, or '' (the shop page with `search` or `q`). */
+/**
+ * The term of a storefront search on this URL, or '' (the shop page with `search` or `q`,
+ * and the battery finder's `q`: a phone or a battery code typed is a search too, and until
+ * 2026-10-28 GA4 never heard about any of them).
+ */
 export function searchTermOf(pathname: string, search: string): string {
-  if (!/^\/shop\/?$/.test(pathname)) return '';
+  if (!/^\/(shop|battery-finder)\/?$/.test(pathname)) return '';
   const p = new URLSearchParams(search);
   return (p.get('search') ?? p.get('q') ?? '').trim().toLowerCase().slice(0, 120);
 }

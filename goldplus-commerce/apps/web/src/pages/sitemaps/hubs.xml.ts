@@ -8,6 +8,9 @@ import { dedupeProductsById, isApprovedDiscoveryProduct } from '../../lib/produc
 import { gatePassingHubPaths, localPagePaths } from '../../lib/categoryHubs';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import { fetchApprovedCatalogue } from '../../lib/catalogue';
+import { publicBattery } from '../../lib/batteries';
+import { phoneBatteryPath } from '../../lib/phoneBatteryPage';
+import type { FinderFitIndexDto } from '@goldplus/shared';
 
 /**
  * CATEGORY AUTHORITY ENGINE — gate-aware sitemap for hub pages and the two
@@ -25,6 +28,15 @@ export const GET: APIRoute = async () => {
   const taxonomy = await getTaxonomy();
   const biz = await getBusinessInfo();
   const catalogue = dedupeProductsById(getCleanCatalog(rawProducts, taxonomy)).filter((p) => isApprovedDiscoveryProduct(p, taxonomy));
-  const paths = [...gatePassingHubPaths(catalogue, taxonomy), ...localPagePaths(biz)];
+  // The per-phone battery pages, and the finder itself when it is indexable: the same
+  // fit index the hub renders, so a phone is listed here only while it has a battery to buy
+  // (the page renders noindex otherwise). Finder away: omitted, like a failed hub gate.
+  const [fitIndex, finderConfig] = await Promise.all([
+    publicBattery<FinderFitIndexDto>('/finder/fit-index'),
+    publicBattery<{ indexable: boolean }>('/finder/config'),
+  ]);
+  const phonePaths = fitIndex.ok ? fitIndex.data.brands.flatMap((b) => b.devices.map((d) => phoneBatteryPath(d.slug))) : [];
+  const finderPath = finderConfig.ok && finderConfig.data.indexable ? ['/battery-finder'] : [];
+  const paths = [...gatePassingHubPaths(catalogue, taxonomy), ...localPagePaths(biz), ...finderPath, ...phonePaths];
   return xmlResponse(urlsetXml(paths.map((loc) => ({ loc }))));
 };

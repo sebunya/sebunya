@@ -84,6 +84,8 @@ export interface IBatteryFinderRepository {
   brandBySlug(slug: string, showAwaiting: boolean): Promise<{ brand: FinderBrandDto; series: FinderSeriesDto[]; devices: Array<FinderDeviceDto & { seriesId: string | null; displayOrder: number; demandCount: number }> } | null>;
   deviceBySlug(slug: string): Promise<FinderDeviceDto | null>;
   deviceById(id: string): Promise<FinderDeviceDto | null>;
+  /** Active devices with at least one public fit (verified, or supplier-listed when shown), with their brand. */
+  devicesWithPublicFits(showAwaiting: boolean): Promise<Array<FinderDeviceDto & { brandSlug: string }>>;
   /** Every public fit row for a device (workflow ACTIVE only; the caller derives the state). */
   fitsForDevice(deviceId: string): Promise<PublicFitRow[]>;
   fitsForBattery(productId: string): Promise<PublicFitRow[]>;

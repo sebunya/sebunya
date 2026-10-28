@@ -73,4 +73,4 @@ Open **Settings**, then **Battery**, then **Battery Health** (on some iOS versio
 
 # Next steps
 
-If the battery is worn, find your exact model under **Settings**, then **General**, then **About**, and use the [battery finder](/battery-finder) to find the battery for your exact model. Our iPhone batteries are listed by the model they fit, and we confirm the fit before you pay. For long days in the meantime, see every [power bank](/power/power-banks) we stock.
+If the battery is worn, find your exact model under **Settings**, then **General**, then **About**, and use the [battery finder](/battery-finder) to find the battery for your exact model. Our iPhone batteries are listed by the model they fit; WhatsApp 0705 004545 with your model and we confirm the fit before you order. For long days in the meantime, see every [power bank](/power/power-banks) we stock.

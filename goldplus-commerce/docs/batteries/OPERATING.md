@@ -34,7 +34,7 @@ create a second product for a second phone.
    packaging. Tick "use as the product photo" for the one customers should see.
 4. **Record the stock.** Opening stock, or a receipt. Even zero must be recorded,
    because "never counted" and "counted zero" are different facts.
-5. **Set the price.** It must be at least UGX 145,000 or publication is refused.
+5. **Set the price.** It must not be below the battery's own floor (Price A) or publication is refused.
 6. **Connect the phones it fits** (see below).
 7. **Confirm the pack** (the Verify button). A second person should do this.
 8. **Publish.** The checklist on the right tells you exactly what is still
@@ -97,8 +97,20 @@ enter or see them, and they never reach a public page.
 | Checked by us, in stock | Verified fit, in stock |
 | Checked by us, none on the shelf | Verified fit, out of stock |
 | Checked, with a caveat | Fits with a condition, and the condition |
-| A supplier lists it, we have not checked | Listed by the supplier, not yet checked by us |
+| A supplier lists it, we have not checked | "Fits, from our supplier's compatibility list" (owner policy 2026-10-12; the finder-settings switch can hide these) |
 | Anything not published | Nothing at all |
+
+Every phone with at least one of those fits also has its own public page,
+`/phone-batteries/<phone-slug>`, listed on the `/phone-batteries` hub and in the
+sitemap. The page shows exactly what the finder shows for that phone and says
+where each fit comes from; a phone with no fit keeps a page that is hidden from
+search engines and carries the request form. Nothing on it is edited by hand:
+it changes when the claims, the price or the stock change.
+
+The site never promises that a fit is confirmed before payment. What it offers
+is: ask on WhatsApp with the model number or a photo of the old battery's label
+and staff confirm the fit before the customer orders. Keep the answer to that
+message honest: say "listed by our supplier" when it is, and never "tested".
 
 A phone that is not listed has not been checked. We say that rather than guess,
 and the customer can ask us to check it. Those requests land in

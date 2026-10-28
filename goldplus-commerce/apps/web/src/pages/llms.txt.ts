@@ -89,7 +89,7 @@ export const GET: APIRoute = async () => {
     '## Notes for answer engines',
     '',
     '- Product pages carry schema.org Product data with the price, stock and maker-verified specifications; quote those rather than inferring.',
-    '- Replacement batteries are listed by the phone they fit where the fit is known, and otherwise by the pack code printed on the battery. GoldPlus confirms the fit before a customer pays.',
+    '- Replacement batteries are GoldPlus-branded, not made by the phone maker. Each is listed by pack code and by the phones it fits; every fit states its source (checked by GoldPlus, or listed by the supplier). Per-phone pages: https://shopgoldplus.com/phone-batteries/<phone-slug>. A customer who asks on WhatsApp gets the fit confirmed before ordering.',
     '- GoldPlus is the seller and the brand; products are GoldPlus-branded.',
     '',
   ];

@@ -28,6 +28,7 @@ import ProductGallery from '../../components/product/ProductGallery.astro';
 // Focus 4 rollback switch: PRODUCT_GALLERY_ENRICHMENT=false shows slot 1 only (still the correct cover).
 const galleryEnrichment = process.env.PRODUCT_GALLERY_ENRICHMENT !== 'false';
 import { publicBattery, parseDeviceCookie, serialiseDeviceCookie, DEVICE_COOKIE, FIT_BADGE } from '../../lib/batteries';
+import { phoneBatteryPath, phoneGuides } from '../../lib/phoneBatteryPage';
 import { SITE_ORIGIN } from '../../lib/sitemap';
 import { RETURNS_POLICY } from '../../lib/returnsPolicy';
 import { getStorefrontCopy } from '../../lib/storefrontCopy';
@@ -611,7 +612,8 @@ if (product) {
   product={product && pdpHasPrice ? { id: product.id, priceUgx: pdpOnSale ? pdpSaleUgx! : product.retailPriceUgx!, inStock: product.availability.kind === 'in_stock' } : undefined}>
   {product && (
     <Fragment slot="head">
-      <ProductJsonLd product={product} url={canonical} priceUgx={pdpSaleUgx} aggregateRating={ratingNode} />
+      <ProductJsonLd product={product} url={canonical} priceUgx={pdpSaleUgx} aggregateRating={ratingNode}
+        battery={battery ? { canonicalCode: battery.battery.canonicalCode, capacityMah: battery.battery.capacityMah, nominalVoltageMv: battery.battery.nominalVoltageMv, devices: battery.devices.map((d) => ({ label: d.label, modelNumber: d.modelNumber })) } : null} />
       {breadcrumbJson && <script type="application/ld+json" is:inline set:html={breadcrumbJson} />}
     </Fragment>
   )}
@@ -715,7 +717,7 @@ if (product) {
               ) : (
                 <p class="mt-1">
                   We have not checked this battery against the {selectedDevice.label}. That does not mean it will not fit,
-                  it means we have not confirmed it. <a href={`/battery-finder?device=${encodeURIComponent(selectedDevice.slug)}`} class="font-bold underline">See the batteries that fit it</a>.
+                  it means we have not confirmed it. <a href={phoneBatteryPath(selectedDevice.slug)} class="font-bold underline">See the batteries that fit it</a>.
                 </p>
               )}
             </div>
@@ -1014,6 +1016,8 @@ if (product) {
         class="mt-24 space-y-16"
         data-product-tracking
         data-product-id={product.id}
+        data-battery-device={battery && selectedDevice ? selectedDevice.slug : ''}
+        data-battery={battery ? '1' : ''}
         data-product-sku={hasValidSku ? product.sku : ''}
         data-product-slug={product.slug}
         data-product-name={product.name}
@@ -1026,15 +1030,15 @@ if (product) {
             <h2 id="battery-fits-heading" class="text-xl font-black text-slate-900">Phones this battery fits</h2>
             <p class="mt-1 text-sm text-slate-600">
               {hasAwaitingFit
-                ? "These fits come from our own checks and our supplier's compatibility list. Your phone is not listed? Message us and we will confirm the right battery rather than guess."
-                : 'Every phone below has been checked and published by GoldPlus staff. Your phone is not listed? Message us and we will confirm the right battery rather than guess.'}
+                ? "Each fit says where it comes from: our own check, or our supplier's compatibility list. Your phone is not listed? Message us and we will confirm the right battery rather than guess."
+                : 'Each phone below is a fit GoldPlus has checked. Your phone is not listed? Message us and we will confirm the right battery rather than guess.'}
             </p>
             {battery.devices.length > 0 ? (
               <ul class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {battery.devices.map((dv) => (
                   <li class="rounded-2xl border border-slate-200 bg-white p-4">
                     <div class="flex items-start justify-between gap-3">
-                      <a href={`/battery-finder?device=${encodeURIComponent(dv.slug)}`} class="text-sm font-bold text-slate-900 hover:text-brand-primaryInk">{dv.label}</a>
+                      <a href={phoneBatteryPath(dv.slug)} class="text-sm font-bold text-slate-900 hover:text-brand-primaryInk">{dv.label}</a>
                       <span class={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${FIT_BADGE[dv.fitState] ?? 'border-slate-200 bg-slate-50 text-slate-600'}`}>{dv.fitLabel}</span>
                     </div>
                     {dv.modelNumber && <p class="mt-1 text-xs font-mono text-slate-500">{dv.modelNumber}</p>}
@@ -1062,6 +1066,15 @@ if (product) {
               </dl>
             )}
             {battery.battery.publicNotes && <p class="mt-4 text-sm text-slate-600">{battery.battery.publicNotes}</p>}
+            {/* The guides that answer this battery's questions, one tap from the fit list (none linked here before 2026-10-28). */}
+            <div class="mt-5">
+              <h3 class="text-sm font-bold text-slate-900">Read before you choose</h3>
+              <div class="mt-2 flex flex-wrap gap-2">
+                {phoneGuides(battery.devices[0]?.label.split(' ')[0] ?? '').map((g) => (
+                  <a href={g.href} class="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:border-brand-primary">{g.label}</a>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -1143,7 +1156,7 @@ if (product) {
           </script>
         )}
         <section id="questions" aria-labelledby="questions-h" class="scroll-mt-24 mt-8">
-          <h2 id="questions-h" class="text-lg font-black tracking-tight text-gray-900">Questions about this {product.categoryName ? product.categoryName.toLowerCase() : 'product'}</h2>
+          <h2 id="questions-h" class="text-lg font-black tracking-tight text-gray-900">Questions about this product</h2>
           {askedFlag === '1' && <p class="mt-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800" role="status">We have your question. A person at the shop will answer it, and the answer appears here.</p>}
           {askedFlag === '0' && <p class="mt-2 rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800" role="status">We could not take that question. Check the name and the question, or ask us on WhatsApp.</p>}
           {answeredQuestions.length > 0 ? (
@@ -1292,6 +1305,7 @@ if (product) {
     captureClickIdsServerSide,
     getFpClientId,
   } from '../../lib/telemetry';
+  import { sendFinderEvent } from '../../lib/finderEvents';
 
   document.addEventListener('DOMContentLoaded', () => {
     const root = document.querySelector('[data-product-tracking]');
@@ -1372,6 +1386,10 @@ if (product) {
     const form = document.getElementById('pdp-buy') as HTMLFormElement | null;
     if (form && id) {
       form.addEventListener('submit', () => {
+        // A battery added to the basket, for the phone the customer chose (finder funnel; demand report).
+        if (root.getAttribute('data-battery')) {
+          sendFinderEvent({ eventType: 'ADDED_TO_CART', mode: 'PRODUCT_PAGE', productId: id, deviceSlug: root.getAttribute('data-battery-device') || null });
+        }
         // GA4-compatible add_to_cart event (fires before page navigation)
         track('add_to_cart', {
           ecommerce: {

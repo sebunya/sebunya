@@ -12,9 +12,21 @@ interface Props {
   priceUgx?: number | null;
   /** AggregateRating from published, verified-purchase reviews; omitted when there are none. */
   aggregateRating?: Record<string, unknown> | null;
+  /**
+   * A replacement battery: the pack code, the recorded capacity and voltage
+   * (only when the catalogue holds them) and the phones it is published as
+   * fitting, so an engine reads "spare part for <phone>" as a fact rather
+   * than inferring it from the name. Nothing here is invented: null stays out.
+   */
+  battery?: {
+    canonicalCode: string;
+    capacityMah: number | null;
+    nominalVoltageMv: number | null;
+    devices: Array<{ label: string; modelNumber: string | null }>;
+  } | null;
 }
 
-const { product, url, priceUgx, aggregateRating } = Astro.props;
+const { product, url, priceUgx, aggregateRating, battery } = Astro.props;
 
 
 const node: Record<string, unknown> = {
@@ -66,6 +78,18 @@ if (verifiedAttrs.length > 0) {
     if (v.unit) prop.unitText = v.unit;
     return prop;
   });
+}
+
+if (battery) {
+  if (!hasValidMpn) node.mpn = battery.canonicalCode;
+  const extra: Array<Record<string, unknown>> = [{ '@type': 'PropertyValue', name: 'Battery pack code', value: battery.canonicalCode }];
+  if (battery.capacityMah) extra.push({ '@type': 'PropertyValue', name: 'Capacity', value: battery.capacityMah, unitText: 'mAh' });
+  if (battery.nominalVoltageMv) extra.push({ '@type': 'PropertyValue', name: 'Nominal voltage', value: battery.nominalVoltageMv / 1000, unitText: 'V' });
+  node.additionalProperty = [...((node.additionalProperty as unknown[] | undefined) ?? []), ...extra];
+  if (battery.devices.length > 0) {
+    const fits = battery.devices.map((d) => ({ '@type': 'Product', name: d.label, ...(d.modelNumber ? { model: d.modelNumber } : {}) }));
+    node.isAccessoryOrSparePartFor = fits.length === 1 ? fits[0] : fits;
+  }
 }
 
 if (product.retailPriceUgx !== null) {

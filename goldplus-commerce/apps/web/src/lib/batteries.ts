@@ -43,7 +43,8 @@ export function batteryMessage(error: { code: string; message: string } | null):
   }
 }
 
-export type PublicResult<T> = { ok: true; data: T } | { ok: false; unavailable: true };
+/** `status` tells a page apart: 404 is "no such phone" (a real 404), anything else is the service being away. */
+export type PublicResult<T> = { ok: true; data: T } | { ok: false; unavailable: true; status: number };
 
 export interface BatteryRequestInput {
   queryText: string | null;
@@ -91,9 +92,9 @@ export async function publicBattery<T>(path: string, sessionId?: string | null):
     });
     const json = await res.json().catch(() => null);
     if (json?.success) return { ok: true, data: json.data as T };
-    return { ok: false, unavailable: true };
+    return { ok: false, unavailable: true, status: res.status };
   } catch {
-    return { ok: false, unavailable: true };
+    return { ok: false, unavailable: true, status: 0 };
   }
 }
 

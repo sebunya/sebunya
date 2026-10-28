@@ -16,6 +16,11 @@ describe('site signals: search, new account, shop directions', () => {
     expect(searchTermOf('/shop', '?search=%20')).toBe('');
     expect(searchTermOf('/products/x', '?search=charger')).toBe('');
   });
+  it('a phone or code typed into the battery finder is a search too; opening a brand or a phone is not', () => {
+    expect(searchTermOf('/battery-finder', '?q=Tecno%20Spark%207')).toBe('tecno spark 7');
+    expect(searchTermOf('/battery-finder', '?brand=tecno')).toBe('');
+    expect(searchTermOf('/phone-batteries/tecno-spark-7', '?q=x')).toBe('');
+  });
   it('paging, sorting or reloading the same results is not a second search; a new term is', () => {
     const m = new Map<string, string>();
     const s = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) };
