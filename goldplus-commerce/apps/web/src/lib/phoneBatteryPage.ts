@@ -58,6 +58,19 @@ export function phonePageDescription(
   return `Replacement battery for the ${device.label}: pack code ${codes}${price}, ${provenance}. Order online for same-day dispatch in Kampala and Wakiso, or collect at the shop.`;
 }
 
+/**
+ * The cart's "Buying for your <phone>" sentence. `matched` counts every battery
+ * line with a public fit for the phone; `listed` the ones whose fit comes from
+ * the supplier's list. Never says "checked" for a fit we did not check.
+ */
+export function cartDeviceFitNote(matched: number, listed: number): string {
+  if (matched === 0) return 'None of the batteries in your cart are matched to this phone yet.';
+  const items = `${matched} item${matched === 1 ? '' : 's'} in your cart`;
+  if (listed === 0) return `${items} ${matched === 1 ? 'has' : 'have'} been checked by us against this phone.`;
+  const source = listed === matched ? "from our supplier's compatibility list" : `${listed} of them from our supplier's compatibility list`;
+  return `${items} ${matched === 1 ? 'fits' : 'fit'} this phone, ${source}. Not sure? Message us and we confirm it before you order.`;
+}
+
 export interface PhoneGuideLink { label: string; href: string }
 
 /**
@@ -74,6 +87,35 @@ export function phoneGuides(brandName: string): PhoneGuideLink[] {
   out.push({ label: 'How to read a battery label', href: '/blog/how-to-read-the-code-and-ratings-on-a-phone-battery-label' });
   out.push({ label: 'A swollen battery: what to do', href: '/blog/a-swollen-phone-battery-what-to-do-safety-first' });
   return out;
+}
+
+export interface BatteryJsonLdFacts {
+  canonicalCode: string;
+  capacityMah: number | null;
+  nominalVoltageMv: number | null;
+  devices: Array<{ label: string; modelNumber: string | null }>;
+}
+
+/**
+ * What a battery's own Product node adds (components/ProductJsonLd.astro): the
+ * pack code (as mpn only when the product has no model number of its own),
+ * capacity and voltage only when recorded, and the phones it is published as
+ * fitting as `isAccessoryOrSparePartFor`. Nothing absent is filled in.
+ */
+export function batteryProductJsonLdProps(battery: BatteryJsonLdFacts, hasOwnMpn: boolean): {
+  mpn?: string;
+  additionalProperty: Array<Record<string, unknown>>;
+  isAccessoryOrSparePartFor?: Record<string, unknown> | Array<Record<string, unknown>>;
+} {
+  const additionalProperty: Array<Record<string, unknown>> = [{ '@type': 'PropertyValue', name: 'Battery pack code', value: battery.canonicalCode }];
+  if (battery.capacityMah) additionalProperty.push({ '@type': 'PropertyValue', name: 'Capacity', value: battery.capacityMah, unitText: 'mAh' });
+  if (battery.nominalVoltageMv) additionalProperty.push({ '@type': 'PropertyValue', name: 'Nominal voltage', value: battery.nominalVoltageMv / 1000, unitText: 'V' });
+  const fits = battery.devices.map((d) => ({ '@type': 'Product', name: d.label, ...(d.modelNumber ? { model: d.modelNumber } : {}) }));
+  return {
+    ...(hasOwnMpn ? {} : { mpn: battery.canonicalCode }),
+    additionalProperty,
+    ...(fits.length === 0 ? {} : { isAccessoryOrSparePartFor: fits.length === 1 ? fits[0] : fits }),
+  };
 }
 
 /**

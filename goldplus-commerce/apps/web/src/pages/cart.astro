@@ -22,6 +22,7 @@ import { resolveCartCredential } from '../lib/cartCredential';
 import { requestSession } from '../lib/customerAuth';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
 import { publicBattery, parseDeviceCookie, DEVICE_COOKIE, FIT_BADGE } from '../lib/batteries';
+import { cartDeviceFitNote, phoneBatteryPath } from '../lib/phoneBatteryPage';
 
 import crypto from 'node:crypto';
 
@@ -350,6 +351,9 @@ if (selectedDevice && cartProductIds.length) {
   if (check.ok) deviceFits = check.data.fits;
 }
 const checkedLines = Object.values(deviceFits).filter((f) => f.fitState !== null).length;
+const listedLines = Object.values(deviceFits).filter((f) => f.fitState === 'AWAITING_VERIFICATION').length;
+// Says where each match comes from: a supplier-listed fit is a fit (0211), but not one we checked.
+const deviceFitNote = cartDeviceFitNote(checkedLines, listedLines);
 const uncheckedBatteryLines = selectedDevice ? Object.entries(deviceFits).filter(([, f]) => f.fitState === null).length : 0;
 
 // Line details (image, product page, category) come from the live catalogue,
@@ -522,10 +526,8 @@ const cutoffLine = sameDayLineFor(sameDayCutoffCopy(cut, { now: new Date(), clos
             <div role="status" class="mb-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm">
               <p class="font-bold text-slate-900">Buying for your {selectedDevice.label}</p>
               <p class="mt-1 text-slate-600">
-                {checkedLines > 0
-                  ? `${checkedLines} item in your cart ${checkedLines === 1 ? 'has' : 'have'} been checked against this phone.`
-                  : 'None of the batteries in your cart have been checked against this phone.'}
-                {' '}<a href={`/battery-finder?device=${encodeURIComponent(selectedDevice.slug)}`} class="font-bold underline">See what we have checked for it</a>.
+                {deviceFitNote}
+                {' '}<a href={phoneBatteryPath(selectedDevice.slug)} class="font-bold underline">See the batteries for this phone</a>.
               </p>
             </div>
           )}

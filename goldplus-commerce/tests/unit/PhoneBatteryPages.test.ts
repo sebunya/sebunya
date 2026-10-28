@@ -2,8 +2,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  isDeviceSlug, phoneBatteryPath, phonePageDescription, phonePageH1, phonePageIndexable, phonePageItemListJsonLd, phonePageTitle, phoneGuides,
+  batteryProductJsonLdProps, cartDeviceFitNote, isDeviceSlug, phoneBatteryPath, phonePageDescription, phonePageH1, phonePageIndexable, phonePageItemListJsonLd, phonePageTitle, phoneGuides,
 } from '../../apps/web/src/lib/phoneBatteryPage';
+import { finderSessionId } from '../../apps/web/src/lib/batteries';
 import { BatteryFinderUseCases } from '../../apps/api/src/application/use-cases/batteries/BatteryFinderUseCases';
 
 /**
@@ -86,7 +87,7 @@ describe('per-phone battery page rules', () => {
 });
 
 describe('the fit index behind the hub, the sitemap and the finder', () => {
-  function finder(rows: Array<typeof device & { brandSlug: string }>, showAwaiting: boolean) {
+  function finder(rows: Array<typeof device & { brandSlug: string; brandDisplayName: string }>, showAwaiting: boolean) {
     const repo = {
       getConfig: async () => ({ config: { showAwaitingVerification: showAwaiting } }),
       devicesWithPublicFits: async (awaiting: boolean) => {
@@ -99,9 +100,9 @@ describe('the fit index behind the hub, the sitemap and the finder', () => {
 
   it('groups phones by brand, biggest brand first, and counts every phone once', async () => {
     const rows = [
-      { ...device, brandSlug: 'tecno' },
-      { ...device, id: 'd2', slug: 'tecno-pop-5', model: 'Pop 5', modelNumber: 'BD2p', label: 'Tecno Pop 5 (BD2p)', brandSlug: 'tecno' },
-      { ...device, id: 'd3', slug: 'itel-a56', brandName: 'itel', model: 'A56', modelNumber: null, label: 'itel A56', brandSlug: 'itel' },
+      { ...device, brandSlug: 'tecno', brandDisplayName: 'TECNO' },
+      { ...device, id: 'd2', slug: 'tecno-pop-5', model: 'Pop 5', modelNumber: 'BD2p', label: 'Tecno Pop 5 (BD2p)', brandSlug: 'tecno', brandDisplayName: 'TECNO' },
+      { ...device, id: 'd3', slug: 'itel-a56', brandName: 'itel', model: 'A56', modelNumber: null, label: 'itel A56', brandSlug: 'itel', brandDisplayName: 'itel' },
     ];
     const index = await finder(rows, true).fitIndex();
     expect(index.deviceCount).toBe(3);
@@ -147,3 +148,53 @@ describe('surfaces agree', () => {
     }
   });
 });
+
+describe('battery product structured data', () => {
+  const facts = { canonicalCode: 'BL-49FT', capacityMah: null, nominalVoltageMv: null, devices: [{ label: 'TECNO Spark 7 (KF6n)', modelNumber: 'KF6n' }, { label: 'TECNO Pop 5', modelNumber: null }] };
+  it('adds the pack code and the phones, and states no capacity it does not hold', () => {
+    const p = batteryProductJsonLdProps(facts, false);
+    expect(p.mpn).toBe('BL-49FT');
+    expect(p.additionalProperty).toEqual([{ '@type': 'PropertyValue', name: 'Battery pack code', value: 'BL-49FT' }]);
+    expect(p.isAccessoryOrSparePartFor).toEqual([{ '@type': 'Product', name: 'TECNO Spark 7 (KF6n)', model: 'KF6n' }, { '@type': 'Product', name: 'TECNO Pop 5' }]);
+  });
+  it('keeps the product\'s own model number as mpn, records capacity and voltage when entered, and omits fits when none are public', () => {
+    const p = batteryProductJsonLdProps({ ...facts, capacityMah: 5000, nominalVoltageMv: 3870, devices: [] }, true);
+    expect(p).not.toHaveProperty('mpn');
+    expect(p).not.toHaveProperty('isAccessoryOrSparePartFor');
+    expect(p.additionalProperty.slice(1)).toEqual([
+      { '@type': 'PropertyValue', name: 'Capacity', value: 5000, unitText: 'mAh' },
+      { '@type': 'PropertyValue', name: 'Nominal voltage', value: 3.87, unitText: 'V' },
+    ]);
+  });
+  it('the product page passes the battery facts through this one helper', () => {
+    expect(read('apps/web/src/components/ProductJsonLd.astro')).toContain('batteryProductJsonLdProps(battery, !!hasValidMpn)');
+  });
+});
+
+describe('finder funnel: who is counted', () => {
+  it('the finder session is the signed visit locator, the only visitor key this site issues', () => {
+    expect(finderSessionId({ gpVisit: 'tok' })).toBe('tok');
+    expect(finderSessionId({})).toBeNull();
+    for (const f of ['apps/web/src/pages/battery-finder.astro', 'apps/web/src/pages/api/battery-finder/event.ts']) {
+      const src = read(f);
+      expect(src, f).toContain('finderSessionId(');
+      expect(src, f).not.toMatch(/goldplus_cart_session|'gp_finder'/);
+    }
+  });
+  it('the relay records nothing for a client that kept no visit cookie or names itself a crawler', () => {
+    const relay = read('apps/web/src/pages/api/battery-finder/event.ts');
+    expect(relay).toMatch(/if \(!session \|\| CRAWLER_UA\.test\(/);
+    expect(relay).toContain('apiHeaders(');
+  });
+  it('the cart says where a match comes from and links the phone\'s page', () => {
+    expect(cartDeviceFitNote(0, 0)).toBe('None of the batteries in your cart are matched to this phone yet.');
+    expect(cartDeviceFitNote(1, 0)).toBe('1 item in your cart has been checked by us against this phone.');
+    expect(cartDeviceFitNote(1, 1)).toBe("1 item in your cart fits this phone, from our supplier's compatibility list. Not sure? Message us and we confirm it before you order.");
+    expect(cartDeviceFitNote(3, 2)).toContain("3 items in your cart fit this phone, 2 of them from our supplier's compatibility list.");
+    for (const [m, l] of [[1, 1], [2, 1], [4, 4]]) expect(cartDeviceFitNote(m, l)).not.toMatch(/checked/);
+    const cart = read('apps/web/src/pages/cart.astro');
+    expect(cart).toContain('cartDeviceFitNote(checkedLines, listedLines)');
+    expect(cart).toContain('phoneBatteryPath(selectedDevice.slug)');
+  });
+});
+

@@ -29,8 +29,16 @@ No migration. API + web deploy.
 - Per-phone canonical uses the device's own slug; meta descriptions say "same-day dispatch", never "delivery"; hologram wording conditional ("if your pack carries a code"); 14-day return stated with its condition (unused, in packaging).
 - CI: three pinned tests updated to the new rules (OpenAPI path list now includes fit-index; battery route rule; blog regex rewritten so the frontmatter scanner does not read `batter(` as a call).
 
+### Self-review round 3 (same day) — pre-existing bugs found while proving the pilot
+- **Finder sessions were always empty** (register #34): the finder page and the relay read cookie names nothing sets. Now `finderSessionId(locals)` = the signed visit locator; the relay records nothing without it (crawlers that keep no cookies), so the funnel is both joinable and cleaner.
+- **Guides republish** (register #35): `publish-guides.ts` skips a guide whose stored content already matches (`GuideFile.guideChanged`, same normalisation as a save) and keeps a cover image set in the editor. This deploy now moves `dateModified` on the 4 edited guides only.
+- **Cart overclaim** (register #36): "has been checked against this phone" now distinguishes our check from the supplier's list; link → the phone's page.
+- Fit-index brand name from the brand table; phone page finds sibling phones by membership, not by name.
+- Battery JSON-LD built by a tested pure function (`batteryProductJsonLdProps`); the PDP guide chips use the device's brand, not the first word of its label.
+- New real-PostgreSQL test `tests/integration/BatteryFitIndex.integration.test.ts` (runs in CI's integration job): proves the fit-index SQL against verified, listed, rejected, draft, unapproved and archived cases.
+
 ### Tests
-- New `tests/unit/PhoneBatteryPages.test.ts` (13); `SiteSignals.test.ts` +1; `AgentReadiness`, `AuditMediumFindings` updated. Ran one file at a time on the owner's Mac (8 GB, 1.6 GB disk free): 24 related files green. API `tsc --noEmit` clean.
+- New `tests/unit/PhoneBatteryPages.test.ts` (19); `BlogGuidesPublishable` +3; `SiteSignals.test.ts` +1; `AgentReadiness`, `AuditMediumFindings` updated. Ran one file at a time on the owner's Mac (8 GB, 1.6 GB disk free): 24 related files green. API `tsc --noEmit` clean.
 
 ### Verified by rendering (dev server, Node 22, against the live API)
 - See the PR description for the render evidence. While the live API was unreachable from the Mac the page returned 503 + `noindex,follow` + honest message (the fail-closed branch).

@@ -4,6 +4,7 @@ import { offerPriceUgx } from '../lib/offerPrice';
 import { serializeJsonLd, schemaAvailability } from '../lib/jsonld';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { merchantReturnPolicyJsonLd } from '../lib/returnsPolicy';
+import { batteryProductJsonLdProps, type BatteryJsonLdFacts } from '../lib/phoneBatteryPage';
 
 interface Props {
   product: ProductPublicDto;
@@ -18,12 +19,7 @@ interface Props {
    * fitting, so an engine reads "spare part for <phone>" as a fact rather
    * than inferring it from the name. Nothing here is invented: null stays out.
    */
-  battery?: {
-    canonicalCode: string;
-    capacityMah: number | null;
-    nominalVoltageMv: number | null;
-    devices: Array<{ label: string; modelNumber: string | null }>;
-  } | null;
+  battery?: BatteryJsonLdFacts | null;
 }
 
 const { product, url, priceUgx, aggregateRating, battery } = Astro.props;
@@ -81,15 +77,9 @@ if (verifiedAttrs.length > 0) {
 }
 
 if (battery) {
-  if (!hasValidMpn) node.mpn = battery.canonicalCode;
-  const extra: Array<Record<string, unknown>> = [{ '@type': 'PropertyValue', name: 'Battery pack code', value: battery.canonicalCode }];
-  if (battery.capacityMah) extra.push({ '@type': 'PropertyValue', name: 'Capacity', value: battery.capacityMah, unitText: 'mAh' });
-  if (battery.nominalVoltageMv) extra.push({ '@type': 'PropertyValue', name: 'Nominal voltage', value: battery.nominalVoltageMv / 1000, unitText: 'V' });
-  node.additionalProperty = [...((node.additionalProperty as unknown[] | undefined) ?? []), ...extra];
-  if (battery.devices.length > 0) {
-    const fits = battery.devices.map((d) => ({ '@type': 'Product', name: d.label, ...(d.modelNumber ? { model: d.modelNumber } : {}) }));
-    node.isAccessoryOrSparePartFor = fits.length === 1 ? fits[0] : fits;
-  }
+  const { additionalProperty, ...rest } = batteryProductJsonLdProps(battery, !!hasValidMpn);
+  Object.assign(node, rest);
+  node.additionalProperty = [...((node.additionalProperty as unknown[] | undefined) ?? []), ...additionalProperty];
 }
 
 if (product.retailPriceUgx !== null) {

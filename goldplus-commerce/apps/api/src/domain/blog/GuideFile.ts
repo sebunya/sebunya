@@ -1,3 +1,5 @@
+import { validateBlogPost } from './BlogPost';
+
 /**
  * The guide-draft file format under docs/content/guides. Pure — no fs.
  *
@@ -69,4 +71,35 @@ export function internalLinks(body: string): string[] {
   const out = new Set<string>();
   for (const m of body.matchAll(/\]\((\/[^)\s]*)\)/g)) out.add(m[1]!);
   return Array.from(out);
+}
+
+/** The stored fields a guide file controls (BlogPostRecord), plus the post's related products in order. */
+export interface StoredGuide {
+  title: string;
+  excerpt: string;
+  body: string;
+  metaTitle: string | null;
+  metaDescription: string | null;
+  relatedProductIds: string[];
+}
+
+/**
+ * Would publishing this guide file change the stored article? Compared after
+ * the same normalisation a save applies (validateBlogPost), so whitespace a
+ * save would trim is not a change. The publisher skips an unchanged guide:
+ * rewriting it moved `updatedAt`, which the page publishes as dateModified and
+ * the blog sitemap as lastmod, so one deploy stamped all 103 guides "modified"
+ * within three seconds when four had changed (2026-10-28). A file that cannot
+ * be validated counts as changed, so the save itself reports the problem.
+ */
+export function guideChanged(stored: StoredGuide, next: { title: string; excerpt: string; body: string; metaTitle: string | null; metaDescription: string | null; relatedProductIds: string[] }): boolean {
+  const v = validateBlogPost(next);
+  if (!v.ok) return true;
+  const n = v.value;
+  return n.title !== stored.title
+    || n.excerpt !== stored.excerpt
+    || n.body !== stored.body
+    || (n.metaTitle ?? null) !== (stored.metaTitle ?? null)
+    || (n.metaDescription ?? null) !== (stored.metaDescription ?? null)
+    || n.relatedProductIds.join(',') !== stored.relatedProductIds.join(',');
 }

@@ -58,9 +58,12 @@ const waText = `${cfg?.whatsappPrefill ?? 'Hello GoldPlus, I need a battery for 
 const cutoff = `${biz.sameDayCutoffHour % 12 || 12}${biz.sameDayCutoffHour >= 12 ? 'pm' : 'am'}`;
 
 // Other phones of the same brand that have a battery: the brand's own index, one hop away.
-const siblings = device && indexRes.ok
-  ? (indexRes.data.brands.find((b) => b.name.toLowerCase() === device.brandName.toLowerCase())?.devices ?? []).filter((d) => d.slug !== device.slug).slice(0, 24)
-  : [];
+// Found by membership, not by name: a brand typed differently on one device must not hide the list.
+const siblingBrand = device && indexRes.ok
+  ? indexRes.data.brands.find((b) => b.devices.some((d) => d.slug === device.slug))
+    ?? indexRes.data.brands.find((b) => b.name.toLowerCase() === device.brandName.toLowerCase())
+  : undefined;
+const siblings = (siblingBrand?.devices ?? []).filter((d) => d.slug !== device?.slug).slice(0, 24);
 
 const crumbs = [
   { name: 'Home', url: `${SITE_ORIGIN}/` },

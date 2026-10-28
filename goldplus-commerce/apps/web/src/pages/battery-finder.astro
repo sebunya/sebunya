@@ -4,7 +4,7 @@ import { SITE_ORIGIN } from '../lib/sitemap';
 import { getBusinessInfo } from '../lib/businessInfo';
 import ThisPhoneSuggestion from '../components/ThisPhoneSuggestion.astro';
 import CheckYourPhoneNote from '../components/CheckYourPhoneNote.astro';
-import { publicBattery, submitBatteryRequest, DEVICE_COOKIE, serialiseDeviceCookie, ugx, FIT_BADGE } from '../lib/batteries';
+import { publicBattery, submitBatteryRequest, finderSessionId, DEVICE_COOKIE, serialiseDeviceCookie, ugx, FIT_BADGE } from '../lib/batteries';
 import { phoneBatteryPath } from '../lib/phoneBatteryPage';
 import type { BatteryFinderConfig, FinderBatteryResultDto, FinderBrandDto, FinderDeviceDto, FinderSeriesDto } from '@goldplus/shared';
 
@@ -20,7 +20,7 @@ const q = (url.searchParams.get('q') ?? '').trim().slice(0, 120);
 const fromThisPhone = url.searchParams.get('from') === 'this-phone';
 const brandSlug = (url.searchParams.get('brand') ?? '').trim().slice(0, 80);
 const deviceSlug = (url.searchParams.get('device') ?? '').trim().slice(0, 160);
-const sessionId = Astro.cookies.get('goldplus_cart_session')?.value ?? Astro.cookies.get('gp_finder')?.value ?? null;
+const sessionId = finderSessionId(Astro.locals);
 
 let requestNotice: { kind: 'success' | 'error'; text: string } | null = null;
 if (Astro.request.method === 'POST') {

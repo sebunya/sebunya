@@ -122,7 +122,7 @@ export class BatteryFinderUseCases {
     const rows = await this.repo.devicesWithPublicFits(cfg.showAwaitingVerification);
     const byBrand = new Map<string, FinderFitIndexDto['brands'][number]>();
     for (const row of rows) {
-      const brand = byBrand.get(row.brandSlug) ?? { name: row.brandName, slug: row.brandSlug, devices: [] };
+      const brand = byBrand.get(row.brandSlug) ?? { name: row.brandDisplayName, slug: row.brandSlug, devices: [] };
       brand.devices.push({ slug: row.slug, model: row.model, modelNumber: row.modelNumber, variant: row.variant, label: row.label, verifiedFits: row.verifiedFits, listedFits: row.listedFits });
       byBrand.set(row.brandSlug, brand);
     }

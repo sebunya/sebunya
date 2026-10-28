@@ -127,12 +127,13 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
   }
 
   /** One query for every phone a customer could land on from search: active, with a fit they can buy. */
-  async devicesWithPublicFits(showAwaiting: boolean): Promise<Array<FinderDeviceDto & { brandSlug: string }>> {
+  async devicesWithPublicFits(showAwaiting: boolean): Promise<Array<FinderDeviceDto & { brandSlug: string; brandDisplayName: string }>> {
     const awaiting = showAwaiting ? sql`OR (${AWAITING_PUBLIC})` : sql``;
     const rows = await db.select({
       d: devices,
       seriesName: deviceSeries.name,
       brandSlug: deviceBrands.slug,
+      brandDisplayName: deviceBrands.name,
       verifiedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id WHERE c.device_id = ${sql.raw("devices.id")} AND ${VERIFIED_PUBLIC})::int`,
       listedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id WHERE c.device_id = ${sql.raw("devices.id")} AND ${AWAITING_PUBLIC})::int`,
     }).from(devices)
@@ -144,7 +145,7 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
         sql`EXISTS (SELECT 1 FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id WHERE c.device_id = ${sql.raw("devices.id")} AND ((${VERIFIED_PUBLIC}) ${awaiting}))`,
       ))
       .orderBy(deviceBrands.name, devices.model, devices.modelNumber);
-    return rows.map((r) => ({ ...deviceDto(r.d, r.seriesName, r.verifiedFits, showAwaiting ? r.listedFits : 0), brandSlug: r.brandSlug }));
+    return rows.map((r) => ({ ...deviceDto(r.d, r.seriesName, r.verifiedFits, showAwaiting ? r.listedFits : 0), brandSlug: r.brandSlug, brandDisplayName: r.brandDisplayName }));
   }
 
   deviceBySlug(slug: string): Promise<FinderDeviceDto | null> { return this.deviceWhere(eq(devices.slug, slug)); }

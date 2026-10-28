@@ -500,7 +500,7 @@ const selectedDevice = parseDeviceCookie(Astro.cookies.get(DEVICE_COOKIE)?.value
 
 interface BatteryPublic {
   battery: { productId: string; canonicalCode: string; capacityMah: number | null; nominalVoltageMv: number | null; warrantyMonths: number | null; chemistry: string | null; publicNotes: string | null; lifecycleStatus: string };
-  devices: Array<{ slug: string; label: string; modelNumber: string | null; fitState: string; fitLabel: string; condition: string | null }>;
+  devices: Array<{ slug: string; label: string; brandName: string; modelNumber: string | null; fitState: string; fitLabel: string; condition: string | null }>;
   config: { modelNumberHelp: string; requestCta: string; awaitingVerificationNote: string; conditionalNote: string; whatsappPrefill: string };
   isPublished: boolean;
 }
@@ -1070,7 +1070,7 @@ if (product) {
             <div class="mt-5">
               <h3 class="text-sm font-bold text-slate-900">Read before you choose</h3>
               <div class="mt-2 flex flex-wrap gap-2">
-                {phoneGuides(battery.devices[0]?.label.split(' ')[0] ?? '').map((g) => (
+                {phoneGuides(battery.devices[0]?.brandName ?? '').map((g) => (
                   <a href={g.href} class="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:border-brand-primary">{g.label}</a>
                 ))}
               </div>
