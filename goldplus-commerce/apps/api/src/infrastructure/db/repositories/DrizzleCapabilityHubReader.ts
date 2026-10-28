@@ -18,6 +18,7 @@ const HUB_COUNTS = {
   legalDrafts: "select count(*)::int as n from legal_policy_versions where status in ('DRAFT','IN_REVIEW')",
   abandonmentOpen: "select count(*)::int as n from cart_abandonments where status = 'OPEN'",
   reviewsPending: "select count(*)::int as n from reviews where status = 'pending'",
+  questionsPending: "select count(*)::int as n from product_questions where status = 'pending'",
   flashSales: 'select count(*)::int as n from flash_sales',
   redirects: 'select count(*)::int as n from redirects',
   devices: 'select count(*)::int as n from devices',

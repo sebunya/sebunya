@@ -103,6 +103,8 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   'QUOTE_REQUEST_RECEIVED',
   'DEALER_APPLICATION_RECEIVED',
   'FAKE_REPORT_RECEIVED',
+  'PRODUCT_QUESTION_RECEIVED',
+  'PRODUCT_QUESTION_ANSWERED',
   // Phone verification (0087 identity spine). The same defect as PASSWORD_RESET
   // above, found in production on 2026-08-14: the OTP producer enqueued its
   // challenge as LOYALTY_EXPIRY_WARNING — "routed identically: SMS-first

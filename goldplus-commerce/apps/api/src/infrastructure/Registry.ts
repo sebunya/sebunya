@@ -89,6 +89,9 @@ import { SendReviewRemindersUseCase } from '../application/use-cases/reviews/Sen
 import { GetSalesFunnelUseCase } from '../application/use-cases/analytics/GetSalesFunnelUseCase';
 import { DrizzleSalesFunnelReader } from './db/repositories/DrizzleSalesFunnelReader';
 import { RequestReturnUseCase } from '../application/use-cases/commerce/RequestReturnUseCase';
+import { publicBaseUrl } from '../application/notifications/CustomerMessages';
+import { AskProductQuestionUseCase, AnswerProductQuestionUseCase } from '../application/use-cases/questions/ProductQuestionUseCases';
+import { DrizzleProductQuestionRepository } from './questions/DrizzleProductQuestionRepository';
 import { DrizzleOrderDeliveredAt } from './commerce/DrizzleOrderDeliveredAt';
 import { CreditExpiryRemindersUseCase, IssueCreditUseCase, ManageCreditUseCases, NotifyCardUsedUseCase } from '../application/use-cases/credit/CreditUseCases';
 import { creditCodeHash, creditRandomIndexes } from './credit/CreditCodeCrypto';
@@ -3288,6 +3291,24 @@ export class Registry {
   );
   /** Self-service returns (gap analysis #8): a verified order's return request becomes a Care Desk task. */
   public readonly requestReturnUseCase = new RequestReturnUseCase(new DrizzleOrderDeliveredAt(), this.careDeskUseCases);
+  /** Questions and answers on product pages (0208, gap analysis #14). */
+  public readonly productQuestionRepo = new DrizzleProductQuestionRepository();
+  public readonly askProductQuestionUseCase = new AskProductQuestionUseCase(
+    this.productQuestionRepo,
+    this.careDeskUseCases,
+    (q) => this.sendPublicFormAcknowledgementUseCase.execute({
+      kind: 'product_question', eventType: 'PRODUCT_QUESTION_RECEIVED', template: 'PRODUCT_QUESTION_RECEIVED', phone: q.phone, email: q.email,
+      data: { customerName: q.name, productName: q.productName }, entityId: q.id, relatedEntity: 'product_question',
+    }),
+  );
+  public readonly answerProductQuestionUseCase = new AnswerProductQuestionUseCase(
+    this.productQuestionRepo,
+    (q) => this.customerOutboxNotifier.enqueue({
+      eventType: 'PRODUCT_QUESTION_ANSWERED', template: 'PRODUCT_QUESTION_ANSWERED', customerPhone: q.askerPhone, customerEmail: q.askerEmail,
+      data: { customerName: q.askerName, productName: q.productName ?? null, productUrl: q.productSlug ? `${publicBaseUrl()}/products/${q.productSlug}#questions` : null, questionAnswer: q.answer },
+      idempotencyKey: `product-question:${q.id}:answered`, relatedEntity: 'product_question', relatedEntityId: q.id,
+    }),
+  );
   /** Goldie on WhatsApp (and the admin inbox's team replies). Off until GOLDIE_WHATSAPP_ENABLED=true. */
   public readonly goldieChannelUseCases = new GoldieChannelUseCases(
     this.conversationArchiveUseCases,

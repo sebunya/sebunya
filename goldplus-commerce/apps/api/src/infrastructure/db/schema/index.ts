@@ -41,6 +41,7 @@ export * from './behavioural_interventions';
 export * from './analytics';
 export * from './devices';
 export * from './reviews';
+export * from './questions';
 export * from './creators';
 export * from './flashSales';
 export * from './seo';

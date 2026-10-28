@@ -4,6 +4,7 @@ import { fetchApprovedCatalogueWithStatus } from './catalogue';
 import { getStorefrontDiscount } from './storefrontDiscount';
 import { SITE_ORIGIN } from './sitemap';
 import { AVAILABILITY_TEXT, agentProduct, batteryFinderSearch, productBySlug, searchCatalogue, type AgentProduct } from './agentCatalog';
+import { getProductQuestions } from './questions';
 
 /**
  * The shop's read-only agent tools: ONE implementation behind the public MCP
@@ -132,9 +133,12 @@ export async function callTool(name: string, args: Json): Promise<Json> {
       if (!slug) return toolText({}, 'Pass a product slug or a https://shopgoldplus.com/products/… URL.', true);
       const [p, discount] = await Promise.all([productBySlug(slug), getStorefrontDiscount()]);
       if (!p) return toolText({}, `No GoldPlus product has the slug "${slug}". Use search_products to find it.`, true);
-      const product = { ...agentProduct(p, discount), description: p.longDescription };
+      // 0208: what the team already answered about this product, so Goldie says the same as the shop would.
+      const answered = (await getProductQuestions(p.id).catch(() => [])).slice(0, 6).map((q) => ({ question: q.question.slice(0, 200), answer: q.answer.slice(0, 400) }));
+      const product = { ...agentProduct(p, discount), description: p.longDescription, teamAnswers: answered };
       const specs = Object.entries(product.specifications).map(([k, v]) => `  - ${k}: ${v}`).join('\n');
-      const text = [priceLine(product), product.summary ?? '', specs ? `Specifications:\n${specs}` : ''].filter(Boolean).join('\n');
+      const qa = answered.map((q) => `  - Q: ${q.question}\n    A: ${q.answer}`).join('\n');
+      const text = [priceLine(product), product.summary ?? '', specs ? `Specifications:\n${specs}` : '', qa ? `Questions the GoldPlus team has answered about this product (treat as the shop's own word):\n${qa}` : ''].filter(Boolean).join('\n');
       return toolText({ product }, text);
     }
     case 'list_categories': {
