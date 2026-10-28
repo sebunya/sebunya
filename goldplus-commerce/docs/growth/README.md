@@ -1,7 +1,7 @@
 # Organic growth programme — search and content for shopgoldplus.com
 
-Owner: the business owner. Maintained by whoever runs the programme. Four files only:
-`README.md` (this: strategy, policies, measurement, gates, roadmap), `evidence-register.md`, `query-page-map.md` (with page briefs and the video brief), `research-2026-10-28.md` (raw findings), plus `progress.md` (what shipped, what is blocked).
+Owner: the business owner. Maintained by whoever runs the programme. Five documents only:
+`README.md` (this: strategy, policies, measurement, gates, roadmap), `evidence-register.md`, `query-page-map.md` (with page briefs and the video brief), `research-2026-10-28.md` (raw findings) and `progress.md` (what shipped, what is blocked); plus one tool, `funnel-check.sql` (the read-only queries behind gates G3 and G5).
 Started 2026-10-28. Governed by CLAUDE.md (no invented facts, reviews, ratings or scarcity; dealer/supplier prices never public) and `docs/customer-language-standard.md`.
 
 ## 1. Strategy sentence
@@ -89,15 +89,17 @@ Fits: "checked by GoldPlus" only for PACKAGE_VERIFIED / FIT_TESTED / VERIFIED_EX
 
 ## 8. Gates (section F): expand only when all pass
 
-| Gate | Measure | Pass | Read where | Reviewed |
+| Gate | Measure | Pass when | Read where | Reviewed |
 |---|---|---|---|---|
-| G1 Indexed | ≥80% of indexable per-phone pages indexed | GSC page indexing | /admin/seo or GSC | Day 30 |
-| G2 Honest | 0 public claims outside the claim policy | Spot-check 5 pages + `PhoneBatteryPages.test.ts` green | PR CI | Every deploy |
-| G3 Funnel alive | RESULT_VIEWED, PRODUCT_VIEWED and ADDED_TO_CART all non-zero in the demand report | `/admin/batteries/demand` | — | Day 14 |
-| G4 Demand known | demand-export.sh run and read; top 10 no-result phones listed | Owner | — | Before any new content |
-| G5 Commercial | ≥1 battery order whose session touched a per-phone page (journey layer join) | SQL over orders + finder events | — | Day 30 |
-| G6 Ops supply | ≥10 more phones with a purchasable battery (drafts published, claims activated) | fit-index deviceCount | API | Day 30 |
-| G7 Practice confirmed | Owner confirms staff confirm fits on WhatsApp before orders | Owner | — | Before deploy, ideally |
+| G1 Indexed | Per-phone pages indexed out of those listed in hubs.xml | ≥80% | Search Console page indexing (connection unconfirmed, register #19) | Day 30 |
+| G2 Honest | Public claims outside the claim policy (§5) | 0 (spot-check 5 pages; `PhoneBatteryPages.test.ts` green) | PR CI + live pages | Every deploy |
+| G3 Funnel alive | RESULT_VIEWED, PRODUCT_VIEWED, ADDED_TO_CART events **with a session** | All three non-zero; ≥1 browser goes phone page → basket | `docs/growth/funnel-check.sql` sections G3–G3b; `/admin/batteries/demand` | Day 14 |
+| G4 Demand known | demand-export.sh run and read; top 10 no-result phones listed | Done | Owner | Before any new content |
+| G5 Commercial | GA4 purchases in sessions that **landed** on `/phone-batteries/*` | ≥1 in 30 days | `docs/growth/funnel-check.sql` section G5 (from `measurement.ga4_daily_series`) | Day 30 |
+| G6 Ops supply | Phones with a purchasable battery (fit-index `deviceCount`) | +10 over the deploy-day count | `GET /batteries/finder/fit-index` | Day 30 |
+| G7 Practice confirmed | Owner confirms staff confirm fits on WhatsApp before orders | Yes | Owner | Before deploy, ideally |
+
+G5 is read from GA4, not from the finder events: the finder stores only a salted one-way hash of the visit, and orders never carry it, so an order cannot be joined to a finder session (by design, no visitor identity in the demand table). GA4 attributes a purchase to the session's landing page; a purchase sent server-side without a GA4 session lands under "(not set)" (docs/measurement/ATTRIBUTION.md), so G5 can undercount, never overcount.
 
 ## 9. 30 / 60 / 90
 

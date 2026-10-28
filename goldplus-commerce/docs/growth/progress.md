@@ -37,6 +37,12 @@ No migration. API + web deploy.
 - Battery JSON-LD built by a tested pure function (`batteryProductJsonLdProps`); the PDP guide chips use the device's brand, not the first word of its label.
 - New real-PostgreSQL test `tests/integration/BatteryFitIndex.integration.test.ts` (runs in CI's integration job): proves the fit-index SQL against verified, listed, rejected, draft, unapproved and archived cases.
 
+### Self-review round 4 (same day)
+- CI's real-PostgreSQL run caught the fit-index seed breaking `battery_profiles_active_published_chk` (an ACTIVE record must name its publisher); seed fixed after checking every constraint on the four tables it writes.
+- Gate G5 rewritten: an order cannot be joined to a finder session (the session is a salted one-way hash and orders never carry it), so G5 now reads GA4 purchases by landing page (`measurement.ga4_daily_series`). Gates table now has measurable pass conditions; queries in `funnel-check.sql`.
+- `demand-export.sh` (owner-run) checked column by column against the schema: all columns exist.
+- Deploy smoke section made non-fatal (`set +e`): a zero is reported, not a failed deploy.
+
 ### Tests
 - New `tests/unit/PhoneBatteryPages.test.ts` (19); `BlogGuidesPublishable` +3; `SiteSignals.test.ts` +1; `AgentReadiness`, `AuditMediumFindings` updated. Ran one file at a time on the owner's Mac (8 GB, 1.6 GB disk free): 24 related files green. API `tsc --noEmit` clean.
 
