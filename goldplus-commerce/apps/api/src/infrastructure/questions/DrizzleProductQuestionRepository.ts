@@ -20,6 +20,11 @@ export class DrizzleProductQuestionRepository implements IProductQuestionReposit
     return Number(r?.n ?? 0);
   }
 
+  async countAllAskedSince(since: Date) {
+    const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(productQuestions).where(gte(productQuestions.createdAt, since));
+    return Number(r?.n ?? 0);
+  }
+
   async insert(input: { productId: string; askerIdentityHash: string; askerName: string; askerPhone: string | null; askerEmail: string | null; question: string }) {
     const [r] = await db.insert(productQuestions).values(input).returning({ id: productQuestions.id });
     return { id: r!.id };

@@ -13,6 +13,7 @@ import { INVITE_NOTE_COOKIE, forgetInvite, rememberedInvite } from "./lib/referr
 import { makeNonce, nonceScriptStream, strictPolicyMode, strictReportOnlyPolicy } from "./lib/contentSecurityPolicy";
 import { PublicFormLimiter, budgetedFormPath, tooManySubmissionsResponse, visitorKey } from "./lib/publicFormLimiter";
 import { campaignOnRedirect } from './lib/carryQuery';
+import { trailingSlashTarget } from './lib/pageAddress';
 
 // Public forms reach the API server side, where its per-visitor budgets cannot
 // see the visitor (lib/publicFormLimiter.ts). The budget is applied here.
@@ -174,13 +175,12 @@ async function applyRememberedInvite(context: Parameters<Parameters<typeof defin
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
-  // /products/<slug>/ served a second copy of every product page (canonical
-  // included); one address per product.
-  if (/^\/products\/[^/]+\/+$/.test(context.url.pathname)) {
-    return context.redirect(`${context.url.pathname.replace(/\/+$/, '')}${context.url.search}`, 301);
-  }
+  // A moved page first (it already ignores a trailing slash: one hop, not two),
+  // then one address per page, site-wide (lib/pageAddress): /x/ → /x.
   const moved = MOVED_PATHS[context.url.pathname.replace(/\/+$/, '') || '/'];
   if (moved) return context.redirect(`${moved}${context.url.search}`, 301);
+  const slashTarget = trailingSlashTarget(context.request.method, context.url.pathname, context.url.search);
+  if (slashTarget) return context.redirect(slashTarget, 301);
   if (!context.url.pathname.startsWith('/_astro/')) await renewSessionIfDue(context);
 
   if (context.request.method === 'POST') {

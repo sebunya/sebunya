@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { AnswerProductQuestionUseCase, AskProductQuestionUseCase, QUESTIONS_PER_VISITOR_PER_DAY, normalisePhone, type IProductQuestionRepository, type ProductQuestionRow } from '../../apps/api/src/application/use-cases/questions/ProductQuestionUseCases';
+import { AnswerProductQuestionUseCase, AskProductQuestionUseCase, QUESTIONS_PER_SHOP_PER_DAY, QUESTIONS_PER_VISITOR_PER_DAY, normalisePhone, type IProductQuestionRepository, type ProductQuestionRow } from '../../apps/api/src/application/use-cases/questions/ProductQuestionUseCases';
+import { classifyPublicEndpoint } from '../../apps/api/src/domain/security/PublicEndpointPolicy';
+import { PUBLIC_FORM_BUDGETS } from '../../apps/web/src/lib/publicFormLimiter';
 import { CUSTOMER_TRANSACTIONAL_TEMPLATES, emailCopy, smsText } from '../../apps/api/src/application/notifications/CustomerMessages';
 
 /**
@@ -12,12 +14,13 @@ import { CUSTOMER_TRANSACTIONAL_TEMPLATES, emailCopy, smsText } from '../../apps
 const P1 = '11111111-1111-4111-8111-111111111111';
 const Q1 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
-function fakeRepo() {
+function fakeRepo(shopBefore = 0) {
   const rows: ProductQuestionRow[] = [];
   const notified: string[] = [];
   const repo: IProductQuestionRepository = {
     async productExists(id) { return id === P1 ? { name: 'Battery BL-49FT', slug: 'battery-bl-49ft' } : null; },
     async countAskedSince(hash) { return rows.filter((r) => (r as any).hash === hash).length; },
+    async countAllAskedSince() { return rows.length + shopBefore; },
     async insert(i) { const id = `${Q1.slice(0, -1)}${rows.length}`; rows.push({ id, productId: i.productId, askerName: i.askerName, askerPhone: i.askerPhone, askerEmail: i.askerEmail, question: i.question, status: 'pending', answer: null, answeredAt: null, createdAt: new Date(), productName: 'Battery BL-49FT', productSlug: 'battery-bl-49ft', ...({ hash: i.askerIdentityHash } as object) }); return { id }; },
     async listAnswered(productId) { return rows.filter((r) => r.productId === productId && r.status === 'answered').map((r) => ({ id: r.id, askerName: r.askerName, question: r.question, answer: r.answer!, answeredAt: r.answeredAt!.toISOString() })); },
     async listByStatus(status) { return rows.filter((r) => r.status === status); },
@@ -69,6 +72,22 @@ describe('ask a question on a product page', () => {
     for (let i = 0; i < QUESTIONS_PER_VISITOR_PER_DAY; i++) expect(await ask.execute(good)).toMatchObject({ ok: true });
     expect(await ask.execute(good)).toEqual({ ok: false, reason: 'TOO_MANY' });
     expect(await ask.execute({ ...good, askerIdentityHash: 'v2' })).toMatchObject({ ok: true });
+  });
+
+  it('a whole-shop ceiling stops a flood from fresh visit tokens (each question can text a number)', async () => {
+    const { repo } = fakeRepo(QUESTIONS_PER_SHOP_PER_DAY - 1);
+    let acks = 0;
+    const ask = new AskProductQuestionUseCase(repo, { openTask: async () => ({ ok: true }) }, async () => { acks += 1; });
+    const q = (v: string) => ({ productId: P1, askerIdentityHash: v, name: 'Ali', question: 'Is this the original one?', phone: '0772000001' });
+    expect(await ask.execute(q('fresh-1'))).toMatchObject({ ok: true });
+    expect(await ask.execute(q('fresh-2'))).toEqual({ ok: false, reason: 'TOO_MANY' });
+    expect(acks).toBe(1);
+  });
+
+  it('the route and the web relay are budgeted as human forms, not the shared global allowance', () => {
+    expect(classifyPublicEndpoint('POST', '/commerce/questions')).toBe('quote-request');
+    expect(classifyPublicEndpoint('POST', '/commerce/reviews/photos')).toBe('issue-report');
+    expect(PUBLIC_FORM_BUDGETS['/api/questions/ask']).toEqual({ limit: 5, windowMs: 600_000 });
   });
 
   it('phones are normalised to +256 and other shapes are refused', () => {

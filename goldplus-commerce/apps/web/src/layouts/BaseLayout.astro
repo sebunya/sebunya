@@ -40,6 +40,12 @@ interface Props {
    * the catalogue feed and the conversion events name.
    */
   product?: { id: string; priceUgx: number; inStock: boolean };
+  /**
+   * The 404 and 500 pages. The URL they answer is not a page, so they name no
+   * canonical and no og:url (a 404 used to declare the broken URL itself as
+   * canonical) and are noindex unless the page says otherwise.
+   */
+  errorPage?: boolean;
 }
 
 const {
@@ -47,9 +53,11 @@ const {
   description = 'GoldPlus. Premium electronics in Uganda',
   image = '/og-default.png',
   canonicalUrl,
-  robotsMeta,
+  robotsMeta: robotsMetaProp,
   product: ogProduct,
+  errorPage = false,
 } = Astro.props;
+const robotsMeta = robotsMetaProp ?? (errorPage ? 'noindex,follow' : undefined);
 
 // Footer social/contact icons live in ONE cached sprite (public/nav/social-v1.svg,
 // a <symbol> per key) instead of ~6.4 KB of path data inlined into every
@@ -117,7 +125,7 @@ const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, 
         <meta property="product:brand" content="GoldPlus" />
       </Fragment>
     )}
-    <meta property="og:url" content={canonical} />
+    {!errorPage && <meta property="og:url" content={canonical} />}
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={shareImage} />
@@ -137,7 +145,7 @@ const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, 
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={shareImage} />
     <meta name="twitter:image:alt" content={title} />
-    <link rel="canonical" href={canonical} />
+    {!errorPage && <link rel="canonical" href={canonical} />}
     {robotsMeta && <meta name="robots" content={robotsMeta} />}
     <slot name="head" />
 

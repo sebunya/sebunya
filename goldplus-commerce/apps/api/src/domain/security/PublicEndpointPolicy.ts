@@ -183,6 +183,10 @@ export function classifyPublicEndpoint(method: string, rawPath: string): RouteFa
   if (post && path === '/commerce/gift-cards/purchase') return 'quote-request';
   // 0201: a photo for a gift card is a person choosing one picture; sharp's work is not to be had in bulk.
   if (post && path === '/commerce/gift-cards/photos') return 'issue-report';
+  // A question can text the number typed on it, and a review photo is an upload: both are human forms, not the
+  // shared 'global' budget of 1,000 a minute they fell into (2026-10-29 review).
+  if (post && path === '/commerce/questions') return 'quote-request';
+  if (post && path === '/commerce/reviews/photos') return 'issue-report';
   if (isUnder(path, '/commerce/gift-cards')) return 'order-lookup';
   // 0196: a gift card / store credit code check is a guess at a bearer secret: the tight order-lookup budget.
   if (isUnder(path, '/commerce/credit')) return 'order-lookup';

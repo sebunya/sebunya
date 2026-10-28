@@ -13,6 +13,13 @@ import type { OpenTaskInput } from '../assistant/CareDeskUseCases';
  * that is spam or not about the product; nothing is sent.
  */
 export const QUESTIONS_PER_VISITOR_PER_DAY = 3;
+/**
+ * The whole shop's questions in 24 hours. Each question can text the number typed on it, and a visit token is free
+ * to mint, so the per-visitor cap alone let a script send acknowledgement SMS to any number from the shop's own
+ * credit (the credit that also carries sign-in codes). Far above a real day's questions; reaching it refuses new ones
+ * as "too many" until the oldest ages out (2026-10-29).
+ */
+export const QUESTIONS_PER_SHOP_PER_DAY = 150;
 export const QUESTION_MIN = 8;
 export const QUESTION_MAX = 500;
 export const ANSWER_MIN = 2;
@@ -29,6 +36,8 @@ export interface PublicQuestion { id: string; askerName: string; question: strin
 export interface IProductQuestionRepository {
   productExists(productId: string): Promise<{ name: string; slug: string } | null>;
   countAskedSince(askerIdentityHash: string, since: Date): Promise<number>;
+  /** Every question asked in the shop since `since` (the shop-wide ceiling). */
+  countAllAskedSince(since: Date): Promise<number>;
   insert(input: { productId: string; askerIdentityHash: string; askerName: string; askerPhone: string | null; askerEmail: string | null; question: string }): Promise<{ id: string }>;
   listAnswered(productId: string, limit: number): Promise<PublicQuestion[]>;
   listByStatus(status: QuestionStatus, limit: number): Promise<ProductQuestionRow[]>;
@@ -81,7 +90,9 @@ export class AskProductQuestionUseCase {
     const product = await this.repo.productExists(input.productId);
     if (!product) return { ok: false, reason: 'NO_PRODUCT' };
     const now = this.now();
-    if ((await this.repo.countAskedSince(input.askerIdentityHash, new Date(now.getTime() - 86_400_000))) >= QUESTIONS_PER_VISITOR_PER_DAY) return { ok: false, reason: 'TOO_MANY' };
+    const dayAgo = new Date(now.getTime() - 86_400_000);
+    if ((await this.repo.countAskedSince(input.askerIdentityHash, dayAgo)) >= QUESTIONS_PER_VISITOR_PER_DAY) return { ok: false, reason: 'TOO_MANY' };
+    if ((await this.repo.countAllAskedSince(dayAgo)) >= QUESTIONS_PER_SHOP_PER_DAY) return { ok: false, reason: 'TOO_MANY' };
     const { id } = await this.repo.insert({ productId: input.productId, askerIdentityHash: input.askerIdentityHash, askerName: name, askerPhone: phone, askerEmail: email, question });
     // The desk sees it like any other follow-up; a failure to open the task never loses the question (it is saved).
     await this.care.openTask({
