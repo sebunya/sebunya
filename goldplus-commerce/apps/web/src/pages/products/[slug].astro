@@ -715,7 +715,7 @@ if (product) {
               ) : (
                 <p class="mt-1">
                   We have not checked this battery against the {selectedDevice.label}. That does not mean it will not fit,
-                  it means we have not confirmed it. <a href={`/battery-finder?device=${encodeURIComponent(selectedDevice.slug)}`} class="font-bold underline">See what we have checked for it</a>.
+                  it means we have not confirmed it. <a href={`/battery-finder?device=${encodeURIComponent(selectedDevice.slug)}`} class="font-bold underline">See the batteries that fit it</a>.
                 </p>
               )}
             </div>
@@ -1026,8 +1026,8 @@ if (product) {
             <h2 id="battery-fits-heading" class="text-xl font-black text-slate-900">Phones this battery fits</h2>
             <p class="mt-1 text-sm text-slate-600">
               {hasAwaitingFit
-                ? 'A phone marked "not yet checked" is one a supplier lists this battery for; we have not confirmed it ourselves. Every other phone below has been checked and published by GoldPlus staff. A phone that is not listed has not been checked; we will confirm it for you rather than guess.'
-                : 'Every phone below has been checked and published by GoldPlus staff. A phone that is not listed has not been checked; we will confirm it for you rather than guess.'}
+                ? "These fits come from our own checks and our supplier's compatibility list. Your phone is not listed? Message us and we will confirm the right battery rather than guess."
+                : 'Every phone below has been checked and published by GoldPlus staff. Your phone is not listed? Message us and we will confirm the right battery rather than guess.'}
             </p>
             {battery.devices.length > 0 ? (
               <ul class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">

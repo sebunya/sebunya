@@ -95,7 +95,8 @@ export interface IBatteryFinderRepository {
   batteryCandidates(): Promise<BatteryCandidate[]>;
   fuzzyDevices(query: string, limit: number): Promise<Array<{ id: string; score: number }>>;
   fuzzyBatteries(queryNormalised: string, limit: number): Promise<Array<{ productId: string; score: number }>>;
-  verifiedFitCount(): Promise<number>;
+  /** Public fits that count for indexing; with includeListed, live supplier-listed fits count too (owner policy 2026-10-28). */
+  verifiedFitCount(includeListed?: boolean): Promise<number>;
 
   recordEvent(event: FinderEventWrite): Promise<void>;
   createRequest(input: Omit<BatteryRequestRecord, 'id' | 'createdAt' | 'status' | 'resolutionNote' | 'resolvedDeviceId' | 'resolvedAliasId' | 'resolvedBatteryProductId' | 'resolvedBy' | 'resolvedAt'> & { sessionHash: string | null }): Promise<BatteryRequestRecord>;

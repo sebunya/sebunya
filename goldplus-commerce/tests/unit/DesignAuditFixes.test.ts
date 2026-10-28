@@ -124,7 +124,7 @@ describe('41 · the battery finder', () => {
     expect(page).toContain("{search?.kind === 'SUGGESTIONS' && !emptySuggestions && (");
     expect(page).toContain('Which {brandOnly.label} phone?');
     // When the finder holds the brand's phones, the prompt links to their list.
-    expect(page).toContain('See the {brandOnly.label} phones we have checked →');
+    expect(page).toContain('See the {brandOnly.label} phones we have batteries for →');
     expect(page).toContain('b.deviceCount > 0');
     // The request form gets the brand, not the brand typed as a model.
     expect(page).toContain("value={brand?.brand.name ?? brandOnly?.label ?? ''}");

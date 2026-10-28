@@ -54,7 +54,9 @@ export const PUBLIC_FIT_LABELS: Record<PublicFitState, string> = {
   VERIFIED_IN_STOCK: 'Verified fit, in stock',
   VERIFIED_OUT_OF_STOCK: 'Verified fit, out of stock',
   CONDITIONAL: 'Fits with a condition',
-  AWAITING_VERIFICATION: 'Listed by the supplier, not yet checked by us',
+  // Owner policy 2026-10-28: the supplier's compatibility list is enough to call it a fit; no
+  // second-person check is required. The label still says where the fit comes from.
+  AWAITING_VERIFICATION: "Fits, from our supplier's compatibility list",
 };
 
 export const MOVEMENT_TYPES = ['OPENING', 'RECEIPT', 'COUNT', 'ADJUSTMENT', 'DAMAGED', 'LOST', 'RETURN', 'CORRECTION'] as const;
@@ -101,7 +103,7 @@ export interface BatteryFinderConfig {
 
 export const DEFAULT_BATTERY_FINDER_CONFIG: BatteryFinderConfig = {
   headline: 'Find the right battery for your phone',
-  intro: 'Choose your phone or type a battery code. We only show batteries we have checked against that phone, and we say when a fit has not been checked yet.',
+  intro: "Choose your phone or type a battery code. We show the batteries that fit it, from our own checks and our supplier's compatibility list.",
   findByPhoneLabel: 'Find by phone',
   searchByCodeLabel: 'Search by battery code',
   searchPlaceholder: 'Phone model or battery code, for example Spark 7 or BL-49FT',
@@ -110,7 +112,7 @@ export const DEFAULT_BATTERY_FINDER_CONFIG: BatteryFinderConfig = {
   noResultBody: 'That does not mean one does not exist. We will not guess with your phone. Check the exact model number, try again, or send us the details and we will confirm before you buy.',
   requestCta: 'Ask us to find this battery',
   whatsappPrefill: 'Hello GoldPlus, I need a battery for my ',
-  awaitingVerificationNote: 'A supplier lists this battery for your phone. We have not checked the fit ourselves yet, so confirm with us before you buy.',
+  awaitingVerificationNote: "This fit comes from our supplier's compatibility list. Not sure of your exact model? Message us and we will confirm it.",
   conditionalNote: 'This battery fits with a condition. Read it before you order.',
   outOfStockNote: 'We have checked this fit but the battery is out of stock right now. Ask us when it is back.',
   brandOrderMode: 'FEATURED_THEN_COVERAGE',

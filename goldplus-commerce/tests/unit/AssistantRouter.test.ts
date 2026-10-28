@@ -104,11 +104,11 @@ describe('assistant router: deterministic answers come from shop data', () => {
 
   it('a battery question with a phone runs the finder and renders fits as cards with their labels; an ambiguous phone asks one question', async () => {
     const { answerDeterministically, classify } = await import('../../apps/web/src/lib/assistantRouter');
-    callTool.mockResolvedValueOnce({ content: [{ type: 'text', text: 'x' }], structuredContent: { kind: 'DEVICE', device: { label: 'TECNO Spark 7 (KF6n)' }, results: [{ name: 'GoldPlus Battery GP-49FT', slug: 'bl-49ft-battery', canonicalCode: 'GP-49FT', priceUgx: 35000, inStock: true, imageUrl: null, fitState: 'AWAITING_VERIFICATION', fitLabel: 'Listed by the supplier, not yet checked by us' }] } });
+    callTool.mockResolvedValueOnce({ content: [{ type: 'text', text: 'x' }], structuredContent: { kind: 'DEVICE', device: { label: 'TECNO Spark 7 (KF6n)' }, results: [{ name: 'GoldPlus Battery GP-49FT', slug: 'bl-49ft-battery', canonicalCode: 'GP-49FT', priceUgx: 35000, inStock: true, imageUrl: null, fitState: 'AWAITING_VERIFICATION', fitLabel: "Fits, from our supplier's compatibility list" }] } });
     const fit = await answerDeterministically(classify('battery for tecno spark 7'));
     expect(callTool).toHaveBeenCalledWith('find_battery', { phone_or_code: 'tecno spark 7' });
-    expect(fit.products[0]).toMatchObject({ name: 'GoldPlus Battery GP-49FT', url: 'https://shopgoldplus.com/products/bl-49ft-battery', price_ugx: 35000, note: 'Listed by the supplier, not yet checked by us' });
-    expect(fit.text).toMatch(/confirm the fit before you pay/);
+    expect(fit.products[0]).toMatchObject({ name: 'GoldPlus Battery GP-49FT', url: 'https://shopgoldplus.com/products/bl-49ft-battery', price_ugx: 35000, note: "Fits, from our supplier's compatibility list" });
+    expect(fit.text).toMatch(/one battery that fits\. Some fits come from our supplier's compatibility list/);
     callTool.mockResolvedValueOnce({ content: [{ type: 'text', text: 'x' }], structuredContent: { kind: 'AMBIGUOUS_DEVICE', devices: [{ label: 'TECNO Spark 10' }, { label: 'TECNO Spark 10C' }, { label: 'TECNO Spark 10 Pro' }] } });
     const ambiguous = await answerDeterministically(classify('battery for tecno spark 10'));
     expect(ambiguous.text).toMatch(/Which of these is your phone\? TECNO Spark 10, TECNO Spark 10C, TECNO Spark 10 Pro/);

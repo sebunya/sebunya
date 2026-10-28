@@ -337,7 +337,8 @@ export class BatteryFinderUseCases {
 
   async indexable(): Promise<boolean> {
     const cfg = await this.config();
-    return (await this.repo.verifiedFitCount()) >= cfg.minVerifiedFitsForIndexing;
+    // Owner policy 2026-10-28: fits from the supplier's list are fits, so they count while the finder shows them.
+    return (await this.repo.verifiedFitCount(cfg.showAwaitingVerification)) >= cfg.minVerifiedFitsForIndexing;
   }
 }
 

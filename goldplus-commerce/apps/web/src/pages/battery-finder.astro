@@ -10,7 +10,7 @@ import type { BatteryFinderConfig, FinderBatteryResultDto, FinderBrandDto, Finde
 /**
  * The public battery finder. It shows only fits an operator has verified and
  * published, and it labels each one for what it is: verified, verified but out
- * of stock, conditional, or listed by a supplier and not yet checked by us. It
+ * of stock, conditional, or from the supplier's compatibility list (owner policy 2026-10-28: a fit). It
  * never presents a similar-looking code or phone name as a fit.
  */
 const url = new URL(Astro.request.url);
@@ -120,23 +120,19 @@ const brandOnlyList = brandOnly
 const results: FinderBatteryResultDto[] = device?.results ?? (search?.kind === 'DEVICE' ? search.results : []);
 const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 'DEVICE' ? search.device : null);
 
-// Counters say what is on the page: verified fits first, then fits a supplier
-// lists that we have not checked (only counted while the finder shows them).
+// Counters say what is on the page. Owner policy 2026-10-28: a fit from the supplier's
+// compatibility list counts as a fit, so checked and listed fits are one number.
 const brandCount = (b: { verifiedFits: number; coverageCount: number; deviceCount: number }): string => {
-  const listed = Math.max(0, b.coverageCount - b.verifiedFits);
-  const parts = [b.verifiedFits > 0 ? `${b.verifiedFits} checked` : '', listed > 0 ? `${listed} listed` : ''].filter(Boolean);
-  return parts.length ? parts.join(', ') : `${b.deviceCount} phones`;
+  const fits = Math.max(b.verifiedFits, b.coverageCount);
+  return fits > 0 ? `${fits} ${fits === 1 ? 'fit' : 'fits'}` : `${b.deviceCount} phones`;
 };
 const deviceCount = (dv: { verifiedFits: number; listedFits: number }): string => {
-  const parts = [
-    dv.verifiedFits > 0 ? `${dv.verifiedFits} ${dv.verifiedFits === 1 ? 'battery' : 'batteries'} we have checked` : '',
-    dv.listedFits > 0 ? `${dv.listedFits} listed by the supplier, not yet checked by us` : '',
-  ].filter(Boolean);
-  return parts.length ? parts.join(' · ') : 'No battery matched yet';
+  const fits = dv.verifiedFits + dv.listedFits;
+  return fits > 0 ? `${fits} ${fits === 1 ? 'battery fits' : 'batteries fit'}` : 'No battery matched yet';
 };
 ---
 
-<BaseLayout title={headline} description={cfg?.intro ?? 'Search your phone or a battery code to see the batteries we have checked.'} canonicalUrl={canonicalUrl} robotsMeta={robotsMeta}>
+<BaseLayout title={headline} description={cfg?.intro ?? 'Search your phone or a battery code to see the batteries that fit it.'} canonicalUrl={canonicalUrl} robotsMeta={robotsMeta}>
   <div class="container mx-auto px-4 py-8 sm:py-10 max-w-4xl">
     <h1 class="text-2xl sm:text-3xl font-black text-brand-dark tracking-tight">{headline}</h1>
     {cfg && <p class="text-gray-600 mt-2 max-w-2xl text-sm sm:text-base">{cfg.intro}</p>}
@@ -171,7 +167,7 @@ const deviceCount = (dv: { verifiedFits: number; listedFits: number }): string =
                 </a></li>
               ))}
             </ul>
-            <p class="mt-2 text-xs text-gray-600">The number is how many batteries we have checked for that brand.</p>
+            <p class="mt-2 text-xs text-gray-600">The number is how many battery fits we list for that brand.</p>
           </section>
         )}
 
@@ -236,9 +232,9 @@ const deviceCount = (dv: { verifiedFits: number; listedFits: number }): string =
             </article>
             {search.devices.length > 0 && (
               <>
-                <h3 class="mt-6 text-sm font-black uppercase tracking-widest text-gray-500">{search.devices.every((dv) => dv.fitState === 'AWAITING_VERIFICATION') ? 'Phones it is listed for, not yet checked by us' : search.devices.some((dv) => dv.fitState === 'AWAITING_VERIFICATION') ? 'Phones it fits (checked unless marked)' : 'Phones we have checked it against'}</h3>
+                <h3 class="mt-6 text-sm font-black uppercase tracking-widest text-gray-500">Phones it fits</h3>
                 <ul class="mt-2 flex flex-wrap gap-2">
-                  {search.devices.map((dv) => <li><a href={`/battery-finder?device=${encodeURIComponent(dv.slug)}`} title={dv.fitLabel} class="inline-block rounded-full border border-gray-300 px-3 py-1.5 text-xs font-bold hover:border-brand-primary">{dv.label}{dv.fitState === 'AWAITING_VERIFICATION' ? <span class="text-blue-900 font-normal"> · not yet checked</span> : null}</a></li>)}
+                  {search.devices.map((dv) => <li><a href={`/battery-finder?device=${encodeURIComponent(dv.slug)}`} title={dv.fitLabel} class="inline-block rounded-full border border-gray-300 px-3 py-1.5 text-xs font-bold hover:border-brand-primary">{dv.label}</a></li>)}
                 </ul>
               </>
             )}
@@ -291,7 +287,7 @@ const deviceCount = (dv: { verifiedFits: number; listedFits: number }): string =
               example {brandOnly.examples.slice(0, -1).join(', ')} or {brandOnly.examples[brandOnly.examples.length - 1]}.
             </p>
             {brandOnlyList && (
-              <p class="mt-3 text-sm"><a href={`/battery-finder?brand=${encodeURIComponent(brandOnlyList.slug)}`} class="font-bold underline text-brand-dark">See the {brandOnly.label} phones we have checked →</a></p>
+              <p class="mt-3 text-sm"><a href={`/battery-finder?brand=${encodeURIComponent(brandOnlyList.slug)}`} class="font-bold underline text-brand-dark">See the {brandOnly.label} phones we have batteries for →</a></p>
             )}
             <p class="mt-3 text-xs text-slate-600">{cfg?.modelNumberHelp}</p>
           </section>

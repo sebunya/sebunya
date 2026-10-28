@@ -221,7 +221,7 @@ export async function answerDeterministically(c: Classification, ci?: CareInput)
         })).filter((p) => p.name);
         if (!products.length) return { intent: c.intent, text: `We haven't confirmed a battery for the ${String(device.label ?? c.query)} yet, so I won't guess. Send us the model on WhatsApp and the team will confirm the right one.`, products: [], links };
         const awaiting = results.some((r) => r.fitState === 'AWAITING_VERIFICATION');
-        return { intent: c.intent, text: `For the ${String(device.label ?? c.query)} we have ${products.length === 1 ? 'one battery' : `${products.length} batteries`} listed.${awaiting ? ' Where it says "not yet checked", the fit is listed by the supplier; we confirm the fit before you pay.' : ''}`, products, links };
+        return { intent: c.intent, text: `For the ${String(device.label ?? c.query)} we have ${products.length === 1 ? 'one battery' : `${products.length} batteries`} that ${products.length === 1 ? 'fits' : 'fit'}.${awaiting ? " Some fits come from our supplier's compatibility list; if you're unsure of your exact model, send it on WhatsApp and the team will confirm." : ''}`, products, links };
       }
       if (kind === 'AMBIGUOUS_DEVICE' || kind === 'SUGGESTIONS') {
         const devices = Array.isArray(s.devices) ? (s.devices as Json[]).slice(0, 6).map((d) => String(d.label ?? '')) : [];
