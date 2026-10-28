@@ -4,6 +4,7 @@ import { offerPriceUgx } from '../lib/offerPrice';
 import { serializeJsonLd, schemaAvailability } from '../lib/jsonld';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { merchantReturnPolicyJsonLd } from '../lib/returnsPolicy';
+import { batteryProductJsonLdProps, type BatteryJsonLdFacts } from '../lib/phoneBatteryPage';
 
 interface Props {
   product: ProductPublicDto;
@@ -12,9 +13,16 @@ interface Props {
   priceUgx?: number | null;
   /** AggregateRating from published, verified-purchase reviews; omitted when there are none. */
   aggregateRating?: Record<string, unknown> | null;
+  /**
+   * A replacement battery: the pack code, the recorded capacity and voltage
+   * (only when the catalogue holds them) and the phones it is published as
+   * fitting, so an engine reads "spare part for <phone>" as a fact rather
+   * than inferring it from the name. Nothing here is invented: null stays out.
+   */
+  battery?: BatteryJsonLdFacts | null;
 }
 
-const { product, url, priceUgx, aggregateRating } = Astro.props;
+const { product, url, priceUgx, aggregateRating, battery } = Astro.props;
 
 
 const node: Record<string, unknown> = {
@@ -66,6 +74,12 @@ if (verifiedAttrs.length > 0) {
     if (v.unit) prop.unitText = v.unit;
     return prop;
   });
+}
+
+if (battery) {
+  const { additionalProperty, ...rest } = batteryProductJsonLdProps(battery, !!hasValidMpn);
+  Object.assign(node, rest);
+  node.additionalProperty = [...((node.additionalProperty as unknown[] | undefined) ?? []), ...additionalProperty];
 }
 
 if (product.retailPriceUgx !== null) {

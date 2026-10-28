@@ -7,6 +7,7 @@ import {
   type FinderBatteryResultDto,
   type FinderBrandDto,
   type FinderDeviceDto,
+  type FinderFitIndexDto,
   type FinderResolution,
   type PublicFitState,
   salePriceUgx,
@@ -108,6 +109,25 @@ export class BatteryFinderUseCases {
     // ordered here so featured, newer and more-searched phones come first.
     const devices = orderModels(found.devices).map(({ displayOrder: _o, demandCount: _d, seriesId: _s, ...d }) => d);
     return { brand: found.brand, series: found.series, devices };
+  }
+
+  /**
+   * Every phone with a battery to buy, by brand (FinderFitIndexDto). The hub's
+   * "by phone" list, the per-phone pages' sitemap entries and the finder read
+   * this one answer, so a phone can never be listed in one place and missing
+   * from another. Follows the same awaiting switch as the results themselves.
+   */
+  async fitIndex(): Promise<FinderFitIndexDto> {
+    const cfg = await this.config();
+    const rows = await this.repo.devicesWithPublicFits(cfg.showAwaitingVerification);
+    const byBrand = new Map<string, FinderFitIndexDto['brands'][number]>();
+    for (const row of rows) {
+      const brand = byBrand.get(row.brandSlug) ?? { name: row.brandDisplayName, slug: row.brandSlug, devices: [] };
+      brand.devices.push({ slug: row.slug, model: row.model, modelNumber: row.modelNumber, variant: row.variant, label: row.label, verifiedFits: row.verifiedFits, listedFits: row.listedFits });
+      byBrand.set(row.brandSlug, brand);
+    }
+    const brands = [...byBrand.values()].sort((a, b) => b.devices.length - a.devices.length || a.name.localeCompare(b.name));
+    return { brands, deviceCount: rows.length };
   }
 
   private toResult(row: PublicFitRow, state: PublicFitState, campaign: StorefrontDiscount): FinderBatteryResultDto {

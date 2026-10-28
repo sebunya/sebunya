@@ -88,7 +88,10 @@ const clarityId = /^[a-z0-9]{6,20}$/.test(import.meta.env.PUBLIC_CLARITY_ID ?? '
 // Clarity records page TEXT, not only inputs: everything is masked except the
 // public catalogue (home, shop, products, categories, blog, info pages), so a
 // name, phone or quote shown back on any other page is never recorded.
-const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|search|batteries|deals|about|faq|delivery|returns|warranty|contact)(\/|$|\?)/.test(Astro.url.pathname);
+// Public catalogue routes by their real names: the hubs (/power, /audio, /storage, /phone-batteries …),
+// the finder and the local pages were masked whole because this list named a `batteries` route that
+// never existed (found 2026-10-28). Inputs stay masked by Clarity's own default either way.
+const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|search|battery-finder|phone-batteries|power|audio|storage|computer-accessories|car-accessories|locations|deals|about|faq|delivery|returns|warranty|contact|support|verification)(\/|$|\?)/.test(Astro.url.pathname);
 /** The attribution rulebook (packages/shared/src/attribution/arrival.ts) as data for the inline tag loader. */
 const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, bots: DECLARED.source };
 

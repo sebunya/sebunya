@@ -30,7 +30,7 @@ Use it when someone asks what GoldPlus sells, what something costs, whether it i
    - \`search_products\` — words, SKU or model; returns UGX price, stock and link
    - \`get_product\` — one product by slug or page URL, with verified specifications
    - \`list_categories\` — categories and the slug to filter by
-   - \`find_battery\` — a phone model or battery code; only checked fits are returned
+   - \`find_battery\` — a phone model or battery code; each fit states its source, never a guess
    - \`store_info\` — address, hours, phone/WhatsApp, delivery terms
 2. Without MCP, read ${SITE_ORIGIN}/llms-full.txt (every product with today's price) or call the public API described at ${SITE_ORIGIN}/openapi.json.
 

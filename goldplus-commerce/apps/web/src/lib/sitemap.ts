@@ -35,7 +35,8 @@ export const STATIC_SITEMAP_PATHS: readonly string[] = [
   '/terms',
   '/privacy',
   // Indexable, footer-linked policy pages that were never submitted.
-  // /battery-finder stays out until its indexable flag can be read here.
+  // /battery-finder is not static: sitemaps/hubs.xml lists it while the finder
+  // reports itself indexable, next to the per-phone /phone-batteries pages.
   '/cookies',
   '/loyalty-terms',
   // What the machine endpoints are and how an assistant connects (/mcp, /openapi.json).

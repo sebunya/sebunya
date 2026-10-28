@@ -55,6 +55,16 @@ const spec = {
         },
       },
     },
+    '/batteries/finder/fit-index': {
+      get: {
+        operationId: 'listPhonesWithBatteries',
+        summary: 'Every phone GoldPlus has a battery for today, by brand',
+        description: 'Each device links to its page at https://shopgoldplus.com/phone-batteries/{slug}. A phone is absent when no battery for it can be bought.',
+        responses: {
+          '200': { description: 'Brands with their phones', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { type: 'object', properties: { deviceCount: { type: 'integer' }, brands: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, slug: { type: 'string' }, devices: { type: 'array', items: { type: 'object', properties: { slug: { type: 'string' }, label: { type: 'string' }, modelNumber: { type: 'string', nullable: true }, verifiedFits: { type: 'integer' }, listedFits: { type: 'integer' } } } } } } } } } } } } } },
+        },
+      },
+    },
     '/batteries/finder/search': {
       get: {
         operationId: 'findBattery',

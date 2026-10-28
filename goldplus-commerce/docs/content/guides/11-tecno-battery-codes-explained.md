@@ -56,4 +56,4 @@ Our battery finder lists fits from our own checks and from our supplier's compat
 
 # Find your Tecno battery
 
-Search by model or code in the [battery finder](/battery-finder), or browse all [phone batteries](/phone-batteries) and compare the code in the listing with your old battery. Still unsure? WhatsApp your model number or a clear photo of the battery label to 0705 004545. We confirm the fit before you pay.
+Search by model or code in the [battery finder](/battery-finder), or browse all [phone batteries](/phone-batteries) and compare the code in the listing with your old battery. Still unsure? WhatsApp your model number or a clear photo of the battery label to 0705 004545 and we confirm the fit before you order.

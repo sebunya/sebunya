@@ -43,7 +43,24 @@ export function batteryMessage(error: { code: string; message: string } | null):
   }
 }
 
-export type PublicResult<T> = { ok: true; data: T } | { ok: false; unavailable: true };
+/**
+ * The anonymous key the finder hashes (with its own pepper, server side) to tie
+ * one visitor's search, phone page, product view and basket add together in the
+ * demand report: the signed visit locator the middleware already issues
+ * (`locals.gpVisit`, cookie gp_visit). The finder used to read
+ * `goldplus_cart_session` / `gp_finder`, names nothing on this site ever set,
+ * so every finder event was recorded without a session (found 2026-10-28).
+ * (0125 meant the basket credential; that is now resolved for page documents
+ * only, while the visit locator also reaches the /api relay that sends the
+ * funnel beacons.) Null on a browser's very first request and for clients that
+ * keep no cookies.
+ */
+export function finderSessionId(locals: { gpVisit?: string | null }): string | null {
+  return locals.gpVisit || null;
+}
+
+/** `status` tells a page apart: 404 is "no such phone" (a real 404), anything else is the service being away. */
+export type PublicResult<T> = { ok: true; data: T } | { ok: false; unavailable: true; status: number };
 
 export interface BatteryRequestInput {
   queryText: string | null;
@@ -91,9 +108,9 @@ export async function publicBattery<T>(path: string, sessionId?: string | null):
     });
     const json = await res.json().catch(() => null);
     if (json?.success) return { ok: true, data: json.data as T };
-    return { ok: false, unavailable: true };
+    return { ok: false, unavailable: true, status: res.status };
   } catch {
-    return { ok: false, unavailable: true };
+    return { ok: false, unavailable: true, status: 0 };
   }
 }
 

@@ -67,4 +67,4 @@ Never try to remove or replace a swollen battery yourself. Stop using and chargi
 
 # Find your iPhone battery
 
-Use the [battery finder](/battery-finder) to find the battery for your exact model, or browse all [phone batteries](/phone-batteries). Our iPhone batteries are listed by the model they fit, and we confirm the fit before you pay. Questions? WhatsApp 0705 004545.
+Use the [battery finder](/battery-finder) to find the battery for your exact model, or browse all [phone batteries](/phone-batteries). Our iPhone batteries are listed by the model they fit; WhatsApp 0705 004545 with your model and we confirm the fit before you order. Questions? WhatsApp 0705 004545.

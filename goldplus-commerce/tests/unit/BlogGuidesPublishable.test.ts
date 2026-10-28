@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { parseGuideFile, internalLinks } from '../../apps/api/src/domain/blog/GuideFile';
+import { parseGuideFile, internalLinks, guideChanged } from '../../apps/api/src/domain/blog/GuideFile';
 import { canPublish, slugifyTitle } from '../../apps/api/src/domain/blog/BlogPost';
 
 /**
@@ -37,3 +37,24 @@ describe('blog guides', () => {
     expect(new Set(slugs).size).toBe(slugs.length);
   });
 });
+
+describe('republishing guides moves dateModified only for real edits', () => {
+  const stored = { title: 'Tecno battery codes', excerpt: 'Why the code matters.', body: 'Body text.', metaTitle: 'Tecno codes | GoldPlus', metaDescription: 'Codes explained.', relatedProductIds: ['a', 'b'] };
+  const same = { ...stored, relatedProductIds: [...stored.relatedProductIds] };
+  it('an identical file, or one differing only by whitespace a save trims, is unchanged', () => {
+    expect(guideChanged(stored, same)).toBe(false);
+    expect(guideChanged(stored, { ...same, title: '  Tecno battery codes ', excerpt: 'Why the code matters.\n' })).toBe(false);
+  });
+  it('any field the file controls, or the related products, is a change', () => {
+    expect(guideChanged(stored, { ...same, body: 'Body text, edited.' })).toBe(true);
+    expect(guideChanged(stored, { ...same, metaDescription: null })).toBe(true);
+    expect(guideChanged(stored, { ...same, relatedProductIds: ['b', 'a'] })).toBe(true);
+    expect(guideChanged(stored, { ...same, title: 'x' })).toBe(true); // invalid: let the save report it
+  });
+  it('the publisher skips unchanged guides and keeps a cover set in the editor', () => {
+    const script = readFileSync(join(__dirname, '../../apps/api/src/scripts/publish-guides.ts'), 'utf8');
+    expect(script).toMatch(/if \(existing && same\) \{\s*post = existing; unchanged \+= 1;/);
+    expect(script).toContain('coverImageUrl: existing?.coverImageUrl ?? null, coverImageAlt: existing?.coverImageAlt ?? null');
+  });
+});
+

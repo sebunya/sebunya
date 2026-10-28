@@ -59,7 +59,7 @@ export const TOOLS = [
     name: 'find_battery',
     title: 'Find a replacement phone battery',
     description:
-      'The GoldPlus battery finder: give a phone model (e.g. "Tecno Spark 7", "Samsung A03") or a battery code (e.g. "BL-49FT"). It only returns fits GoldPlus has checked, says when a fit is unverified, and never guesses; GoldPlus confirms the fit before a customer pays.',
+      'The GoldPlus battery finder: give a phone model (e.g. "Tecno Spark 7", "Samsung A03") or a battery code (e.g. "BL-49FT"). Every fit states its source (checked by GoldPlus, or listed by the supplier); it never guesses, and says so when a phone is not matched. A customer can have the fit confirmed on WhatsApp before ordering.',
     inputSchema: {
       type: 'object',
       properties: { phone_or_code: { type: 'string', minLength: 2, maxLength: 120 } },
@@ -165,7 +165,7 @@ export async function callTool(name: string, args: Json): Promise<Json> {
       const note =
         kind === 'NO_RESULT' || kind === 'SUGGESTIONS' || kind === 'AMBIGUOUS_DEVICE'
           ? `${String(rest.message ?? '')} GoldPlus can confirm the right battery on WhatsApp: ${biz.whatsappUrl}`
-          : `Result for "${q}" (${kind}). Fits are only shown when GoldPlus has checked them; the fit is confirmed before payment. Battery finder: ${SITE_ORIGIN}/battery-finder`;
+          : `Result for "${q}" (${kind}). Each fit states its source (checked by GoldPlus, or the supplier's compatibility list); a customer can have it confirmed on WhatsApp before ordering. Battery finder: ${SITE_ORIGIN}/battery-finder`;
       return toolText({ ...rest, finder_url: `${SITE_ORIGIN}/battery-finder`, whatsapp: biz.whatsappUrl }, note.trim());
     }
     case 'store_info': {

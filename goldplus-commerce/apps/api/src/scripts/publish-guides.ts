@@ -4,14 +4,15 @@ import { join, resolve } from 'node:path';
 import { sql } from 'drizzle-orm';
 import { Registry } from '../infrastructure/Registry';
 import { db, endDbConnection } from '../infrastructure/db/client';
-import { parseGuideFile, internalLinks } from '../domain/blog/GuideFile';
+import { parseGuideFile, internalLinks, guideChanged } from '../domain/blog/GuideFile';
 import { slugifyTitle, canPublish } from '../domain/blog/BlogPost';
 
 /**
  * Publishes the guide drafts under docs/content/guides through the SAME use
  * cases the admin blog editor uses (create as DRAFT, update, publish), audited
  * per article like the editor's own writes. Idempotent: a guide whose slug
- * already exists is updated in place (a PUBLISHED one keeps its URL and must
+ * already exists is updated in place only when its content differs (an
+ * unchanged one keeps its dateModified), keeping any cover image set in the editor (a PUBLISHED one keeps its URL and must
  * still pass the publish gate); a guide marked `Publish: hold` is saved as a
  * DRAFT and left for an operator to publish by hand.
  *
@@ -29,7 +30,7 @@ async function main(): Promise<void> {
   if (files.length === 0) throw new Error(`No numbered guide files in ${dir}.`);
 
   const r = Registry.getInstance();
-  let created = 0, updated = 0, published = 0, held = 0, failed = 0;
+  let created = 0, updated = 0, unchanged = 0, published = 0, held = 0, failed = 0;
   for (const file of files) {
     const parsed = parseGuideFile(readFileSync(join(dir, file), 'utf8'));
     if (!parsed.ok) { failed += 1; console.log(`  ${file}: INVALID — ${parsed.message}`); continue; }
@@ -44,14 +45,21 @@ async function main(): Promise<void> {
     }
 
     const existing = await r.blogRepo.findBySlug(slug, { includeUnpublished: true });
+    // A guide file carries no cover image; the editor may have added one. Keep it:
+    // an update without these fields saved them as null and wiped the photo.
+    const input = { title: g.title, slug, excerpt: g.excerpt, body: g.body, metaTitle: g.metaTitle, metaDescription: g.metaDescription, relatedProductIds,
+      coverImageUrl: existing?.coverImageUrl ?? null, coverImageAlt: existing?.coverImageAlt ?? null };
+    // Unchanged guides are left alone, so dateModified and the sitemap lastmod move only for real edits (GuideFile.guideChanged).
+    const same = !!existing && !guideChanged({ ...existing, relatedProductIds: await r.blogRepo.relatedProductIds(existing.id) }, input);
     const gate = canPublish({ title: g.title, excerpt: g.excerpt, body: g.body });
     const intent = g.hold ? 'hold as DRAFT' : gate.ok ? 'publish' : `cannot publish (${gate.ok ? '' : gate.message})`;
-    console.log(`  ${file}: ${existing ? `update ${existing.status} /blog/${existing.slug}` : `create /blog/${slug}`} → ${intent}; links: ${internalLinks(g.body).join(' ') || 'none'}; related: ${relatedProductIds.length}`);
+    console.log(`  ${file}: ${existing ? `${same ? 'unchanged' : 'update'} ${existing.status} /blog/${existing.slug}` : `create /blog/${slug}`} → ${intent}; links: ${internalLinks(g.body).join(' ') || 'none'}; related: ${relatedProductIds.length}`);
     if (dryRun) continue;
 
-    const input = { title: g.title, slug, excerpt: g.excerpt, body: g.body, metaTitle: g.metaTitle, metaDescription: g.metaDescription, relatedProductIds };
     let post;
-    if (existing) {
+    if (existing && same) {
+      post = existing; unchanged += 1;
+    } else if (existing) {
       const res = await r.updatePostUseCase.execute(existing.id, input);
       if (!res.ok) { failed += 1; console.log(`    FAILED: ${res.message}`); continue; }
       post = res.value; updated += 1;
@@ -70,7 +78,7 @@ async function main(): Promise<void> {
     published += 1;
     await r.createAuditLogUseCase.execute({ actorId, action: 'BLOG_POST_PUBLISHED', entity: 'blog_post', entityId: post.id, newState: { slug: post.slug, publishedAt: pub.value.publishedAt, source: file } });
   }
-  console.log(`${files.length} guides: created ${created}, updated ${updated}, published ${published}, held ${held}, failed ${failed}${dryRun ? ' (DRY RUN — nothing written)' : ''}`);
+  console.log(`${files.length} guides: created ${created}, updated ${updated}, unchanged ${unchanged}, published ${published}, held ${held}, failed ${failed}${dryRun ? ' (DRY RUN — nothing written)' : ''}`);
   if (failed > 0) process.exitCode = 1;
 }
 main().then(() => endDbConnection()).catch(async (e) => { console.error(e); await endDbConnection(); process.exit(1); });

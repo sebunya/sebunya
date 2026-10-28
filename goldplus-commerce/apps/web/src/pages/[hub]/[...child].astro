@@ -24,6 +24,9 @@ import { findRecordedRedirect } from '../../lib/recordedRedirect';
 import { carryQuery } from '../../lib/carryQuery';
 import { offerPriceUgx } from '../../lib/offerPrice';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../../lib/storefrontDiscount';
+import { publicBattery } from '../../lib/batteries';
+import { phoneBatteryPath } from '../../lib/phoneBatteryPage';
+import type { FinderFitIndexDto } from '@goldplus/shared';
 
 /**
  * CATEGORY AUTHORITY ENGINE — one dynamic route serves every registered hub
@@ -129,6 +132,15 @@ else if (child?.keywordFilter?.[0]) shopParams.set('q', child.keywordFilter[0]);
 else if (!child && !hub.categorySlug && hub.keywordFilter?.[0]) shopParams.set('q', hub.keywordFilter[0]);
 const seeAllHref = shopParams.toString() ? `/shop?${shopParams.toString()}` : '/shop';
 
+// /phone-batteries: the phones with a battery to buy, by brand, each linking to
+// its own page. Read from the finder's fit index so the hub, the per-phone
+// pages and the sitemap can never disagree. Absent (not an empty promise) when
+// the finder is away.
+const fitIndex: FinderFitIndexDto | null = hub.slug === 'phone-batteries' && !child
+  ? await publicBattery<FinderFitIndexDto>('/finder/fit-index').then((r) => (r.ok ? r.data : null))
+  : null;
+const phoneBrands = (fitIndex?.brands ?? []).filter((b) => b.devices.length > 0);
+
 const relatedHubs = CATEGORY_HUBS.filter((h) => h.slug !== hub.slug).slice(0, 5);
 const guides = (child?.guides ?? hub.guides ?? []);
 const intro = child ? [child.intro] : hub.intro;
@@ -190,6 +202,27 @@ const intro = child ? [child.intro] : hub.intro;
         <h2 class="text-xl font-black text-slate-900">Range being stocked</h2>
         <p class="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-slate-600">This range has no live listings right now. See the full shop for what is in stock today.</p>
         <a href="/shop" class="mt-5 inline-block rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Browse the shop</a>
+      </section>
+    )}
+
+    {phoneBrands.length > 0 && (
+      <section aria-labelledby="by-phone-heading" class="mt-12">
+        <h2 id="by-phone-heading" class="text-xl font-black text-slate-900">Batteries by phone</h2>
+        <p class="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
+          {fitIndex!.deviceCount} phone{fitIndex!.deviceCount === 1 ? '' : 's'} we have a battery for today. Each page shows the pack code, the price and where the fit comes from. Your phone is not here? <a href="/battery-finder" class="font-bold underline">Search it in the finder</a> and ask us.
+        </p>
+        <div class="mt-5 space-y-5">
+          {phoneBrands.map((b) => (
+            <div>
+              <h3 class="text-sm font-black uppercase tracking-widest text-slate-500">{b.name}</h3>
+              <ul class="mt-2 flex flex-wrap gap-2">
+                {b.devices.map((d) => (
+                  <li><a href={phoneBatteryPath(d.slug)} class="inline-block rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-brand-primary">{d.model}{d.modelNumber ? ` (${d.modelNumber})` : ''}</a></li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       </section>
     )}
 

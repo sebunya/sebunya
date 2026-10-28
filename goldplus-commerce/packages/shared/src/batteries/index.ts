@@ -201,6 +201,21 @@ export interface FinderDeviceDto {
   listedFits: number;
 }
 
+/**
+ * Every phone that resolves to at least one battery a customer can buy today, grouped by brand.
+ * Feeds the /phone-batteries hub, the per-phone pages' sitemap entries and the finder's brand lists.
+ * A phone with no public fit is deliberately absent: a page for it would promise nothing.
+ */
+export interface FinderFitIndexDto {
+  brands: Array<{
+    name: string;
+    slug: string;
+    devices: Array<Pick<FinderDeviceDto, 'slug' | 'model' | 'modelNumber' | 'variant' | 'label' | 'verifiedFits' | 'listedFits'>>;
+  }>;
+  /** Phones counted across every brand. */
+  deviceCount: number;
+}
+
 export interface FinderBatteryResultDto {
   productId: string;
   slug: string;
