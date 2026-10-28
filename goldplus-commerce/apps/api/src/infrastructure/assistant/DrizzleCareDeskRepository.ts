@@ -67,6 +67,13 @@ export class DrizzleCareDeskRepository implements ICareDeskRepository {
     return r.length > 0;
   }
 
+  async resolveByAction(key: string, value: string, input: { status: 'done' | 'cancelled'; resolvedBy: string; resolution: string | null }) {
+    if (!/^[a-zA-Z]{1,40}$/.test(key) || !value) return 0;
+    const r = await db.update(careTasks).set({ status: input.status, resolvedBy: /^[0-9a-f-]{36}$/i.test(input.resolvedBy) ? input.resolvedBy : null, resolution: input.resolution, resolvedAt: sql`now()` })
+      .where(and(eq(careTasks.status, 'open'), sql`${careTasks.proposedAction}->>${key} = ${value}`)).returning({ id: careTasks.id });
+    return r.length;
+  }
+
   async assign(id: string, userId: string | null) {
     const r = await db.update(careTasks).set({ assignedTo: userId }).where(eq(careTasks.id, id)).returning({ id: careTasks.id });
     return r.length > 0;

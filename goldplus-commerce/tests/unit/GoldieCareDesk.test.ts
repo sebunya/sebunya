@@ -74,7 +74,7 @@ function desk(team: Partial<CareTeamMemberRow>[] = [], fallback?: { emails: stri
     },
     async get(id) { return tasks.find((t) => t.id === id) ?? null; },
     async list() { return tasks; },
-    async resolve() { return true; }, async assign() { return true; },
+    async resolve() { return true; }, async resolveByAction() { return 0; }, async assign() { return true; },
     async alertsSince() { return { shop: alertsSoFar.shop, samePhone: alertsSoFar.samePhone }; },
     async purgeClosedBefore() { return 0; },
     async markAlerted(id) { const t = tasks.find((x) => x.id === id); if (t) t.alertedAt = new Date(); },

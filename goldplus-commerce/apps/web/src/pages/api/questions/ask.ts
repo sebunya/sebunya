@@ -11,7 +11,8 @@ import { apiHeaders, readClientAddress } from '../../../lib/forwardClient';
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FIELDS = ['productId', 'name', 'question', 'phone', 'email'] as const;
-const MAX: Record<(typeof FIELDS)[number], number> = { productId: 36, name: 80, question: 600, phone: 32, email: 254 };
+// `phone` is the page's "phone or email" box: room for an email until it is split below (the API checks a phone's shape).
+const MAX: Record<(typeof FIELDS)[number], number> = { productId: 36, name: 80, question: 600, phone: 254, email: 254 };
 
 export const POST: APIRoute = async (context) => {
   const { request, locals, redirect } = context;
@@ -29,6 +30,9 @@ export const POST: APIRoute = async (context) => {
   }
   const body: Record<string, string> = {};
   for (const k of FIELDS) { const v = raw[k]; body[k] = typeof v === 'string' ? v.trim().slice(0, MAX[k]) : ''; }
+  // The page has one "phone or email" box (name="phone"). Its script split the two; a post without JavaScript sent
+  // an email as the phone, which the API refused as an unreadable number and the question was lost (2026-10-29).
+  if (body.phone.includes('@') && !body.email) { body.email = body.phone.slice(0, MAX.email); body.phone = ''; }
   const visit = (locals as { gpVisit?: string }).gpVisit ?? '';
   let upstream: Response | null = null;
   if (UUID.test(body.productId) && visit) {
@@ -40,7 +44,19 @@ export const POST: APIRoute = async (context) => {
     }).catch(() => null);
   }
   const backPath = /^\/products\/[a-z0-9-]+$/i.test(back) ? back : '/';
-  if (!isJson) return redirect(`${backPath}?asked=${upstream?.ok ? '1' : '0'}#questions`, 303);
-  if (!upstream) return new Response(JSON.stringify({ success: false, error: { code: 'NO_VISITOR', message: 'Refresh the page and try again.' } }), { status: 400, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+  if (!isJson) {
+    // Without JavaScript the page says why, from the API's own refusal code (the page words it).
+    let why = '';
+    if (upstream && !upstream.ok) {
+      const code = ((await upstream.json().catch(() => null)) as { error?: { code?: unknown } } | null)?.error?.code;
+      why = typeof code === 'string' && /^[A-Z_]{2,30}$/.test(code) ? `&why=${code}` : '';
+    } else if (!upstream) why = visit ? '&why=UNAVAILABLE' : '&why=NO_VISITOR';
+    return redirect(`${backPath}?asked=${upstream?.ok ? '1' : '0'}${why}#questions`, 303);
+  }
+  if (!upstream) {
+    // No visit cookie is "refresh"; an API that did not answer is not the shopper's to fix.
+    const [status, code, message] = visit ? [502, 'UNAVAILABLE', 'We could not take your question just now. Try again in a minute, or ask us on WhatsApp.'] : [400, 'NO_VISITOR', 'Refresh the page and try again.'];
+    return new Response(JSON.stringify({ success: false, error: { code, message } }), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+  }
   return new Response(await upstream.text(), { status: upstream.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 };

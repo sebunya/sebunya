@@ -61,7 +61,9 @@ if (Astro.request.method === 'POST') {
         body: String(form.get('body') ?? '').slice(0, 2000),
         photoIds,
       }, null, readClientAddress(Astro));
-      if (res.ok) thanksFor = `${String(form.get('productName') ?? 'that item')}${photoIds.length ? ` with ${photoIds.length} photo${photoIds.length === 1 ? '' : 's'}` : ''}${photoNote ? ` (${photoNote})` : ''}`;
+      // The photos the API actually attached, not the ones uploaded (an upload past its claim window is not attached).
+      const attached = res.ok ? Number((res.data as { photos?: unknown } | undefined)?.photos ?? photoIds.length) || 0 : 0;
+      if (res.ok) thanksFor = `${String(form.get('productName') ?? 'that item')}${attached ? ` with ${attached} photo${attached === 1 ? '' : 's'}` : ''}${photoNote ? ` (${photoNote})` : ''}`;
       else itemError = { productId, message: res.message ?? 'We could not take that review. Please try again.' };
     }
     const result = await eligibility();
@@ -161,7 +163,7 @@ const helpUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponen
             {itemError && itemError.productId === it.productId && <p role="alert" class="mt-3 text-sm font-semibold text-red-700">{itemError.message}</p>}
             <label class="mt-3 block">
               <span class="text-sm font-semibold text-slate-700">Add photos <span class="font-normal text-slate-500">(optional, up to 3)</span></span>
-              <input type="file" name="photos" accept="image/*" multiple class="mt-1 block w-full text-sm text-slate-700 file:mr-3 file:rounded-full file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-xs file:font-bold file:uppercase file:tracking-wider file:text-slate-800" />
+              <input type="file" name="photos" accept="image/*" multiple data-review-photos class="mt-1 block w-full text-sm text-slate-700 file:mr-3 file:rounded-full file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-xs file:font-bold file:uppercase file:tracking-wider file:text-slate-800" />
               <span class="mt-1 block text-xs text-slate-500">The item in use, the box, the fit. Photos show with your review after our check; faces and screens with personal details are best left out.</span>
             </label>
             <p class="mt-3 text-xs text-slate-500">Please leave out phone numbers and emails; a review that includes one is held back.</p>
@@ -185,3 +187,36 @@ const helpUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponen
   .gp-stars:hover label:hover, .gp-stars label:has(~ label:hover) { color: #f59e0b; }
   .gp-stars input:focus-visible + label { outline: 3px solid #93d500; outline-offset: 2px; border-radius: .4rem; }
 </style>
+
+<script>
+  // A phone camera's photo (12 MP, 3 to 6 MB) is over the photo pipeline's ceiling, so every one was refused and the
+  // review went without it (2026-10-29). Each chosen photo is redrawn here at 1600px on its long side as a JPEG
+  // (about 300 KB) before the form sends it. Anything this browser cannot redraw (no JavaScript, HEIC outside Safari)
+  // goes as it is, and the server answers as before.
+  const MAX_SIDE = 1600;
+  async function shrink(file: File): Promise<File> {
+    if (!file.type.startsWith('image/')) return file;
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions);
+    const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && file.size < 1_500_000) { bitmap.close(); return file; }
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const blob: Blob | null = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+    return blob ? new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }) : file;
+  }
+  for (const input of document.querySelectorAll<HTMLInputElement>('input[data-review-photos]')) {
+    input.addEventListener('change', async () => {
+      if (!input.files?.length || typeof DataTransfer === 'undefined' || typeof createImageBitmap === 'undefined') return;
+      const form = input.form; const submit = form?.querySelector<HTMLButtonElement>('button[type="submit"], button:not([type])');
+      if (submit) submit.disabled = true;
+      try {
+        const dt = new DataTransfer();
+        for (const f of [...input.files].slice(0, 3)) dt.items.add(await shrink(f).catch(() => f));
+        input.files = dt.files;
+      } catch { /* the originals go as chosen */ }
+      finally { if (submit) submit.disabled = false; }
+    });
+  }
+</script>

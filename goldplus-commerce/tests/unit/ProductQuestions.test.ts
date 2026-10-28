@@ -80,8 +80,28 @@ describe('ask a question on a product page', () => {
     const ask = new AskProductQuestionUseCase(repo, { openTask: async () => ({ ok: true }) }, async () => { acks += 1; });
     const q = (v: string) => ({ productId: P1, askerIdentityHash: v, name: 'Ali', question: 'Is this the original one?', phone: '0772000001' });
     expect(await ask.execute(q('fresh-1'))).toMatchObject({ ok: true });
-    expect(await ask.execute(q('fresh-2'))).toEqual({ ok: false, reason: 'TOO_MANY' });
+    expect(await ask.execute(q('fresh-2'))).toEqual({ ok: false, reason: 'SHOP_BUSY' });
     expect(acks).toBe(1);
+  });
+
+  it('a number or an email typed into the name or the question is refused: those are published', async () => {
+    const { repo } = fakeRepo();
+    const ask = new AskProductQuestionUseCase(repo, { openTask: async () => ({ ok: true }) }, async () => undefined);
+    const base = { productId: P1, askerIdentityHash: 'v9', name: 'Ali', question: 'Is this the original one?' };
+    expect(await ask.execute({ ...base, question: 'Do you have it in Ntinda? Call me 0772 123 456' })).toEqual({ ok: false, reason: 'CONTACT_IN_TEXT' });
+    expect(await ask.execute({ ...base, question: 'Email me at ali@example.com please' })).toEqual({ ok: false, reason: 'CONTACT_IN_TEXT' });
+    expect(await ask.execute({ ...base, name: 'Ali 0772123456' })).toEqual({ ok: false, reason: 'CONTACT_IN_TEXT' });
+    expect(await ask.execute({ ...base, question: 'Does the 20000mAh SM-A326B one fit?', phone: '0772 123 456' })).toMatchObject({ ok: true });
+  });
+
+  it('without JavaScript an email in the phone-or-email box reaches the API as an email, and a refusal says why', () => {
+    const relay = fs.readFileSync(path.resolve(__dirname, '../../apps/web/src/pages/api/questions/ask.ts'), 'utf8');
+    expect(relay).toContain("if (body.phone.includes('@') && !body.email) { body.email = body.phone.slice(0, MAX.email); body.phone = ''; }");
+    expect(relay).toMatch(/phone: 254/);
+    expect(relay).toContain('&why=${code}');
+    const pdp = fs.readFileSync(path.resolve(__dirname, '../../apps/web/src/pages/products/[slug].astro'), 'utf8');
+    expect(pdp).toContain('{askedWhy}');
+    expect(pdp).not.toMatch(/name="phone"[^>]*inputmode="tel"/);
   });
 
   it('the route and the web relay are budgeted as human forms, not the shared global allowance', () => {
@@ -118,6 +138,18 @@ describe('answer a question', () => {
     expect(await answer.execute({ id: 'nope', answer: 'x'.repeat(10), answeredBy: 's' })).toEqual({ ok: false, reason: 'NOT_FOUND' });
     expect(await answer.reject(rows[1].id, 'staff-1')).toBe(true);
     expect(await repo.listAnswered(P1, 20)).toHaveLength(1);
+  });
+
+  it('answering or rejecting closes the question\'s Care Desk task, so nobody contacts the asker twice', async () => {
+    const { repo, rows } = fakeRepo();
+    const closed: string[] = [];
+    const ask = new AskProductQuestionUseCase(repo, { openTask: async () => ({ ok: true }) }, async () => undefined);
+    await ask.execute({ productId: P1, askerIdentityHash: 'v1', name: 'Amina', question: 'Does it fit the Tecno Spark 10?' });
+    await ask.execute({ productId: P1, askerIdentityHash: 'v2', name: 'Ali', question: 'Is it the original one from Tecno?' });
+    const answer = new AnswerProductQuestionUseCase(repo, async () => 'sent', () => new Date(), async (id, outcome) => { closed.push(`${id}:${outcome}`); });
+    await answer.execute({ id: rows[0].id, answer: 'Yes, it fits.', answeredBy: 'staff-1' });
+    await answer.reject(rows[1].id, 'staff-1');
+    expect(closed).toEqual([`${rows[0].id}:done`, `${rows[1].id}:cancelled`]);
   });
 
   it('the two customer messages exist on SMS and email, are transactional, and the answer travels in the message', () => {

@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { logger } from '../logging/logger';
+import { analyticsSafeUrl } from '@goldplus/shared';
 
 /**
  * Microsoft Clarity, server to server (0207, 2026-10-25). The browser tag (PUBLIC_CLARITY_ID, BaseLayout) is what
@@ -24,10 +25,11 @@ const ENDPOINT = 'https://www.clarity.ms/export-data/api/v1/project-live-insight
 export const CLARITY_BREAKDOWNS = ['total', 'URL', 'Channel'] as const;
 export type ClarityBreakdown = (typeof CLARITY_BREAKDOWNS)[number];
 const TIMEOUT_MS = 20_000;
-const REPULL_AFTER_HOURS = 20;
+/** The scheduled pull runs 00:30–02:59 UTC (03:30–05:59 Kampala); its 24-hour window is then (almost all) yesterday. */
+const NIGHT_WINDOW_END_UTC_HOUR = 4;
 const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
 
-export interface ClarityPullResult { configured: boolean; day: string | null; rows: number; skipped?: string; calls: Partial<Record<ClarityBreakdown, number | { error: string }>> }
+export interface ClarityPullResult { configured: boolean; day: string | null; rows: number; skipped?: string; tokenRejected?: boolean; calls: Partial<Record<ClarityBreakdown, number | { error: string }>> }
 export interface ClarityInsightItem { metricName?: string; information?: Array<Record<string, unknown>> }
 export interface ClarityFlatRow { breakdownValue: string; metric: string; field: string; value: number }
 
@@ -50,12 +52,25 @@ export function flatten(items: ClarityInsightItem[], breakdown: ClarityBreakdown
         const n = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() !== '' && Number.isFinite(Number(raw)) ? Number(raw) : NaN;
         if (Number.isFinite(n)) numeric.push([field, n]); else if (typeof raw === 'string' && raw.trim()) names.push(raw.trim());
       }
-      const keyed = breakdown === 'total' ? String(info?.[breakdown] ?? names[0] ?? '') : String(info?.[breakdown] ?? '(not set)');
+      // A URL is stored without its #fragment and with the same parameters GA4 redacts (a gift card's code rides the
+      // fragment of its link; order references and tokens ride the query). Rows that differ only by a name column
+      // (a page's popular names under one URL) keep the name in the key, or they overwrote each other.
+      const own = breakdown === 'total' ? String(info?.[breakdown] ?? names[0] ?? '') : safeClarityValue(String(info?.[breakdown] ?? '(not set)'));
+      const keyed = breakdown !== 'total' && names.length ? `${own} | ${names[0]}` : own;
       const breakdownValue = keyed.slice(0, 300);
       for (const [field, value] of numeric) out.push({ breakdownValue, metric, field: field.slice(0, 48), value });
     }
   }
   return out;
+}
+
+/** A Clarity URL (or any value) as we may keep it: no fragment, sensitive parameters redacted (analyticsSafeUrl). */
+export function safeClarityValue(value: string): string {
+  if (!/^https?:\/\//i.test(value) && !value.startsWith('/')) return value;
+  const absolute = value.startsWith('/') ? `https://shopgoldplus.com${value}` : value;
+  const bare = absolute.split('#')[0];
+  const safe = analyticsSafeUrl(bare) ?? bare;
+  return value.startsWith('/') ? safe.replace(/^https:\/\/shopgoldplus\.com/, '') : safe;
 }
 
 export class ClarityInsightsPull {
@@ -67,13 +82,23 @@ export class ClarityInsightsPull {
     // numOfDays=1 covers the 24 hours before the call (UTC): filed under the UTC day that window mostly lies in.
     const day = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10);
     const out: ClarityPullResult = { configured: true, day, rows: 0, calls: {} };
-    const recent = rows(await db.execute(sql`select 1 from measurement.clarity_insights where day = ${day}::date and fetched_at > ${new Date(now.getTime() - REPULL_AFTER_HOURS * 3600_000)} limit 1`));
-    if (recent.length) return { ...out, skipped: `already pulled for ${day}; Clarity allows ten export calls a day` };
-    for (const breakdown of CLARITY_BREAKDOWNS) {
+    // The window is the 24 hours before the call, filed under yesterday: true only in the small hours (UTC). A daytime
+    // run (the admin's "Run nightly") used to pull a shifted window and file it under the wrong day, then the next
+    // night filed the same hours again (2026-10-29 review). Outside the night window nothing is called.
+    if (now.getUTCHours() >= NIGHT_WINDOW_END_UTC_HOUR) return { ...out, skipped: `Clarity is pulled between 00:00 and 0${NIGHT_WINDOW_END_UTC_HOUR}:00 UTC only, so the 24 hours it returns are ${day}` };
+    // Per breakdown: one that already has rows for the day is not called again (Clarity allows ten calls a day), and
+    // one that failed (a timeout) is retried by the next run in the window instead of being lost for good.
+    const done = new Set(rows(await db.execute(sql`select distinct breakdown from measurement.clarity_insights where day = ${day}::date`)).map((r) => String(r.breakdown)));
+    const todo = CLARITY_BREAKDOWNS.filter((b) => !done.has(b));
+    if (!todo.length) return { ...out, skipped: `already pulled for ${day}; Clarity allows ten export calls a day` };
+    for (const breakdown of todo) {
       try {
         const url = `${ENDPOINT}?numOfDays=1${breakdown === 'total' ? '' : `&dimension1=${breakdown}`}`;
         const res = await this.fetchImpl(url, { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } });
         if (res.status === 429) { out.calls[breakdown] = { error: 'Clarity daily export limit reached (10 calls a day)' }; break; } // the rest would fail too
+        // A rejected token fails every call the same way: stop, and say what fixes it (it used to spend three calls a
+        // night on 401s while the admin card kept saying "nothing pulled yet").
+        if (res.status === 401 || res.status === 403) { out.calls[breakdown] = { error: `Clarity refused the token (HTTP ${res.status}). Generate a new one in Clarity > Settings > Data Export and replace CLARITY_EXPORT_TOKEN.` }; out.tokenRejected = true; break; }
         if (!res.ok) throw new Error(`Clarity answered HTTP ${res.status}`);
         const json = await res.json() as ClarityInsightItem[];
         if (!Array.isArray(json)) throw new Error('Clarity answered something other than the insights list');

@@ -44,6 +44,10 @@ if (Astro.request.method === "POST") {
 const [status, settings, holdouts, recon, controls, creatorCosts, ga4Series, placements, clarity] = await Promise.all([call("GET", "/status"), call("GET", "/settings"), call("GET", "/holdouts"), call("GET", "/reconciliation"), call("GET", "/controls?days=30"), call("GET", "/creator-costs"), call("GET", "/ga4-series?report=channel&days=7"), call("GET", "/placements"), call("GET", "/clarity")]);
 const clarityData = clarity.ok ? clarity.data : null;
 const claritySummary = clarityData?.summary ?? null;
+// What the last nightly pull said when a call failed (a rejected token, a timeout): shown above the numbers.
+const claritySaid: string[] = Object.values((clarityData?.lastPull as { calls?: Record<string, unknown> } | null)?.calls ?? {})
+  .map((v) => (v && typeof v === "object" && typeof (v as { error?: unknown }).error === "string" ? String((v as { error: string }).error) : ""))
+  .filter((t, i, a) => t && a.indexOf(t) === i);
 const clarityTotal = (k: string): string => { const v = claritySummary?.totals?.[k]; return typeof v === "number" ? new Intl.NumberFormat("en-GB", { maximumFractionDigits: 1 }).format(v) : "–"; };
 const feedsOf = status.ok ? status.data.nightly?.stats?.feeds : null;
 const feedsLine: string | null = feedsOf && typeof feedsOf === "object" ? Object.entries(feedsOf as Record<string, unknown>).map(([k, v]) => `${k} ${JSON.stringify(v)}`).join("; ") : null;
@@ -137,6 +141,7 @@ const statusText: Record<string, string> = { ok: "Agree", alarm: "GA4 missing pu
     <section class="mb-8 rounded-2xl border border-gray-200 bg-white p-5">
       <h3 class="text-lg font-black text-brand-dark mb-1">Microsoft Clarity, kept here</h3>
       <p class="text-sm text-gray-600 mb-3">Clarity records sessions and heatmaps in the browser (project z18tt62qd2). Every night the shop pulls Clarity's own dashboard numbers for the previous day through its Data Export API, server to server: traffic, scroll depth, engagement time and the frustration signals (rage clicks, dead clicks, error clicks, quickbacks, script errors), in total, by page and by channel. Three of Clarity's ten daily export calls; the history outlives Clarity's three-day export window.</p>
+      {claritySaid.length > 0 && <p role="alert" class="mb-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><strong>Last nightly pull{clarityData?.lastRunAt ? ` (${String(clarityData.lastRunAt).slice(0, 16).replace("T", " ")} UTC)` : ""}:</strong> {claritySaid.join(" ")}</p>}
       {!clarityData ? <p class="text-sm text-gray-700">Clarity summary unavailable.</p> : !clarityData.configured ? <p class="text-sm text-gray-700">Not configured: set CLARITY_EXPORT_TOKEN (Clarity &gt; Settings &gt; Data Export) and the nightly starts pulling.</p> : !claritySummary ? <p class="text-sm text-gray-700">Configured; nothing pulled yet. The first rows arrive after the next nightly run.</p> : (
         <div>
           <p class="text-sm text-gray-700 mb-3">Day {claritySummary.day} (UTC window), pulled {claritySummary.fetchedAt ? claritySummary.fetchedAt.slice(0, 16).replace("T", " ") : "–"} UTC.</p>

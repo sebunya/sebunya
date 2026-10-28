@@ -16,7 +16,9 @@ function sqlText(q: unknown): string {
     return '';
   }).join('');
 }
-const answer = (q: unknown) => { executed.push(sqlText(q)); return []; };
+// Breakdowns already stored for the day (the per-breakdown resume): set by a test, empty otherwise.
+const stored: string[] = [];
+const answer = (q: unknown) => { const t = sqlText(q); executed.push(t); return t.includes('select distinct breakdown') ? stored.map((b) => ({ breakdown: b })) : []; };
 vi.mock('../../apps/api/src/infrastructure/db/client', () => ({
   db: { execute: async (q: unknown) => answer(q), transaction: async (fn: (tx: unknown) => Promise<void>) => fn({ execute: async (q: unknown) => answer(q) }) },
 }));
@@ -36,7 +38,7 @@ const json = (body: unknown, status = 200) => ({ ok: status < 400, status, json:
 const NOW = new Date('2026-10-26T00:40:00Z'); // 03:40 Kampala
 
 describe('Clarity insights pull', () => {
-  beforeEach(() => { executed.length = 0; });
+  beforeEach(() => { executed.length = 0; stored.length = 0; });
 
   it('flattens every numeric field under its metric; the breakdown column becomes the row key, name columns are skipped', () => {
     expect(flatten(SAMPLE as any, 'total')).toEqual([
@@ -82,9 +84,40 @@ describe('Clarity insights pull', () => {
     const r = await new ClarityInsightsPull('tok', limited as unknown as typeof fetch).run(NOW);
     expect(r.calls).toEqual({ total: { error: 'Clarity daily export limit reached (10 calls a day)' } });
     expect(limited).toHaveBeenCalledTimes(1);
+    // A rejected token fails every call alike: one call, then stop, and say how to fix it (it used to spend three a night).
     const refused = vi.fn(async () => json({}, 401));
     const r2 = await new ClarityInsightsPull('tok', refused as unknown as typeof fetch).run(NOW);
-    expect(r2.calls).toEqual({ total: { error: 'Clarity answered HTTP 401' }, URL: { error: 'Clarity answered HTTP 401' }, Channel: { error: 'Clarity answered HTTP 401' } });
+    expect(refused).toHaveBeenCalledTimes(1);
+    expect(r2.tokenRejected).toBe(true);
+    expect(String((r2.calls.total as { error: string }).error)).toMatch(/refused the token \(HTTP 401\).*Data Export/);
     expect(executed.filter((q) => q.includes('insert into'))).toHaveLength(0);
+  });
+
+  it('pulls only in the night window: a daytime run would file a shifted 24 hours under the wrong day', async () => {
+    const f = vi.fn(async () => json(SAMPLE));
+    const r = await new ClarityInsightsPull('tok', f as unknown as typeof fetch).run(new Date('2026-10-26T09:00:00Z'));
+    expect(f).not.toHaveBeenCalled();
+    expect(r.skipped).toMatch(/between 00:00 and 04:00 UTC/);
+  });
+
+  it('a breakdown already stored for the day is not called again; a missing one is (a failed call is retried, not lost)', async () => {
+    stored.push('total');
+    const urls: string[] = [];
+    const f = vi.fn(async (url: string | URL | Request) => { urls.push(String(url)); return json([]); });
+    await new ClarityInsightsPull('tok', f as unknown as typeof fetch).run(NOW);
+    expect(urls.map((u) => u.replace(/^.*\?/, ''))).toEqual(['numOfDays=1&dimension1=URL', 'numOfDays=1&dimension1=Channel']);
+    stored.push('URL', 'Channel');
+    const r = await new ClarityInsightsPull('tok', f as unknown as typeof fetch).run(NOW);
+    expect(r.skipped).toMatch(/already pulled/);
+  });
+
+  it('a stored URL carries no #fragment and no secret parameters; rows that differ by a name column stay apart', async () => {
+    const { safeClarityValue } = await import('../../apps/api/src/infrastructure/measurement/ClarityInsightsPull');
+    expect(safeClarityValue('https://shopgoldplus.com/gift-card/open#GPGC-AB12-CD34-EF56')).toBe('https://shopgoldplus.com/gift-card/open');
+    expect(safeClarityValue('https://shopgoldplus.com/track-order?reference=GP-1043&phone=0772123456')).toBe('https://shopgoldplus.com/track-order?reference=redacted&phone=redacted');
+    expect(safeClarityValue('/review?reference=GP-1#x')).toBe('/review?reference=redacted');
+    expect(safeClarityValue('Direct')).toBe('Direct');
+    const rows = flatten([{ metricName: 'PopularPages', information: [{ URL: 'https://shopgoldplus.com/', name: 'Home', visitsCount: '4' }, { URL: 'https://shopgoldplus.com/', name: 'Shop', visitsCount: '2' }] }], 'URL');
+    expect(new Set(rows.map((r) => r.breakdownValue)).size).toBe(2);
   });
 });

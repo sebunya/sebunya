@@ -135,7 +135,8 @@ describe('surfaces agree', () => {
     expect(m).not.toBeNull();
     const re = new RegExp(m![1].slice(1, -1));
     for (const p of ['/battery-finder', '/phone-batteries/tecno-spark-7', '/power', '/phone-batteries', '/products/x', '/']) expect(re.test(p), p).toBe(true);
-    for (const p of ['/checkout', '/account', '/admin/seo', '/batteries']) expect(re.test(p), p).toBe(false);
+    for (const p of ['/checkout', '/account', '/admin/seo', '/batteries', '/returns/start', '/support/fake', '/support/issue', '/about', '/delivery']) expect(re.test(p), p).toBe(false);
+    for (const p of ['/returns', '/faq', '/loyalty', '/charger-finder', '/delivery/kampala-wakiso', '/blog/x', '/power/chargers']) expect(re.test(p), p).toBe(true);
   });
   it('the battery product route answers for a record in review whose fits are live, as the finder does, and hides one with nothing public', () => {
     const route = read('apps/api/src/interfaces/http/routes/batteries.ts');

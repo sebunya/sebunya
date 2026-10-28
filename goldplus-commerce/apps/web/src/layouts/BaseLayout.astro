@@ -99,7 +99,11 @@ const clarityId = /^[a-z0-9]{6,20}$/.test(import.meta.env.PUBLIC_CLARITY_ID ?? '
 // Public catalogue routes by their real names: the hubs (/power, /audio, /storage, /phone-batteries …),
 // the finder and the local pages were masked whole because this list named a `batteries` route that
 // never existed (found 2026-10-28). Inputs stay masked by Clarity's own default either way.
-const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|search|battery-finder|phone-batteries|power|audio|storage|computer-accessories|car-accessories|locations|deals|about|faq|delivery|returns|warranty|contact|support|verification)(\/|$|\?)/.test(Astro.url.pathname);
+// Catalogue sections keep their pages below them (/products/x, /blog/x, /power/chargers, /phone-batteries/x); info
+// pages and tools match exactly, so /returns/start (an order's own items) and /support/issue stay masked. Routes
+// that do not exist (about, contact, brands, deals) are gone; the finders, compare and loyalty pages were added.
+// Goldie's panel and the account greeting carry their own data-clarity-mask on every page (2026-10-29 review).
+const clarityMaskAll = !/^\/(?:$|(?:shop|products|blog|battery-finder|phone-batteries|power|audio|storage|computer-accessories|car-accessories|locations)(?:\/|$)|(?:faq|returns|warranty|support|loyalty|compare|charger-finder|product-finder|delivery\/kampala-wakiso)$)/.test(Astro.url.pathname);
 /** The attribution rulebook (packages/shared/src/attribution/arrival.ts) as data for the inline tag loader. */
 const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, bots: DECLARED.source };
 
@@ -161,10 +165,17 @@ const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, 
         never for robots, our probes or staff (same gate as the GA4 tag). Clarity masks typed input by default; checkout and
         account pages are masked entirely (data-clarity-mask on <body>). */}
     {clarityId && (
-      <script nonce={Astro.locals.cspNonce} define:vars={{ clarityId, bots: arrivalRules.bots }}>
+      <script nonce={Astro.locals.cspNonce} define:vars={{ clarityId, bots: arrivalRules.bots, red: arrivalRules.red, share: arrivalRules.share.frag }}>
         (function () {
           if (navigator.webdriver === true || new RegExp(bots, 'i').test(navigator.userAgent || '')
             || /(?:^|; )(?:gp_probe|gp_staff)=/.test(document.cookie)) return;
+          // Clarity records the address itself, and masking never applies to it: a gift card's spendable code rides
+          // the #fragment of its text link (stripped only once the page's own script runs), and order references,
+          // tokens and codes ride query strings. Such a visit is not recorded at all (same list GA4 redacts).
+          // Our own share token (#s=<6>, the tag loader's dark-social marker) is random and nobody's: not a secret.
+          var secret = location.hash.length > 1 && !new RegExp(share).test(location.hash), rx = new RegExp(red, 'i');
+          new URLSearchParams(location.search).forEach(function (v, k) { if (rx.test(k)) secret = true; });
+          if (secret) return;
           (function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
           t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
           y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script",clarityId);

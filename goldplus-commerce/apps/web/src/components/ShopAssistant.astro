@@ -54,7 +54,7 @@ const { whatsappUrl, cutoffHour = 17 } = Astro.props;
 const enabled = assistantEnabled();
 ---
 {enabled && (
-  <div id="gp-assistant" class="gp-assistant" data-whatsapp={whatsappUrl} data-endpoint="/api/assistant/chat" data-cutoff-hour={String(cutoffHour)}>
+  <div id="gp-assistant" class="gp-assistant" data-clarity-mask="true" data-whatsapp={whatsappUrl} data-endpoint="/api/assistant/chat" data-cutoff-hour={String(cutoffHour)}>
     <button type="button" class="gp-assistant__launch" aria-haspopup="dialog" aria-controls="gp-assistant-panel" aria-expanded="false" data-launch>
       <span class="gp-assistant__avatar gp-assistant__avatar--launch" aria-hidden="true"><span>G</span><img class="gp-assistant__face" src={GOLDIE_AVATAR_SRC} srcset={GOLDIE_AVATAR_SRCSET} sizes="42px" width="42" height="42" alt="" decoding="async" /><i class="gp-assistant__badge" data-badge hidden></i></span>
       <span class="gp-assistant__launchtext"><strong>Ask <span class="gp-goldie" data-goldie data-text="Goldie">Goldie</span></strong><small>Your personal shopper</small></span>

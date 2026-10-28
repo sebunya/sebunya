@@ -57,3 +57,30 @@ describe('the returns page says what the policy is', () => {
     expect(summary.length).toBeLessThanOrEqual(160);
   });
 });
+
+describe('Clarity never records a name, a chat or a secret address', () => {
+  it("Goldie's panel and the account greeting are masked on every page, catalogue pages included", () => {
+    expect(read('apps/web/src/components/ShopAssistant.astro')).toMatch(/<div id="gp-assistant" class="gp-assistant" data-clarity-mask="true"/);
+    const nav = read('apps/web/src/components/GpNav.astro');
+    expect(nav).toContain('<div class="gp-nav__acct" id="gpNavAcct" data-clarity-mask="true">');
+    expect(nav).toMatch(/id="gpNavPtsWrap" hidden="" data-clarity-mask="true"/);
+  });
+  it('a visit whose address carries a fragment (other than our share token) or a redacted parameter is not recorded', () => {
+    const layout = read('apps/web/src/layouts/BaseLayout.astro');
+    expect(layout).toContain("var secret = location.hash.length > 1 && !new RegExp(share).test(location.hash), rx = new RegExp(red, 'i');");
+    expect(layout).toContain('if (secret) return;');
+    expect(layout).toMatch(/red: arrivalRules\.red, share: arrivalRules\.share\.frag/);
+  });
+});
+
+describe('review photos from a phone camera', () => {
+  it('are shrunk in the browser before upload, and refusals speak about reviews, not cards', async () => {
+    const page = read('apps/web/src/pages/review.astro');
+    expect(page).toContain('data-review-photos');
+    expect(page).toMatch(/const MAX_SIDE = 1600;/);
+    expect(page).toContain("canvas.toBlob(r, 'image/jpeg', 0.85)");
+    const { REVIEW_PHOTO_REFUSAL_WORDS } = await import('../../apps/api/src/application/use-cases/reviews/ReviewPhotoUseCases');
+    for (const w of Object.values(REVIEW_PHOTO_REFUSAL_WORDS)) expect(w).not.toMatch(/card/i);
+  });
+});
+

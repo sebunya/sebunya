@@ -1,6 +1,5 @@
 import type { IGiftCardPhotoProcessor, ProcessedGiftCardPhoto } from '../../ports/IGiftCardPhotoRepository';
 import { GIFT_CARD_PHOTO_MAX_BYTES, type GiftCardPhotoRefusal } from '../../../domain/credit/GiftCardPhoto';
-import { GIFT_CARD_PHOTO_REFUSAL_WORDS } from '../credit/GiftCardPhotoUseCases';
 
 /**
  * Photos on customer reviews (0209, gap analysis #10). The picture pipeline is the gift card's (0201): the same
@@ -8,6 +7,18 @@ import { GIFT_CARD_PHOTO_REFUSAL_WORDS } from '../credit/GiftCardPhotoUseCases';
  * ownership: a photo is uploaded while the buyer writes the review and attached when the review is saved; only a
  * PUBLISHED review's photos are shown to shoppers, so moderation covers the pictures as it covers the words.
  */
+/** A reviewer's words: the gift card's said a photo was "too small to print on a card" and that "the card works without one". */
+export const REVIEW_PHOTO_REFUSAL_WORDS: Readonly<Record<GiftCardPhotoRefusal, string>> = Object.freeze({
+  empty: 'Choose a photo.',
+  too_large: 'That photo is too large to use. Choose a smaller one, or a screenshot of it.',
+  not_an_image: 'That file is not a photo we can use. Choose a JPEG or PNG photo.',
+  too_small: 'That photo is too small to show clearly. Choose a bigger one.',
+  too_detailed: 'That photo has too much detail to store. Try another one.',
+  visitor_daily_limit: 'You have added the most photos we take in a day. Your review is saved without it.',
+  shop_daily_limit: 'Photos are not available right now. Your review is saved without it.',
+  unavailable: 'Photos are not available right now. Your review is saved without it.',
+});
+
 export const REVIEW_PHOTOS_PER_REVIEW = 3;
 export const REVIEW_PHOTOS_PER_VISITOR_PER_DAY = 12;
 export const REVIEW_PHOTOS_PER_DAY = 300;
@@ -37,7 +48,7 @@ export class ReviewPhotoUseCases {
   ) {}
 
   async upload(bytes: Buffer, visitor: string | null, now = new Date()): Promise<UploadReviewPhotoResult> {
-    const refuse = (reason: GiftCardPhotoRefusal): UploadReviewPhotoResult => ({ ok: false, reason, message: GIFT_CARD_PHOTO_REFUSAL_WORDS[reason] });
+    const refuse = (reason: GiftCardPhotoRefusal): UploadReviewPhotoResult => ({ ok: false, reason, message: REVIEW_PHOTO_REFUSAL_WORDS[reason] });
     if (!this.processor) return refuse('unavailable');
     if (bytes.length === 0) return refuse('empty');
     if (bytes.length > GIFT_CARD_PHOTO_MAX_BYTES) return refuse('too_large');

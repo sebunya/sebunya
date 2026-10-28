@@ -1,4 +1,5 @@
 import type { OpenTaskInput } from '../assistant/CareDeskUseCases';
+import { detectReviewPii } from '../../../domain/reviews/ReviewDomain';
 
 /**
  * Questions and answers on product pages (0208, gap analysis #14, 2026-10-25).
@@ -50,7 +51,7 @@ export interface IProductQuestionRepository {
 
 export type AskResult =
   | { ok: true; id: string; productName: string; productSlug: string }
-  | { ok: false; reason: 'NO_PRODUCT' | 'NO_NAME' | 'TOO_SHORT' | 'TOO_LONG' | 'BAD_CONTACT' | 'TOO_MANY' };
+  | { ok: false; reason: 'NO_PRODUCT' | 'NO_NAME' | 'TOO_SHORT' | 'TOO_LONG' | 'BAD_CONTACT' | 'CONTACT_IN_TEXT' | 'TOO_MANY' | 'SHOP_BUSY' };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -81,6 +82,10 @@ export class AskProductQuestionUseCase {
     const question = clean(input.question, QUESTION_MAX + 1);
     if (question.length < QUESTION_MIN) return { ok: false, reason: 'TOO_SHORT' };
     if (question.length > QUESTION_MAX) return { ok: false, reason: 'TOO_LONG' };
+    // The name and the question are published under the product once answered (and given to shopping assistants):
+    // a number or an email typed into them would be published with them. Reviews hold such text for a person; a
+    // question is refused with a pointer to the private contact box (2026-10-29).
+    if (detectReviewPii(name, question).hasPii) return { ok: false, reason: 'CONTACT_IN_TEXT' };
     const phoneRaw = clean(input.phone, 32);
     const phone = phoneRaw ? normalisePhone(phoneRaw) : null;
     if (phoneRaw && !phone) return { ok: false, reason: 'BAD_CONTACT' };
@@ -92,7 +97,7 @@ export class AskProductQuestionUseCase {
     const now = this.now();
     const dayAgo = new Date(now.getTime() - 86_400_000);
     if ((await this.repo.countAskedSince(input.askerIdentityHash, dayAgo)) >= QUESTIONS_PER_VISITOR_PER_DAY) return { ok: false, reason: 'TOO_MANY' };
-    if ((await this.repo.countAllAskedSince(dayAgo)) >= QUESTIONS_PER_SHOP_PER_DAY) return { ok: false, reason: 'TOO_MANY' };
+    if ((await this.repo.countAllAskedSince(dayAgo)) >= QUESTIONS_PER_SHOP_PER_DAY) return { ok: false, reason: 'SHOP_BUSY' };
     const { id } = await this.repo.insert({ productId: input.productId, askerIdentityHash: input.askerIdentityHash, askerName: name, askerPhone: phone, askerEmail: email, question });
     // The desk sees it like any other follow-up; a failure to open the task never loses the question (it is saved).
     await this.care.openTask({
@@ -118,6 +123,8 @@ export class AnswerProductQuestionUseCase {
     private readonly repo: IProductQuestionRepository,
     private readonly notify: (q: ProductQuestionRow & { answer: string }) => Promise<'sent' | 'skipped'>,
     private readonly now: () => Date = () => new Date(),
+    /** Closes the question's Care Desk follow-up (opened when it was asked), so nobody contacts the asker twice. */
+    private readonly closeDeskTask: (questionId: string, outcome: 'done' | 'cancelled', by: string) => Promise<unknown> = async () => undefined,
   ) {}
 
   async execute(input: { id: string; answer: unknown; answeredBy: string }): Promise<AnswerResult> {
@@ -135,11 +142,14 @@ export class AnswerProductQuestionUseCase {
       notified = r === 'sent';
       if (notified) await this.repo.markNotified(q.id, now).catch(() => undefined);
     }
+    await this.closeDeskTask(q.id, 'done', input.answeredBy).catch(() => undefined);
     return { ok: true, notified, productId: q.productId };
   }
 
   async reject(id: string, by: string): Promise<boolean> {
     if (!UUID.test(id)) return false;
-    return this.repo.reject(id, by, this.now());
+    const done = await this.repo.reject(id, by, this.now());
+    if (done) await this.closeDeskTask(id, 'cancelled', by).catch(() => undefined);
+    return done;
   }
 }

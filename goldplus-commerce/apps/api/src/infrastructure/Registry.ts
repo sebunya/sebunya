@@ -3334,6 +3334,9 @@ export class Registry {
       data: { customerName: q.askerName, productName: q.productName ?? null, productUrl: q.productSlug ? `${publicBaseUrl()}/products/${q.productSlug}#questions` : null, questionAnswer: q.answer },
       idempotencyKey: `product-question:${q.id}:answered`, relatedEntity: 'product_question', relatedEntityId: q.id,
     }),
+    () => new Date(),
+    (questionId, outcome, by) => this.careDeskUseCases.resolveByAction('questionId', questionId, outcome, by,
+      outcome === 'done' ? 'Answered in Platform modules.' : 'Rejected in Platform modules.'),
   );
   /** Goldie on WhatsApp (and the admin inbox's team replies). Off until GOLDIE_WHATSAPP_ENABLED=true. */
   public readonly goldieChannelUseCases = new GoldieChannelUseCases(

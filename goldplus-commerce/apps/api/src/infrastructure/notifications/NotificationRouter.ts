@@ -312,6 +312,11 @@ export class DefaultNotificationRouter implements INotificationRouter {
       case 'QUOTE_REQUEST_RECEIVED':
       case 'DEALER_APPLICATION_RECEIVED':
       case 'FAKE_REPORT_RECEIVED':
+      // Product questions (0208): the "we have your question" note and the answer itself. Both were enqueued
+      // from 2026-10-28 and retired here as "No channel mapping": no asker ever received an answer, while staff
+      // were told it had been sent (found 2026-10-29). BASKET_REMINDER is deliberately NOT routed yet.
+      case 'PRODUCT_QUESTION_RECEIVED':
+      case 'PRODUCT_QUESTION_ANSWERED':
       case 'CUSTOMER_ORDER_MESSAGE': {
         const customerPhone = typeof payload.customerPhone === 'string' ? payload.customerPhone : '';
         const customerEmail = typeof payload.customerEmail === 'string' ? payload.customerEmail : '';

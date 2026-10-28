@@ -135,6 +135,10 @@ export class CareDeskUseCases {
   async resolve(id: string, status: 'done' | 'cancelled', resolvedBy: string, resolution: string | null) {
     return this.repo.resolve(id, { status, resolvedBy, resolution: resolution ? text(resolution).slice(0, 1000) : null });
   }
+  /** Ends the open tasks that were waiting on this piece of work (a question answered or rejected elsewhere). */
+  resolveByAction(key: string, value: string, status: 'done' | 'cancelled', resolvedBy: string, resolution: string | null) {
+    return this.repo.resolveByAction(key, value, { status, resolvedBy, resolution: resolution ? text(resolution).slice(0, 1000) : null });
+  }
   assign(id: string, userId: string | null) { return this.repo.assign(id, userId); }
 
   today() {
