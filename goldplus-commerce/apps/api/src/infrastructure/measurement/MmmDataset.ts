@@ -121,9 +121,14 @@ export class MmmDataset {
     // YouTube exposure (0206): the day's new views on every sponsored video, from the nightly view counts, scaled by
     // the channel's Uganda audience share when known, as the channel's impressions. A video's cost sits on its publish
     // day; its views keep arriving after it, and that is the shape the model should see.
+    // One video counted once a day: two placements recorded for the same video (bought twice, or entered twice) both
+    // hold its readings, and summing them doubled its impressions (2026-10-29 review). The earliest placement speaks.
     for (const r of rows(await db.execute(sql`select day::text as day, sum(greatest(views - prev, 0) * share)::bigint as views from (
-        select v.day, v.views, coalesce(lag(v.views) over (partition by v.placement_id order by v.day), 0) as prev, coalesce(p.audience_ug_share, 1) as share
-        from media_placement_views v join media_placements p on p.id = v.placement_id where p.medium = 'youtube' and p.deleted_at is null) d
+        select x.day, x.views, coalesce(lag(x.views) over (partition by x.video_id order by x.day), 0) as prev, x.share from (
+          select distinct on (p.video_id, v.day) p.video_id, v.day, v.views, coalesce(p.audience_ug_share, 1) as share
+          from media_placement_views v join media_placements p on p.id = v.placement_id
+          where p.medium = 'youtube' and p.deleted_at is null and p.video_id is not null
+          order by p.video_id, v.day, p.publish_date, p.id) x) d
       where day >= ${from}::date and day <= ${to}::date group by 1`))) {
       const c = cell(String(r.day), 'youtube');
       c.impressions = (c.impressions ?? 0) + Math.max(0, Number(r.views));

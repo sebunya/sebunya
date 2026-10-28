@@ -24,6 +24,10 @@ defaults:
 
 jobs:
   read-and-post:
+    # The scheduled run is off until the owner sets the repository variable BOU_FX_ENABLED=true (with the
+    # BOU_FX_TOKEN secret and the same value on the server). The AllRatesToday feed covers BoU meanwhile; without
+    # this guard the schedule failed every weekday for want of a secret (2026-10-29 review). Manual runs still work.
+    if: ${{ github.event_name != 'schedule' || vars.BOU_FX_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

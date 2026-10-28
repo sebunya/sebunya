@@ -53,7 +53,9 @@ const feedsOf = status.ok ? status.data.nightly?.stats?.feeds : null;
 const feedsLine: string | null = feedsOf && typeof feedsOf === "object" ? Object.entries(feedsOf as Record<string, unknown>).map(([k, v]) => `${k} ${JSON.stringify(v)}`).join("; ") : null;
 const ga4Summary = status.ok ? status.data.ga4Series : null;
 const costs = status.ok ? status.data.costs : null;
-const fxBasisText: Record<string, string> = { manual: "set by hand", feed: "market rate from the nightly feed plus the safety margin", default: "the documented default; no feed reading yet" };
+// The basis names where the rate came from; the detail after it says how (market quote, BoU selling + margin, or the
+// open feed + margin). "Plus the safety margin" here contradicted a market quote's own "no margin" (2026-10-29 review).
+const fxBasisText: Record<string, string> = { manual: "set by hand", feed: "from the fed rates", default: "the documented default; no feed reading yet" };
 const readiness = status.ok ? status.data.readiness : null;
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? "–" : `${(v * 100).toFixed(1)}%`);
 const labelOf: Record<string, string> = { review_reminder: "Review reminder", loyalty_mission: "Mission message", loyalty_expiry: "Points expiry warning", abandoned_basket: "Abandoned basket", campaign: "Campaign" };

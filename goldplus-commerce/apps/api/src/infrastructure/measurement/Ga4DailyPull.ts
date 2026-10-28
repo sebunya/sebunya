@@ -33,13 +33,27 @@ export class Ga4DailyPull {
   constructor(private readonly ga4: Ga4Reporter) {}
 
   async run(now = new Date(), backfillDays = GA4_BACKFILL_DAYS): Promise<Ga4PullResult> {
-    const held = rows(await db.execute(sql`select max(day)::text as last_day from measurement.ga4_daily_series`))[0];
-    const mode: Ga4PullResult['mode'] = held?.last_day ? 'refresh' : 'backfill';
+    // Per report: each one resumes from its OWN last stored day (two days back, for GA4's late corrections), or
+    // backfills when it has none. One newest day across all reports, then "the last 3 days", left a report that failed
+    // during the first backfill, or a week the credential was broken, empty for good (2026-10-29 review).
+    const held = new Map(rows(await db.execute(sql`select report, max(day)::text as last_day from measurement.ga4_daily_series group by report`)).map((r) => [String(r.report), String(r.last_day)]));
     // GA4 reports in the property's time zone (Africa/Kampala); the day asked for is the Kampala calendar day.
     const to = kday(new Date(now.getTime() - 86_400_000));
-    const from = kday(new Date(now.getTime() - (mode === 'backfill' ? backfillDays : GA4_REFRESH_DAYS) * 86_400_000));
-    const out: Ga4PullResult = { from, to, mode, rows: 0, reports: {}, unavailable: null };
-    for (const key of Object.keys(GA4_REPORTS) as Ga4ReportKey[]) {
+    const earliest = kday(new Date(now.getTime() - backfillDays * 86_400_000));
+    const refreshFrom = kday(new Date(now.getTime() - GA4_REFRESH_DAYS * 86_400_000));
+    const fromFor = (key: Ga4ReportKey): string => {
+      const last = held.get(key);
+      if (!last) return earliest;
+      const resume = kday(new Date(Date.parse(`${last}T00:00:00Z`) - 2 * 86_400_000));
+      const from = resume < refreshFrom ? resume : refreshFrom;
+      return from < earliest ? earliest : from;
+    };
+    const keys = Object.keys(GA4_REPORTS) as Ga4ReportKey[];
+    const froms = keys.map(fromFor);
+    const mode: Ga4PullResult['mode'] = keys.some((k) => !held.has(k)) ? 'backfill' : 'refresh';
+    const out: Ga4PullResult = { from: froms.reduce((a, b) => (a < b ? a : b)), to, mode, rows: 0, reports: {}, unavailable: null };
+    for (const key of keys) {
+      const from = fromFor(key);
       try {
         const r = await this.ga4.runReport({ dateRanges: [{ startDate: from, endDate: to }], dimensions: [{ name: 'date' }, { name: GA4_REPORTS[key] }], metrics: METRICS.map((name) => ({ name })) });
         if ('unavailable' in r) { out.unavailable = r.unavailable; break; } // the same credential serves every report: stop, do not spam Google

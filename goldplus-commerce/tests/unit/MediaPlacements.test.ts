@@ -119,8 +119,17 @@ describe('placement money and views', () => {
     expect(r).toEqual({ configured: true, videos: 2, written: 2, missing: ['gone0000000'] });
     const writes = executed.filter((q) => q.includes('insert into media_placement_views'));
     expect(writes).toHaveLength(2);
-    expect(writes[0]).toContain('2026-10-24');
+    expect(writes[0]).toContain('2026-10-23'); // the count at 01:30 on the 24th is the 23rd's total: filed under the day the views happened
     expect(writes[0]).toContain('15320');
     expect(writes[0]).toContain('likes');
   });
+
+  it('a daytime run (an admin Rebuild) writes no reading: it would file part of a day and shift the next', async () => {
+    const { YouTubeViewsPull } = await import('../../apps/api/src/infrastructure/measurement/YouTubeViewsPull');
+    const f = vi.fn();
+    const r = await new YouTubeViewsPull('k', f as unknown as typeof fetch).run(new Date('2026-10-24T17:00:00Z')); // 20:00 Kampala
+    expect(f).not.toHaveBeenCalled();
+    expect(r.written).toBe(0);
+  });
 });
+

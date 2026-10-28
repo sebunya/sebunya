@@ -106,3 +106,24 @@ describe('published copy says only what the shop does', () => {
   });
 });
 
+describe('measurement jobs that heal instead of wedging or drifting', () => {
+  it('the nightly takes its run record inside the try (a failed insert used to hold the lock until a restart)', () => {
+    const t = read('apps/api/src/infrastructure/scheduler/MeasurementNightlyTicker.ts');
+    expect(t).toMatch(/let runId: string \| undefined;[\s\S]{0,400}try \{\s*runId = rows\(await db\.execute\(sql`insert into measurement\.batch_run/);
+  });
+  it('the 1 pm rates run once a day across the cluster, and only a success marks the day done', () => {
+    const t = read('apps/api/src/infrastructure/scheduler/MeasurementNightlyTicker.ts');
+    expect(t).toContain("const lock = await tryAcquireSessionLock(BOU_LOCK_ID);");
+    expect(t).toMatch(/\$\{ok \? 'COMPLETE' : 'FAILED'\}/);
+    expect(t).not.toContain('bouRanOn = day;');
+  });
+  it('fixed agreements (placements, creator fees) are costed over the whole modelling window under their own tag', () => {
+    const t = read('apps/api/src/infrastructure/measurement/MarketingCostDerivation.ts');
+    expect(t).toContain("export const AGREEMENTS_SOURCE = 'derived_agreements';");
+    expect(t).toMatch(/source = \$\{AGREEMENTS_SOURCE\} or \(source = \$\{DERIVED_SOURCE\} and \(channel in \('youtube', 'offline_media'\)/);
+  });
+  it('the scheduled BoU browser workflow stays off until the owner turns it on', () => {
+    expect(read('../.github/workflows/bou-fx.yml')).toContain("if: ${{ github.event_name != 'schedule' || vars.BOU_FX_ENABLED == 'true' }}");
+  });
+});
+
