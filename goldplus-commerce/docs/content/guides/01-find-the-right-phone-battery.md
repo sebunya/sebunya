@@ -8,7 +8,7 @@ Meta description: Match a replacement phone battery by exact device variant and 
 
 Related products: two or three of your best-stocked phone batteries.
 
-Related SKUs: GP-39LT9-BAT, GP-49FX-BAT, GP-BAT-IP14
+Related SKUs: GP-39LT9-BAT, GP-49FX-BAT, GP-BAT-IP14PRO
 
 ---- Article (paste everything below this line into the Article box) ----
 

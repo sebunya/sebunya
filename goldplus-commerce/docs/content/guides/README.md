@@ -1,14 +1,23 @@
-# Guides: ready-to-publish drafts
+# Guides: ready-to-publish articles
 
-Three articles for the empty blog (design audit 37), written in the blog's own
-article markup (`# heading`, `- bullet`, `**bold**`, `[text](/path)`), so they
-paste straight into the editor.
+103 articles for the blog, written in the blog's own article markup (`# heading`, `- bullet`, `**bold**`,
+`[text](/path)`), so they publish as they are. 01–03 are live since 2026-10-13; 04–103 were added on 2026-10-28.
 
-| File | Article |
+| Files | Topic |
 |---|---|
-| `01-find-the-right-phone-battery.md` | How to find the right replacement battery for your phone |
-| `02-power-bank-capacity-explained.md` | Power bank capacity explained: what 10,000mAh really gives you |
-| `03-charger-watts-explained.md` | Charger watts explained: how to read a charger's real power |
+| 01, 04–23 | Phone batteries: finding the right one, health, safety, charging habits, iPhone and Android drain |
+| 02, 64–83 | Power banks and power cuts: choosing, capacity, flying, safety, wireless, lamps, trips upcountry |
+| 03, 24–43 | Chargers and car charging: PD, Quick Charge, GaN, iPhone and Android, UK plugs, safety, car chargers |
+| 44–53 | Charging cables: USB-C, Lightning, Micro-USB, quality, braiding, length, amps, data vs charge-only |
+| 54–63 | Storage: microSD cards, fake capacity, flash drives, USB 3.0, formatting, backups, OTG |
+| 84–96 | Audio: choosing and pairing earbuds, open-ear, noise reduction, safe listening, calls, USB sound card |
+| 97–103 | Shopping with GoldPlus: verification, returns and warranty, bulk, gift cards, loyalty, the shop, delivery |
+
+Every shop promise in 97–103 (and wherever a guide mentions delivery, returns or the shop) was checked word for word
+against the live pages on 2026-10-28. If a policy changes, search these files for it and update them too.
+
+`tests/unit/BlogGuidesPublishable.test.ts` keeps the set publishable: each file parses, passes the publish gate,
+has meta fields, has its own URL, and recommends none of the listings whose wattage is under review.
 
 ## Publishing one
 
