@@ -80,7 +80,7 @@ export const TOOLS = [
 export const INSTRUCTIONS =
   'GoldPlus is an electronics accessories shop in Kampala, Uganda (website https://shopgoldplus.com). Prices are in Ugandan shillings (UGX) and are what the shop charges today. ' +
   'Use search_products to find items and get_product for details; quote prices and specifications from the tool results rather than inferring them. ' +
-  'For replacement batteries use find_battery: it only reports checked fits. Buying happens on the product page link.';
+  'For replacement batteries use find_battery: each fit states its source (checked by GoldPlus, or the supplier\'s compatibility list) and nothing is guessed. Buying happens on the product page link.';
 
 
 

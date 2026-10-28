@@ -48,7 +48,7 @@ Buy from a shop you trust, and check the product is genuine. Every genuine GoldP
 
 A frayed cable or a loose plug can heat up at the damaged point, and a poor connection can cause sparking at the port. Replace damaged cables rather than taping them.
 
-If you use a high-power charger with a laptop or tablet, the cable must be rated for that power. Most USB-C cables carry up to 60W. Above that, use a cable marked for higher power, such as our [GP-PD04C flat cable](/products/goldplus-cable-gp-pd04c), listed at 66W.
+If you use a high-power charger with a laptop or tablet, the cable must be rated for that power. Most USB-C cables carry up to 60W. Above 60W, USB PD needs a cable built and marked for 5A (100W or more). Our [GP-PD04C flat cable](/products/goldplus-cable-gp-pd04c) is listed at 66W; ask us to confirm its rating before using it with a charger above 60W.
 
 ## Heat
 

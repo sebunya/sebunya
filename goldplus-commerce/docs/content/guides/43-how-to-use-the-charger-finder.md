@@ -12,7 +12,7 @@ Related SKUs: GP-C09, GP-C11, GP-C03-CH
 
 ---- Article (paste everything below this line into the Article box) ----
 
-The [charger finder](/charger-finder) helps you match a charger to your phone, so you do not have to work out fast-charging standards and port types yourself. A minute of preparation makes it quicker: know your exact phone model and which port it has, and think about whether you charge one device or several.
+The [charger finder](/charger-finder) helps you match a charger to your phone, so you do not have to work out fast-charging standards and port types yourself. A minute of preparation makes it quicker: know which port your phone or tablet has (USB-C, Lightning or Micro-USB), and whether you need a wall charger, a car charger, a power bank or a cable.
 
 # Why use it
 
@@ -44,7 +44,7 @@ Open Settings, then About phone (on an iPhone, Settings, General, About). Note t
 
 # Using the finder
 
-Open the [charger finder](/charger-finder) and tell it about your phone. It suggests chargers that suit it. Then, for each suggestion:
+Open the [charger finder](/charger-finder) and answer three questions: what you are charging, its charging port, and what you need. For a laptop, also pick the watts printed on its own charger. It shows what fits and why. Then, for each suggestion:
 
 1. **Open the product page** and read the listing: ports, fast-charging standard, output and what comes in the box.
 2. **Check the cable.** Some chargers come with a cable, others do not. Make sure the cable's connectors match your charger's port and your phone's port.
@@ -58,9 +58,9 @@ Open the [charger finder](/charger-finder) and tell it about your phone. It sugg
 
 These are examples, not a replacement for checking your phone's own spec.
 
-# If your phone is not listed
+# If nothing fits
 
-Phones change every year, and new models appear all the time. If you cannot find yours:
+If the finder shows nothing that fits:
 
 - Read the label on the charger that came with the phone. It lists the output and often the standard.
 - Search your exact model number for its charging specification.

@@ -59,4 +59,4 @@ A battery with the same size or the same mAh but a different code is not a safe 
 
 # Getting it to you
 
-Order before the same-day cutoff and we deliver in Kampala and Wakiso the same day, or collect from our shop in the Zainab Aziza Building on Burton Street. See [delivery in Kampala and Wakiso](/delivery/kampala-wakiso).
+Order before 5pm, Monday to Saturday, and your order goes out on that day's run in Kampala and Wakiso; when it arrives depends on your area. Or collect from our shop in the Zainab Aziza Building on Burton Street. See [delivery in Kampala and Wakiso](/delivery/kampala-wakiso).

@@ -82,4 +82,4 @@ Charge it fully before you leave. Our [GP-P07 power bank](/products/goldplus-pow
 - A charged power bank.
 - Your wall charger for the night's stop.
 
-See every [car accessory](/car-accessories) we stock. Order before 5pm and it goes out on the same day's run in Kampala and Wakiso, so you can have it before you set off.
+See every [car accessory](/car-accessories) we stock. Order before 5pm, Monday to Saturday, and it goes out on that day's run in Kampala and Wakiso. Leaving soon? Collect it from our shop on Burton Street.

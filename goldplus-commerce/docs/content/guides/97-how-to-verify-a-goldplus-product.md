@@ -57,7 +57,7 @@ We investigate every submission and refer serious cases to the relevant authorit
 
 # Your privacy
 
-When you check a code or report a fake, we record where fakes turn up, never who you are. Your details are not shared.
+A report asks for your phone number so we can follow it up with you. We record where fakes turn up, and we do not share your details. If you are signed in when you check a code, the check is added to your account so it can earn points.
 
 # Good habits when buying
 

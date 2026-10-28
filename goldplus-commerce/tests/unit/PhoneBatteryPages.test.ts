@@ -144,8 +144,10 @@ describe('surfaces agree', () => {
     expect(route).not.toMatch(/if \(!found \|\| !found\.isPublished\) throw/);
   });
   it('no public surface promises that the fit is confirmed before payment', () => {
-    for (const f of ['apps/web/src/pages/faq.astro', 'apps/web/src/pages/llms.txt.ts', 'apps/web/src/lib/agentTools.ts', 'apps/web/src/lib/agentDocuments.ts', 'apps/web/src/pages/developers.astro', 'apps/web/src/lib/agentSkill.ts', 'apps/web/src/pages/phone-batteries/[device].astro']) {
-      expect(read(f), f).not.toMatch(/confirm(s|ed)? (the fit )?before (you pay|payment|a customer pays)|never pay before|only checked fits/i);
+    for (const f of ['apps/web/src/pages/faq.astro', 'apps/web/src/pages/llms.txt.ts', 'apps/web/src/lib/agentTools.ts', 'apps/web/src/lib/agentDocuments.ts', 'apps/web/src/pages/developers.astro', 'apps/web/src/lib/agentSkill.ts', 'apps/web/src/pages/phone-batteries/[device].astro',
+      // Missed by the first sweep (2026-10-29): Goldie's teaser on every battery page and the OpenAPI description.
+      'apps/web/src/components/ShopAssistant.astro', 'apps/web/src/pages/openapi.json.ts']) {
+      expect(read(f), f).not.toMatch(/confirm(s|ed)? (the fit |it fits )?before (you pay|payment|a customer pays)|never pay before|only (reports )?checked fits|only fits GoldPlus has checked/i);
     }
   });
 });

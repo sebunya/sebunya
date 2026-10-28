@@ -46,7 +46,7 @@ With the model number, the [battery finder](/battery-finder) can show you the ba
 
 # What our battery finder shows
 
-Our battery finder lists fits from our own checks and from our supplier's compatibility list. Search by your phone model or by the battery code. If a fit is still waiting for full verification, the finder says so. Use the [battery finder](/battery-finder) to find the battery for your exact model rather than relying on a list you found somewhere else.
+Our battery finder lists fits from our own checks and from our supplier's compatibility list. Search by your phone model or by the battery code. Each fit says where it comes from: "Verified fit" means we checked it ourselves; "Fits, from our supplier's compatibility list" means it comes from that list. Use the [battery finder](/battery-finder) to find the battery for your exact model rather than relying on a list you found somewhere else.
 
 # Before you fit it
 

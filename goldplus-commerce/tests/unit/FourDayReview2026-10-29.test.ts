@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { trailingSlashTarget } from '../../apps/web/src/lib/pageAddress';
@@ -81,6 +81,28 @@ describe('review photos from a phone camera', () => {
     expect(page).toContain("canvas.toBlob(r, 'image/jpeg', 0.85)");
     const { REVIEW_PHOTO_REFUSAL_WORDS } = await import('../../apps/api/src/application/use-cases/reviews/ReviewPhotoUseCases');
     for (const w of Object.values(REVIEW_PHOTO_REFUSAL_WORDS)) expect(w).not.toMatch(/card/i);
+  });
+});
+
+describe('published copy says only what the shop does', () => {
+  const dir = resolve(__dirname, '../../docs/content/guides');
+  const guides = readdirSync(dir).filter((n) => /^\d+-.*\.md$/.test(n)).map((n) => [n, readFileSync(resolve(dir, n), 'utf8')] as const);
+  it('no guide or menu note claims every unit is tested (owner decision 2026-10-13)', () => {
+    const claim = /written full and read back|tested full|tests every card|every (card|unit) is tested/i;
+    for (const [n, t] of guides) expect(t, n).not.toMatch(claim);
+    expect(read('packages/shared/src/nav/config.ts')).not.toMatch(claim);
+    expect(read('apps/web/src/components/GpNav.astro')).not.toMatch(claim);
+  });
+  it('no guide promises an unconditional fit check, an arrival time, or anonymity the forms do not give', () => {
+    for (const [n, t] of guides) {
+      expect(t, n).not.toMatch(/(^|[.!] )We confirm the fit before you pay\./m);   // a promise; asking first is the offer
+      expect(t, n).not.toMatch(/we deliver in Kampala and Wakiso the same day|same-day delivery in Kampala and Wakiso for orders/i);
+      expect(t, n).not.toMatch(/never who you are|not who you are/i);
+    }
+    expect(read('apps/web/src/pages/verification/index.astro')).not.toMatch(/never who you are/);
+  });
+  it('GP-C08 is described by its listed outputs (5V⎓2A, 9V⎓1A: at most 10W), never as 12W', () => {
+    for (const [n, t] of guides) expect(t, n).not.toMatch(/GP-C08[^\n]{0,160}12W|12W[^\n]{0,80}GP-C08/);
   });
 });
 

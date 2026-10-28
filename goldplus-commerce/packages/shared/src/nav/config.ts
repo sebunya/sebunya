@@ -157,7 +157,7 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
         { rowLabel: 'Flash drives', allSizes: { label: 'All sizes →', href: '/shop?category=storage&q=flash+drive' }, caps: caps() },
         { rowLabel: 'Memory cards', allSizes: { label: 'All sizes →', href: '/shop?category=storage&q=memory+card' }, caps: caps() },
       ],
-      note: 'Every card is written full and read back before it is sold. <b>The size on the box is the size you get.</b>',
+      note: 'Every genuine GoldPlus card carries a hologram code you can check. <b>A card that does not hold its size is replaced or refunded.</b>',
       featured: {
         eyebrow: 'Also worth carrying', name: 'Power Bank with Built-in Cables', line: 'No cable to forget at home',
         href: '/shop?category=power&q=power+bank', alt: 'Power Bank with Built-in Cables', img: FEAT,

@@ -62,7 +62,7 @@ WhatsApp photos, videos and voice notes build up quietly, especially from busy g
 
 # Why your card shows a bit less
 
-Card makers count a gigabyte as 1,000,000,000 bytes, while phones often count in units of 1,024. So a 64GB card may show about 59GB free. That is normal. Every memory card we sell is written full and read back before it is sold, so the size on the box is the size you get.
+Card makers count a gigabyte as 1,000,000,000 bytes, while phones often count in units of 1,024. So a 64GB card may show about 59GB free. That is normal.
 
 # Our memory cards
 

@@ -60,4 +60,4 @@ Uganda uses the UK-style three-pin plug. Every charger we sell has a UK plug, so
 
 # Choose yours
 
-See every [charger we stock](/power/chargers) and every [charging cable](/power/charging-cables), with same-day delivery in Kampala and Wakiso.
+See every [charger we stock](/power/chargers) and every [charging cable](/power/charging-cables). Order before 5pm, Monday to Saturday, and it goes out on that day's run in Kampala and Wakiso.

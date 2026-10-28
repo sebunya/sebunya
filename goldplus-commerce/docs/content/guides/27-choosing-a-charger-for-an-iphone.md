@@ -69,4 +69,4 @@ The small white 5W charger that came with older iPhones is safe, but slow. A PD 
 
 # Choose yours
 
-Match the port, then the cable, then the charger. Use the [charger finder](/charger-finder) to start from your iPhone model, or see every [charger we stock](/power/chargers). Order before 5pm and your order goes out on the same day's run in Kampala and Wakiso.
+Match the port, then the cable, then the charger. Use the [charger finder](/charger-finder) and choose Lightning (iPhone) or USB-C, or see every [charger we stock](/power/chargers). Order before 5pm, Monday to Saturday, and it goes out on that day's run in Kampala and Wakiso.

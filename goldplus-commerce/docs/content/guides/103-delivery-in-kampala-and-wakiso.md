@@ -4,7 +4,7 @@ Summary: GoldPlus delivers same-day in Kampala and Wakiso, Monday to Saturday. O
 
 Meta title: Delivery in Kampala and Wakiso | GoldPlus
 
-Meta description: GoldPlus delivers same-day in Kampala and Wakiso: order before 5pm for that day's run, see the fee before you pay, pay now or on delivery, or collect.
+Meta description: GoldPlus delivers in Kampala and Wakiso, Monday to Saturday: order before 5pm for that day's run, see the fee before you pay online, or collect.
 
 Related products: any order from the GoldPlus online shop.
 
@@ -38,11 +38,9 @@ To get the most accurate estimate, enter your address as precisely as you can at
 
 # How you can pay
 
-There are two ways, both offered at checkout.
+You pay online when you place your order: MTN or Airtel Mobile Money, or a Visa or Mastercard. We take you to PesaPal to finish, and your order is confirmed as soon as the money goes through.
 
-**Pay straight away.** Use MTN or Airtel Mobile Money, or a Visa or Mastercard. We take you to PesaPal to finish, and your order is confirmed as soon as the money goes through.
-
-**Pay on delivery or at our shop.** Order now and pay nothing today. We agree the delivery fee with you first, then you pay when your order reaches you, or when you collect it from our shop.
+A GoldPlus gift card or store credit pays first, and you pay any rest with Mobile Money or card.
 
 # Prefer to collect?
 
@@ -62,7 +60,7 @@ Many places in Kampala and Wakiso do not have street numbers, so landmarks matte
 
 # Tips for a smooth delivery
 
-- **Order before 5pm** if you need it the same day.
+- **Order before 5pm**, Monday to Saturday, so it goes out on that day's run.
 - **Give a clear address** and landmarks at checkout. It helps the rider and the fee estimate.
 - **Keep your phone on.** The rider may need to reach you.
 - **Check the fee** shown at checkout before you pay.

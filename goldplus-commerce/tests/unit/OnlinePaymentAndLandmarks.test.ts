@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import fs, { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { learnLandmarks, LANDMARK_MIN_SESSIONS } from '../../apps/api/src/domain/locations/LandmarkLearning';
 
@@ -21,9 +22,20 @@ describe('storefront orders are paid online (owner decision 2026-10-16)', () => 
     for (const f of [
       'apps/web/src/pages/checkout.astro', 'apps/web/src/lib/checkoutClient.ts', 'apps/web/src/lib/paymentReturn.ts', 'apps/web/src/pages/track-order.astro',
       'apps/web/src/lib/agentDocuments.ts', 'apps/web/src/lib/assistantRouter.ts',
+      // Missed until 2026-10-29: the FAQ, every product page and the payment-cancelled page still offered it.
+      'apps/web/src/pages/faq.astro', 'apps/web/src/pages/products/[slug].astro', 'apps/web/src/pages/checkout/pesapal/cancelled.astro',
     ]) {
       const customerStrings = (read(f).match(/(['`"])(?:(?!\1).){12,}\1/g) ?? []).join('\n');
       expect(customerStrings, f).not.toMatch(/pay on delivery|pay at (the|our) shop/i);
+    }
+    // The offline option's wording is admin-editable copy: no public page may render it while checkout is online only.
+    for (const f of ['apps/web/src/pages/faq.astro', 'apps/web/src/pages/products/[slug].astro']) expect(read(f), f).not.toMatch(/payment\.offline/);
+  });
+
+  it('no published guide offers pay on delivery or paying at the shop', () => {
+    const dir = path.resolve(__dirname, '../../docs/content/guides');
+    for (const f of fs.readdirSync(dir).filter((n) => /^\d+-.*\.md$/.test(n))) {
+      expect(fs.readFileSync(path.join(dir, f), 'utf8'), f).not.toMatch(/pay(ing)? on delivery|pay (nothing today|when (your order|it) reaches you)|pay now or on delivery/i);
     }
   });
 });

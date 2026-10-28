@@ -448,7 +448,6 @@ const keySpecs = verifiedAttributes.slice(0, 3).map((v) => ({ name: v.name, valu
 // returns window the JSON-LD already publishes, and the checkout's own
 // admin-editable payment labels (both methods are offered at checkout).
 const storefrontCopy = await storefrontCopyP;
-const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
 
 const pdpDescriptions: Record<string, { intro: string; description: string }> = {
   'goldplus-16gb-usb-flash-drive': {
@@ -927,7 +926,9 @@ if (product) {
               <span class="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-brand-charcoal shrink-0" aria-hidden="true">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
               </span>
-              <span>{storefrontCopy.payment.pesapal.label}, or {lowerFirst(storefrontCopy.payment.offline.label)}.</span>
+              {/* Online only (owner decision 2026-10-16; checkout sends 'pesapal' and the API refuses anything else unless
+                  STOREFRONT_PAY_ON_DELIVERY=on). The page offered pay on delivery until 2026-10-29. */}
+              <span>{storefrontCopy.payment.pesapal.label}. A GoldPlus gift card or store credit pays first.</span>
             </li>
             {/* Authenticity, said where the decision is made (2026-10-08 design
                 audit), in the /verification page's own words: every genuine

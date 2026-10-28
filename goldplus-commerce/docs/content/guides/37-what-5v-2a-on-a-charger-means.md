@@ -53,7 +53,7 @@ Fast chargers print a line for each voltage they support:
 
 Each line is a separate profile. The phone and charger agree on one, using a standard such as USB PD or Quick Charge. If they share no standard, they stay on the 5V line.
 
-For example, our [GP-C08 charger](/products/goldplus-charger-gp-c08) lists 5V⎓2A and 9V⎓1A, and is sold as a 12W charger.
+For example, our [GP-C08 charger](/products/goldplus-charger-gp-c08) lists 5V⎓2A and 9V⎓1A, so the most it lists is 10W.
 
 # Lines for each port and for both together
 
