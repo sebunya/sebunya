@@ -265,6 +265,12 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
         'enforces the AI Search view permission. Sent with Cache-Control: no-store.',
     ],
     [
+      '[id].ts',
+      'Review photo for the moderation queue (admin/review-photo, 0209). Returns a JPEG, not a page: ' +
+        'with no session it answers 404 and reads nothing; with one, the API enforces reviews.moderate ' +
+        'before serving an unpublished photo. Sent with Cache-Control: private, no-store and noindex.',
+    ],
+    [
       '[segment].csv.ts',
       'LinkedIn contact-list download (admin/advertising/linkedin-audience). Returns ' +
         'a CSV of SHA-256 hashes, not a page: with no session it answers 401 and ' +

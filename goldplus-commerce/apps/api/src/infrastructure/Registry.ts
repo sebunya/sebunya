@@ -86,6 +86,8 @@ import { DrizzleReviewRepository } from './db/repositories/DrizzleReviewReposito
 import { SubmitReviewUseCase } from '../application/use-cases/reviews/SubmitReviewUseCase';
 import { GetOrderReviewEligibilityUseCase, GetProductReviewsUseCase, SubmitOrderReviewUseCase, VoteOnReviewUseCase } from '../application/use-cases/reviews/OrderReviewUseCases';
 import { SendReviewRemindersUseCase } from '../application/use-cases/reviews/SendReviewRemindersUseCase';
+import { ReviewPhotoUseCases } from '../application/use-cases/reviews/ReviewPhotoUseCases';
+import { DrizzleReviewPhotoRepository } from './reviews/DrizzleReviewPhotoRepository';
 import { GetSalesFunnelUseCase } from '../application/use-cases/analytics/GetSalesFunnelUseCase';
 import { DrizzleSalesFunnelReader } from './db/repositories/DrizzleSalesFunnelReader';
 import { RequestReturnUseCase } from '../application/use-cases/commerce/RequestReturnUseCase';
@@ -882,7 +884,9 @@ export class Registry {
   public readonly mobileMoneyDisbursement = new NoSendMobileMoneyDisbursement();
   public readonly submitReviewUseCase = new SubmitReviewUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
   public readonly orderReviewEligibilityUseCase = new GetOrderReviewEligibilityUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
-  public readonly submitOrderReviewUseCase = new SubmitOrderReviewUseCase(this.reviewRepo, this.submitReviewUseCase);
+  /** 0209: photos on reviews, through the gift-card photo pipeline. */
+  public readonly reviewPhotoUseCases = new ReviewPhotoUseCases(new DrizzleReviewPhotoRepository(), new SharpGiftCardPhotoProcessor(), (raw) => piiHasher.hashName(raw), (event, detail) => logger.info({ event, ...detail }, `[review-photo] ${event}`));
+  public readonly submitOrderReviewUseCase = new SubmitOrderReviewUseCase(this.reviewRepo, this.submitReviewUseCase, (reviewId, ids) => this.reviewPhotoUseCases.attach(reviewId, ids));
   public readonly productReviewsUseCase = new GetProductReviewsUseCase(this.reviewRepo);
   public readonly voteOnReviewUseCase = new VoteOnReviewUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
   public readonly pricingOperationsRepo = new DrizzlePricingOperationsRepository();

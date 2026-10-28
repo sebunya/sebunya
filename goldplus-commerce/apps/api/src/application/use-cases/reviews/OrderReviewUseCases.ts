@@ -37,16 +37,16 @@ export class GetOrderReviewEligibilityUseCase {
   }
 }
 
-export interface SubmitOrderReviewInput { productId: string; rating: number; title?: string | null; body?: string | null }
+export interface SubmitOrderReviewInput { productId: string; rating: number; title?: string | null; body?: string | null; /** 0209: ids of photos uploaded for this review (at most three are kept). */ photoIds?: unknown }
 export type SubmitOrderReviewResult =
-  | { ok: true; status: string; flagged: boolean }
+  | { ok: true; status: string; flagged: boolean; photos?: number }
   | { ok: false; reason: 'NOT_DELIVERED' | 'NOT_ON_ORDER' | 'INVALID_RATING' | 'TOO_LONG' | 'ALREADY_REVIEWED' | 'ORDER_LINE_NOT_FOUND' | 'ORDER_NOT_OWNED' };
 
 export const REVIEW_TITLE_MAX = 140;
 export const REVIEW_BODY_MAX = 2000;
 
 export class SubmitOrderReviewUseCase {
-  constructor(private readonly reviews: IReviewRepository, private readonly submit: SubmitReviewUseCase) {}
+  constructor(private readonly reviews: IReviewRepository, private readonly submit: SubmitReviewUseCase, private readonly attachPhotos: (reviewId: string, photoIds: unknown) => Promise<number> = async () => 0) {}
 
   async execute(order: VerifiedOrder, input: SubmitOrderReviewInput): Promise<SubmitOrderReviewResult> {
     if (!REVIEWABLE_ORDER_STATUSES.has(order.orderStatus)) return { ok: false, reason: 'NOT_DELIVERED' };
@@ -61,7 +61,9 @@ export class SubmitOrderReviewUseCase {
     // itself; it never trusts these inputs. New reviews wait for a moderator (never auto-published).
     const res = await this.submit.execute({ productId: input.productId, orderItemId: lineId, customerPhone: order.customerPhone, rating: input.rating, title, body });
     if (!res.ok) return { ok: false, reason: res.reason };
-    return { ok: true, status: res.status, flagged: res.flagged };
+    // 0209: the photos uploaded while writing; a failure to attach never loses the review.
+    const photos = input.photoIds ? await this.attachPhotos(res.reviewId, input.photoIds).catch(() => 0) : 0;
+    return { ok: true, status: res.status, flagged: res.flagged, photos };
   }
 }
 

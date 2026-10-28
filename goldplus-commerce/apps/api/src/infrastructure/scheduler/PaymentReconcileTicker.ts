@@ -101,6 +101,7 @@ async function runOnce(): Promise<void> {
   try {
     // 0201: gift card photos the retention rules no longer keep (deletes only; both replicas may run it).
     await registry.giftCardPhotoUseCases.sweep(new Date());
+    await registry.reviewPhotoUseCases.sweep(new Date()); // 0209: review photo uploads nothing attached
   } catch (error) {
     logger.error({ err: error }, '[gift-card-photo] sweep failed');
   }

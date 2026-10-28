@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, numeric, pgTable, smallint, text, timestamp, uniqueIndex, index, uuid, varchar } from 'drizzle-orm/pg-core';
+import { boolean, customType, integer, jsonb, numeric, pgTable, smallint, text, timestamp, uniqueIndex, index, uuid, varchar } from 'drizzle-orm/pg-core';
 import { orderItems } from './commerce';
 import { products } from './products';
 
@@ -59,3 +59,20 @@ export const productRatingAggregate = pgTable('product_rating_aggregate', {
   distribution: jsonb('distribution').notNull().default({}),
   lastRecomputedAt: timestamp('last_recomputed_at', { withTimezone: true }),
 });
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType() { return 'bytea'; } });
+
+/** 0209: photos on a review, through the gift-card photo pipeline (square JPEG, no metadata). Shown only when published. */
+export const reviewPhotos = pgTable('review_photos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  reviewId: uuid('review_id').references(() => reviews.id, { onDelete: 'cascade' }),
+  image: bytea('image').notNull(),
+  width: integer('width').notNull(),
+  height: integer('height').notNull(),
+  uploaderKey: varchar('uploader_key', { length: 64 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  attachedAt: timestamp('attached_at', { withTimezone: true }),
+}, (t) => ({
+  reviewIdx: index('review_photos_review_idx').on(t.reviewId, t.createdAt),
+  createdIdx: index('review_photos_created_idx').on(t.createdAt),
+}));

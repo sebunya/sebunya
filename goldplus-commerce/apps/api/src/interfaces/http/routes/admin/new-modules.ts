@@ -63,6 +63,13 @@ routes.post('/reviews/:id/moderate', requirePermissions([PERMISSIONS.REVIEWS_MOD
   return ok(c, { productId: result.productId, status });
 });
 
+/** 0209: a review's photo for the moderator, published or not. */
+routes.get('/reviews/photos/:id', requirePermissions([PERMISSIONS.REVIEWS_MODERATE]), async (c) => {
+  const image = await Registry.getInstance().reviewPhotoUseCases.image(String(c.req.param('id')), true);
+  if (!image) return bad(c, 'NOT_FOUND', 'No such photo.', 404);
+  return c.body(new Uint8Array(image.buffer as ArrayBuffer, image.byteOffset, image.byteLength), 200, { 'Content-Type': 'image/jpeg', 'Content-Length': String(image.byteLength), 'Cache-Control': 'private, max-age=600', 'X-Content-Type-Options': 'nosniff' });
+});
+
 // ---- 0208: product questions (answer queue) ------------------------------
 routes.get('/questions', requirePermissions([PERMISSIONS.REVIEWS_MODERATE]), async (c) => {
   const status = String(c.req.query('status') || 'pending');
