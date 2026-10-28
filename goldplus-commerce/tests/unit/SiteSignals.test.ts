@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { hasSignedUpMarker, isMapLink, searchAlreadyCounted, searchTermOf, SIGNED_UP_COOKIE } from '../../apps/web/src/lib/siteSignalRules';
+import { hasSignedUpMarker, isMapLink, searchAlreadyCounted, searchTermOf, searchWasTyped, SIGNED_UP_COOKIE, submittedSearchTerm, TYPED_SEARCH_KEY } from '../../apps/web/src/lib/siteSignalRules';
 import { BrowserTelemetryEventSchema } from '../../packages/shared/src/events/telemetry';
 import { cleanSelection, eventSelected } from '../../apps/api/src/domain/advertising/OptimisationEvents';
 import { ga4CollectHit } from '../../apps/api/src/infrastructure/telemetry/Ga4CollectHit';
@@ -15,6 +15,22 @@ describe('site signals: search, new account, shop directions', () => {
     expect(searchTermOf('/shop', '?category=power')).toBe('');
     expect(searchTermOf('/shop', '?search=%20')).toBe('');
     expect(searchTermOf('/products/x', '?search=charger')).toBe('');
+  });
+  it('a search counts only when a search form submitted that term (a menu or shared link is not a search)', () => {
+    const m = new Map<string, string>();
+    const s = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
+    const fd = (o: Record<string, string>) => ({ get: (k: string) => (k in o ? o[k] : null) });
+    expect(submittedSearchTerm('/shop', fd({ search: ' Power Bank ' }))).toBe('power bank');
+    expect(submittedSearchTerm('/battery-finder', fd({ q: 'Spark 7' }))).toBe('spark 7');
+    expect(submittedSearchTerm('/cart', fd({ q: 'x' }))).toBe('');
+    expect(searchWasTyped('tecno', s)).toBe(false);                      // the menu's /battery-finder?q=Tecno: nothing was typed
+    s.setItem(TYPED_SEARCH_KEY, 'spark 7');
+    expect(searchWasTyped('spark 7', s)).toBe(true);
+    expect(searchWasTyped('spark 7', s)).toBe(false);                    // read once: a reload is not a second search
+    expect(searchWasTyped('spark 7', null)).toBe(false);                 // storage off: not counted rather than overcounted
+    const signals = read('apps/web/src/lib/siteSignals.ts');
+    expect(signals).toMatch(/searchWasTyped\(term, storage\) && !searchAlreadyCounted\(term, storage\)/);
+    expect(signals).toContain("document.addEventListener('submit'");
   });
   it('a phone or code typed into the battery finder is a search too; opening a brand or a phone is not', () => {
     expect(searchTermOf('/battery-finder', '?q=Tecno%20Spark%207')).toBe('tecno spark 7');

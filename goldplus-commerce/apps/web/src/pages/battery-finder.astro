@@ -230,7 +230,7 @@ const deviceCount = (dv: { verifiedFits: number; listedFits: number }): string =
               <div class="text-right">
                 {search.battery.regularPriceUgx != null && <p class="text-xs font-semibold text-slate-600 line-through tabular-nums"><span class="sr-only">Was </span>{ugx(search.battery.regularPriceUgx)}</p>}
                 <p class="font-black text-brand-dark">{search.battery.regularPriceUgx != null && <span class="sr-only">Now </span>}{ugx(search.battery.priceUgx)}</p>
-                <a href={`/products/${search.battery.slug}`} class="mt-2 inline-block rounded-xl bg-brand-dark px-4 py-2 text-sm font-bold text-white hover:opacity-90">View</a>
+                <a href={`/products/${search.battery.slug}`} data-fit-product={search.battery.productId} data-finder-mode="SEARCH_CODE" class="mt-2 inline-block rounded-xl bg-brand-dark px-4 py-2 text-sm font-bold text-white hover:opacity-90">View</a>
               </div>
             </article>
             {search.devices.length > 0 && (
@@ -263,7 +263,7 @@ const deviceCount = (dv: { verifiedFits: number; listedFits: number }): string =
                     <div class="text-right">
                       {r.regularPriceUgx != null && <p class="text-xs font-semibold text-slate-600 line-through tabular-nums"><span class="sr-only">Was </span>{ugx(r.regularPriceUgx)}</p>}
                       <p class="font-black text-brand-dark">{r.regularPriceUgx != null && <span class="sr-only">Now </span>}{ugx(r.priceUgx)}</p>
-                      <a href={`/products/${r.slug}?device=${encodeURIComponent(shownDevice.slug)}`} class="mt-2 inline-block rounded-xl bg-brand-dark px-4 py-2 text-sm font-bold text-white hover:opacity-90">View</a>
+                      <a href={`/products/${r.slug}?device=${encodeURIComponent(shownDevice.slug)}`} data-fit-product={r.productId} data-finder-mode="FIND_BY_PHONE" data-finder-device={shownDevice.slug} class="mt-2 inline-block rounded-xl bg-brand-dark px-4 py-2 text-sm font-bold text-white hover:opacity-90">View</a>
                     </div>
                   </article>
                 ))}
@@ -344,3 +344,14 @@ const deviceCount = (dv: { verifiedFits: number; listedFits: number }): string =
     )}
   </div>
 </BaseLayout>
+
+<script>
+  // A battery opened from the finder's own results (the phone pages send the same event): the funnel's middle step.
+  import { sendFinderEvent } from '../lib/finderEvents';
+  document.addEventListener('click', (ev) => {
+    const a = (ev.target as Element | null)?.closest?.('a[data-fit-product]') as HTMLAnchorElement | null;
+    if (!a) return;
+    const mode = a.dataset.finderMode === 'SEARCH_CODE' ? 'SEARCH_CODE' : 'FIND_BY_PHONE';
+    sendFinderEvent({ eventType: 'PRODUCT_VIEWED', mode, productId: a.dataset.fitProduct || null, deviceSlug: a.dataset.finderDevice || null });
+  });
+</script>

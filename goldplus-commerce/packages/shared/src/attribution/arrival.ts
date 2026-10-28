@@ -33,6 +33,17 @@ export const AD_CLICK_IDS: Readonly<Record<string, { network: string; kind: 'sea
  */
 export const SOCIAL_SHARE_CLICK_IDS: Readonly<Record<string, string>> = { fbclid: 'facebook.com' };
 
+/**
+ * Google's own marker on clicks from its ORGANIC results: Merchant Center auto-tagging appends `srsltid` to product
+ * results and free listings (and, since 2024, to ordinary results of sites with a Merchant Center account). Not an ad
+ * (an ad carries gclid, which decides first) and not a click id we keep. When the Google app or a privacy setting
+ * drops the referrer, it is the one sign the visit came from Google search; it used to read as Direct (2026-10-29).
+ */
+export const SEARCH_RESULT_CLICK_IDS: Readonly<Record<string, string>> = { srsltid: 'google.com' };
+
+/** Untagged, referrer-less markers and the host they stand for: social shares, then organic search results. */
+const ARRIVAL_MARKER_HOSTS: Readonly<Record<string, string>> = { ...SOCIAL_SHARE_CLICK_IDS, ...SEARCH_RESULT_CLICK_IDS };
+
 /** Generic postback networks' click ids (Opera, Eagllwin, Boomplay): a paid click, network unknown. */
 export const POSTBACK_CLICK_IDS = ['clickid', 'click_id'] as const;
 
@@ -117,7 +128,7 @@ export function untaggedArrivalHost(p: URLSearchParams, ua: string): string | nu
   if (hasTagsOrAdId(p)) return null;
   const app = inAppHost(ua);
   if (app) return app;
-  for (const [k, host] of Object.entries(SOCIAL_SHARE_CLICK_IDS)) if (p.get(k)) return host;
+  for (const [k, host] of Object.entries(ARRIVAL_MARKER_HOSTS)) if (p.get(k)) return host;
   return null;
 }
 
@@ -150,7 +161,8 @@ export function loaderRules(): { campaign: string; tagged: string; pay: string; 
     tagged: TAGGED_OR_AD_PARAM.source,
     pay: PAYMENT_HOST.source,
     iab: IN_APP_BROWSERS.map(([re, host]) => [re.source, re.flags, host]),
-    soc: { ...SOCIAL_SHARE_CLICK_IDS },
+    // The loader's referrer-less markers (GA4 is told the same host our landing touch files): shares and Google results.
+    soc: { ...ARRIVAL_MARKER_HOSTS },
     share: { frag: SHARE_FRAGMENT.source, deny: SHARE_PAGE_DENY.source, tags: { ...SHARE_TAGS } },
     ch: { ...CHANNEL_TAGS },
   };

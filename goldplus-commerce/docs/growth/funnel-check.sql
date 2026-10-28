@@ -29,7 +29,25 @@ from battery_finder_events e join devices d on d.id = e.device_id
 where e.event_type = 'RESULT_VIEWED' and e.session_hash is not null and e.occurred_at > now() - interval '14 days'
 group by 1,2 order by 3 desc limit 20;
 
-\echo === G5. GA4: sessions and purchases that LANDED on a phone page, last 30 days ===
+\echo === G5. FIRST-PARTY: sales (last 30 days) whose journey started on a phone page (attribution module) ===
+with sales as (
+  select o.id, o.created_at, greatest(o.total_amount - coalesce(o.delivery_fee, 0), 0) as goods from orders o
+  where o.created_at > now() - interval '30 days' and o.status not in ('cancelled','failed','delivery_failed')
+    and o.payment_status not in ('refunded','reversed') and (o.payment_method is distinct from 'pesapal' or o.payment_status = 'paid')
+), entry as (
+  select distinct on (s.id) s.id, s.goods, lower(rtrim(t.landing_path, '/')) as path, t.channel
+  from sales s join measurement.order_touch_link l on l.order_id = s.id join measurement.touchpoint t on t.touch_id = l.touch_id
+  where t.occurred_at <= s.created_at and t.occurred_at > s.created_at - interval '30 days'
+  order by s.id, (t.channel = 'direct'), t.occurred_at
+)
+select case when path like '/phone-batteries/%' then 'phone battery pages' when path like '/blog/%' then 'guides'
+            when path like '/products/%' then 'product pages' else 'other' end as started_on,
+       channel, count(*) as sales, sum(goods) as goods_ugx
+from entry group by 1, 2 order by 1, 3 desc;
+select (select count(*) from orders where created_at > now() - interval '30 days') as orders_30d,
+       (select count(distinct l.order_id) from measurement.order_touch_link l join orders o on o.id = l.order_id where o.created_at > now() - interval '30 days') as orders_with_a_recorded_visit;
+
+\echo === G5b. GA4 second opinion: sessions and purchases that LANDED on a phone page, last 30 days ===
 select left(dimension, 70) as landing_page, sum(sessions) as sessions, sum(engaged_sessions) as engaged, sum(purchases) as purchases, sum(purchase_revenue_minor) as revenue_minor
 from measurement.ga4_daily_series
 where report = 'landing_page' and day > current_date - 30 and (dimension like '/phone-batteries/%' or dimension in ('/phone-batteries', '/battery-finder'))

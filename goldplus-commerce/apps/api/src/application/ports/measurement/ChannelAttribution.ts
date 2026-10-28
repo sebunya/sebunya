@@ -1,5 +1,6 @@
 import type { HeardAboutAnswer } from '@goldplus/shared';
 import type { CodeTouch, CreditBasis, CreditRow, ObservedTouch, OrderCredit, ReportModel, SpendInput } from '../../../domain/measurement/ChannelReport';
+import type { EntryTouch } from '../../../domain/measurement/EntryPages';
 
 /** The facts one order's attribution is computed from. */
 export interface OrderAttributionFacts {
@@ -55,7 +56,28 @@ export interface ChannelAttributionStore {
   creditsBetween(model: ReportModel, from: Date, to: Date): Promise<CreditRow[]>;
   /** Stored credits for one order, every model. */
   creditsForOrder(orderId: string): Promise<Array<{ model: string; channel: string; detail: string; weight: number; creditedUGX: bigint; basis: CreditBasis; computedAt: Date }>>;
+  /**
+   * Each order's entry visit among its linked touches in the lookback window: the first one with a source, else the
+   * first direct one (domain/measurement/EntryPages). Orders with no linked touch are absent.
+   */
+  entryTouches(orderIds: string[], lookbackDays: number): Promise<EntryTouch[]>;
+  /** A page of this environment's touches since `since`, oldest first, after the keyset cursor (reclassification). */
+  touchesSince(since: Date, after: TouchCursor | null, limit: number): Promise<StoredTouch[]>;
+  /** Rewrites the derived `channel` of the given touches; their recorded fields are never changed. */
+  setTouchChannels(updates: Array<{ touchId: string; channel: string }>): Promise<number>;
 }
+
+/** A touch as recorded: the fields its channel is derived from (Channels.classifyChannel), and the channel on file. */
+export interface StoredTouch {
+  touchId: string;
+  occurredAt: Date;
+  channel: string;
+  source: string | null;
+  medium: string | null;
+  referrerHost: string | null;
+  clickIdTypes: string[];
+}
+export interface TouchCursor { occurredAt: Date; touchId: string }
 
 /**
  * Advertising spend by week and report channel. `NOT_AVAILABLE` when no spend

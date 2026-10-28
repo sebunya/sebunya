@@ -67,7 +67,7 @@ One journey per order, oldest first, from three labelled kinds of evidence:
    any other code is `promo_code` (detail = the code, or the promotion's name
    for a batch of single-use codes).
 3. **Declared**: the customer's (or staff's) answer to "How did you hear about
-   us?". Used in the journey **only when there is no observed or code touch**,
+   us?". Used in the journey **only when there is no observed touch with a source and no code** (a journey of only direct visits counts as none, v2),
    and marked `basis = 'declared'`. Ambiguous answers stay ambiguous:
    "Facebook" is `social_declared`, never paid social. Two answers are
    staff-only (`walk_in`, `phone_call`; the checkout never offers or accepts
@@ -75,9 +75,16 @@ One journey per order, oldest first, from three labelled kinds of evidence:
    `phone_order`, the order's own channels, never "direct" and never spread
    (docs/measurement/MMM_AND_INCREMENTALITY.md §8).
 
+**Direct visits (channel-credit-v2, 2026-10-29).** "Direct" means no evidence (a typed address, a bookmark, the
+installed app), and nearly every customer comes back that way to pay. Under v1 a shopper who found a guide on Google
+and came back two days later by typing the address was filed 100% Direct under Last click, so search, social,
+WhatsApp and the YouTube placements were buried under the one channel that explains nothing (the test even pinned
+it). v2 applies GA4's rule to every model: direct visits are dropped while anything else was recorded; a journey of
+only direct visits gives way to the customer's answer when there is one (basis `declared`), and is Direct otherwise.
+
 Models (`measurement.order_channel_credit`, one row per order × model ×
 channel × detail, with weight and integer UGX credit; `model_version =
-channel-credit-v1`): `last_click`, `first_touch`, `linear`, `time_decay`
+channel-credit-v2`): `last_click`, `first_touch`, `linear`, `time_decay`
 (half-life 7 days), `position_based` (40/20/40) and `self_reported` (the answer
 alone). Weights sum to 1 and the money is split with exact largest-remainder
 allocation (`domain/measurement/Attribution.ts`), so no model creates or loses a
@@ -143,12 +150,44 @@ Microsoft spend is `paid_search`; Meta/TikTok/Snap/Pinterest/LinkedIn/X is
 
 ## 6. Known limits
 
-- A visitor who clears cookies or switches device is a new visitor; no
-  cross-device stitching is attempted (identity links are not used here).
-- `fbclid` alone is classified as paid social by `classifyChannel` (0141). Meta
-  also adds it to organic outbound links, so organic Facebook traffic may be
-  over-credited to paid social. Left unchanged here; noted for the classifier.
-- Credited orders under linear/time-decay/position-based are fractional.
+- Cross-device: an order is linked to its own browser's visits and to every other browser the identity graph (0155)
+  ties to the same customer (`link_method = 'stitched'`), plus a chat's visitor through its WhatsApp reference. A
+  guest who never signs in, verifies a phone or orders twice on two devices stays two visitors.
+- A visit is one landing touch per tab session (more only when a new campaign, click id or outside referrer arrives);
+  what the visitor does after landing is not a touch.
+- Credited orders under linear, time-decay and position-based are fractional.
+- Organic search is filed from the referrer (or Google's `srsltid` marker when the referrer is missing); which
+  query was typed is Search Console's to tell, not ours.
+
+## 7. Classifier notes (2026-10-29)
+
+`domain/measurement/Channels.ts`, fed by the one rulebook `packages/shared/src/attribution/arrival.ts`:
+
+- Webmail and mail apps (`mail.google.com`, the Gmail app's `com.google.android.gm`, Yahoo Mail, Outlook, Proton)
+  are `email`. They used to read as Google or Yahoo **search** (or "referral" for Outlook).
+- AI assistants include Grok, Mistral, Poe, You.com, Phind, Copilot (cloud.microsoft) and the ChatGPT and Perplexity
+  Android apps.
+- Google's `srsltid` (its marker on organic results of Merchant Center sites) on a referrer-less, untagged visit names
+  google.com: organic search, and GA4 is told the same. Never an ad (gclid decides first) and never a stored click id.
+- A radio, TV, podcast or paper placement's link (`utm_medium=placement`) is `offline_media`; it used to fall to
+  `other`, so the placement scorecard showed no arrivals. A placement's promo code credits the placement published
+  on or before the order day, named by its link slug (the key its link visits use).
+- Fixes reach the past: `apps/api/src/scripts/reclassify-attribution.ts` re-derives every recorded touch's channel
+  from its recorded fields (an unchanged rule gives the same answer) and re-credits every order (dry run first; run
+  at deploy; audited as `ATTRIBUTION_RECOMPUTED`).
+
+## 8. Where sales started
+
+The channel report's last table: each sale's entry page, the first recorded arrival with a source (a direct one only
+when that was all), grouped by page × channel with section totals (`domain/measurement/EntryPages.ts`). First-party:
+`measurement.touchpoint.landing_path` joined through `order_touch_link`, no GA4. It answers "which pages bring
+customers who buy" (the organic programme's gate G5, `docs/growth/funnel-check.sql`).
+
+## 9. Search events
+
+A `search` (GA4 and the ad platforms' standard event) is counted only when a search form submitted that term
+(`siteSignalRules.searchWasTyped`). The menu's pre-filled links (`/battery-finder?q=Tecno`,
+`/shop?category=power&q=adapter`) and shared results links used to count as searches.
 
 Sources: WhatsApp click to chat (`wa.me/<number>?text=<urlencodedtext>`):
 https://faq.whatsapp.com/5913398998672934

@@ -1016,7 +1016,7 @@ if (product) {
         class="mt-24 space-y-16"
         data-product-tracking
         data-product-id={product.id}
-        data-battery-device={battery && selectedDevice ? selectedDevice.slug : ''}
+        data-battery-device={fitForSelected && selectedDevice ? selectedDevice.slug : ''}
         data-battery={battery ? '1' : ''}
         data-product-sku={hasValidSku ? product.sku : ''}
         data-product-slug={product.slug}

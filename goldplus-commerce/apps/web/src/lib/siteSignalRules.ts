@@ -17,6 +17,36 @@ export function searchTermOf(pathname: string, search: string): string {
   return (p.get('search') ?? p.get('q') ?? '').trim().toLowerCase().slice(0, 120);
 }
 
+/** The term a search form carried as it submitted, read once by the results page (siteSignals). */
+export const TYPED_SEARCH_KEY = '_gp_typed_search';
+
+/**
+ * The term a submitting form searches for, normalised as searchTermOf reads it back, or '' when the form is not a
+ * shop or battery-finder search. Read from the form's own fields, so it is exactly what the visitor typed.
+ */
+export function submittedSearchTerm(actionPath: string, fields: { get(name: string): unknown }): string {
+  if (!/^\/(shop|battery-finder)\/?$/.test(actionPath)) return '';
+  const v = fields.get('search') ?? fields.get('q');
+  return typeof v === 'string' ? v.trim().toLowerCase().slice(0, 120) : '';
+}
+
+/**
+ * A search counts only when someone typed it: the results page sees the same term a search form just submitted.
+ * The menu's links (/battery-finder?q=Tecno, /shop?category=power&q=adapter), a guide's link to a pre-filled finder
+ * and a shared results link all open the same addresses, and every one was reported to GA4 and the ad platforms as a
+ * search, so "what people search for" was partly "what the menu offers" (2026-10-29). Read once, then cleared.
+ */
+export function searchWasTyped(term: string, storage: Pick<Storage, 'getItem' | 'removeItem'> | null): boolean {
+  if (!storage || !term) return false;
+  try {
+    const typed = storage.getItem(TYPED_SEARCH_KEY);
+    storage.removeItem(TYPED_SEARCH_KEY);
+    return typed === term;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * True when this term was the last one counted in this tab (page two of the
  * same results, a sort, a reload); marks it counted otherwise.

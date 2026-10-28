@@ -11,7 +11,9 @@ import {
   type ReportModel,
   type WeeklyChannelReport,
 } from '../../../domain/measurement/ChannelReport';
-import type { ChannelAttributionStore, ChannelSpendSource, OrderAttributionFacts } from '../../ports/measurement/ChannelAttribution';
+import { entryPagesReport, type EntryPagesReport } from '../../../domain/measurement/EntryPages';
+import { classifyChannel } from '../../../domain/measurement/Channels';
+import type { ChannelAttributionStore, ChannelSpendSource, OrderAttributionFacts, TouchCursor } from '../../ports/measurement/ChannelAttribution';
 
 /** The answer that counts: the newest staff answer, else the newest customer answer. */
 export function effectiveDeclared(reports: OrderAttributionFacts['reports']): HeardAboutAnswer | null {
@@ -135,10 +137,48 @@ export class BackfillOrderAttributionUseCase {
   }
 }
 
+/**
+ * Re-derives every recorded touch's channel from its recorded fields with today's classifier (Channels), so a
+ * classifier fix reaches the past as well as new visits. The channel is derived data: the collector computed it from
+ * exactly these fields, so an unchanged rule gives the same answer and only real fixes move a touch. Bounded and
+ * paged; a dry run reports what would change and writes nothing. Credits are recomputed separately (backfill).
+ */
+export class ReclassifyTouchesUseCase {
+  static readonly MAX_TOUCHES = 1_000_000;
+  constructor(private readonly store: ChannelAttributionStore, private readonly now: () => Date = () => new Date(), private readonly pageSize = 2000) {}
+
+  async execute(input: { days: number; dryRun: boolean }): Promise<{ scanned: number; changed: number; written: number; changes: Record<string, number>; capped: boolean }> {
+    const days = Math.min(800, Math.max(1, Math.floor(input.days)));
+    const since = new Date(this.now().getTime() - days * 86_400_000);
+    const changes: Record<string, number> = {};
+    let scanned = 0, changed = 0, written = 0;
+    let cursor: TouchCursor | null = null;
+    for (;;) {
+      const page = await this.store.touchesSince(since, cursor, this.pageSize);
+      if (!page.length) break;
+      const updates: Array<{ touchId: string; channel: string }> = [];
+      for (const t of page) {
+        const channel = classifyChannel({ source: t.source, medium: t.medium, referrerHost: t.referrerHost, clickIdTypes: t.clickIdTypes });
+        if (channel === t.channel) continue;
+        updates.push({ touchId: t.touchId, channel });
+        const k = `${t.channel} → ${channel}`;
+        changes[k] = (changes[k] ?? 0) + 1;
+      }
+      scanned += page.length; changed += updates.length;
+      if (!input.dryRun && updates.length) written += await this.store.setTouchChannels(updates);
+      const last = page[page.length - 1];
+      cursor = { occurredAt: last.occurredAt, touchId: last.touchId };
+      if (page.length < this.pageSize) break;
+      if (scanned >= ReclassifyTouchesUseCase.MAX_TOUCHES) return { scanned, changed, written, changes, capped: true };
+    }
+    return { scanned, changed, written, changes, capped: false };
+  }
+}
+
 export class GetWeeklyChannelReportUseCase {
   constructor(private readonly store: ChannelAttributionStore, private readonly spend: ChannelSpendSource, private readonly now: () => Date = () => new Date()) {}
 
-  async execute(input: { model: ReportModel; weeks: number }): Promise<WeeklyChannelReport> {
+  async execute(input: { model: ReportModel; weeks: number }): Promise<WeeklyChannelReport & { entryPages: EntryPagesReport | null }> {
     const weeks = reportWeeks(this.now(), input.weeks);
     const { from, to } = weeksRange(weeks);
     const creditsFor = (m: ReportModel) => (m === input.model ? null : this.store.creditsBetween(m, from, to));
@@ -151,7 +191,14 @@ export class GetWeeklyChannelReportUseCase {
     ]);
     const counted = sales.filter(countsAsSale).map((s) => ({ orderId: s.orderId, orderAt: s.orderAt, revenueUGX: goodsValueUGX(s.totalUGX, s.deliveryFeeUGX) }));
     const assist = { journeyCredits: linear ?? credits, lastClickCredits: lastClick ?? credits };
-    return buildWeeklyChannelReport({ model: input.model, weeks, sales: counted, credits, spend, assist });
+    const report = buildWeeklyChannelReport({ model: input.model, weeks, sales: counted, credits, spend, assist });
+    // Where those sales started (the page and channel of each one's entry visit). A secondary read: the channel
+    // report stands without it, so a failure here shows as "not available" rather than taking the report down.
+    let entryPages: EntryPagesReport | null = null;
+    try {
+      entryPages = entryPagesReport(counted, await this.store.entryTouches(counted.map((s) => s.orderId), LOOKBACK_DAYS));
+    } catch { entryPages = null; }
+    return { ...report, entryPages };
   }
 }
 
