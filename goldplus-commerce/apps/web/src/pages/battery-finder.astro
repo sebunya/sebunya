@@ -20,6 +20,12 @@ const q = (url.searchParams.get('q') ?? '').trim().slice(0, 120);
 const fromThisPhone = url.searchParams.get('from') === 'this-phone';
 const brandSlug = (url.searchParams.get('brand') ?? '').trim().slice(0, 80);
 const deviceSlug = (url.searchParams.get('device') ?? '').trim().slice(0, 160);
+// A phone's own page is its address now (/phone-batteries/<slug>): a plain ?device= view (an old or outside link) moves
+// there for good, rather than being a noindex page whose canonical names another (mixed signals, 2026-10-29 review).
+// The request form's view (&help=1) and any search or brand alongside stay here.
+if (Astro.request.method === 'GET' && deviceSlug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(deviceSlug) && !q && !brandSlug && !url.searchParams.has('help') && !fromThisPhone) {
+  return Astro.redirect(phoneBatteryPath(deviceSlug), 301);
+}
 const sessionId = finderSessionId(Astro.locals);
 
 let requestNotice: { kind: 'success' | 'error'; text: string } | null = null;

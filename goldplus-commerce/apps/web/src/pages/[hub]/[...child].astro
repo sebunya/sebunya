@@ -24,7 +24,7 @@ import { findRecordedRedirect } from '../../lib/recordedRedirect';
 import { carryQuery } from '../../lib/carryQuery';
 import { offerPriceUgx } from '../../lib/offerPrice';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../../lib/storefrontDiscount';
-import { publicBattery } from '../../lib/batteries';
+import { fitIndexCached } from '../../lib/batteries';
 import { phoneBatteryPath } from '../../lib/phoneBatteryPage';
 import type { FinderFitIndexDto } from '@goldplus/shared';
 
@@ -137,7 +137,7 @@ const seeAllHref = shopParams.toString() ? `/shop?${shopParams.toString()}` : '/
 // pages and the sitemap can never disagree. Absent (not an empty promise) when
 // the finder is away.
 const fitIndex: FinderFitIndexDto | null = hub.slug === 'phone-batteries' && !child
-  ? await publicBattery<FinderFitIndexDto>('/finder/fit-index').then((r) => (r.ok ? r.data : null))
+  ? await fitIndexCached().then((r) => (r.ok ? r.data : null))
   : null;
 const phoneBrands = (fitIndex?.brands ?? []).filter((b) => b.devices.length > 0);
 

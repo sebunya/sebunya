@@ -198,9 +198,12 @@ export class BatteryFinderUseCases {
     const device = await this.repo.deviceBySlug(deviceSlug);
     if (!device) return { device: null, fits: {} as Record<string, { fitState: PublicFitState | null; fitLabel: string | null; condition: string | null }> };
     this.applyListedSwitch(device, cfg);
-    const rows = await this.repo.fitsForDevice(device.id);
+    const ids = productIds.slice(0, 100);
+    const [rows, batteries] = await Promise.all([this.repo.fitsForDevice(device.id), this.repo.batteryProductIds(ids)]);
     const fits: Record<string, { fitState: PublicFitState | null; fitLabel: string | null; condition: string | null }> = {};
-    for (const id of productIds.slice(0, 100)) {
+    // Only batteries can fit or not fit a phone: a charger or a cable in the same basket gets no entry, so the cart
+    // does not call it "not checked against your phone" (it did, for every non-battery line; 2026-10-29 review).
+    for (const id of ids.filter((x) => batteries.has(x))) {
       const row = rows.find((r) => r.productId === id);
       const state = row ? publicFitState({ workflowStatus: row.workflowStatus as never, evidenceStatus: row.evidenceStatus as never, batteryLifecycle: row.batteryLifecycle, productApproved: row.productApproved, productActive: row.productActive, stockQuantity: row.stockQuantity, showAwaitingVerification: cfg.showAwaitingVerification }) : null;
       fits[id] = { fitState: state, fitLabel: state ? publicFitLabel(state) : null, condition: state === 'CONDITIONAL' ? row?.publicCondition ?? null : null };

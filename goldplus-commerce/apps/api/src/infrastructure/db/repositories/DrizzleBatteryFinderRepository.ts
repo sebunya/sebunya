@@ -8,6 +8,7 @@ import type { BatteryRequestRecord, DemandOverview, FinderEventWrite, IBatteryFi
 import type { BatteryCandidate, DeviceCandidate } from '../../../domain/batteries/FinderRanking';
 import { deviceLabel } from '../../../domain/batteries/DeviceHierarchy';
 import { displayImageUrlSql, galleryOrderSql, galleryVisibleSql } from '../mediaDisplayUrl';
+import { pgUuidArray } from '../PgParams';
 
 const jsonb = (value: unknown) => sql`${client.json(value as never)}::jsonb`;
 
@@ -146,9 +147,10 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
     }).from(devices)
       .innerJoin(deviceBrands, eq(deviceBrands.id, devices.brandId))
       .leftJoin(deviceSeries, eq(deviceSeries.id, devices.seriesId))
+      // No brand-status test: a phone of an archived brand keeps its page (the device lookup does not check the brand),
+      // so the hub and the sitemap list it too, or page and index disagree (2026-10-29 review).
       .where(and(
         eq(devices.status, 'ACTIVE'),
-        eq(deviceBrands.status, 'ACTIVE'),
         sql`EXISTS (SELECT 1 FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id WHERE c.device_id = ${sql.raw("devices.id")} AND ((${VERIFIED_PUBLIC}) ${awaiting}))`,
       ))
       .orderBy(deviceBrands.name, devices.model, devices.modelNumber);
@@ -198,6 +200,13 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
       product: { ...r.product, imageUrl: r.product.imageUrl ?? null, priceUgx: r.product.priceUgx == null ? null : Number(r.product.priceUgx) },
       device: deviceDto(r.d, r.seriesName, 0),
     };
+  }
+
+  async batteryProductIds(productIds: string[]): Promise<Set<string>> {
+    const ids = productIds.filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+    if (!ids.length) return new Set();
+    const r = (await db.execute(sql`select product_id from battery_profiles where product_id = any(${pgUuidArray(ids)})`)) as unknown as Array<{ product_id: string }>;
+    return new Set(r.map((x) => String(x.product_id)));
   }
 
   async fitsForDevice(deviceId: string) {

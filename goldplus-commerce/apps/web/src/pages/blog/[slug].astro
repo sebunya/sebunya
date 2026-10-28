@@ -48,8 +48,10 @@ const jsonLd = serializeJsonLd({
   image: [post.coverImageUrl ? (/^https?:\/\//i.test(post.coverImageUrl) ? post.coverImageUrl : `${SITE_ORIGIN}${post.coverImageUrl}`) : `${SITE_ORIGIN}/og-default.png`],
 });
 
-// A guide about phone batteries sends the reader to the battery finder, not the general product finder.
-const batteryGuide = /battery-finder|\bbattery\b|\bbatteries\b/i.test(`${post.title} ${post.body}`);
+// A guide about phone batteries sends the reader to the battery finder, not the general product finder: a battery
+// title, or a body that links the finder or a phone's battery page. "battery" anywhere in the body caught 37 guides
+// on earbuds, chargers and power banks (2026-10-29 review).
+const batteryGuide = /\bbattery\b|\bbatteries\b/i.test(post.title) || /\]\(\/(?:battery-finder|phone-batteries)\b/.test(post.body);
 
 const breadcrumbs = serializeJsonLd(
   breadcrumbJsonLd([

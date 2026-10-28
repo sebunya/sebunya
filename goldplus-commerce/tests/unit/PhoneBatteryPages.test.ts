@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  batteryProductJsonLdProps, cartDeviceFitNote, isDeviceSlug, phoneBatteryPath, phonePageDescription, phonePageH1, phonePageIndexable, phonePageItemListJsonLd, phonePageTitle, phoneGuides,
+  batteryProductJsonLdProps, cartDeviceFitNote, fitProvenance, isDeviceSlug, mergeBatteryProperties, phoneBatteryPath, phonePageDescription, phonePageH1, phonePageIndexable, phonePageItemListJsonLd, phonePageTitle, phoneGuides,
 } from '../../apps/web/src/lib/phoneBatteryPage';
 import { finderSessionId } from '../../apps/web/src/lib/batteries';
 import { BatteryFinderUseCases } from '../../apps/api/src/application/use-cases/batteries/BatteryFinderUseCases';
@@ -37,7 +37,6 @@ describe('per-phone battery page rules', () => {
   });
 
   it('title and heading name the phone and the place; nothing else is claimed', () => {
-    expect(phonePageTitle(device)).toBe('Tecno Spark 7 (KF6) battery replacement in Kampala | GoldPlus');
     expect(phonePageH1(device)).toBe('Replacement battery for the Tecno Spark 7 (KF6)');
   });
 
@@ -53,17 +52,27 @@ describe('per-phone battery page rules', () => {
     expect(phonePageDescription(device, [])).toContain('not matched a battery');
   });
 
-  it('structured data states the spare-part relation and only facts the catalogue holds', () => {
-    const ld = phonePageItemListJsonLd(device, [result]) as { itemListElement: Array<{ item: Record<string, unknown> }> };
-    const item = ld.itemListElement[0].item;
-    expect(item.mpn).toBe('BL-49FT');
-    expect(item.isAccessoryOrSparePartFor).toEqual({ '@type': 'Product', name: 'Tecno Spark 7 (KF6)', model: 'KF6' });
-    expect(item.image).toBe('https://shopgoldplus.com/img/bl-49ft.jpg');
-    expect(item).not.toHaveProperty('additionalProperty');   // capacity unknown: not stated
-    expect(item).not.toHaveProperty('aggregateRating');
-    expect((item.offers as Record<string, unknown>).availability).toBe('https://schema.org/InStock');
-    const withCapacity = phonePageItemListJsonLd(device, [{ ...result, capacityMah: 2500 }]) as typeof ld;
-    expect(withCapacity.itemListElement[0].item.additionalProperty).toEqual([{ '@type': 'PropertyValue', name: 'Capacity', value: 2500, unitText: 'mAh' }]);
+  it("structured data is Google's summary list: position, url and name only (the product facts live on each product page)", () => {
+    const ld = phonePageItemListJsonLd(device, [result]) as { itemListElement: Array<Record<string, unknown>> };
+    expect(ld.itemListElement).toEqual([{ '@type': 'ListItem', position: 1, url: 'https://shopgoldplus.com/products/bl-49ft', name: 'GoldPlus BL-49FT battery' }]);
+  });
+
+  it('the product page states the code once and lets the live fits replace the free-text "Fits" attribute', () => {
+    const existing = [{ '@type': 'PropertyValue', name: 'Battery model', value: 'BL-49FT' }, { '@type': 'PropertyValue', name: 'Fits', value: 'Spark 4 and the A56' }];
+    const merged = mergeBatteryProperties(existing, [{ '@type': 'PropertyValue', name: 'Battery pack code', value: 'BL-49FT' }, { '@type': 'PropertyValue', name: 'Capacity', value: 5000, unitText: 'mAh' }]);
+    expect(merged.map((p) => p.name)).toEqual(['Battery model', 'Capacity']);
+    expect(mergeBatteryProperties([], [{ name: 'Battery pack code', value: 'BL-49FT' }]).map((p) => p.name)).toEqual(['Battery pack code']);
+  });
+
+  it('title says "replacement battery" (the shop sells it, it does not fit it); the description follows the fits and the stock', () => {
+    expect(phonePageTitle(device)).toBe('Tecno Spark 7 (KF6) replacement battery, price in Kampala | GoldPlus');
+    const verified = { ...result, fitState: 'VERIFIED_IN_STOCK' as const };
+    expect(fitProvenance([verified, result])).toBe('mixed');
+    expect(phonePageDescription(device, [verified, result])).toContain('checked by us or listed by our supplier (each battery says which)');
+    expect(phonePageDescription(device, [verified, result])).not.toMatch(/, checked for this phone/);
+    expect(phonePageDescription(device, [{ ...result, inStock: false }])).toContain('Out of stock right now');
+    expect(phonePageDescription(device, [{ ...result, inStock: false }])).not.toContain('same-day dispatch');
+    expect(fitProvenance([{ fitState: 'CONDITIONAL' }])).toBe('conditional');
   });
 
   it('every guide a page links to is a guide published on the live blog (slugs read from /sitemaps/blog.xml, 2026-10-28)', () => {
@@ -126,9 +135,23 @@ describe('surfaces agree', () => {
   });
   it('the sitemap lists phone pages from the same fit index the hub renders, and the finder only when indexable', () => {
     const src = read('apps/web/src/pages/sitemaps/hubs.xml.ts');
-    expect(src).toContain("'/finder/fit-index'");
+    expect(src).toContain('fitIndexCached()'); // the same cached index the hub and the phone pages read (lib/batteries)
+    expect(read('apps/web/src/lib/batteries.ts')).toContain("publicBattery<FinderFitIndexDto>('/finder/fit-index')");
     expect(src).toContain('finderConfig.data.indexable');
   });
+  it('edge cases answer correctly: a merged phone moves, an outage is temporary, an old finder link moves', () => {
+    const page = read('apps/web/src/pages/phone-batteries/[device].astro');
+    expect(page).toContain("if (deviceRes.ok && deviceRes.data.device.slug !== slug) return Astro.redirect(phoneBatteryPath(deviceRes.data.device.slug), 301);");
+    expect(page).toContain("Astro.response.headers.set('Retry-After', '300');");
+    expect(page).not.toMatch(/Astro\.cookies\.set\(DEVICE_COOKIE/); // browsing a phone page never replaces the chosen phone
+    const finder = read('apps/web/src/pages/battery-finder.astro');
+    expect(finder).toMatch(/!url\.searchParams\.has\('help'\) && !fromThisPhone\) \{\s*return Astro\.redirect\(phoneBatteryPath\(deviceSlug\), 301\);/);
+    for (const f of ['apps/web/src/pages/phone-batteries/[device].astro', 'apps/web/src/pages/[hub]/[...child].astro', 'apps/web/src/pages/sitemaps/hubs.xml.ts']) expect(read(f), f).toContain('fitIndexCached()');
+  });
+  it('the cart answers fit only for batteries (a charger is not "not checked against your phone")', () => {
+    expect(read('apps/api/src/application/use-cases/batteries/BatteryFinderUseCases.ts')).toContain('for (const id of ids.filter((x) => batteries.has(x))) {');
+  });
+
   it('Clarity sees the hubs, the finder and the phone pages by their real route names', () => {
     const layout = read('apps/web/src/layouts/BaseLayout.astro');
     const m = layout.match(/const clarityMaskAll = !(\/.*\/)\.test/);

@@ -88,6 +88,8 @@ export interface IBatteryFinderRepository {
   devicesWithPublicFits(showAwaiting: boolean): Promise<Array<FinderDeviceDto & { brandSlug: string; brandDisplayName: string }>>;
   /** Every public fit row for a device (workflow ACTIVE only; the caller derives the state). */
   fitsForDevice(deviceId: string): Promise<PublicFitRow[]>;
+  /** Which of these products are batteries (have a battery record): only those can fit or not fit a phone. */
+  batteryProductIds(productIds: string[]): Promise<Set<string>>;
   fitsForBattery(productId: string): Promise<PublicFitRow[]>;
   batteryPublic(productId: string): Promise<(PublicFitRow['product'] & { lifecycleStatus: string; stockQuantity: number; floorPriceUgx: number | null; productApproved: boolean; productActive: boolean }) | null>;
   batteryPublicBySlug(slug: string): Promise<(PublicFitRow['product'] & { lifecycleStatus: string; publicNotes: string | null; warrantyMonths: number | null; chemistry: string | null; floorPriceUgx: number | null }) | null>;

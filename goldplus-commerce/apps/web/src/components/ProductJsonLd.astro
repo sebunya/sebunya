@@ -4,7 +4,7 @@ import { offerPriceUgx } from '../lib/offerPrice';
 import { serializeJsonLd, schemaAvailability } from '../lib/jsonld';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { merchantReturnPolicyJsonLd } from '../lib/returnsPolicy';
-import { batteryProductJsonLdProps, type BatteryJsonLdFacts } from '../lib/phoneBatteryPage';
+import { batteryProductJsonLdProps, mergeBatteryProperties, type BatteryJsonLdFacts } from '../lib/phoneBatteryPage';
 
 interface Props {
   product: ProductPublicDto;
@@ -79,7 +79,8 @@ if (verifiedAttrs.length > 0) {
 if (battery) {
   const { additionalProperty, ...rest } = batteryProductJsonLdProps(battery, !!hasValidMpn);
   Object.assign(node, rest);
-  node.additionalProperty = [...((node.additionalProperty as unknown[] | undefined) ?? []), ...additionalProperty];
+  // The live fits replace the free-text "Fits" attribute; the code is not stated twice (lib/phoneBatteryPage).
+  node.additionalProperty = mergeBatteryProperties((node.additionalProperty as Array<Record<string, unknown>> | undefined) ?? [], additionalProperty);
 }
 
 if (product.retailPriceUgx !== null) {

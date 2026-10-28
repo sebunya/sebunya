@@ -54,7 +54,12 @@ async function main(): Promise<void> {
     const gate = canPublish({ title: g.title, excerpt: g.excerpt, body: g.body });
     const intent = g.hold ? 'hold as DRAFT' : gate.ok ? 'publish' : `cannot publish (${gate.ok ? '' : gate.message})`;
     console.log(`  ${file}: ${existing ? `${same ? 'unchanged' : 'update'} ${existing.status} /blog/${existing.slug}` : `create /blog/${slug}`} → ${intent}; links: ${internalLinks(g.body).join(' ') || 'none'}; related: ${relatedProductIds.length}`);
-    if (dryRun) continue;
+    if (dryRun) {
+      // What the live run would do, so the dry run's summary is a forecast and not a row of zeros.
+      if (!existing) created += 1; else if (same) unchanged += 1; else updated += 1;
+      if (g.hold) held += 1; else if (gate.ok && existing?.status !== 'PUBLISHED') published += 1;
+      continue;
+    }
 
     let post;
     if (existing && same) {
@@ -78,7 +83,7 @@ async function main(): Promise<void> {
     published += 1;
     await r.createAuditLogUseCase.execute({ actorId, action: 'BLOG_POST_PUBLISHED', entity: 'blog_post', entityId: post.id, newState: { slug: post.slug, publishedAt: pub.value.publishedAt, source: file } });
   }
-  console.log(`${files.length} guides: created ${created}, updated ${updated}, unchanged ${unchanged}, published ${published}, held ${held}, failed ${failed}${dryRun ? ' (DRY RUN — nothing written)' : ''}`);
+  console.log(`${files.length} guides: created ${created}, updated ${updated}, unchanged ${unchanged}, published ${published}, held ${held}, failed ${failed}${dryRun ? ' (DRY RUN: what a live run would do; nothing written)' : ''}`);
   if (failed > 0) process.exitCode = 1;
 }
 main().then(() => endDbConnection()).catch(async (e) => { console.error(e); await endDbConnection(); process.exit(1); });
