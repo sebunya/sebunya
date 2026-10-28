@@ -4,6 +4,7 @@ import AccountNav from '../../components/AccountNav.astro';
 import PreferenceCentreForm from '../../components/preferences/PreferenceCentreForm.astro';
 import CanonicalConsentForm from '../../components/preferences/CanonicalConsentForm.astro';
 import WhatsAppMarketingConsentForm from '../../components/preferences/WhatsAppMarketingConsentForm.astro';
+import BasketRemindersConsentForm from '../../components/preferences/BasketRemindersConsentForm.astro';
 import { apiHeaders } from '../../lib/forwardClient';
 import { apiBase } from '../../lib/api';
 import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
@@ -51,6 +52,33 @@ if (Astro.request.method === 'POST') {
         } else {
           saveError = 'Your choice was not saved, so nothing about how GoldPlus contacts you has changed. Please try again, or contact support.';
         }
+      }
+    } else if (formKind === 'basket-reminders') {
+      // Basket reminders (0210): its own purpose, same evidence as WhatsApp offers.
+      let clientAddress: string | null = null;
+      try { clientAddress = Astro.clientAddress ?? null; } catch { clientAddress = null; }
+      const res = await fetch(`${apiBase}/account/marketing-consent/basket-reminders`, {
+        method: 'POST',
+        headers: apiHeaders({
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-Correlation-Id': crypto.randomUUID(),
+          'Idempotency-Key': crypto.randomUUID(),
+          'X-Shopper-User-Agent': (Astro.request.headers.get('user-agent') ?? '').slice(0, 512),
+        }, clientAddress),
+        body: JSON.stringify({
+          requested: String(data.get('requested') ?? ''),
+          confirmation: data.get('confirmation') === 'yes',
+          copyVersionId: String(data.get('copyVersionId') ?? ''),
+        }),
+      });
+      const result = await res.json().catch(() => null);
+      if (res.ok && result?.success === true) {
+        saveSuccess = true;
+      } else {
+        saveError = typeof result?.error?.message === 'string' && result.error.message.length < 160
+          ? `${result.error.message} Nothing about how GoldPlus contacts you has changed.`
+          : 'Your choice was not saved, so nothing about how GoldPlus contacts you has changed. Please try again, or contact support.';
       }
     } else if (formKind === 'whatsapp-marketing') {
       // WhatsApp offers (0155): its own purpose. The server-side call forwards
@@ -154,6 +182,17 @@ try {
 } catch {
   whatsappMarketing = null;
 }
+// Basket reminders (0210). null = could not be read: the section then shows no switch.
+let basketReminders: any = null;
+try {
+  const res = await fetch(`${apiBase}/account/marketing-consent/basket-reminders`, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.ok) {
+    const json = await res.json().catch(() => null);
+    if (json?.success) basketReminders = json.data;
+  }
+} catch {
+  basketReminders = null;
+}
 // Mirror the analytics choice into a cookie the page's tag reads BEFORE it
 // loads (BaseLayout consent defaults): a refusal saved here must stop the
 // browser tag too, not only the server-side record. Read back from the API,
@@ -202,6 +241,7 @@ try {
 
     <CanonicalConsentForm enabled={consentOperatingEnabled} />
     <WhatsAppMarketingConsentForm status={whatsappMarketing} />
+    <BasketRemindersConsentForm status={basketReminders} />
     <div class="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
       The settings below cover your account and shopping experience. They do not switch on marketing messages. Only the offer choices above can do that, and each stays off until you turn it on.
     </div>

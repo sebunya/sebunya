@@ -26,6 +26,8 @@ export interface CustomerOutboxInput {
   relatedEntityId: string | null;
   /** Registry-deferred order messages stay DRY_RUN until the owner switches them on. */
   dryRunOnly?: boolean;
+  /** 0210: a MARKETING message the customer asked for. Travels in the payload; the adapters hand it to the governance, which still reads a STOP first. */
+  consent?: { purpose: string; granted: true };
 }
 
 /**
@@ -59,6 +61,7 @@ export function customerOutboxValues(input: CustomerOutboxInput): typeof outboxE
       // The router decides dry-run from the PAYLOAD (it never reads the row column), so the
       // CUSTOMER_ORDER_MESSAGES_LIVE=false switch did nothing until it travelled here too (2026-10-22).
       dryRunOnly: input.dryRunOnly === true,
+      ...(input.consent ? { consent: input.consent } : {}),
     } as never,
     idempotencyKey: input.idempotencyKey,
     status: 'pending',

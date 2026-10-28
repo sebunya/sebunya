@@ -20,6 +20,8 @@ export const CONSENT_PURPOSE_KEYS = [
   'account_security_notifications',
   // 0155: WhatsApp offers — its own purpose, never implied by any other.
   'whatsapp_marketing',
+  // 0210: one text about a basket left behind. Its own purpose on the SMS channel, off by default.
+  'basket_reminders',
 ] as const;
 
 export const CONSENT_CHANNEL_KEYS = [

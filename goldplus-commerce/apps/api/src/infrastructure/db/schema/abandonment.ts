@@ -24,6 +24,9 @@ export const cartAbandonments = pgTable(
     classifiedAt: timestamp('classified_at', { withTimezone: true }).defaultNow().notNull(),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull(),
+    // 0210: the one basket reminder (or the recorded reason none went), so a basket is read once.
+    remindedAt: timestamp('reminded_at', { withTimezone: true }),
+    reminderOutcome: varchar('reminder_outcome', { length: 16 }),
   },
   (t) => ({
     // One live classification per cart; resolved rows keep history.
