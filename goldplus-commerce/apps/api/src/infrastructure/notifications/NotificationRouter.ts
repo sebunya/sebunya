@@ -308,13 +308,14 @@ export class DefaultNotificationRouter implements INotificationRouter {
       // inserted between their labels and this block, so both fell through
       // into it, found no `recipient`, produced zero targets, and the outbox
       // marked every acknowledgement "processed" having sent nothing.
+      //
+      // Product questions (0208): the "we have your question" note and the answer itself. Both were enqueued from
+      // 2026-10-28 and retired here as "No channel mapping": no asker ever received an answer, while staff were told
+      // it had been sent (found 2026-10-29). BASKET_REMINDER is deliberately NOT routed yet.
       case 'SUPPORT_REQUEST_RECEIVED':
       case 'QUOTE_REQUEST_RECEIVED':
       case 'DEALER_APPLICATION_RECEIVED':
       case 'FAKE_REPORT_RECEIVED':
-      // Product questions (0208): the "we have your question" note and the answer itself. Both were enqueued
-      // from 2026-10-28 and retired here as "No channel mapping": no asker ever received an answer, while staff
-      // were told it had been sent (found 2026-10-29). BASKET_REMINDER is deliberately NOT routed yet.
       case 'PRODUCT_QUESTION_RECEIVED':
       case 'PRODUCT_QUESTION_ANSWERED':
       case 'CUSTOMER_ORDER_MESSAGE': {
