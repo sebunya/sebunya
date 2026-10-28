@@ -65,7 +65,7 @@ You can buy in person at the shop, or order on our website for delivery in Kampa
 
 # Returns and warranty
 
-Warranty claims and returns for products bought here are handled directly at the shop. Our [returns](/returns) and [warranty](/warranty) pages explain how that works.
+Bought something here? Bring it back to the shop with your receipt for a return or a warranty claim, or contact support. For an order placed on this site, you can also [start a return online](/returns/start). Our [returns](/returns) and [warranty](/warranty) pages explain how that works.
 
 # Before you come
 
