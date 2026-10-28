@@ -1,6 +1,15 @@
 import type { APIRoute } from 'astro';
 import { apiBase } from '../../../lib/api';
 import { readBodyCapped } from '../../../lib/boundedBody';
+import { apiHeaders, readClientAddress } from '../../../lib/forwardClient';
+
+/**
+ * A search engine that renders the page would fire RESULT_VIEWED on every crawl
+ * and the demand report would count crawls as customers. Known crawlers are
+ * acknowledged and dropped; the click-driven events (PRODUCT_VIEWED, ADDED_TO_CART)
+ * are the reliable half of the funnel either way (docs/growth/README.md §7).
+ */
+const CRAWLER_UA = /bot|crawl|spider|slurp|headless|lighthouse|pagespeed|preview|facebookexternalhit|whatsapp|telegram|curl\/|python-requests/i;
 
 /**
  * Same-origin relay for the finder's own funnel events (0125
@@ -19,7 +28,9 @@ const SLUG = /^[a-z0-9-]{1,160}$/;
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
-export const POST: APIRoute = async ({ request, cookies }) => {
+export const POST: APIRoute = async (context) => {
+  const { request, cookies } = context;
+  if (CRAWLER_UA.test(request.headers.get('user-agent') ?? '')) return json(202, { success: true, data: { recorded: false } });
   const read = await readBodyCapped(request, 1024);
   if (!read.ok) return json(413, { success: false, error: { code: 'TOO_LARGE', message: 'Too long.' } });
   let raw: Record<string, unknown> = {};
@@ -38,7 +49,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   try {
     const upstream = await fetch(`${apiBase}/batteries/finder/events`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(session ? { 'x-gp-finder-session': session } : {}) },
+      // The customer's address, not the web container's: the API's per-address limits and session hashing stay per person.
+      headers: apiHeaders({ 'Content-Type': 'application/json', ...(session ? { 'x-gp-finder-session': session } : {}) }, readClientAddress(context)),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(4000),
     });

@@ -84,7 +84,7 @@ Fits: "checked by GoldPlus" only for PACKAGE_VERIFIED / FIT_TESTED / VERIFIED_EX
 
 **Discovery layer** (GA4 via sGTM, nightly into `measurement.ga4_daily_series`): landing pages under `/phone-batteries/*`, channel, device; `search` events from the finder (term = phone or code typed); Clarity recordings on hubs/finder/phone pages (unmasked routes). Search Console: impressions/clicks by page once the connection is confirmed.
 
-**Limitations:** GA4 is a session proxy, not a count of people; server-side hits without a session are not sessions (ATTRIBUTION.md); the finder session cookie is per device; Clarity samples; Search Console lags 2–3 days and is not yet confirmed connected; US-located search sampling cannot show Ugandan SERPs. No baseline exists for per-phone pages because the URLs did not exist; the baseline is week 1 after deploy.
+**Limitations:** RESULT_VIEWED fires on page view, so a crawler that runs JavaScript could inflate it; the relay drops known crawler user agents and automated browsers, but read PRODUCT_VIEWED and ADDED_TO_CART (click-driven) as the dependable half of the funnel. GA4 is a session proxy, not a count of people; server-side hits without a session are not sessions (ATTRIBUTION.md); the finder session cookie is per device; Clarity samples; Search Console lags 2–3 days and is not yet confirmed connected; US-located search sampling cannot show Ugandan SERPs. No baseline exists for per-phone pages because the URLs did not exist; the baseline is week 1 after deploy.
 
 ## 8. Gates (section F): expand only when all pass
 

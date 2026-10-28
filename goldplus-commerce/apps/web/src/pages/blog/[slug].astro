@@ -49,7 +49,7 @@ const jsonLd = serializeJsonLd({
 });
 
 // A guide about phone batteries sends the reader to the battery finder, not the general product finder.
-const batteryGuide = /battery-finder|\bbatter(y|ies)\b/i.test(`${post.title} ${post.body}`);
+const batteryGuide = /battery-finder|\bbattery\b|\bbatteries\b/i.test(`${post.title} ${post.body}`);
 
 const breadcrumbs = serializeJsonLd(
   breadcrumbJsonLd([

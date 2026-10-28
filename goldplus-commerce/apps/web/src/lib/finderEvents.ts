@@ -17,6 +17,8 @@ export interface FinderEvent {
 
 export function sendFinderEvent(event: FinderEvent): void {
   try {
+    // An automated browser is not a customer (the relay also drops known crawlers by user agent).
+    if (typeof navigator !== 'undefined' && (navigator as Navigator & { webdriver?: boolean }).webdriver) return;
     void fetch('/api/battery-finder/event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

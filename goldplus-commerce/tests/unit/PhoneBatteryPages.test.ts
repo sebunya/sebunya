@@ -45,7 +45,8 @@ describe('per-phone battery page rules', () => {
     expect(d).toContain('BL-49FT');
     expect(d).toContain('UGX 55,000');
     expect(d).toContain("listed by our supplier");
-    expect(d).not.toMatch(/mAh|verified|original|genuine/i);
+    expect(d).not.toMatch(/mAh|verified|original|genuine|same-day delivery|arrives/i);
+    expect(d).toContain('same-day dispatch');
     const checked = phonePageDescription(device, [{ ...result, fitState: 'VERIFIED_IN_STOCK' }]);
     expect(checked).toContain('checked for this phone');
     expect(phonePageDescription(device, [])).toContain('not matched a battery');

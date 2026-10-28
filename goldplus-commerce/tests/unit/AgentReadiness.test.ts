@@ -176,7 +176,8 @@ describe('discovery documents', () => {
     const { GET } = await import('../../apps/web/src/pages/openapi.json');
     const spec = await (await (GET as any)({})).json();
     expect(spec.openapi).toBe('3.1.0');
-    expect(Object.keys(spec.paths)).toEqual(['/products', '/products/{slug}', '/batteries/finder/search']);
+    // fit-index (2026-10-28): the phones with a battery to buy, by brand; public, read-only, no price at all.
+    expect(Object.keys(spec.paths)).toEqual(['/products', '/products/{slug}', '/batteries/finder/fit-index', '/batteries/finder/search']);
     for (const p of Object.values(spec.paths) as any[]) expect(Object.keys(p)).toEqual(['get']);
     expect(JSON.stringify(spec)).not.toMatch(/floorPrice/);
   });

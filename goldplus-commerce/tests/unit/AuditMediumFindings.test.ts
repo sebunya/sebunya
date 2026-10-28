@@ -109,8 +109,10 @@ describe('security and sessions', () => {
     expect(src).toMatch(/const requiresReview = requestedReview \|\| alreadyPaid \|\| cannotProcess;/);
   });
 
-  it('a public battery page exists only for a published battery', () => {
-    expect(read('apps/api/src/interfaces/http/routes/batteries.ts')).toMatch(/if \(!found \|\| !found\.isPublished\) throw/);
+  it('a public battery page exists only for a published battery, or one whose fits the finder already shows', () => {
+    // 2026-10-28: a record in review with live supplier-listed fits is public on the finder (owner policy
+    // 2026-10-12), so hiding it here only emptied the product page. Drafts with nothing public still 404.
+    expect(read('apps/api/src/interfaces/http/routes/batteries.ts')).toMatch(/if \(!found \|\| \(!found\.isPublished && found\.devices\.length === 0\)\) throw/);
     expect(read('apps/api/src/application/use-cases/batteries/BatteryFinderUseCases.ts')).toMatch(/b\.lifecycleStatus === 'ACTIVE' && b\.productApproved && b\.productActive/);
   });
 });

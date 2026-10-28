@@ -46,7 +46,7 @@ export function phonePageDescription(
   results: ReadonlyArray<Pick<FinderBatteryResultDto, 'canonicalCode' | 'priceUgx' | 'fitState'>>,
 ): string {
   if (results.length === 0) {
-    return `We have not matched a battery to the ${device.label} yet. Tell us the model number and we check it; same-day delivery in Kampala and Wakiso once it is in stock.`;
+    return `We have not matched a battery to the ${device.label} yet. Tell us the model number, or send a photo of the old battery's label, and we check it.`;
   }
   const codes = [...new Set(results.map((r) => r.canonicalCode))].slice(0, 3).join(', ');
   const prices = results.map((r) => r.priceUgx).filter((p): p is number => typeof p === 'number' && p > 0);
@@ -54,7 +54,8 @@ export function phonePageDescription(
   const provenance = results.every((r) => r.fitState === 'AWAITING_VERIFICATION')
     ? "listed by our supplier for this phone"
     : 'checked for this phone';
-  return `Replacement battery for the ${device.label}: pack code ${codes}${price}, ${provenance}. Match the code, order online, same-day delivery in Kampala and Wakiso or collect at the shop.`;
+  // "Dispatch", never "arrives": the day's run is a condition the page body states (docs/growth/README.md §5).
+  return `Replacement battery for the ${device.label}: pack code ${codes}${price}, ${provenance}. Order online for same-day dispatch in Kampala and Wakiso, or collect at the shop.`;
 }
 
 export interface PhoneGuideLink { label: string; href: string }

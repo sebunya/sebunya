@@ -24,8 +24,13 @@ No migration. API + web deploy.
 ### Docs
 - `docs/growth/*` (this programme); `docs/batteries/OPERATING.md` (0211 policy, per-phone pages, price floor wording); guides 11, 14, 15, 23 (promise → service offer; republish via `publish-guides.ts`).
 
+### Self-review round (same day)
+- Relay forwards the customer's address (`apiHeaders`/`readClientAddress`, as the other relays do) so the API's per-address limits and session hashing stay per person; drops known crawler user agents; browser helper skips automated browsers.
+- Per-phone canonical uses the device's own slug; meta descriptions say "same-day dispatch", never "delivery"; hologram wording conditional ("if your pack carries a code"); 14-day return stated with its condition (unused, in packaging).
+- CI: three pinned tests updated to the new rules (OpenAPI path list now includes fit-index; battery route rule; blog regex rewritten so the frontmatter scanner does not read `batter(` as a call).
+
 ### Tests
-- New `tests/unit/PhoneBatteryPages.test.ts` (12); `SiteSignals.test.ts` +1. Ran one file at a time on the owner's Mac (8 GB, 1.6 GB disk free): 24 related files green. API `tsc --noEmit` clean.
+- New `tests/unit/PhoneBatteryPages.test.ts` (13); `SiteSignals.test.ts` +1; `AgentReadiness`, `AuditMediumFindings` updated. Ran one file at a time on the owner's Mac (8 GB, 1.6 GB disk free): 24 related files green. API `tsc --noEmit` clean.
 
 ### Verified by rendering (dev server, Node 22, against the live API)
 - See the PR description for the render evidence. While the live API was unreachable from the Mac the page returned 503 + `noindex,follow` + honest message (the fail-closed branch).
