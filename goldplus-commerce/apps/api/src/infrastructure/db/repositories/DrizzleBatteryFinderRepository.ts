@@ -235,8 +235,9 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
     return rows.map((r) => ({ productId: r.productId, score: Number(r.score) }));
   }
 
-  async verifiedFitCount() {
-    const [row] = (await db.execute(sql`SELECT count(*)::int AS n FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id JOIN devices d ON d.id = c.device_id WHERE d.status = 'ACTIVE' AND ${VERIFIED_PUBLIC}`)) as unknown as Array<{ n: number }>;
+  async verifiedFitCount(includeListed = false) {
+    const fits = includeListed ? sql`((${VERIFIED_PUBLIC}) OR (${AWAITING_PUBLIC}))` : VERIFIED_PUBLIC;
+    const [row] = (await db.execute(sql`SELECT count(*)::int AS n FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id JOIN devices d ON d.id = c.device_id WHERE d.status = 'ACTIVE' AND ${fits}`)) as unknown as Array<{ n: number }>;
     return row?.n ?? 0;
   }
 

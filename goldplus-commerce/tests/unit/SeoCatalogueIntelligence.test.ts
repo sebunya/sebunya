@@ -345,7 +345,9 @@ describe('catalogue intelligence is wired end to end', () => {
     // checked a fit we did not.
     const defaults = read('packages/shared/src/batteries/index.ts');
     expect(defaults).toMatch(/have not matched a battery to this phone yet/i);
-    expect(defaults).toMatch(/have not checked the fit ourselves yet/i);
+    // Owner policy 2026-10-28: a fit from the supplier's compatibility list is a fit, with no second-person
+    // check; the default still says where such a fit comes from rather than implying we tested it.
+    expect(defaults).toMatch(/comes from our supplier's compatibility list/i);
     expect(page).toContain('cfg?.noResultHeadline');
     expect(page).toContain('cfg?.noResultBody');
   });

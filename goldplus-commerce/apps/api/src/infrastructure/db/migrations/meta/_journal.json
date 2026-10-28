@@ -1471,6 +1471,13 @@
       "when": 1790140000087,
       "tag": "0210_basket_reminders",
       "breakpoints": true
+    },
+    {
+      "idx": 210,
+      "version": "5",
+      "when": 1790140000088,
+      "tag": "0211_finder_supplier_list_fits",
+      "breakpoints": true
     }
   ]
 }
