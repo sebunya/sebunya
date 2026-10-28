@@ -45,7 +45,8 @@ suite('battery finder fit index (real PostgreSQL)', () => {
 
     const listedBattery = await fx.battery();                 // record still in review: supplier-listed fits only
     const verifiedBattery = await fx.battery();
-    await raw`update battery_profiles set lifecycle_status = 'ACTIVE' where product_id = ${verifiedBattery.productId}`;
+    // An ACTIVE record must name who published it (0125 battery_profiles_active_published_chk).
+    await raw`update battery_profiles set lifecycle_status = 'ACTIVE', published_by = ${actor}, published_at = now() where product_id = ${verifiedBattery.productId}`;
     const unapprovedBattery = await fx.battery();
     await raw`update products set approval_status = 'draft' where id = ${unapprovedBattery.productId}`;
 
