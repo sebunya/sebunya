@@ -1,25 +1,26 @@
 Title: GoldPlus loyalty points explained
 
-Summary: GoldPlus Rewards gives you 10 points for every 1,000 UGX of a delivered order placed while signed in, and each point is worth UGX 20 off a later order. Here is how earning, spending and expiry work.
+Summary: GoldPlus Rewards gives you 10 points for every 1,000 UGX of a delivered order, and each point is worth UGX 20 off a later order. Here is how earning, spending and expiry work.
 
 Meta title: GoldPlus Loyalty Points Explained | GoldPlus
 
 Meta description: How GoldPlus Rewards works: 10 points per 1,000 UGX on delivered orders, UGX 20 a point off at checkout, 120-day validity, and every other way to earn points.
 
-Related products: any order placed while signed in to your GoldPlus account.
+Related products: any order placed signed in, or with the phone number verified on your GoldPlus account.
 
 Related SKUs:
 
 ---- Article (paste everything below this line into the Article box) ----
 
-GoldPlus Rewards is our loyalty programme, and it is live. Shop while signed in and you earn 10 points for every 1,000 UGX of your order total. The points become available when the order is delivered, and each point is worth UGX 20 off a later order at checkout.
+GoldPlus Rewards is our loyalty programme, and it is live. Every order you place earns 10 points for every 1,000 UGX of your order total. The points become available when the order is delivered, and each point is worth UGX 20 off a later order at checkout.
 
 Here is how it works in plain terms.
 
 # Earning on your orders
 
 - You earn **10 points per 1,000 UGX** of the order total.
-- It applies to every order **placed while signed in**. Sign in before you check out, or the order will not earn.
+- It applies to every order **placed while signed in**, and to orders placed **signed out with the phone number you verified** on your account.
+- Verify your phone later and your recent signed-out orders on that number are credited too.
 - Points become available **when the order is delivered**.
 
 # What a point is worth
@@ -44,7 +45,7 @@ Points stay valid for **120 days** from the day they are earned. We warn you bef
 
 The programme page lists the complete set. If a way to earn is not on that page, it does not exist yet.
 
-- **Every delivered order:** 10 points per 1,000 UGX, placed while signed in.
+- **Every delivered order:** 10 points per 1,000 UGX, signed in or placed with your verified phone number.
 - **Verify a genuine product:** 25 points per code. Scan the hologram code on a GoldPlus product while signed in. Each code earns once, the first time it is verified, for up to 5 codes a day.
 - **Report a counterfeit we confirm:** 250 points, awarded when our team confirms it. Support follows up with you.
 - **Verify your phone number:** 100 points, once. Your verified number is how we keep one account per customer.
@@ -68,7 +69,7 @@ There are also membership levels, earned on the points you collect. The [loyalty
 
 # Making the most of it
 
-1. Create an account and **sign in before every order**.
+1. Create an account and **sign in before you order**, or check out with your verified phone number.
 2. **Verify your phone number** for a quick 100 points.
 3. **Add your birthday** to your account.
 4. **Share your link** with friends who need accessories.
