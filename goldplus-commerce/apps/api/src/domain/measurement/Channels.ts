@@ -4,7 +4,7 @@ import { AD_CLICK_IDS, PAYMENT_HOST, SOCIAL_SHARE_CLICK_IDS } from '@goldplus/sh
  * utm medium/source, then the referrer. Deterministic and pure; the same
  * inputs always give the same channel. "direct" means no evidence, not "no ad".
  */
-export const CHANNELS = ['paid_search', 'paid_social', 'display', 'affiliate', 'email', 'sms', 'whatsapp', 'organic_search', 'organic_social', 'ai_assistant', 'friend_referral', 'print', 'youtube', 'referral', 'direct', 'other_paid', 'other'] as const;
+export const CHANNELS = ['paid_search', 'paid_social', 'display', 'affiliate', 'email', 'sms', 'whatsapp', 'organic_search', 'organic_social', 'ai_assistant', 'friend_referral', 'print', 'youtube', 'offline_media', 'referral', 'direct', 'other_paid', 'other'] as const;
 export type Channel = typeof CHANNELS[number];
 
 /**
@@ -20,8 +20,16 @@ const SELF_HOST = /(^|\.)shopgoldplus\.com$/i;
  * utm_source=chatgpt.com; the others arrive by referrer only. Checked before
  * SEARCH, because gemini.google.com would otherwise read as Google search.
  */
-const AI_ASSISTANT_HOST = /(^|\.)(chatgpt\.com|chat\.openai\.com|gemini\.google\.com|bard\.google\.com|perplexity\.ai|copilot\.microsoft\.com|claude\.ai|meta\.ai|chat\.deepseek\.com)$/i;
-const AI_ASSISTANT_SOURCE = /^(chatgpt\.com|chat\.openai\.com|perplexity(\.ai)?|gemini\.google\.com|copilot\.microsoft\.com|claude\.ai)$/i;
+const AI_ASSISTANT_HOST = /(^|\.)(chatgpt\.com|chat\.openai\.com|gemini\.google\.com|bard\.google\.com|perplexity\.ai|copilot\.microsoft\.com|copilot\.cloud\.microsoft|claude\.ai|meta\.ai|chat\.deepseek\.com|grok\.com|chat\.mistral\.ai|poe\.com|you\.com|phind\.com|com\.openai\.chatgpt|ai\.perplexity\.app\.android)$/i;
+const AI_ASSISTANT_SOURCE = /^(chatgpt\.com|chat\.openai\.com|perplexity(\.ai)?|gemini\.google\.com|copilot\.microsoft\.com|claude\.ai|grok\.com)$/i;
+
+/**
+ * A link clicked in an email: webmail (Gmail, Outlook, Yahoo, Proton) or a mail app opening the browser (Android
+ * hands over the app's id as an android-app:// referrer, so its host is the package name). Checked before SEARCH:
+ * mail.google.com and the Gmail app (com.google.android.gm) used to read as Google search, mail.yahoo.com as Yahoo
+ * search, and Outlook fell through to "referral" (2026-10-29).
+ */
+const EMAIL_HOST = /(^|\.)(mail\.google\.com|inbox\.google\.com|com\.google\.android\.gm|mail\.yahoo\.com|com\.yahoo\.mobile\.client\.android\.mail|outlook\.live\.com|outlook\.office\.com|outlook\.office365\.com|com\.microsoft\.office\.outlook|mail\.proton\.me|mail\.aol\.com|mail\.zoho\.com)$/i;
 
 const SEARCH = /(^|\.)(google|bing|yahoo|duckduckgo|yandex|baidu|ecosia|brave)\./i;
 /**
@@ -60,6 +68,10 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   // A sponsored video's description link (utm_medium=sponsorship) or any other non-ad YouTube tag is the YouTube
   // channels lever. A cost medium above means a real ad (YouTube ads are bought through Google Ads) and stays paid.
   if (YOUTUBE_SOURCE.test(src) && !/^(display|banner|cpm|programmatic)$/.test(med)) return 'youtube';
+  // A bought slot on radio, TV, a podcast or a paper: its link is utm_source=<medium>&utm_medium=placement
+  // (DrizzleMediaPlacementStore.placementLink). It fell through to "other", so the placement's scorecard showed no
+  // arrivals while its cost sat on offline_media (2026-10-29).
+  if (med === 'placement') return 'offline_media';
   if (/^(display|banner|cpm|programmatic|video|audio)$/.test(med)) return 'display';
   if (/^affiliate/.test(med)) return 'affiliate';
   if (/^e-?mail/.test(med)) return 'email';
@@ -90,6 +102,7 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   const ref = (t.referrerHost ?? '').toLowerCase();
   if (!ref || PAYMENT_HOST.test(ref) || SELF_HOST.test(ref)) return 'direct';
   if (AI_ASSISTANT_HOST.test(ref)) return 'ai_assistant';
+  if (EMAIL_HOST.test(ref)) return 'email';
   if (SEARCH.test(ref)) return 'organic_search';
   if (YOUTUBE_HOST.test(ref)) return 'youtube';
   if (SOCIAL.test(ref) || /(^|\.)(l\.facebook|lm\.facebook|m\.facebook)\.com$/.test(ref)) return 'organic_social';

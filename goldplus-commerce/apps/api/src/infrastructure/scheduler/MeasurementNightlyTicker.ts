@@ -47,8 +47,11 @@ export async function runMeasurementNightlyOnce(now = new Date(), trigger: 'sche
   running = true;
   const registry = Registry.getInstance();
   const stats: Record<string, unknown> = { trigger };
-  const runId = rows(await db.execute(sql`insert into measurement.batch_run (run_id, job, state, started_at, stats) values (gen_random_uuid(), ${JOB}, 'RUNNING', now(), ${JSON.stringify({ trigger })}::jsonb) returning run_id`))[0]?.run_id;
+  let runId: string | undefined;
+  // Everything after taking the lock sits inside the try: the run record's insert used to come first, so a database
+  // blip there left `running` true and the lock held, and no nightly or Rebuild ran until a restart (2026-10-29 review).
   try {
+    runId = rows(await db.execute(sql`insert into measurement.batch_run (run_id, job, state, started_at, stats) values (gen_random_uuid(), ${JOB}, 'RUNNING', now(), ${JSON.stringify({ trigger })}::jsonb) returning run_id`))[0]?.run_id;
     const step = async (name: string, fn: () => Promise<unknown>) => {
       try { stats[name] = await fn(); } catch (err) { stats[name] = { error: String((err as Error).message ?? err).slice(0, 300) }; logger.error({ err: (err as Error).message, step: name }, '[measurement-nightly] step failed'); }
     };
@@ -77,17 +80,32 @@ export async function lastMeasurementNightly(): Promise<{ startedAt: string; fin
 
 /** 13:00–13:59 Kampala: the owner's chosen time for the day's dollar rates (the market quote and the Bank of Uganda table, which is posted by then). */
 export function inBouWindow(now: Date): boolean { return (now.getUTCHours() + 3) % 24 === 13; }
-let bouRanOn = '';
-export async function runBouRateOnce(now = new Date()): Promise<{ status: 'RAN' | 'SKIPPED_WINDOW' | 'SKIPPED_DONE'; result?: unknown }> {
+const BOU_JOB = 'bou_rate';
+const BOU_LOCK_ID = LOCK_ID + 1;
+/**
+ * The 1 pm dollar rates, once a day across the cluster. Done only when the readings came back: the day used to be
+ * marked done before the fetch (a failure at 13:05 was never retried at 13:35), and each API replica ran it, doubling
+ * the provider calls (2026-10-29 review). The day's success is a batch_run row, which every replica can see.
+ */
+export async function runBouRateOnce(now = new Date()): Promise<{ status: 'RAN' | 'SKIPPED_WINDOW' | 'SKIPPED_DONE' | 'SKIPPED_LOCKED'; result?: unknown }> {
   if (!inBouWindow(now)) return { status: 'SKIPPED_WINDOW' };
-  const day = new Date(now.getTime() + 3 * 3600_000).toISOString().slice(0, 10);
-  if (bouRanOn === day) return { status: 'SKIPPED_DONE' };
-  bouRanOn = day;
-  const feeds = Registry.getInstance().controlFeeds;
-  const usd_ugx = await feeds.fxSafe(now), usd_ugx_bou = await feeds.bouSafe(now);
-  const result = { market: usd_ugx, bou: usd_ugx_bou, check: fxCheck({ usd_ugx, usd_ugx_bou }) };
-  logger.info({ result }, '[measurement-nightly] 1 pm dollar rates');
-  return { status: 'RAN', result };
+  const done = rows(await db.execute(sql`select 1 from measurement.batch_run where job = ${BOU_JOB} and state = 'COMPLETE'
+    and (started_at at time zone 'Africa/Kampala')::date = (now() at time zone 'Africa/Kampala')::date limit 1`));
+  if (done.length) return { status: 'SKIPPED_DONE' };
+  const lock = await tryAcquireSessionLock(BOU_LOCK_ID);
+  if (!lock) return { status: 'SKIPPED_LOCKED' };
+  try {
+    const feeds = Registry.getInstance().controlFeeds;
+    const usd_ugx = await feeds.fxSafe(now), usd_ugx_bou = await feeds.bouSafe(now);
+    const result = { market: usd_ugx, bou: usd_ugx_bou, check: fxCheck({ usd_ugx, usd_ugx_bou }) };
+    logger.info({ result }, '[measurement-nightly] 1 pm dollar rates');
+    // Done when the market quote came back (itself or the open-feed stand-in) and BoU did or is not configured.
+    const ok = 'rate' in usd_ugx && ('rate' in usd_ugx_bou || 'skipped' in usd_ugx_bou);
+    await db.execute(sql`insert into measurement.batch_run (run_id, job, state, started_at, finished_at, stats) values (gen_random_uuid(), ${BOU_JOB}, ${ok ? 'COMPLETE' : 'FAILED'}, now(), now(), ${JSON.stringify(result)}::jsonb)`).catch(() => undefined);
+    return { status: 'RAN', result };
+  } finally {
+    await lock.release().catch(() => undefined);
+  }
 }
 
 export function startMeasurementNightlyTicker(): void {

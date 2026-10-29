@@ -101,9 +101,15 @@ async function runOnce(): Promise<void> {
   try {
     // 0201: gift card photos the retention rules no longer keep (deletes only; both replicas may run it).
     await registry.giftCardPhotoUseCases.sweep(new Date());
-    await registry.reviewPhotoUseCases.sweep(new Date()); // 0209: review photo uploads nothing attached
   } catch (error) {
     logger.error({ err: error }, '[gift-card-photo] sweep failed');
+  }
+  try {
+    // 0209: review photo uploads nothing attached, and photos of long-rejected reviews. Its own try: a gift-card
+    // error used to skip it, and its failures were logged as the gift-card sweep's.
+    await registry.reviewPhotoUseCases.sweep(new Date());
+  } catch (error) {
+    logger.error({ err: error }, '[review-photo] sweep failed');
   }
   let opsLock: HeldSessionLock | null = null;
   try {

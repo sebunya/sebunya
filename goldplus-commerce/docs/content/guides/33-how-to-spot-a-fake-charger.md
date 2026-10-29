@@ -67,7 +67,7 @@ Codes can only be verified once. If a code shows as already used, it usually mea
 
 # How to report a fake
 
-If you have seen or bought a product you think is a counterfeit, use our [report a fake page](/support/fake). You can tell us where you saw or bought it, what the product looked like, and the hologram code if there is one. We investigate every submission, and we record where fakes turn up, not who you are.
+If you have seen or bought a product you think is a counterfeit, use our [report a fake page](/support/fake). You can tell us where you saw or bought it, what the product looked like, and the hologram code if there is one. We investigate every submission. The form asks for your phone number so we can follow up, and we do not share your details.
 
 # Safer buying habits
 

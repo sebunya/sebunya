@@ -67,4 +67,4 @@ A memory card can be lost, damaged, or fail like any storage. Copy important pho
 
 # Choose your card
 
-For a phone, a Class 10 card such as our [32GB](/products/goldplus-memory-card-32gb), [64GB](/products/goldplus-memory-card-64gb) or [128GB](/products/goldplus-memory-card-128gb) card is a common choice. Every memory card we sell is written full and read back before it is sold, so the size on the box is the size you get. Browse every [memory card we stock](/storage/memory-cards).
+For a phone, a Class 10 card such as our [32GB](/products/goldplus-memory-card-32gb), [64GB](/products/goldplus-memory-card-64gb) or [128GB](/products/goldplus-memory-card-128gb) card is a common choice. Browse every [memory card we stock](/storage/memory-cards).

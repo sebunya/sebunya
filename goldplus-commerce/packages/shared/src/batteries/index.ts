@@ -202,7 +202,7 @@ export interface FinderDeviceDto {
 }
 
 /**
- * Every phone that resolves to at least one battery a customer can buy today, grouped by brand.
+ * Every phone with at least one published battery fit (verified, in or out of stock, or supplier-listed while shown), by brand.
  * Feeds the /phone-batteries hub, the per-phone pages' sitemap entries and the finder's brand lists.
  * A phone with no public fit is deliberately absent: a page for it would promise nothing.
  */

@@ -27,14 +27,14 @@ Pick one of the set amounts, 20,000, 50,000, 100,000 or 200,000 Uganda shillings
 # Step 3: say who it is for
 
 - **Their name.**
-- **Their mobile number.** This is optional.
+- **Their mobile number.** We text the card to it. Leave it empty only if you tick "Send the code to me instead".
 - **Send the code to me instead.** Tick this if you would rather give it to them yourself, for example in a birthday card or in person. The code comes to you as soon as you pay, to give whenever you like.
 
 # Step 4: make it personal (optional)
 
 **A note.** Add a short note on the card, up to 160 characters. For their safety, notes cannot include links or phone numbers.
 
-**A photo.** You can put a photo on the card instead of the picture. Only they and you see it. Use a photo you are happy for them to keep. They can remove it from their card, and so can you or we, at any time.
+**A photo.** You can put a photo on the card instead of the picture. Only they, you and GoldPlus staff can see it; it is never on a public page. Use a photo you are happy for them to keep. They can remove it from their card, and so can you or we, at any time.
 
 # Step 5: choose when it arrives
 

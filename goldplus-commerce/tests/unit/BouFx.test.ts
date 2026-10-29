@@ -98,7 +98,13 @@ describe('Bank of Uganda dollar rate', () => {
     expect(await new ControlFeeds(vi.fn(async () => json({ ...good, rates: [usd('reference', 4209.76)] })) as unknown as typeof fetch, 'k').bouSafe(new Date('2026-10-24T10:00:00Z'))).toMatchObject({ rate: 4209.76 }); // mid only if no selling rate
     expect(await new ControlFeeds(vi.fn(async () => json({ ...good, rates: [{ base: 'AED', quote: 'UGX', type: 'sell', value: 1147 }] })) as unknown as typeof fetch, 'k').bouSafe()).toMatchObject({ error: expect.stringContaining('no usable BoU USD/UGX') });
     expect(await new ControlFeeds(vi.fn(async () => json({ ...good, rate_date: '2026-10-10' })) as unknown as typeof fetch, 'k').bouSafe(new Date('2026-10-24T10:00:00Z'))).toMatchObject({ error: expect.stringContaining('days old') });
-    expect(await new ControlFeeds(vi.fn(async () => json({ error: 'nope' }, 401)) as unknown as typeof fetch, 'k').bouSafe()).toMatchObject({ error: 'allratestoday.com answered HTTP 401' });
+    // The refusal says what the provider said (status, then the body), so a wrong key can be told from a blocked server.
+    const refused = { ok: false, status: 401, redirected: false, url: '', headers: { get: () => 'application/json' }, text: async () => '{"error":"invalid api key"}' } as unknown as Response;
+    expect(await new ControlFeeds(vi.fn(async () => refused) as unknown as typeof fetch, 'k').bouSafe()).toEqual({ error: 'allratestoday.com Bank of Uganda table answered HTTP 401 (application/json): {"error":"invalid api key"}' });
+    // A selling rate with an extra digit is out of range and dropped: the mid is kept, never the impossible value.
+    expect(await new ControlFeeds(vi.fn(async () => json({ ...good, rates: [usd('reference', 4303.81), usd('sell', 43088.1)] })) as unknown as typeof fetch, 'k').bouSafe(new Date('2026-10-24T10:00:00Z'))).toMatchObject({ rate: 4303.81 });
+    // In range but not believable (under "the higher of" it would win for five days): refused.
+    expect(await new ControlFeeds(vi.fn(async () => json({ ...good, rates: [usd('reference', 4303.81), usd('sell', 4600)] })) as unknown as typeof fetch, 'k').bouSafe(new Date('2026-10-24T10:00:00Z'))).toMatchObject({ error: expect.stringContaining('selling more than 3% above mid') });
     expect(executed.filter((q) => q.includes('insert into') && q.includes('2026-10-10'))).toHaveLength(0);
   });
 
@@ -114,7 +120,16 @@ describe('Bank of Uganda dollar rate', () => {
     const w = executed.find((q) => q.includes('insert into measurement.control_series'));
     expect(w).toContain("'usd_ugx'");
     expect(w).toContain('allratestoday.com market quote (retail level, no margin added)');
-    expect(await new ControlFeeds(vi.fn(async () => json([{ rate: 0.89, source: 'USD', target: 'EUR' }])) as unknown as typeof fetch, 'k').fxSafe()).toMatchObject({ error: expect.stringContaining('no usable USD/UGX market quote') });
+    // The market quote failing (a rejected key, a changed answer) no longer leaves the rate to age into the 3,800
+    // default: the open feed stands in, says so, and never overwrites a good quote of the same day.
+    const both = vi.fn(async (url: string | URL | Request) => String(url).startsWith('https://open.er-api.com')
+      ? json({ result: 'success', rates: { UGX: 4166.17 }, time_last_update_unix: 1792972800 })
+      : json([{ rate: 0.89, source: 'USD', target: 'EUR' }]));
+    executed.length = 0;
+    const fell = await new ControlFeeds(both as unknown as typeof fetch, 'k').fxSafe();
+    expect(fell).toMatchObject({ rate: 4166.17, fallback: expect.stringContaining('no usable USD/UGX market quote') });
+    expect(executed.find((q) => q.includes("'open.er-api.com, market rate without margin'"))).toMatch(/not like 'allratestoday\.com%'/);
+    expect(await new ControlFeeds(vi.fn(async () => json({}, 500)) as unknown as typeof fetch, 'k').fxSafe()).toMatchObject({ error: expect.stringContaining('open.er-api.com answered HTTP 500') });
     const open = vi.fn(async (url: string | URL | Request) => { expect(String(url)).toBe('https://open.er-api.com/v6/latest/USD'); return json({ result: 'success', rates: { UGX: 4166.17 }, time_last_update_unix: 1792972800 }); });
     expect(await new ControlFeeds(open as unknown as typeof fetch, '').fxSafe()).toMatchObject({ rate: 4166.17 });
   });
@@ -132,4 +147,14 @@ describe('Bank of Uganda dollar rate', () => {
     expect(inBouWindow(new Date('2026-10-24T11:00:00Z'))).toBe(false);
     expect(inBouWindow(new Date('2026-10-24T04:00:00Z'))).toBe(false);
   });
+
+  it('one believability rule for both writers: in range, in order, selling within 3% of mid', async () => {
+    const { bouReadingProblem } = await import('../../apps/api/src/domain/measurement/BouReading');
+    expect(bouReadingProblem({ mid: 4303.81, buying: 4298.81, selling: 4308.81 })).toBeNull();
+    expect(bouReadingProblem({ mid: 4303.81, buying: 4298.81, selling: 43088.1 })).toMatch(/outside/);
+    expect(bouReadingProblem({ mid: 4303.81, buying: null, selling: 4600 })).toMatch(/3% above mid/);
+    expect(bouReadingProblem({ mid: 4303.81, buying: 4400, selling: 4308.81 })).toMatch(/buying above/);
+    expect(bouReadingProblem({ mid: null, buying: null, selling: null })).toMatch(/neither/);
+  });
 });
+

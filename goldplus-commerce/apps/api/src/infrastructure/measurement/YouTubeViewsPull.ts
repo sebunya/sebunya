@@ -7,7 +7,7 @@ const VIDEOS_URL = 'https://www.googleapis.com/youtube/v3/videos';
 /** Views keep arriving long after a video goes out; readings stop after this many days from publish. */
 export const VIEWS_FOLLOW_DAYS = 180;
 
-export interface ViewsPullResult { configured: boolean; videos: number; written: number; missing: string[]; error?: string }
+export interface ViewsPullResult { configured: boolean; videos: number; written: number; missing: string[]; error?: string; skipped?: string }
 
 /**
  * Nightly public view counts for the sponsored YouTube videos (0206): YouTube Data API v3 videos.list
@@ -24,7 +24,12 @@ export class YouTubeViewsPull {
       and publish_date >= current_date - ${VIEWS_FOLLOW_DAYS}::int and publish_date <= current_date`));
     if (!key) return { configured: false, videos: placements.length, written: 0, missing: [] };
     if (!placements.length) return { configured: true, videos: 0, written: 0, missing: [] };
-    const day = new Date(now.getTime() + 3 * 3600_000).toISOString().slice(0, 10);
+    // A reading is a cumulative count at the moment it is taken. The nightly reads before 06:00 Kampala, when the count
+    // is (almost) yesterday's total: it is filed under yesterday, so views sit on the day they happened, beside that
+    // day's spend. A daytime run (an admin Rebuild) would file a partial day and shift the next one: it writes nothing.
+    const kampalaHour = (now.getUTCHours() + 3) % 24;
+    if (kampalaHour >= 6) return { configured: true, videos: placements.length, written: 0, missing: [], skipped: 'YouTube views are read by the night run only (before 6 am Kampala), and filed under the day before' };
+    const day = new Date(now.getTime() + 3 * 3600_000 - 86_400_000).toISOString().slice(0, 10);
     const byVideo = new Map<string, string[]>();
     for (const p of placements) { const ids = byVideo.get(String(p.video_id)) ?? []; ids.push(String(p.id)); byVideo.set(String(p.video_id), ids); }
     const ids = [...byVideo.keys()];

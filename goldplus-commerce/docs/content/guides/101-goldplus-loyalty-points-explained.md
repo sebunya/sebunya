@@ -56,7 +56,7 @@ The programme page lists the complete set. If a way to earn is not on that page,
 
 # A scratch card with every delivery
 
-Every delivered order also brings a scratch card, free and on top of the points the order already earned. Every card wins; only the amount varies, and the odds are published on the loyalty page. Cards expire after 30 days, so scratch yours soon.
+Every delivered order also brings a scratch card, free and on top of the points the order already earned. Every card wins; only the amount varies, and the odds are published in the [loyalty terms](/loyalty-terms). Cards expire after 30 days, so scratch yours soon.
 
 # Fair-use limits
 

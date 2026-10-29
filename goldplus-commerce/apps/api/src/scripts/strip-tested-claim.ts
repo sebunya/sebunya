@@ -26,7 +26,7 @@ const RULES: Array<[RegExp, string]> = [
   [/ Every unit is tested before it is sold, with same-day delivery in Kampala and Wakiso\./g, ' Same-day delivery in Kampala and Wakiso.'],
   [/ Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso\./g, ' Same-day delivery in Kampala and Wakiso.'],
   [/ Every unit (?:is )?tested before it is sold\.? Same-day delivery/g, ' Same-day delivery'],
-  [/ Tested before sale; fit confirmed before you pay\./g, ' Fit confirmed before you pay.'],
+  [/ Tested before sale; fit confirmed before you pay\./g, ' Not sure it fits? Ask us and we confirm it before you order.'], // 2026-10-29: never the bare promise
   [/ Tested before sale\. Same-day/g, ' Same-day'],
   [/ Tested before sale\.?$/g, ''],
   [/ Every unit (?:is )?tested before it is sold\.?/g, ''],

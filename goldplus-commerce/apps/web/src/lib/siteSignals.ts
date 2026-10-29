@@ -1,5 +1,5 @@
 import { track } from './telemetry';
-import { SIGNED_UP_COOKIE, hasSignedUpMarker, isMapLink, searchAlreadyCounted, searchTermOf } from './siteSignalRules';
+import { SIGNED_UP_COOKIE, TYPED_SEARCH_KEY, hasSignedUpMarker, isMapLink, searchAlreadyCounted, searchTermOf, searchWasTyped, submittedSearchTerm } from './siteSignalRules';
 
 /**
  * Three things a visitor does besides filling a basket, sent like add_to_cart
@@ -14,12 +14,20 @@ export function recordSiteSignals(): void {
     // page or a category can never be remarketed to.
     track('page_seen');
 
+    let storage: Storage | null = null;
+    try { storage = window.sessionStorage; } catch { storage = null; }
     const term = searchTermOf(window.location.pathname, window.location.search);
-    if (term) {
-      let storage: Storage | null = null;
-      try { storage = window.sessionStorage; } catch { storage = null; }
-      if (!searchAlreadyCounted(term, storage)) track('search', { search_term: term });
-    }
+    // Only a search someone typed (siteSignalRules.searchWasTyped); a menu link or a shared results link is not one.
+    if (term && searchWasTyped(term, storage) && !searchAlreadyCounted(term, storage)) track('search', { search_term: term });
+    // Every search form on the site marks its term as it submits; the results page reads it back above.
+    document.addEventListener('submit', (ev) => {
+      try {
+        const form = ev.target as HTMLFormElement | null;
+        if (!form || form.method.toLowerCase() === 'post') return;
+        const typed = submittedSearchTerm(new URL(form.action, window.location.href).pathname, new FormData(form));
+        if (typed) storage?.setItem(TYPED_SEARCH_KEY, typed);
+      } catch { /* measurement never breaks a page */ }
+    }, { capture: true });
 
     if (hasSignedUpMarker(document.cookie)) {
       // Cleared first: one account is one sign_up, whatever happens next.

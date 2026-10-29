@@ -18,6 +18,8 @@ suite('privacy erasure (real PostgreSQL)', () => {
   const userIds: string[] = [];
   const quoteIds: string[] = [];
   const purchaseIds: string[] = [];
+  // 0208 / 0210 fixtures
+  const questionIds: string[] = []; const reminderCartIds: string[] = []; const productIds: string[] = []; const categoryIds: string[] = [];
   const tag = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
   const seedCustomer = async (label: string) => {
@@ -58,6 +60,19 @@ suite('privacy erasure (real PostgreSQL)', () => {
 
   afterAll(async () => {
     if (!raw) return;
+    if (questionIds.length) {
+      await raw`delete from outbox_events where related_entity = 'product_question' and related_entity_id = any(${questionIds})`;
+      await raw`delete from notification_attempts where related_entity = 'product_question' and related_entity_id = any(${questionIds})`;
+      await raw`delete from product_questions where id = any(${questionIds})`;
+    }
+    if (reminderCartIds.length) {
+      await raw`delete from outbox_events where related_entity = 'cart' and related_entity_id = any(${reminderCartIds})`;
+      await raw`delete from notification_attempts where related_entity = 'cart' and related_entity_id = any(${reminderCartIds})`;
+      await raw`delete from cart_abandonments where cart_id = any(${reminderCartIds})`;
+      await raw`delete from carts where id = any(${reminderCartIds})`;
+    }
+    if (productIds.length) await raw`delete from products where id = any(${productIds})`;
+    if (categoryIds.length) await raw`delete from categories where id = any(${categoryIds})`;
     if (purchaseIds.length) await raw`delete from gift_card_purchases where id = any(${purchaseIds})`;
     if (cardIds.length) {
       await raw`delete from outbox_events where related_entity = 'credit_instrument' and related_entity_id = any(${cardIds})`;
@@ -182,5 +197,58 @@ suite('privacy erasure (real PostgreSQL)', () => {
     [row] = await raw`select recipient_name, recipient_phone, confirmation_code from gift_card_purchases where id = ${p.id}`;
     expect(row).toMatchObject({ recipient_phone: '', confirmation_code: 'MTN9' });
     expect(row.recipient_name).not.toBe('Friend Name');
+  });
+
+  it('0208 questions and 0210 basket reminders are exported, and erased with the messages that carried them', async () => {
+    const c = await seedCustomer('qr');
+    const e164 = `+256${c.phone.slice(1)}`;
+    const [cat] = await raw`insert into categories (name, slug) values ('T', ${`tq-${tag}`}) returning id`;
+    categoryIds.push(cat.id);
+    const sku = `PQ-${tag}`.slice(0, 20);
+    const [prod] = await raw`insert into products (sku, model_number, name, slug, category_id, price_ugx, active, approval_status)
+              values (${sku}, ${sku}, 'Question Test', ${sku.toLowerCase()}, ${cat.id}, 10000, true, 'approved') returning id`;
+    productIds.push(prod.id);
+    // A question carries no account: found by the customer's own phone and email.
+    const [q] = await raw`insert into product_questions (product_id, asker_identity_hash, asker_name, asker_phone, asker_email, question, status, answer, answered_at)
+              values (${prod.id}, ${'h'.repeat(64)}, 'Jane Asker', ${e164}, ${c.email}, 'Does it fit a Tecno Spark 10?', 'answered', 'Yes, it fits.', now()) returning id`;
+    questionIds.push(q.id);
+    await raw`insert into outbox_events (event_type, payload, status, is_processed, idempotency_key, related_entity, related_entity_id)
+              values ('PRODUCT_QUESTION_ANSWERED', ${raw.json(JSON.stringify({ template: 'PRODUCT_QUESTION_ANSWERED', customerPhone: e164, customerName: 'Jane Asker' }))},
+                      'processed', true, ${`priv-q-${tag}`}, 'product_question', ${q.id})`;
+    await raw`insert into notification_attempts (channel, recipient, template, status, related_entity, related_entity_id)
+              values ('sms', ${e164}, 'PRODUCT_QUESTION_ANSWERED', 'SENT', 'product_question', ${q.id})`;
+    const [cart] = await raw`insert into carts (owner_kind, owner_id) values ('USER', ${c.userId}) returning id`;
+    reminderCartIds.push(cart.id);
+    await raw`insert into cart_abandonments (cart_id, owner_kind, owner_id, item_count, subtotal_ugx, status, last_activity_at, reminded_at, reminder_outcome)
+              values (${cart.id}, 'USER', ${c.userId}, 2, 45000, 'OPEN', now() - interval '9 hours', now() - interval '1 hour', 'sent')`;
+    await raw`insert into outbox_events (event_type, payload, status, is_processed, idempotency_key, related_entity, related_entity_id)
+              values ('BASKET_REMINDER', ${raw.json(JSON.stringify({ template: 'BASKET_REMINDER', customerPhone: e164, basketItems: 'Oraimo Traveler powerbank', message: 'GoldPlus: you left Oraimo Traveler powerbank in your basket.' }))},
+                      'processed', true, ${`priv-br-${tag}`}, 'cart', ${cart.id})`;
+    await raw`insert into notification_attempts (channel, recipient, template, status, related_entity, related_entity_id)
+              values ('sms', ${e164}, 'BASKET_REMINDER', 'SENT', 'cart', ${cart.id})`;
+
+    const copy = await exporter.collect(c.userId);
+    expect(copy.counts).toMatchObject({ productQuestions: 1, basketReminders: 1 });
+    expect(copy.sections.productQuestions).toEqual([expect.objectContaining({ product: 'Question Test', question: 'Does it fit a Tecno Spark 10?', name: 'Jane Asker', answer: 'Yes, it fits.' })]);
+    expect(copy.sections.basketReminders).toEqual([expect.objectContaining({ outcome: 'sent', items: 2, basketValueUgx: 45000 })]);
+
+    expect((await eraser.erase({ userId: c.userId, kind: 'ANONYMISE_HISTORY', requestId: c.requestId, actorId: c.userId, reason: 'test' })).completed).toBe(true);
+    const [qr] = await raw`select asker_name, asker_phone, asker_email, question, answer from product_questions where id = ${q.id}`;
+    expect(qr).toMatchObject({ asker_phone: null, asker_email: null, question: 'Does it fit a Tecno Spark 10?', answer: 'Yes, it fits.' });
+    expect(qr.asker_name).not.toBe('Jane Asker');
+    // The answer stays useful to later shoppers, shown as asked by "a customer", never as the removal notice.
+    const { DrizzleProductQuestionRepository } = await import('../../apps/api/src/infrastructure/questions/DrizzleProductQuestionRepository');
+    expect((await new DrizzleProductQuestionRepository().listAnswered(prod.id, 5))[0]).toMatchObject({ askerName: 'a customer', answer: 'Yes, it fits.' });
+    const digits = c.phone.slice(1);
+    for (const key of [`priv-q-${tag}`, `priv-br-${tag}`]) {
+      const [m] = await raw`select payload::text as p from outbox_events where idempotency_key = ${key}`;
+      expect(m.p).not.toContain(digits);
+      expect(m.p).not.toContain('Jane Asker');
+      expect(m.p).not.toContain('Oraimo');
+    }
+    const attempts = await raw`select recipient from notification_attempts where related_entity_id in (${q.id}, ${cart.id})`;
+    expect(attempts.map((a: any) => a.recipient)).toEqual(['removed', 'removed']);
+    const [r] = await raw`select result from privacy_requests where id = ${c.requestId}`;
+    expect(r.result.counts).toMatchObject({ productQuestions: 1, basketReminders: 1 });
   });
 });

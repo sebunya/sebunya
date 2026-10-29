@@ -4,13 +4,16 @@
  * (tests/unit/ChannelAttribution.test.ts holds the two together).
  */
 export const CHANNEL_REPORT_MODELS: ReadonlyArray<{ value: string; label: string; help: string }> = [
-  { value: 'last_click', label: 'Last click', help: 'All credit to the last recorded source before the order.' },
+  { value: 'last_click', label: 'Last click', help: 'All credit to the last recorded source before the order (direct visits skipped, as in GA4).' },
   { value: 'first_touch', label: 'First touch', help: 'All credit to the first recorded source in the 30 days before the order.' },
   { value: 'linear', label: 'Linear', help: 'Credit shared equally across the recorded sources.' },
   { value: 'time_decay', label: 'Time decay', help: 'Recent sources count more; weight halves every 7 days.' },
   { value: 'position_based', label: 'Position-based', help: '40% first, 40% last, 20% shared by the middle.' },
   { value: 'self_reported', label: 'Customer said', help: 'Only what the customer (or staff for them) answered to "How did you hear about us?".' },
 ];
+
+/** DIRECT_RULE_HELP in the domain (channel-credit-v2), said once under the model switcher. */
+export const DIRECT_RULE_HELP = 'A direct visit (a typed address, a bookmark, the installed app) says nothing about why the customer came, so no model gives it credit while a source was recorded; it counts only when it is all there was, and a customer\'s answer to "How did you hear about us?" beats it.';
 
 /**
  * Polyline points for a small trend line, or null when every value is zero (a

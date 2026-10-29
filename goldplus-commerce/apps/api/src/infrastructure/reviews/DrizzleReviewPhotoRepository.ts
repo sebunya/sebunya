@@ -35,4 +35,9 @@ export class DrizzleReviewPhotoRepository implements IReviewPhotoRepository {
   async deleteUnattachedBefore(before: Date): Promise<number> {
     return rowsOf(await db.execute(sql`delete from review_photos where review_id is null and created_at < ${before} returning id`)).length;
   }
+
+  async deleteOfRejectedBefore(before: Date): Promise<number> {
+    return rowsOf(await db.execute(sql`delete from review_photos p using reviews r
+      where p.review_id = r.id and r.status = 'rejected' and coalesce(r.moderated_at, r.updated_at) < ${before} returning p.id`)).length;
+  }
 }

@@ -1,4 +1,5 @@
 import type { FxReadingPort } from '../../ports/measurement/FxReadingPort';
+import { bouReadingProblem } from '../../../domain/measurement/BouReading';
 
 export interface BouFxInput { day: string; mid: number; buying?: number | null; selling?: number | null; source?: string }
 export type BouFxResult = { ok: true; day: string; mid: number } | { ok: false; message: string };
@@ -19,7 +20,8 @@ export class RecordBouFxReadingUseCase {
     if (!Number.isFinite(mid) || mid < 1000 || mid > 20000) return { ok: false, message: `mid ${String(input.mid)} is not a plausible shillings-per-dollar rate` };
     const side = (v: unknown): number | null => (v == null || v === '' ? null : Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
     const buying = side(input.buying), selling = side(input.selling);
-    if (buying !== null && selling !== null && (buying > mid + 1 || selling < mid - 1)) return { ok: false, message: 'buying must not exceed mid and selling must not be below it' };
+    const problem = bouReadingProblem({ mid, buying, selling });
+    if (problem) return { ok: false, message: `not kept: ${problem}` };
     const src = String(input.source ?? 'bou.or.ug').slice(0, 60);
     // The shop buys dollars to pay for adverts, so the rate kept is the bank's selling rate when the reading has one.
     const kept = Math.round((selling ?? mid) * 100) / 100;

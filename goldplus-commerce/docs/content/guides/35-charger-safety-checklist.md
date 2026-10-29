@@ -63,6 +63,6 @@ Most charging problems come from a damaged cable, an overloaded socket or a phon
 
 # Replacing what fails
 
-A damaged charger or cable is cheaper to replace than the phone it could harm. Our [GP-C08 charger](/products/goldplus-charger-gp-c08) is a simple 12W USB-A wall charger with a UK plug, and our braided [GP-L14T USB-C cable](/products/goldplus-cable-gp-l14t) is rated 6A with reinforced plugs.
+A damaged charger or cable is cheaper to replace than the phone it could harm. Our [GP-C08 charger](/products/goldplus-charger-gp-c08) is a simple USB-A wall charger (5V⎓2A) with a UK plug, and our braided [GP-L14T USB-C cable](/products/goldplus-cable-gp-l14t) is rated 6A with reinforced plugs.
 
 See every [charger](/power/chargers) and [charging cable](/power/charging-cables) we stock. For offices buying several at once, see our [bulk buying page](/bulk).

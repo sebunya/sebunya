@@ -38,7 +38,8 @@ const faqs: Array<{ q: string; a: string; links?: Array<{ label: string; href: s
   },
   {
     q: 'How can I pay?',
-    a: `Two ways, both offered at checkout. ${copy.payment.pesapal.description} Or choose "${copy.payment.offline.label.toLowerCase()}": ${copy.payment.offline.description.charAt(0).toLowerCase()}${copy.payment.offline.description.slice(1)}`,
+    // Online only since the owner's 2026-10-16 decision: the answer used to offer pay on delivery too.
+    a: `Online, when you order. ${copy.payment.pesapal.description} A GoldPlus gift card or store credit pays first, and you pay any rest the same way.`,
   },
   {
     q: 'Are GoldPlus products genuine, and what if something is faulty?',

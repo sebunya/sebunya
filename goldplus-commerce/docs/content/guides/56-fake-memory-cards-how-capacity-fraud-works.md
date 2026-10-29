@@ -6,7 +6,7 @@ Meta title: Fake Memory Cards: Spot Capacity Fraud | GoldPlus
 
 Meta description: Fake memory cards claim more space than they have, and your files quietly disappear. Learn how capacity fraud works, how to test a card, and how to avoid fakes.
 
-Related products: memory cards from a seller who tests every card.
+Related products: GoldPlus memory cards, each with a hologram code you can check.
 
 Related SKUs: GP-64GB-MC, GP-128GB-MC, GP-256GB-MC
 
@@ -57,7 +57,7 @@ Checking the size in your phone's settings is **not** a test. A fake card report
 
 # How we sell memory cards
 
-Every memory card we sell is written full and read back before it is sold, so the size on the box is the size you get.
+Every genuine GoldPlus memory card carries a security hologram with a code you can [check on our verification page](/verification), and a card from us that does not hold what its label says is faulty: it is replaced or refunded under our [returns policy](/returns).
 
 GoldPlus products carry a security hologram with a code. You can enter it on our [verification page](/verification) to confirm the product is genuine. Codes can only be verified once; if a code is already used, it usually means the package was opened before you bought it.
 
@@ -65,4 +65,4 @@ If you think you have been sold a fake GoldPlus product anywhere, please [report
 
 # Choose yours
 
-See every [memory card we stock](/storage/memory-cards), from 1GB to 512GB, each one tested full before it reaches you.
+See every [memory card we stock](/storage/memory-cards), from 1GB to 512GB.

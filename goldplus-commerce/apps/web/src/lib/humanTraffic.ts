@@ -18,7 +18,7 @@ const AUTOMATED = [
   'curl', 'wget', 'python-requests', 'python-httpx', 'go-http-client',
   'java/', 'okhttp', 'axios', 'node-fetch', 'undici', 'got (',
   'headlesschrome', 'phantomjs', 'puppeteer', 'playwright', 'selenium',
-  'lighthouse', 'pingdom', 'uptimerobot', 'statuscake', 'newrelic', 'datadog',
+  'lighthouse', 'pagespeed', 'page speed', 'pingdom', 'uptimerobot', 'statuscake', 'newrelic', 'datadog',
   'ahrefs', 'semrush', 'mj12', 'dotbot', 'petalbot', 'bytespider',
   'facebookexternalhit', 'whatsapp', 'telegrambot', 'discordbot', 'slackbot',
   'preview', 'monitor', 'probe', 'scanner', 'postman', 'insomnia',

@@ -63,7 +63,11 @@ routes.get('/ga4-series', requirePermissions([PERMISSIONS.REPORTS_READ]), async 
 
 /** Microsoft Clarity's dashboard numbers, pulled server to server every night (0207). */
 routes.get('/clarity', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
-  return c.json({ success: true, data: { configured: Boolean((process.env.CLARITY_EXPORT_TOKEN ?? '').trim()), summary: await registry().clarityInsightsPull.summary() } });
+  // The last nightly's own Clarity result too: a rejected token or a failed call shows on the card instead of
+  // "nothing pulled yet" for ever (2026-10-29 review).
+  const last = await lastMeasurementNightly().catch(() => null);
+  const lastPull = (last?.stats as Record<string, unknown> | undefined)?.clarity ?? null;
+  return c.json({ success: true, data: { configured: Boolean((process.env.CLARITY_EXPORT_TOKEN ?? '').trim()), summary: await registry().clarityInsightsPull.summary(), lastPull, lastRunAt: last?.startedAt ?? null } });
 });
 
 /** Paid placements on YouTube channels, radio, TV (0206). */

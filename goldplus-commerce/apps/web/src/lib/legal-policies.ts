@@ -14,6 +14,7 @@
  * The `draft_pending_legal_review` status is retained for future policies, not
  * because anything currently uses it.
  */
+import { RETURNS_POLICY } from './returnsPolicy';
 
 export type PolicyStatus = 'in_force' | 'interim_guidance' | 'draft_pending_legal_review';
 
@@ -75,7 +76,8 @@ export const LEGAL_POLICIES: LegalPolicy[] = [
     version: '1.1',
     status: 'in_force',
     effectiveDate: '2026-09-01',
-    summary: 'How to start a return and what to expect.',
+    // The page's search description: the policy itself, from the one returns fact (lib/returnsPolicy).
+    summary: `Changed your mind? Return it within ${RETURNS_POLICY.windowDays} days, unused and complete. Faulty? We replace or refund it and cover the carriage. Start online or at the shop.`,
   },
   {
     slug: 'warranty',

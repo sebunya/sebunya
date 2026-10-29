@@ -46,7 +46,7 @@ A card may also print a "read speed up to" figure. That is a maximum, usually mu
 
 Card makers count 1GB as 1,000,000,000 bytes. Phones and computers often count in units of 1,024, so the same card shows a smaller number on screen. A 64GB card may show about 59GB. The system also keeps a small part for its file table. This is normal and is not missing space.
 
-What is not normal is a card that claims a size it does not have. That is capacity fraud, and the warning signs are files that will not open or that vanish. Every memory card we sell is written full and read back before it is sold, so the size on the box is the size you get.
+What is not normal is a card that claims a size it does not have. That is capacity fraud, and the warning signs are files that will not open or that vanish. To check any card yourself, fill it with test data and read it back with a free tool such as H2testw or F3.
 
 # Our memory cards
 

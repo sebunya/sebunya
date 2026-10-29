@@ -46,6 +46,8 @@ export const PUBLIC_FORM_BUDGETS: Readonly<Record<string, FormBudget>> = {
   '/api/assistant/handover': { limit: 3, windowMs: TEN_MINUTES },
   '/api/assistant/transcript': { limit: 3, windowMs: TEN_MINUTES },
   '/api/assistant/rate': { limit: 10, windowMs: TEN_MINUTES },
+  // A product question can text the number typed on it (acknowledgement, then the answer).
+  '/api/questions/ask': { limit: 5, windowMs: TEN_MINUTES },
 };
 
 /** Trailing slash and case are not a way around the budget. */

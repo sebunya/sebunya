@@ -60,7 +60,7 @@ A standard UK-style plug on a cable usually has a small fuse inside. Many phone 
 
 All our wall chargers fit Ugandan sockets directly. A few examples:
 
-- [GP-C08](/products/goldplus-charger-gp-c08): a 12W USB-A charger with a UK plug, listed for input 100-240V.
+- [GP-C08](/products/goldplus-charger-gp-c08): a USB-A charger with a UK plug, listed at 5V⎓2A and 9V⎓1A, for input 100-240V.
 - [GP-C11](/products/goldplus-charger-gp-c11): a 30W dual-port charger with a UK plug and a USB-C to Lightning cable.
 - [GP-GAN01](/products/goldplus-charger-gp-gan01): a 65W GaN charger with a UK plug, a built-in USB-C cable and two more ports.
 

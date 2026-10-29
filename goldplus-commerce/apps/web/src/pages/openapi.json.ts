@@ -58,8 +58,8 @@ const spec = {
     '/batteries/finder/fit-index': {
       get: {
         operationId: 'listPhonesWithBatteries',
-        summary: 'Every phone GoldPlus has a battery for today, by brand',
-        description: 'Each device links to its page at https://shopgoldplus.com/phone-batteries/{slug}. A phone is absent when no battery for it can be bought.',
+        summary: 'Every phone GoldPlus lists a battery for, by brand',
+        description: 'Each device links to its page at https://shopgoldplus.com/phone-batteries/{slug}. A phone is listed while a published battery fits it (it may be out of stock: the page says so); a phone with none is absent.',
         responses: {
           '200': { description: 'Brands with their phones', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { type: 'object', properties: { deviceCount: { type: 'integer' }, brands: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, slug: { type: 'string' }, devices: { type: 'array', items: { type: 'object', properties: { slug: { type: 'string' }, label: { type: 'string' }, modelNumber: { type: 'string', nullable: true }, verifiedFits: { type: 'integer' }, listedFits: { type: 'integer' } } } } } } } } } } } } } },
         },
@@ -69,7 +69,7 @@ const spec = {
       get: {
         operationId: 'findBattery',
         summary: 'Battery finder: phone model or battery code',
-        description: 'Returns kind BATTERY, DEVICE, AMBIGUOUS_DEVICE, SUGGESTIONS or NO_RESULT. Only fits GoldPlus has checked are returned; nothing is guessed.',
+        description: 'Returns kind BATTERY, DEVICE, AMBIGUOUS_DEVICE, SUGGESTIONS or NO_RESULT. Each fit states its source (checked by GoldPlus, or the supplier\'s compatibility list); nothing is guessed.',
         parameters: [{ name: 'q', in: 'query', required: true, schema: { type: 'string', minLength: 2, maxLength: 120, example: 'Tecno Spark 7' } }],
         responses: { '200': { description: 'Finder result', content: { 'application/json': { schema: { type: 'object' } } } } },
       },

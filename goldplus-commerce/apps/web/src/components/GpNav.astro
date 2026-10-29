@@ -286,8 +286,8 @@ const nbaJson = escNav(JSON.stringify(nba));
     </form>
 
     <div class="gp-nav__actions">
-      <a class="gp-nav__pts" href="/account/rewards" id="gpNavPtsWrap" hidden=""><b id="gpNavPts">0</b> pts</a>
-      <div class="gp-nav__acct" id="gpNavAcct">
+      <a class="gp-nav__pts" href="/account/rewards" id="gpNavPtsWrap" hidden="" data-clarity-mask="true"><b id="gpNavPts">0</b> pts</a>
+      <div class="gp-nav__acct" id="gpNavAcct" data-clarity-mask="true">
         <button class="gp-nav__act" id="gpNavAcctBtn" type="button" aria-expanded="false" aria-haspopup="true" aria-label="Account">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"></circle><path d="M4.8 20a7.4 7.4 0 0 1 14.4 0"></path></svg>
         </button>
@@ -444,7 +444,7 @@ const nbaJson = escNav(JSON.stringify(nba));
               <a href={indexableCategoryHref('/shop?category=storage&q=512gb+memory+card')}>512GB</a>
             </div>
           </div>
-          <p class="gp-nav__note">Every card is written full and read back before it is sold. <b>The size on the box is the size you get.</b></p>
+          <p class="gp-nav__note">Every genuine GoldPlus card carries a hologram code you can check. <b>A card that does not hold its size is replaced or refunded.</b></p>
           <p class="gp-nav__note">Reading a card on a computer? <a href={indexableCategoryHref('/shop?category=storage&q=card+reader')}>Multi-slot card readers &rarr;</a></p>
         </div>
         {featFor('Storage Devices') && (

@@ -17,7 +17,15 @@ function sqlText(q: unknown): string {
     return '';
   }).join('');
 }
-const answer = (q: unknown) => { const t = sqlText(q); executed.push(t); return t.includes('max(day)') ? [{ last_day: lastDay }] : []; };
+// The last stored day per report (the pull resumes each report from its own): all four share lastDay unless a test
+// sets heldReports.
+let heldReports: Record<string, string> | null = null;
+const answer = (q: unknown) => {
+  const t = sqlText(q); executed.push(t);
+  if (!t.includes('max(day)')) return [];
+  const held = heldReports ?? (lastDay ? Object.fromEntries(['channel', 'source_medium', 'landing_page', 'device'].map((r) => [r, lastDay])) : {});
+  return Object.entries(held).map(([report, last_day]) => ({ report, last_day }));
+};
 vi.mock('../../apps/api/src/infrastructure/db/client', () => ({
   db: { execute: async (q: unknown) => answer(q), transaction: async (fn: (tx: unknown) => Promise<void>) => fn({ execute: async (q: unknown) => answer(q) }) },
 }));
@@ -54,8 +62,29 @@ describe('GA4 daily series pull', () => {
     const calls: any[] = [];
     const api = { runReport: async (req: any) => { calls.push(req); return { propertyId: 'p', rows: [] }; } };
     const r = await new Ga4DailyPull(api).run(NOW);
-    expect(r).toMatchObject({ mode: 'refresh', from: '2026-10-20', to: '2026-10-22', rows: 0 });
-    expect(calls[0].dateRanges[0]).toEqual({ startDate: '2026-10-20', endDate: '2026-10-22' });
+    // From two days before the last stored day (late corrections) or three days back, whichever is earlier.
+    expect(r).toMatchObject({ mode: 'refresh', from: '2026-10-18', to: '2026-10-22', rows: 0 });
+    expect(calls[0].dateRanges[0]).toEqual({ startDate: '2026-10-18', endDate: '2026-10-22' });
+  });
+
+  it('a gap heals: after a week without a working credential each report resumes from its own last day', async () => {
+    heldReports = { channel: '2026-10-12', source_medium: '2026-10-12', landing_page: '2026-10-12', device: '2026-10-21' };
+    const calls: any[] = [];
+    const api = { runReport: async (req: any) => { calls.push(req); return { propertyId: 'p', rows: [] }; } };
+    await new Ga4DailyPull(api).run(NOW);
+    expect(calls.map((c) => c.dateRanges[0].startDate)).toEqual(['2026-10-10', '2026-10-10', '2026-10-10', '2026-10-19']);
+    heldReports = null;
+  });
+
+  it('a report that never landed (it failed during the first backfill) backfills on its own', async () => {
+    heldReports = { channel: '2026-10-21', source_medium: '2026-10-21', device: '2026-10-21' };
+    const calls: any[] = [];
+    const api = { runReport: async (req: any) => { calls.push(req); return { propertyId: 'p', rows: [] }; } };
+    const r = await new Ga4DailyPull(api).run(NOW);
+    const landing = calls.find((c) => c.dimensions[1].name === GA4_REPORTS.landing_page);
+    expect(landing.dateRanges[0].startDate < '2025-10-01').toBe(true);
+    expect(r.mode).toBe('backfill');
+    heldReports = null;
   });
 
   it('writes nothing and stops after the first report when the credential is unavailable', async () => {

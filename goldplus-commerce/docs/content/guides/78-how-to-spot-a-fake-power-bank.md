@@ -67,7 +67,7 @@ Do this before you rely on the product, and ideally before you leave the seller.
 
 # How to report a fake
 
-If a code is rejected, the package was tampered with, or you find a product you think is a fake GoldPlus item, use [report a fake](/support/fake). Tell us where you saw or bought it, what it looked like, and the hologram code if there is one. We investigate every submission, and we record where fakes turn up, never who you are.
+If a code is rejected, the package was tampered with, or you find a product you think is a fake GoldPlus item, use [report a fake](/support/fake). Tell us where you saw or bought it, what it looked like, and the hologram code if there is one. We investigate every submission. The form asks for your phone number so we can follow up, and we do not share your details.
 
 # Buy from the source
 

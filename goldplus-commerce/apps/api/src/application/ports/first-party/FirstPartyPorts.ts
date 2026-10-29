@@ -13,7 +13,10 @@ export interface IIdentifierHasher {
 
 /** The account behind a user id, as far as identity needs it. */
 export interface IAccountIdentityReader {
-  findAccount(userId: string): Promise<{ id: string; email: string | null; phone: string | null; phoneVerified: boolean } | null>;
+  /** `isActive` false: a deactivated account (staff turned off, a closed customer account); absent = treated as active. */
+  findAccount(userId: string): Promise<{ id: string; email: string | null; phone: string | null; phoneVerified: boolean; isActive?: boolean } | null>;
+  /** A delivered or completed order of this account went to this number: it demonstrably reaches its owner. */
+  phoneReachedByOrder?(userId: string, phoneE164: string): Promise<boolean>;
 }
 
 /** Has this person or browser explicitly refused on-site personalisation? Throws on a read failure. */

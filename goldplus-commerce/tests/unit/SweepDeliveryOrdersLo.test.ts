@@ -240,7 +240,7 @@ describe('support and quote acknowledgements reach the customer (router fall-thr
   const provider = { dispatch: vi.fn() } as any;
   const router = new DefaultNotificationRouter(provider, provider, provider);
 
-  for (const eventType of ['SUPPORT_REQUEST_RECEIVED', 'QUOTE_REQUEST_RECEIVED', 'DEALER_APPLICATION_RECEIVED', 'FAKE_REPORT_RECEIVED']) {
+  for (const eventType of ['SUPPORT_REQUEST_RECEIVED', 'QUOTE_REQUEST_RECEIVED', 'DEALER_APPLICATION_RECEIVED', 'FAKE_REPORT_RECEIVED', 'PRODUCT_QUESTION_RECEIVED', 'PRODUCT_QUESTION_ANSWERED']) {
     it(`${eventType} with only a customer phone produces one SMS to that phone`, async () => {
       const targets = await router.route(eventType, { customerPhone: '+256772123456', message: 'We have your request.', relatedEntityId: '6f1c2c1e-0000-4000-8000-000000000001' });
       expect(targets).toHaveLength(1);
@@ -249,6 +249,22 @@ describe('support and quote acknowledgements reach the customer (router fall-thr
       expect(targets[0].payload.template).toBe(eventType);
     });
   }
+
+  it('every event type the Registry hands to a customer notifier routes somewhere (none is silently retired)', async () => {
+    // The question messages (0208) and the basket reminder (0210) were enqueued with no case here: the outbox marked
+    // each "No channel mapping" and nothing was sent (2026-10-29). All are routed now (the reminder after its consent,
+    // cap and send-time fixes); an event type added here with no route fails this test.
+    const DELIBERATELY_UNROUTED = new Set<string>();
+    const registry = readFileSync(resolve(__dirname, '../../apps/api/src/infrastructure/Registry.ts'), 'utf8');
+    const types = new Set<string>();
+    for (const m of registry.matchAll(/(customerOutboxNotifier\.enqueue|sendPublicFormAcknowledgementUseCase\.execute)\(\{[\s\S]{0,400}?eventType: '([A-Z_]+)'/g)) types.add(m[2]);
+    expect(types.size).toBeGreaterThan(3);
+    for (const t of types) {
+      if (DELIBERATELY_UNROUTED.has(t)) continue;
+      const targets = await router.route(t, { customerPhone: '+256772123456', template: 'X', relatedEntityId: '6f1c2c1e-0000-4000-8000-000000000001' });
+      expect(targets.length, t).toBeGreaterThan(0);
+    }
+  });
 
   it('a support payload that happens to carry `recipient` never gets the internal "order is PAID" text', async () => {
     const targets = await router.route('SUPPORT_REQUEST_RECEIVED', { recipient: '+256700000000', customerPhone: '+256772123456' });

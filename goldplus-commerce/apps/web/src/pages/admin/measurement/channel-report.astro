@@ -3,7 +3,7 @@ import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
 import { apiBase } from "../../../lib/api";
 import { formatUgx } from "../../../lib/money";
-import { CHANNEL_REPORT_MODELS, sparklinePoints, weekLabel, formatOrders } from "../../../lib/channelReport";
+import { CHANNEL_REPORT_MODELS, DIRECT_RULE_HELP, sparklinePoints, weekLabel, formatOrders } from "../../../lib/channelReport";
 
 /**
  * Weekly channel report (attribution module, 0156): which channels brought
@@ -67,7 +67,7 @@ const current = CHANNEL_REPORT_MODELS.find((m) => m.value === model)!;
       </label>
       <button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Show</button>
       <a href={csvHref} class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-bold text-brand-dark">Download CSV</a>
-      <p class="basis-full text-xs text-gray-600">{current.help}</p>
+      <p class="basis-full text-xs text-gray-600">{current.help} {DIRECT_RULE_HELP}</p>
     </form>
 
     {!result.ok ? <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{result.message}</p> : (
@@ -143,6 +143,40 @@ const current = CHANNEL_REPORT_MODELS.find((m) => m.value === model)!;
                 <table class="mt-2 w-full text-sm"><tbody>
                   {report.creatorsAndCodes.map((d: any) => <tr class="border-t border-gray-100"><th scope="row" class="py-1 text-left font-normal">{d.channel === "creator" ? "Creator" : "Code"}: <strong>{d.detail}</strong></th><td class="py-1 text-right">{formatOrders(d.orders)} orders</td><td class="py-1 text-right">{formatUgx(d.revenueUGX)}</td></tr>)}
                 </tbody></table>
+              )}
+            </section>
+
+            {/* The page each sale's journey began on (first recorded arrival with a source; a direct one only when that
+                was all), from the shop's own records: which pages bring customers who buy, without GA4. */}
+            <section aria-labelledby="entry-h" class="mb-8 overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+              <h3 id="entry-h" class="px-4 pt-4 font-black text-brand-dark">Where sales started</h3>
+              {!report.entryPages ? (
+                <p class="px-4 pb-4 pt-2 text-sm text-gray-600">Not available right now: the visit records could not be read. The channels above are unaffected.</p>
+              ) : report.entryPages.salesWithVisit === 0 ? (
+                <p class="px-4 pb-4 pt-2 text-sm text-gray-600">None of the {report.entryPages.sales} sales in these weeks has a recorded visit (they came with a code, an answer, or nothing).</p>
+              ) : (
+                <>
+                  <p class="px-4 pt-1 text-xs text-gray-600">{report.entryPages.salesWithVisit} of {report.entryPages.sales} sales have a recorded visit ({Math.round((report.entryPages.salesWithVisit / Math.max(1, report.entryPages.sales)) * 100)}%). Each is counted once, on the page and channel its journey began with.</p>
+                  <div class="mt-3 flex flex-wrap gap-2 px-4">
+                    {report.entryPages.sections.map((s: any) => <span class="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs"><strong>{s.section}</strong>: {s.orders} · {formatUgx(s.revenueUGX)}</span>)}
+                  </div>
+                  <table class="mt-3 w-full min-w-[640px] text-sm">
+                    <thead><tr class="border-b border-gray-100 text-left text-xs uppercase tracking-wider text-gray-500"><th scope="col" class="px-4 py-2">Page</th><th scope="col" class="px-4 py-2">Arrived from</th><th scope="col" class="px-4 py-2 text-right">Sales</th><th scope="col" class="px-4 py-2 text-right">Revenue</th></tr></thead>
+                    <tbody>
+                      {report.entryPages.pages.map((p: any) => (
+                        <tr class="border-t border-gray-100">
+                          <th scope="row" class="px-4 py-2 text-left font-normal"><span class="font-mono text-xs">{p.path}</span><span class="block text-xs text-gray-500">{p.section}</span></th>
+                          <td class="px-4 py-2">{p.channelLabel}</td>
+                          <td class="px-4 py-2 text-right">{p.orders}</td>
+                          <td class="px-4 py-2 text-right">{formatUgx(p.revenueUGX)}</td>
+                        </tr>
+                      ))}
+                      {report.entryPages.otherPages && (
+                        <tr class="border-t border-gray-100 text-gray-600"><th scope="row" class="px-4 py-2 text-left font-normal">{report.entryPages.otherPages.pages} more pages</th><td class="px-4 py-2"></td><td class="px-4 py-2 text-right">{report.entryPages.otherPages.orders}</td><td class="px-4 py-2 text-right">{formatUgx(report.entryPages.otherPages.revenueUGX)}</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </>
               )}
             </section>
           </>

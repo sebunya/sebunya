@@ -56,7 +56,7 @@ Moisture and dirt on charging contacts can stop charging and, over time, cause c
 
 # A simple charger for small devices
 
-A basic USB-A charger is ideal for a bedside table where earbuds and a watch charge overnight. Our [GP-C08 charger](/products/goldplus-charger-gp-c08) is a 12W USB-A charger with a UK plug, listed at 5V⎓2A.
+A basic USB-A charger is ideal for a bedside table where earbuds and a watch charge overnight. Our [GP-C08 charger](/products/goldplus-charger-gp-c08) is a USB-A charger with a UK plug, listed at 5V⎓2A (10W).
 
 # Safety for small batteries
 

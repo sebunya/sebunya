@@ -3,6 +3,7 @@ import {
   BackfillOrderAttributionUseCase,
   GetOrderAttributionUseCase,
   GetWeeklyChannelReportUseCase,
+  ReclassifyTouchesUseCase,
   RecordCheckoutAttributionUseCase,
   RecordOrderSourceUseCase,
 } from '../../application/use-cases/measurement/ChannelAttributionUseCases';
@@ -19,6 +20,7 @@ export function createChannelAttribution() {
     backfill: new BackfillOrderAttributionUseCase(store, attributeOrder),
     weeklyReport: new GetWeeklyChannelReportUseCase(store, new PgChannelSpendSource()),
     orderView: new GetOrderAttributionUseCase(store),
+    reclassifyTouches: new ReclassifyTouchesUseCase(store),
   };
 }
 export type ChannelAttributionModule = ReturnType<typeof createChannelAttribution>;

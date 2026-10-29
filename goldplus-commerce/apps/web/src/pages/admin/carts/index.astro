@@ -68,7 +68,7 @@ if (lookupId) {
 
 // Abandonment totals from the scheduled evaluator (GET /admin/carts/abandonment,
 // orders.read). Read-only; a failure shows a notice, never invented numbers.
-let abandonment: { summary: { open: number; expired: number; recovered: number; last24h: number }; recent: Array<{ id: string; cartId: string; status: string; itemCount: number; subtotalUgx: number; classifiedAt: string }> } | null = null;
+let abandonment: { summary: { open: number; expired: number; recovered: number; resumed?: number; remindersSent7d?: number; last24h: number }; recent: Array<{ id: string; cartId: string; status: string; itemCount: number; subtotalUgx: number; classifiedAt: string; reminderOutcome?: string | null }> } | null = null;
 let abandonmentError: string | null = null;
 try {
   const res = await fetch(`${apiBase}/admin/carts/abandonment?limit=10`, {
@@ -87,6 +87,12 @@ try {
 import { formatUgx } from '../../../lib/money';
 // UGX code format via the single money source (en-UG's currency symbol is "USh").
 const formatter = { format: (n: unknown) => formatUgx(n) };
+/** The basket reminder's outcome, in words (cart_abandonments.reminder_outcome, SendBasketRemindersUseCase). */
+const REMINDER_WORDS: Record<string, string> = {
+  sending: 'being sent', sent: 'sent', failed: 'failed to queue', not_opted_in: 'not asked for', no_phone: 'no phone on the account',
+  suppressed: 'stopped by the customer', unverified: 'phone not verified', inactive: 'account closed', nothing_left: 'nothing left to buy',
+  held_out: 'held back (control group)', phone_changed: 'number changed since they said yes', no_evidence: 'consent record incomplete',
+};
 ---
 
 <AdminLayout 
@@ -149,10 +155,12 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
         <>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div><p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Open</p><p class="text-2xl font-black text-brand-dark mt-1">{abandonment.summary.open}</p></div>
-            <div><p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Recovered</p><p class="text-2xl font-black text-brand-primaryInk mt-1">{abandonment.summary.recovered}</p></div>
+            {/* "Recovered" was always 0: the platform records no checkout-to-cart link. "Came back" counts baskets changed after they were classified. */}
+            <div><p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Came back</p><p class="text-2xl font-black text-brand-primaryInk mt-1">{abandonment.summary.resumed ?? 0}</p></div>
             <div><p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Expired</p><p class="text-2xl font-black text-gray-500 mt-1">{abandonment.summary.expired}</p></div>
             <div><p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">New in last 24h</p><p class="text-2xl font-black text-brand-dark mt-1">{abandonment.summary.last24h}</p></div>
           </div>
+          <p class="text-xs text-gray-500 mt-3">Basket reminders sent in the last 7 days: <span class="font-bold text-brand-dark">{abandonment.summary.remindersSent7d ?? 0}</span>. Only to signed-in customers who ticked the box, on a number known to be theirs (verified, or an order was delivered to it); switch off with BASKET_REMINDERS=off.</p>
           {abandonment.recent.length > 0 ? (
             <div class="overflow-x-auto mt-5">
               <table class="w-full text-xs">
@@ -161,7 +169,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
                   {abandonment.recent.map((r) => (
                     <tr class="border-t border-gray-100">
                       <td class="py-2"><a class="font-mono text-brand-primaryInk hover:underline" href={`/admin/carts?id=${r.cartId}`}>{r.cartId.slice(0, 8)}…</a></td>
-                      <td>{r.status}</td>
+                      <td>{r.status === 'RESUMED' ? 'CAME BACK' : r.status}{r.reminderOutcome ? <span class="text-gray-500"> · reminder {REMINDER_WORDS[r.reminderOutcome] ?? r.reminderOutcome}</span> : null}</td>
                       <td class="text-right">{r.itemCount}</td>
                       <td class="text-right">{formatter.format(r.subtotalUgx)}</td>
                       <td class="text-right text-gray-500">{new Date(r.classifiedAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>

@@ -1,10 +1,11 @@
 import { sql } from 'drizzle-orm';
 import { parseHeardAbout } from '@goldplus/shared';
 import { db } from '../db/client';
-import { pgJsonb } from '../db/PgParams';
+import { pgJsonb, pgUuidArray } from '../db/PgParams';
+import type { EntryTouch } from '../../domain/measurement/EntryPages';
 import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { codeTouchFrom, reportChannelForSpend, type CreditBasis, type OrderCredit, type ReportModel, type SpendInput } from '../../domain/measurement/ChannelReport';
-import type { ChannelAttributionStore, ChannelSpendSource, OrderAttributionFacts, SaleFacts, SourceReportRow } from '../../application/ports/measurement/ChannelAttribution';
+import type { ChannelAttributionStore, ChannelSpendSource, OrderAttributionFacts, SaleFacts, SourceReportRow, StoredTouch, TouchCursor } from '../../application/ports/measurement/ChannelAttribution';
 
 /**
  * PostgreSQL side of the attribution module (migration 0156). Touches are the
@@ -36,7 +37,7 @@ export class DrizzleChannelAttributionStore implements ChannelAttributionStore {
         (select c.handle from creator_attributions a join creators c on c.id = a.creator_id
           where a.order_id = ${orderId}::uuid and a.is_primary limit 1) as attributed_handle,
         cr.handle as creator_handle, cc.code, cc.code_type, pd.name as promotion_name,
-        mp.outlet || ': ' || mp.title as placement_detail, mp.medium as placement_medium
+        mp.link_slug as placement_detail, mp.medium as placement_medium
       from (select 1) as one
       left join lateral (
         select r.coupon_id from coupon_redemptions r
@@ -45,7 +46,12 @@ export class DrizzleChannelAttributionStore implements ChannelAttributionStore {
       left join coupon_codes cc on cc.id = red.coupon_id
       left join creators cr on cr.id = cc.assigned_to_creator_id
       left join promotion_definitions pd on pd.id = cc.promotion_definition_id
-      left join lateral (select outlet, title, medium from media_placements mp where mp.promo_code = upper(cc.code) and mp.deleted_at is null order by mp.publish_date desc limit 1) mp on true`))[0];
+      -- The placement the code was given for: the latest one published on or before the order day (the same code on
+      -- an October 1 video and an October 25 video: an October 10 order is the first one's), named by its link slug,
+      -- the key its link visits and its scorecard already use (an "outlet: title" name was cut at 80 characters).
+      left join lateral (select link_slug, medium from media_placements mp where mp.promo_code = upper(cc.code) and mp.deleted_at is null
+        and mp.publish_date <= (${new Date(o.created_at).toISOString()}::timestamptz at time zone 'Africa/Kampala')::date
+        order by mp.publish_date desc limit 1) mp on true`))[0];
     const reports = rows(await db.execute(sql`
       select reported_by, answer, whatsapp_ref, note, created_at from measurement.order_source_report
       where order_id = ${orderId}::uuid order by created_at desc, report_id desc limit 50`));
@@ -138,6 +144,49 @@ export class DrizzleChannelAttributionStore implements ChannelAttributionStore {
       where c.model = ${model} and o.created_at >= ${from.toISOString()}::timestamptz and o.created_at < ${to.toISOString()}::timestamptz`))
       .map((r) => ({ orderId: String(r.order_id), channel: String(r.channel), detail: String(r.detail ?? ''), weight: Number(r.weight),
         creditedUGX: BigInt(r.credited_ugx ?? 0), basis: (r.basis === 'declared' ? 'declared' : 'observed') as CreditBasis }));
+  }
+
+  async entryTouches(orderIds: string[], lookbackDays: number): Promise<EntryTouch[]> {
+    const ids = orderIds.filter((id) => UUID.test(id));
+    if (!ids.length) return [];
+    // One row per order: its linked touches inside the journey window, sources before direct, then oldest first.
+    return rows(await db.execute(sql`
+      select distinct on (l.order_id) l.order_id, t.landing_path, t.channel
+      from measurement.order_touch_link l
+      join measurement.touchpoint t on t.touch_id = l.touch_id
+      join orders o on o.id = l.order_id
+      where l.order_id = any(${pgUuidArray(ids)})
+        and t.occurred_at <= o.created_at and t.occurred_at > o.created_at - make_interval(days => ${lookbackDays})
+      order by l.order_id, (t.channel = 'direct'), t.occurred_at, t.touch_id`))
+      .map((r) => ({ orderId: String(r.order_id), landingPath: r.landing_path ? String(r.landing_path) : null, channel: String(r.channel) }));
+  }
+
+  async touchesSince(since: Date, after: TouchCursor | null, limit: number): Promise<StoredTouch[]> {
+    const cursor = after
+      ? sql`and (t.occurred_at, t.touch_id) > (${after.occurredAt.toISOString()}::timestamptz, ${after.touchId}::uuid)`
+      : sql``;
+    return rows(await db.execute(sql`
+      select t.touch_id, t.occurred_at, t.channel, t.source, t.medium, t.referrer_host, t.click_id_types
+      from measurement.touchpoint t
+      where t.environment = ${env()} and t.occurred_at > ${since.toISOString()}::timestamptz ${cursor}
+      order by t.occurred_at, t.touch_id
+      limit ${Math.max(1, Math.min(5000, Math.floor(limit)))}`))
+      .map((r) => ({
+        touchId: String(r.touch_id), occurredAt: new Date(r.occurred_at), channel: String(r.channel),
+        source: r.source ?? null, medium: r.medium ?? null, referrerHost: r.referrer_host ?? null,
+        clickIdTypes: Array.isArray(r.click_id_types) ? r.click_id_types.map(String) : [],
+      }));
+  }
+
+  async setTouchChannels(updates: Array<{ touchId: string; channel: string }>): Promise<number> {
+    const clean = updates.filter((u) => UUID.test(u.touchId) && /^[a-z_]{2,40}$/.test(u.channel));
+    if (!clean.length) return 0;
+    const r = rows(await db.execute(sql`
+      update measurement.touchpoint t set channel = x->>'channel'
+      from jsonb_array_elements(${pgJsonb(clean)}) as x
+      where t.touch_id = (x->>'touchId')::uuid and t.environment = ${env()} and t.channel is distinct from x->>'channel'
+      returning t.touch_id`));
+    return r.length;
   }
 
   async creditsForOrder(orderId: string) {

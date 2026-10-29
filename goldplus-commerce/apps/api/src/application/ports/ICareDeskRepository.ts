@@ -21,6 +21,8 @@ export interface ICareDeskRepository {
   get(id: string): Promise<CareTaskRow | null>;
   list(f: { status?: CareStatus; kind?: CareTaskKind; limit: number }): Promise<CareTaskRow[]>;
   resolve(id: string, input: { status: 'done' | 'cancelled'; resolvedBy: string; resolution: string | null }): Promise<boolean>;
+  /** Closes the OPEN tasks whose proposed action names this id under `key` (e.g. questionId), so the work done elsewhere ends the task. */
+  resolveByAction(key: string, value: string, input: { status: 'done' | 'cancelled'; resolvedBy: string; resolution: string | null }): Promise<number>;
   assign(id: string, userId: string | null): Promise<boolean>;
   markAlerted(id: string): Promise<void>;
   /** Marks the task as having paged people, only if it has not already (true = this caller won and may page). */

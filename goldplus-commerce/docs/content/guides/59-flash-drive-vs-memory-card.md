@@ -60,7 +60,7 @@ A flash drive (also called a flash disk) plugs into a USB port.
 
 Both come in many sizes. For a memory card, the speed class matters if you record video; for phones, Class 10 is the usual choice. For a flash drive, a USB 3.0 drive is faster in a USB 3.0 port and still works in older USB 2.0 ports, just at USB 2.0 speed.
 
-Every memory card we sell is written full and read back before it is sold, so the size on the box is the size you get.
+Every genuine GoldPlus memory card carries a security hologram with a code you can [check on our verification page](/verification), and a card from us that does not hold what its label says is faulty: it is replaced or refunded under our [returns policy](/returns).
 
 # When to have both
 

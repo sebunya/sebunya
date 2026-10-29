@@ -8,6 +8,7 @@ import type { BatteryRequestRecord, DemandOverview, FinderEventWrite, IBatteryFi
 import type { BatteryCandidate, DeviceCandidate } from '../../../domain/batteries/FinderRanking';
 import { deviceLabel } from '../../../domain/batteries/DeviceHierarchy';
 import { displayImageUrlSql, galleryOrderSql, galleryVisibleSql } from '../mediaDisplayUrl';
+import { pgUuidArray } from '../PgParams';
 
 const jsonb = (value: unknown) => sql`${client.json(value as never)}::jsonb`;
 
@@ -16,6 +17,13 @@ const PUBLIC_CLAIM = sql`${productDeviceCompatibility.workflowStatus} = 'ACTIVE'
 const VERIFIED_PUBLIC = sql`c.workflow_status = 'ACTIVE' AND c.evidence_status IN ('PACKAGE_VERIFIED','FIT_TESTED','VERIFIED_EXACT','CONDITIONAL') AND bp.lifecycle_status = 'ACTIVE' AND p.approval_status = 'approved' AND p.active`;
 /** A live supplier-listed fit for a sellable product: shown as "awaiting verification" when the finder allows it (publicFitState). */
 const AWAITING_PUBLIC = sql`c.workflow_status = 'ACTIVE' AND c.evidence_status = 'SUPPLIER_LISTED' AND bp.lifecycle_status <> 'ARCHIVED' AND p.approval_status = 'approved' AND p.active`;
+/**
+ * A visitor's interest in a phone: a search or a pick in the finder, or a view of the phone's own page
+ * (/phone-batteries/<slug>, RESULT_VIEWED from a browser that kept its visit cookie, so not a crawler). Since the
+ * finder's lists link to the phone pages, a pick there arrives as a page view; without it the demand report lost
+ * every phone chosen from a brand list (2026-10-29).
+ */
+const DEVICE_INTEREST = sql`(e.event_type IN ('SEARCH','DEVICE_SELECTED') OR (e.event_type = 'RESULT_VIEWED' AND e.session_hash IS NOT NULL))`;
 
 /**
  * Units a customer can still buy: on hand minus what open orders already hold.
@@ -139,9 +147,10 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
     }).from(devices)
       .innerJoin(deviceBrands, eq(deviceBrands.id, devices.brandId))
       .leftJoin(deviceSeries, eq(deviceSeries.id, devices.seriesId))
+      // No brand-status test: a phone of an archived brand keeps its page (the device lookup does not check the brand),
+      // so the hub and the sitemap list it too, or page and index disagree (2026-10-29 review).
       .where(and(
         eq(devices.status, 'ACTIVE'),
-        eq(deviceBrands.status, 'ACTIVE'),
         sql`EXISTS (SELECT 1 FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id WHERE c.device_id = ${sql.raw("devices.id")} AND ((${VERIFIED_PUBLIC}) ${awaiting}))`,
       ))
       .orderBy(deviceBrands.name, devices.model, devices.modelNumber);
@@ -191,6 +200,13 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
       product: { ...r.product, imageUrl: r.product.imageUrl ?? null, priceUgx: r.product.priceUgx == null ? null : Number(r.product.priceUgx) },
       device: deviceDto(r.d, r.seriesName, 0),
     };
+  }
+
+  async batteryProductIds(productIds: string[]): Promise<Set<string>> {
+    const ids = productIds.filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+    if (!ids.length) return new Set();
+    const r = (await db.execute(sql`select product_id from battery_profiles where product_id = any(${pgUuidArray(ids)})`)) as unknown as Array<{ product_id: string }>;
+    return new Set(r.map((x) => String(x.product_id)));
   }
 
   async fitsForDevice(deviceId: string) {
@@ -294,12 +310,12 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
     const topBrands = await q<{ brandId: string | null; name: string; searches: number }>(sql`
       SELECT b.id AS "brandId", b.name, count(*)::int AS searches FROM battery_finder_events e
       JOIN devices d ON d.id = e.device_id JOIN device_brands b ON b.id = d.brand_id
-      WHERE e.occurred_at >= ${since} AND e.event_type IN ('SEARCH','DEVICE_SELECTED') GROUP BY b.id, b.name ORDER BY searches DESC LIMIT 10`);
+      WHERE e.occurred_at >= ${since} AND ${DEVICE_INTEREST} GROUP BY b.id, b.name ORDER BY searches DESC LIMIT 10`);
     const topDevices = await q<{ deviceId: string; label: string; searches: number; verifiedFits: number }>(sql`
       SELECT d.id AS "deviceId", d.brand || ' ' || d.model || COALESCE(' (' || d.model_number || ')', '') AS label, count(*)::int AS searches,
         (SELECT count(*) FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id WHERE c.device_id = d.id AND ${VERIFIED_PUBLIC})::int AS "verifiedFits"
       FROM battery_finder_events e JOIN devices d ON d.id = e.device_id
-      WHERE e.occurred_at >= ${since} AND e.event_type IN ('SEARCH','DEVICE_SELECTED') GROUP BY d.id ORDER BY searches DESC LIMIT 15`);
+      WHERE e.occurred_at >= ${since} AND ${DEVICE_INTEREST} GROUP BY d.id ORDER BY searches DESC LIMIT 15`);
     const topCodes = await q<{ query: string; searches: number }>(sql`
       SELECT e.query_normalised AS query, count(*)::int AS searches FROM battery_finder_events e
       WHERE e.occurred_at >= ${since} AND e.event_type = 'SEARCH' AND e.mode = 'SEARCH_CODE' AND e.query_normalised IS NOT NULL GROUP BY e.query_normalised ORDER BY searches DESC LIMIT 15`);
@@ -309,20 +325,27 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
     const devicesWithoutBattery = await q<{ deviceId: string; label: string; searches: number }>(sql`
       SELECT d.id AS "deviceId", d.brand || ' ' || d.model || COALESCE(' (' || d.model_number || ')', '') AS label, count(*)::int AS searches
       FROM battery_finder_events e JOIN devices d ON d.id = e.device_id
-      WHERE e.occurred_at >= ${since} AND e.event_type IN ('SEARCH','DEVICE_SELECTED') AND e.result_count = 0
+      WHERE e.occurred_at >= ${since} AND ((e.event_type IN ('SEARCH','DEVICE_SELECTED') AND e.result_count = 0)
+        OR (e.event_type = 'RESULT_VIEWED' AND e.outcome = 'NO_RESULT' AND e.session_hash IS NOT NULL))
       GROUP BY d.id HAVING count(*) >= 2 ORDER BY searches DESC LIMIT 15`);
     const outOfStockDemand = await q<{ productId: string; canonicalCode: string; name: string; views: number }>(sql`
       SELECT p.id AS "productId", bp.canonical_code AS "canonicalCode", p.name, count(*)::int AS views
       FROM battery_finder_events e JOIN products p ON p.id = e.battery_product_id JOIN battery_profiles bp ON bp.product_id = p.id
       WHERE e.occurred_at >= ${since} AND e.outcome = 'VERIFIED_OUT_OF_STOCK' GROUP BY p.id, bp.canonical_code ORDER BY views DESC LIMIT 15`);
-    const [funnel] = await q<{ searches: number; productViews: number; cartAdds: number; searchSessions: number; viewSessions: number; cartSessions: number }>(sql`
-      SELECT count(*) FILTER (WHERE event_type = 'SEARCH')::int AS searches,
-             count(*) FILTER (WHERE event_type = 'PRODUCT_VIEWED')::int AS "productViews",
-             count(*) FILTER (WHERE event_type = 'ADDED_TO_CART')::int AS "cartAdds",
-             count(DISTINCT session_hash) FILTER (WHERE event_type = 'SEARCH' AND session_hash IS NOT NULL)::int AS "searchSessions",
-             count(DISTINCT session_hash) FILTER (WHERE event_type = 'PRODUCT_VIEWED' AND session_hash IS NOT NULL)::int AS "viewSessions",
-             count(DISTINCT session_hash) FILTER (WHERE event_type = 'ADDED_TO_CART' AND session_hash IS NOT NULL)::int AS "cartSessions"
-      FROM battery_finder_events WHERE occurred_at >= ${since}`);
+    // Per visitor, in order: came to the finder (a search, a phone picked, a phone page) and THEN opened a battery,
+    // and THEN added one to the basket. The rates used to divide two unrelated counts (every visitor who viewed a
+    // battery by every visitor who searched), so phone-page visitors who never searched could push them past 100%.
+    const [funnel] = await q<{ searchSessions: number; viewSessions: number; cartSessions: number }>(sql`
+      WITH s AS (
+        SELECT session_hash,
+               min(occurred_at) FILTER (WHERE event_type IN ('SEARCH','DEVICE_SELECTED','RESULT_VIEWED')) AS entered,
+               max(occurred_at) FILTER (WHERE event_type = 'PRODUCT_VIEWED') AS viewed,
+               max(occurred_at) FILTER (WHERE event_type = 'ADDED_TO_CART') AS added
+        FROM battery_finder_events WHERE occurred_at >= ${since} AND session_hash IS NOT NULL GROUP BY session_hash)
+      SELECT count(*) FILTER (WHERE entered IS NOT NULL)::int AS "searchSessions",
+             count(*) FILTER (WHERE entered IS NOT NULL AND viewed >= entered)::int AS "viewSessions",
+             count(*) FILTER (WHERE entered IS NOT NULL AND added >= entered)::int AS "cartSessions"
+      FROM s`);
     const aliasCorrections = await q<{ query: string; searches: number }>(sql`
       SELECT e.query_normalised AS query, count(*)::int AS searches FROM battery_finder_events e
       WHERE e.occurred_at >= ${since} AND e.event_type = 'SEARCH' AND e.alias_hit AND e.query_normalised IS NOT NULL GROUP BY e.query_normalised HAVING count(*) >= 2 ORDER BY searches DESC LIMIT 15`);

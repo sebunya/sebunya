@@ -4,11 +4,14 @@ import CheckYourPhoneNote from '../../components/CheckYourPhoneNote.astro';
 import { SITE_ORIGIN } from '../../lib/sitemap';
 import { getBusinessInfo } from '../../lib/businessInfo';
 import { serializeJsonLd, breadcrumbJsonLd } from '../../lib/jsonld';
-import { publicBattery, DEVICE_COOKIE, serialiseDeviceCookie, ugx, FIT_BADGE } from '../../lib/batteries';
+import { fitIndexCached, publicBattery, ugx, FIT_BADGE } from '../../lib/batteries';
+import { findRecordedRedirect } from '../../lib/recordedRedirect';
+import { carryQuery } from '../../lib/carryQuery';
 import {
-  isDeviceSlug, phoneBatteryPath, phonePageIndexable, phonePageTitle, phonePageH1, phonePageDescription, phoneGuides, phonePageItemListJsonLd,
+  fitProvenance, isDeviceSlug, phoneBatteryPath, phonePageIndexable, phonePageTitle, phonePageH1, phonePageDescription, phoneGuides, phonePageItemListJsonLd,
+  type FitProvenance,
 } from '../../lib/phoneBatteryPage';
-import type { BatteryFinderConfig, FinderBatteryResultDto, FinderDeviceDto, FinderFitIndexDto } from '@goldplus/shared';
+import type { BatteryFinderConfig, FinderBatteryResultDto, FinderDeviceDto } from '@goldplus/shared';
 
 /**
  * One phone, the batteries that fit it, and how to be sure before ordering.
@@ -20,27 +23,36 @@ import type { BatteryFinderConfig, FinderBatteryResultDto, FinderDeviceDto, Find
  * what the demand report's funnel reads.
  */
 const slug = (Astro.params.device ?? '').trim();
-if (!isDeviceSlug(slug)) return Astro.redirect('/404', 404);
+// A recorded redirect (a manual row, a retired address) is answered before the 404, as the hub and product pages do:
+// handed to 404.astro it cannot redirect (2026-10-29 review).
+const notFound = async () => {
+  const recorded = await findRecordedRedirect(Astro.url.pathname);
+  return recorded ? Astro.redirect(carryQuery(recorded.target, Astro.url.search), recorded.status) : Astro.redirect('/404', 404);
+};
+if (!isDeviceSlug(slug)) return notFound();
 
 const [deviceRes, indexRes, biz] = await Promise.all([
   publicBattery<{ device: FinderDeviceDto; results: FinderBatteryResultDto[]; config: BatteryFinderConfig }>(`/finder/devices/${encodeURIComponent(slug)}?record=0`),
-  publicBattery<FinderFitIndexDto>('/finder/fit-index'),
+  fitIndexCached(),
   getBusinessInfo(),
 ]);
 
-if (!deviceRes.ok && deviceRes.status === 404) return Astro.redirect('/404', 404);
+if (!deviceRes.ok && deviceRes.status === 404) return notFound();
+// A merged or renamed phone answers under its new slug: one address, a permanent move (not a duplicate page).
+if (deviceRes.ok && deviceRes.data.device.slug !== slug) return Astro.redirect(phoneBatteryPath(deviceRes.data.device.slug), 301);
 const unavailable = !deviceRes.ok;
 const device = deviceRes.ok ? deviceRes.data.device : null;
 const results = deviceRes.ok ? deviceRes.data.results : [];
 const cfg = deviceRes.ok ? deviceRes.data.config : null;
-if (unavailable) Astro.response.status = 503;
-
-// Same cookie the finder sets: the product page then shows "Buying for your <phone>".
-if (device) {
-  Astro.cookies.set(DEVICE_COOKIE, serialiseDeviceCookie({ slug: device.slug, label: device.label }), {
-    path: '/', httpOnly: false, sameSite: 'lax', secure: Astro.url.protocol === 'https:', maxAge: 60 * 60 * 24 * 30,
-  });
+if (unavailable) {
+  // Temporary: crawlers come back, and nobody keeps this answer (as the product page's own 503 does).
+  Astro.response.status = 503;
+  Astro.response.headers.set('Retry-After', '300');
+  Astro.response.headers.set('Cache-Control', 'no-store');
 }
+
+// No "buying for" cookie here: a page reached from search, the hub or the sibling chips is browsing, and writing it
+// replaced the phone the customer had chosen. "View and buy" carries ?device=, and the product page saves that choice.
 
 // The device's own slug, so an alias or an old slug that still resolves points at the one page.
 const canonicalUrl = `${SITE_ORIGIN}${phoneBatteryPath(device?.slug ?? slug)}`;
@@ -50,8 +62,14 @@ const title = device ? phonePageTitle(device) : 'Phone battery | GoldPlus';
 const h1 = device ? phonePageH1(device) : 'Replacement phone battery';
 const description = device ? phonePageDescription(device, results) : 'Find the replacement battery for your phone at GoldPlus, Kampala.';
 
-const allAwaiting = results.length > 0 && results.every((r) => r.fitState === 'AWAITING_VERIFICATION');
-const anyVerified = results.some((r) => r.fitState === 'VERIFIED_IN_STOCK' || r.fitState === 'VERIFIED_OUT_OF_STOCK');
+// One provenance word for the whole page (lib/phoneBatteryPage.fitProvenance): the description and this body agree.
+const provenance = results.length ? fitProvenance(results) : null;
+const PROVENANCE_INTRO: Record<FitProvenance, string> = {
+  listed: "Listed for this phone in our supplier's compatibility list. Compare the pack code with the code on your old battery, or message us and we confirm it before you order.",
+  checked: 'Checked against this phone by GoldPlus. Compare the pack code with the code on your old battery if you can see it.',
+  conditional: 'These fit this phone with a condition: read it on each battery before you order.',
+  mixed: "Some were checked against this phone by GoldPlus, others come from our supplier's compatibility list: each battery says which. Compare the pack code with your old battery's.",
+};
 const guides = device ? phoneGuides(device.brandName) : [];
 const waHref = (text: string) => `${biz.whatsappUrl}?text=${encodeURIComponent(text)}`;
 const waText = `${cfg?.whatsappPrefill ?? 'Hello GoldPlus, I need a battery for my '}${device?.label ?? ''}`;
@@ -104,13 +122,7 @@ const brandName = device?.brandName ?? '';
         {results.length > 0 ? (
           <section class="mt-6" aria-labelledby="fits-heading">
             <h2 id="fits-heading" class="text-lg font-black text-brand-dark">{results.length === 1 ? 'The battery that fits' : `${results.length} batteries that fit`}</h2>
-            <p class="mt-1 text-sm text-slate-600">
-              {allAwaiting
-                ? "Listed for this phone in our supplier's compatibility list. Compare the pack code with the code on your old battery, or message us and we confirm it before you order."
-                : anyVerified
-                  ? 'Checked against this phone by GoldPlus. Compare the pack code with the code on your old battery if you can see it.'
-                  : 'Read the condition on each battery before you order.'}
-            </p>
+            <p class="mt-1 text-sm text-slate-600">{provenance && PROVENANCE_INTRO[provenance]}</p>
             <div class="mt-4 space-y-3">
               {results.map((r) => (
                 <article class="rounded-2xl border border-gray-200 bg-white p-5 flex flex-wrap items-center gap-4">
@@ -120,7 +132,8 @@ const brandName = device?.brandName ?? '';
                     <p class="text-xs text-gray-500 mt-1">Pack code <span class="font-mono">{r.canonicalCode}</span>{r.capacityMah ? ` · ${r.capacityMah} mAh` : ''}{r.nominalVoltageMv ? ` · ${(r.nominalVoltageMv / 1000).toFixed(2)} V` : ''}</p>
                     <span class={`inline-block mt-2 rounded-full border px-3 py-1 text-[11px] font-bold ${FIT_BADGE[r.fitState] ?? ''}`}>{r.fitLabel}</span>
                     {r.fitState === 'CONDITIONAL' && r.condition && <p class="mt-2 text-xs text-amber-900">{cfg?.conditionalNote} {r.condition}</p>}
-                    {r.fitState === 'VERIFIED_OUT_OF_STOCK' && <p class="mt-2 text-xs text-gray-600">{cfg?.outOfStockNote}</p>}
+                    {r.fitState === 'AWAITING_VERIFICATION' && cfg?.awaitingVerificationNote && <p class="mt-2 text-xs text-gray-600">{cfg.awaitingVerificationNote}</p>}
+                    {!r.inStock && <p class="mt-2 text-xs font-semibold text-gray-700">{r.fitState === 'VERIFIED_OUT_OF_STOCK' && cfg?.outOfStockNote ? cfg.outOfStockNote : 'Out of stock right now. Ask us when it is back.'}</p>}
                   </div>
                   <div class="text-right">
                     {r.regularPriceUgx != null && <p class="text-xs font-semibold text-slate-600 line-through tabular-nums"><span class="sr-only">Was </span>{ugx(r.regularPriceUgx)}</p>}

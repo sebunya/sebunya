@@ -95,11 +95,11 @@ Fits: "checked by GoldPlus" only for PACKAGE_VERIFIED / FIT_TESTED / VERIFIED_EX
 | G2 Honest | Public claims outside the claim policy (§5) | 0 (spot-check 5 pages; `PhoneBatteryPages.test.ts` green) | PR CI + live pages | Every deploy |
 | G3 Funnel alive | RESULT_VIEWED, PRODUCT_VIEWED, ADDED_TO_CART events **with a session** | All three non-zero; ≥1 browser goes phone page → basket | `docs/growth/funnel-check.sql` sections G3–G3b; `/admin/batteries/demand` | Day 14 |
 | G4 Demand known | demand-export.sh run and read; top 10 no-result phones listed | Done | Owner | Before any new content |
-| G5 Commercial | GA4 purchases in sessions that **landed** on `/phone-batteries/*` | ≥1 in 30 days | `docs/growth/funnel-check.sql` section G5 (from `measurement.ga4_daily_series`) | Day 30 |
+| G5 Commercial | Sales whose journey started on a `/phone-batteries/*` page (first-party: the order's linked visits, `measurement.touchpoint.landing_path`) | ≥1 in 30 days | Channel report → "Where sales started" (section "Phone battery pages"); `docs/growth/funnel-check.sql` section G5 | Day 30 |
 | G6 Ops supply | Phones with a purchasable battery (fit-index `deviceCount`) | +10 over the deploy-day count | `GET /batteries/finder/fit-index` | Day 30 |
 | G7 Practice confirmed | Owner confirms staff confirm fits on WhatsApp before orders | Yes | Owner | Before deploy, ideally |
 
-G5 is read from GA4, not from the finder events: the finder stores only a salted one-way hash of the visit, and orders never carry it, so an order cannot be joined to a finder session (by design, no visitor identity in the demand table). GA4 attributes a purchase to the session's landing page; a purchase sent server-side without a GA4 session lands under "(not set)" (docs/measurement/ATTRIBUTION.md), so G5 can undercount, never overcount.
+G5 is first-party. The finder's own events carry only a salted hash of the visit, so they cannot be joined to an order, but they do not need to be: the attribution module already links every order to its visitor's landing touches (30 days, cross-device through the identity graph), and each touch keeps the page it landed on. GA4's purchases by landing page (`measurement.ga4_daily_series`) are the second opinion, not the gate; they undercount when a server-side purchase has no GA4 session (docs/measurement/ATTRIBUTION.md). An earlier draft of this gate said orders could not be joined at all; that was wrong (2026-10-29).
 
 ## 9. 30 / 60 / 90
 

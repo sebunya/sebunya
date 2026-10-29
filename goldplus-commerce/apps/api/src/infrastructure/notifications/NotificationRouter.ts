@@ -5,8 +5,21 @@ import { paidOrderAlertText } from '../../domain/fulfilment/PaidOrderAlert';
 import { IAutomationActionRepository } from '../../application/ports/IAutomationActionRepository';
 import { AutomationOutcomeTrackingProvider } from '../automation/AutomationOutcomeTrackingProvider';
 import { toRelatedEntityId } from '../../domain/notifications/RelatedEntityId';
+import { basketReminderSendRefusal } from '../../application/use-cases/abandonment/SendBasketRemindersUseCase';
+
+/** BASKET_REMINDERS=off stops basket reminders, the queued ones included, without a deploy. On unless switched off. */
+export function basketRemindersEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return (env.BASKET_REMINDERS || '').trim().toLowerCase() !== 'off';
+}
 
 export class DefaultNotificationRouter implements INotificationRouter {
+  private basketReminderRecheck: ((userId: string, phoneE164: string) => Promise<boolean>) | null = null;
+
+  /** 0210: the reminder's consent gate, read again when it is sent (Registry wires it once both exist). */
+  setBasketReminderRecheck(check: (userId: string, phoneE164: string) => Promise<boolean>): void {
+    this.basketReminderRecheck = check;
+  }
+
   constructor(
     private readonly emailProvider: INotificationProvider,
     private readonly whatsappProvider: INotificationProvider,
@@ -308,10 +321,16 @@ export class DefaultNotificationRouter implements INotificationRouter {
       // inserted between their labels and this block, so both fell through
       // into it, found no `recipient`, produced zero targets, and the outbox
       // marked every acknowledgement "processed" having sent nothing.
+      //
+      // Product questions (0208): the "we have your question" note and the answer itself. Both were enqueued from
+      // 2026-10-28 and retired here as "No channel mapping": no asker ever received an answer, while staff were told
+      // it had been sent (found 2026-10-29).
       case 'SUPPORT_REQUEST_RECEIVED':
       case 'QUOTE_REQUEST_RECEIVED':
       case 'DEALER_APPLICATION_RECEIVED':
       case 'FAKE_REPORT_RECEIVED':
+      case 'PRODUCT_QUESTION_RECEIVED':
+      case 'PRODUCT_QUESTION_ANSWERED':
       case 'CUSTOMER_ORDER_MESSAGE': {
         const customerPhone = typeof payload.customerPhone === 'string' ? payload.customerPhone : '';
         const customerEmail = typeof payload.customerEmail === 'string' ? payload.customerEmail : '';
@@ -343,6 +362,36 @@ export class DefaultNotificationRouter implements INotificationRouter {
             payload: { recipient: customerEmail, template, data: payload, relatedEntity: entity, relatedEntityId },
           });
         }
+        break;
+      }
+
+      // 0210: the basket reminder. Marketing, sent only on the customer's own SMS consent (the gate ran when it was
+      // queued), so SMS only: never WhatsApp (transactional templates only) and never email (not what they ticked).
+      // It was unrouted from 2026-10-28 (retired as "No channel mapping") until its review fixes of 2026-10-29. At
+      // send time it is refused, as a final DISABLED outcome with the reason, when the switch is off, in quiet hours,
+      // or past its send-by time: the outbox retries for hours, and a late reminder is dropped, never delayed.
+      // The consent is read again here too: a customer who switched reminders off, changed number or sent STOP
+      // after it was queued gets nothing. A read that fails is retried (still bounded by the send-by time).
+      case 'BASKET_REMINDER': {
+        const customerPhone = typeof payload.customerPhone === 'string' ? payload.customerPhone : '';
+        if (!customerPhone) break;
+        let refusal = basketReminderSendRefusal(payload, new Date(), basketRemindersEnabled());
+        let recheckFailed = false;
+        if (!refusal && this.basketReminderRecheck) {
+          const userId = typeof payload.userId === 'string' ? payload.userId : '';
+          const still = userId ? await this.basketReminderRecheck(userId, customerPhone).catch(() => { recheckFailed = true; return false; }) : false;
+          if (!still && !recheckFailed) refusal = 'Not sent: basket reminders no longer cover this customer and number (switched off, number changed or STOP since it was queued).';
+        }
+        const provider: INotificationProvider = refusal
+          ? { dispatch: async () => ({ status: 'DISABLED', providerCode: 'BASKET_REMINDER_REFUSED', providerMessage: refusal, retryable: false }) }
+          : recheckFailed
+            ? { dispatch: async () => ({ status: 'FAILED', providerCode: 'BASKET_REMINDER_RECHECK_FAILED', providerMessage: 'The consent could not be read just now; tried again shortly.', retryable: true }) }
+            : honourDryRun(this.smsProvider, payload.dryRunOnly === true);
+        targets.push({
+          channel: 'sms',
+          provider,
+          payload: { recipient: customerPhone, template: 'BASKET_REMINDER', data: payload, relatedEntity: relatedEntity || 'cart', relatedEntityId },
+        });
         break;
       }
 

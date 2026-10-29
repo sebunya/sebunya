@@ -1291,7 +1291,7 @@ routes.get('/reviews/photos/:id', async (c) => {
   const image = await registry.reviewPhotoUseCases.image(c.req.param('id'));
   if (!image) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No such photo.' } }, 404);
   return c.body(new Uint8Array(image.buffer as ArrayBuffer, image.byteOffset, image.byteLength), 200, {
-    'Content-Type': 'image/jpeg', 'Content-Length': String(image.byteLength), 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff',
+    'Content-Type': 'image/jpeg', 'Content-Length': String(image.byteLength), 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff',
   });
 });
 
@@ -1341,8 +1341,10 @@ const QUESTION_REFUSALS: Record<string, string> = {
   NO_NAME: 'Tell us your name, so we know who we are answering.',
   TOO_SHORT: 'Ask the question in a few more words.',
   TOO_LONG: 'Keep the question under 500 characters.',
-  BAD_CONTACT: 'Check the phone number or email: we could not read it.',
+  BAD_CONTACT: 'Use a Ugandan mobile number (07…) or an email address: we text answers to Ugandan mobiles only.',
+  CONTACT_IN_TEXT: 'Put your number or email in the box for it, not in your name or the question: those are shown on the page once we answer.',
   TOO_MANY: 'You have asked a few questions today. Ask us the rest on WhatsApp.',
+  SHOP_BUSY: 'We have had a lot of questions today. Ask us on WhatsApp and we answer there.',
 };
 routes.post('/questions', async (c) => {
   const askerIdentityHash = hashVisitToken(c.req.header('x-gp-visit') ?? '') ?? '';
@@ -1350,7 +1352,7 @@ routes.post('/questions', async (c) => {
   const body = await c.req.json().catch(() => null);
   try {
     const result = await registry.askProductQuestionUseCase.execute({ productId: String(body?.productId ?? ''), askerIdentityHash, name: body?.name, question: body?.question, phone: body?.phone, email: body?.email });
-    if (!result.ok) return c.json({ success: false, error: { code: result.reason, message: QUESTION_REFUSALS[result.reason] ?? 'We could not take that question.' } }, result.reason === 'TOO_MANY' ? 429 : 400);
+    if (!result.ok) return c.json({ success: false, error: { code: result.reason, message: QUESTION_REFUSALS[result.reason] ?? 'We could not take that question.' } }, result.reason === 'TOO_MANY' || result.reason === 'SHOP_BUSY' ? 429 : 400);
     return c.json({ success: true, data: { received: true, id: result.id } });
   } catch {
     return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);

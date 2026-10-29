@@ -60,4 +60,4 @@ The GP-M02 name comes in more than one connector, so check the connector on the 
 
 # Choose yours
 
-Many people keep one of each: a 2 m cable at home and a 1 m cable in the bag. See every [charging cable we stock](/power/charging-cables), with same-day delivery in Kampala and Wakiso for orders placed before 5pm.
+Many people keep one of each: a 2 m cable at home and a 1 m cable in the bag. See every [charging cable we stock](/power/charging-cables). Order before 5pm, Monday to Saturday, and it goes out on that day's run in Kampala and Wakiso.

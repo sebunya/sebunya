@@ -6,6 +6,7 @@ import {
   emailCopy,
   CUSTOMER_TRANSACTIONAL_TEMPLATES,
   type CustomerTemplate,
+  smsCut,
 } from '../../apps/api/src/application/notifications/CustomerMessages';
 import { NotificationTemplateRenderer } from '../../apps/api/src/application/use-cases/notifications/NotificationTemplateRenderer';
 import { classifyMessage } from '../../apps/api/src/infrastructure/notifications/messageClassification';
@@ -27,12 +28,17 @@ const TEMPLATES: CustomerTemplate[] = [
   'ORDER_CANCELLED_BY_SHOP', 'PHONE_VERIFICATION', 'PASSWORD_RESET', 'LOYALTY_POINTS_EARNED',
   'LOYALTY_EXPIRY_WARNING', 'LOYALTY_REDEMPTION_CONFIRMED', 'LOYALTY_REDEMPTION_REVERSED', 'LOYALTY_TIER_CHANGED',
   'SUPPORT_REQUEST_RECEIVED', 'QUOTE_REQUEST_RECEIVED', 'DEALER_APPLICATION_RECEIVED', 'FAKE_REPORT_RECEIVED',
+  'PRODUCT_QUESTION_RECEIVED', 'PRODUCT_QUESTION_ANSWERED',
 ];
 
 const DATA = {
   customerName: 'Amina Nakato', orderNumber: 'GP-202608-3F7A', totalUgx: 166500, reference: 'T-1234',
   code: '482913', resetUrl: 'https://www.shopgoldplus.com/reset-password?token=abc', expiresInMinutes: 60,
   points: 1250, pointsExpiring: 400, expiresAt: '2026-12-01T00:00:00Z', tierName: 'Gold', valueUgx: 12500,
+  productName: 'GoldPlus GP-P06 10000mAh Compact Power Bank, 22.5W, Built-in USB-C and Lightning Cables',
+  productUrl: 'https://www.shopgoldplus.com/products/goldplus-power-bank-gp-p06-pb#questions',
+  // A long staff answer with a curly apostrophe: still GSM-7 and still two parts at most.
+  questionAnswer: 'Yes. It charges an iPhone 13 about twice from full, and it’s fine on a plane: it is 37Wh, under the 100Wh limit. Bring it in your hand luggage, never in checked bags, and keep the cable in the pouch.',
 };
 
 /** Words that describe the system rather than help the customer. */
@@ -65,6 +71,14 @@ describe('the words themselves', () => {
       expect(s.length, `${t} is ${s.length} chars`).toBeLessThanOrEqual(320);
       if (t !== 'PHONE_VERIFICATION') expect(s, t).toMatch(/0705 004545|https:\/\//);
     }
+  });
+
+  it('the answer to a product question stays plain GSM and inside two parts, with the full answer one tap away', () => {
+    const s = smsText('PRODUCT_QUESTION_ANSWERED', DATA)!;
+    expect(s).toMatch(/^[\x0A\x0D\x20-\x7E£¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ¤¡ÄÖÑÜ§¿äöñüà]*$/);
+    expect(s).toContain('Full answer: https://www.shopgoldplus.com/products/goldplus-power-bank-gp-p06-pb#questions');
+    expect(s).toMatch(/\.\.\. Full answer/);
+    expect(smsCut('short', 150)).toBe('short');
   });
 
   it('use no dashes and no system vocabulary', () => {

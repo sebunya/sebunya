@@ -64,4 +64,4 @@ Charge both phone and power bank the night before an important day, and pack the
 
 # Choose yours
 
-See every [power bank we stock](/power/power-banks). Collect from our shop in the Zainab Aziza Building on Burton Street, or get same-day delivery in Kampala and Wakiso. See [delivery in Kampala and Wakiso](/delivery/kampala-wakiso).
+See every [power bank we stock](/power/power-banks). Collect from our shop in the Zainab Aziza Building on Burton Street, or order before 5pm, Monday to Saturday, for that day's delivery run in Kampala and Wakiso. See [delivery in Kampala and Wakiso](/delivery/kampala-wakiso).

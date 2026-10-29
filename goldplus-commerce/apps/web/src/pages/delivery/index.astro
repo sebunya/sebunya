@@ -1,4 +1,8 @@
 ---
 // /delivery has no page of its own; send it to the one page below it rather than a 404.
-return Astro.redirect('/delivery/kampala-wakiso', 301);
+// Permanent, but kept by a browser for a day only (a bare 301 is kept for ever): if this ever becomes a page of its
+// own, returning visitors see it the next day, not never (2026-10-29).
+const moved = Astro.redirect('/delivery/kampala-wakiso', 301);
+moved.headers.set('Cache-Control', 'public, max-age=86400');
+return moved;
 ---

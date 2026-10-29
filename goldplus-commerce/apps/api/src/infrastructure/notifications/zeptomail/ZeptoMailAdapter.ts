@@ -143,7 +143,7 @@ export class ZeptoMailAdapter implements INotificationProvider {
         ? 'INTERNAL'
         : recipientAllowlisted ? 'TEST' : 'CUSTOMER',
       // 0210: consent recorded by the sender (a basket reminder the customer ticked for). Absent = the class decides.
-      consentGranted: consentGrantedIn(payload.data),
+      consentGranted: consentGrantedIn(payload.data, payload.template, 'email'),
       providerConfigured: Boolean(token && fromAddr),
       allowlistActive: allowlist.length > 0,
       recipientAllowlisted,

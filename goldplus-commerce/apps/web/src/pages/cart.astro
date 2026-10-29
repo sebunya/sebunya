@@ -402,6 +402,11 @@ const lineView = (item: CartItem) => {
 
 // "Added to your cart": the id in the URL is only looked up in THIS basket;
 // the name shown is the basket's own, never text from the query.
+// A basket saved on an account shows only to that account. A signed-out visitor with an empty basket was told "Your cart
+// is empty" even when they had just tapped a basket reminder saying it was still here (2026-10-29): they are now asked
+// to sign in. ch=s.basket is the reminder's own link (Registry, basket reminders).
+const signedOutEmptyHint = cartSession.state === 'GUEST';
+const fromBasketReminder = Astro.url.searchParams.get('ch') === 's.basket';
 const addedParam = Astro.url.searchParams.get('added');
 const addedLine = isCartProductId(addedParam) ? items.find((i) => i.productId === addedParam) ?? null : null;
 const addedHref = addedLine ? lineView(addedLine).href : null;
@@ -507,12 +512,23 @@ const cutoffLine = sameDayLineFor(sameDayCutoffCopy(cut, { now: new Date(), clos
       <>
         <div class="py-8">
           <EmptyState
-            title="Your cart is empty"
-            message="Pick something from the shop and it will show up here."
+            title={signedOutEmptyHint && fromBasketReminder ? "Your basket is saved on your account" : "Your cart is empty"}
+            message={signedOutEmptyHint
+              ? (fromBasketReminder
+                ? "Sign in with the account the text was sent for, and your basket is here with everything you left in it."
+                : "Saved a basket while signed in? Sign in to see it. Or pick something from the shop and it will show up here.")
+              : "Pick something from the shop and it will show up here."}
           >
-            <a href="/shop" class="inline-flex items-center justify-center min-w-[200px] h-12 px-6 bg-brand-charcoal text-white rounded-full font-bold hover:bg-black transition-colors text-sm outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk">
-              Shop all products
-            </a>
+            <div class="flex flex-wrap items-center justify-center gap-3">
+              {signedOutEmptyHint && (
+                <a href="/login?returnTo=/cart" class="inline-flex items-center justify-center min-w-[200px] h-12 px-6 bg-brand-primary text-brand-dark rounded-full font-bold hover:brightness-95 transition text-sm outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk">
+                  Sign in to see my basket
+                </a>
+              )}
+              <a href="/shop" class="inline-flex items-center justify-center min-w-[200px] h-12 px-6 bg-brand-charcoal text-white rounded-full font-bold hover:bg-black transition-colors text-sm outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk">
+                Shop all products
+              </a>
+            </div>
           </EmptyState>
         </div>
         <div class="mt-16 pt-8 border-t border-slate-100">

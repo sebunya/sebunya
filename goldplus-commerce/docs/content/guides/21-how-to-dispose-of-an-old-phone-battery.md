@@ -73,4 +73,4 @@ If you are getting rid of the whole phone, the battery goes with it to the recyc
 
 # Replacing it
 
-If you are getting rid of the old battery because it is worn out, use the [battery finder](/battery-finder) to find the battery for your exact model, or browse all [phone batteries](/phone-batteries). We confirm the fit before you pay.
+If you are getting rid of the old battery because it is worn out, use the [battery finder](/battery-finder) to find the battery for your exact model, or browse all [phone batteries](/phone-batteries). Not sure? WhatsApp your model to 0705 004545 and we confirm the fit before you order.

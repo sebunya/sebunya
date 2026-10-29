@@ -63,4 +63,4 @@ Consider a replacement when:
 
 # Find your iPhone battery
 
-iPhone batteries are made for one model, so the exact model matters: an iPhone 13 battery is not the same as an iPhone 13 Pro battery. Find your model under Settings, then General, then About. Then use the [battery finder](/battery-finder) to find the battery for your exact model, or browse all [phone batteries](/phone-batteries). We confirm the fit before you pay.
+iPhone batteries are made for one model, so the exact model matters: an iPhone 13 battery is not the same as an iPhone 13 Pro battery. Find your model under Settings, then General, then About. Then use the [battery finder](/battery-finder) to find the battery for your exact model, or browse all [phone batteries](/phone-batteries). Not sure? WhatsApp your model to 0705 004545 and we confirm the fit before you order.

@@ -24,7 +24,7 @@ import { findRecordedRedirect } from '../../lib/recordedRedirect';
 import { carryQuery } from '../../lib/carryQuery';
 import { offerPriceUgx } from '../../lib/offerPrice';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../../lib/storefrontDiscount';
-import { publicBattery } from '../../lib/batteries';
+import { fitIndexCached } from '../../lib/batteries';
 import { phoneBatteryPath } from '../../lib/phoneBatteryPage';
 import type { FinderFitIndexDto } from '@goldplus/shared';
 
@@ -137,7 +137,7 @@ const seeAllHref = shopParams.toString() ? `/shop?${shopParams.toString()}` : '/
 // pages and the sitemap can never disagree. Absent (not an empty promise) when
 // the finder is away.
 const fitIndex: FinderFitIndexDto | null = hub.slug === 'phone-batteries' && !child
-  ? await publicBattery<FinderFitIndexDto>('/finder/fit-index').then((r) => (r.ok ? r.data : null))
+  ? await fitIndexCached().then((r) => (r.ok ? r.data : null))
   : null;
 const phoneBrands = (fitIndex?.brands ?? []).filter((b) => b.devices.length > 0);
 
@@ -209,7 +209,7 @@ const intro = child ? [child.intro] : hub.intro;
       <section aria-labelledby="by-phone-heading" class="mt-12">
         <h2 id="by-phone-heading" class="text-xl font-black text-slate-900">Batteries by phone</h2>
         <p class="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
-          {fitIndex!.deviceCount} phone{fitIndex!.deviceCount === 1 ? '' : 's'} we have a battery for today. Each page shows the pack code, the price and where the fit comes from. Your phone is not here? <a href="/battery-finder" class="font-bold underline">Search it in the finder</a> and ask us.
+          {fitIndex!.deviceCount} phone{fitIndex!.deviceCount === 1 ? '' : 's'} with a battery on our list. Each page shows the pack code, the price and where the fit comes from. Your phone is not here? <a href="/battery-finder" class="font-bold underline">Search it in the finder</a> and ask us.
         </p>
         <div class="mt-5 space-y-5">
           {phoneBrands.map((b) => (

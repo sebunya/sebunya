@@ -17,6 +17,7 @@ import {
   countsAsSale,
   creditOrder,
   declaredChannel,
+  DIRECT_RULE_HELP,
   goodsValueUGX,
   journeyFor,
   JOURNEY_MODELS,
@@ -41,7 +42,7 @@ import {
 import type { ChannelAttributionStore, OrderAttributionFacts, SaleFacts } from '../../apps/api/src/application/ports/measurement/ChannelAttribution';
 import { CollectBrowserBatchUseCase, type BatchReceipt, type CollectorStore } from '../../apps/api/src/application/use-cases/telemetry/CollectBrowserBatchUseCase';
 import { newWhatsAppRef, tagWhatsAppHref, WA_REF_ALPHABET } from '../../apps/web/src/lib/whatsappRef';
-import { CHANNEL_REPORT_MODELS, formatOrders, sparklinePoints, weekLabel } from '../../apps/web/src/lib/channelReport';
+import { CHANNEL_REPORT_MODELS, DIRECT_RULE_HELP as WEB_DIRECT_RULE_HELP, formatOrders, sparklinePoints, weekLabel } from '../../apps/web/src/lib/channelReport';
 
 const day = 86_400_000;
 const orderAt = new Date('2026-09-24T12:00:00Z');
@@ -105,12 +106,13 @@ describe('WhatsApp link tagging (storefront)', () => {
 });
 
 describe('journeys', () => {
-  it('keeps touches inside the 30-day window, oldest first, one per consecutive channel', () => {
+  it('keeps touches inside the 30-day window, oldest first, one per consecutive channel, direct only when alone', () => {
     const j = journeyFor({ orderAt, code: null, declared: null, observed: [
       touch('c', 'direct', 1), touch('a', 'paid_social', 40), touch('b', 'paid_social', 10, 'facebook'), touch('b2', 'paid_social', 9), touch('d', 'direct', -1),
     ] });
     expect(j.basis).toBe('observed');
-    expect(j.steps.map((s) => s.channel)).toEqual(['paid_social', 'direct']);
+    // v2: the direct return visit a day before the order explains nothing; the Facebook arrival does.
+    expect(j.steps.map((s) => s.channel)).toEqual(['paid_social']);
     expect(j.steps[0].detail).toBe('facebook');
   });
   it('a creator or promo code is the final touch, at the moment of the order', () => {
@@ -137,14 +139,17 @@ describe('per-order credit under each model', () => {
     for (const m of JOURNEY_MODELS) expect(sumCredits(byModel(m))).toBe(100_001n);
     expect(sumCredits(byModel('self_reported'))).toBe(100_001n);
   });
-  it('last click, first touch, linear, position-based and time decay', () => {
-    expect(byModel('last_click').map((c) => c.channel)).toEqual(['direct']);
+  it('last click, first touch, linear, position-based and time decay (the direct return visit takes nothing)', () => {
+    // v2 (2026-10-29): v1 gave Last click 100% to the direct visit a day before the order, and a third of every
+    // shared model; no model now credits direct while a source was recorded (GA4's rule).
+    expect(credits.some((c) => c.channel === 'direct')).toBe(false);
+    expect(byModel('last_click').map((c) => c.channel)).toEqual(['organic_search']);
     expect(byModel('first_touch').map((c) => c.channel)).toEqual(['paid_social']);
-    expect(byModel('linear').map((c) => c.weight.toFixed(4))).toEqual(['0.3333', '0.3333', '0.3333']);
+    expect(byModel('linear').map((c) => c.weight.toFixed(4))).toEqual(['0.5000', '0.5000']);
     const pb = Object.fromEntries(byModel('position_based').map((c) => [c.channel, c.weight]));
-    expect(pb.paid_social).toBeCloseTo(0.4); expect(pb.direct).toBeCloseTo(0.4); expect(pb.organic_search).toBeCloseTo(0.2);
+    expect(pb.paid_social).toBeCloseTo(0.5); expect(pb.organic_search).toBeCloseTo(0.5);
     const td = Object.fromEntries(byModel('time_decay').map((c) => [c.channel, c.weight]));
-    expect(td.direct).toBeGreaterThan(td.organic_search); expect(td.organic_search).toBeGreaterThan(td.paid_social);
+    expect(td.organic_search).toBeGreaterThan(td.paid_social);
   });
   it('self-reported is its own model and the observed journey wins the others', () => {
     expect(byModel('self_reported')).toEqual([{ model: 'self_reported', channel: 'social_declared', detail: 'tiktok', weight: 1, creditedUGX: 100_001n, basis: 'declared' }]);
@@ -273,7 +278,11 @@ describe('weekly channel report', () => {
 describe('model list', () => {
   it('the admin switcher offers exactly the domain models with the same labels', () => {
     expect(CHANNEL_REPORT_MODELS.map((m) => m.value)).toEqual([...REPORT_MODELS]);
-    for (const m of CHANNEL_REPORT_MODELS) expect(m.label).toBe(MODEL_LABELS[m.value as keyof typeof MODEL_LABELS].label);
+    for (const m of CHANNEL_REPORT_MODELS) {
+      expect(m.label).toBe(MODEL_LABELS[m.value as keyof typeof MODEL_LABELS].label);
+      expect(m.help, m.value).toBe(MODEL_LABELS[m.value as keyof typeof MODEL_LABELS].help);
+    }
+    expect(WEB_DIRECT_RULE_HELP).toBe(DIRECT_RULE_HELP);
     expect(parseReportModel('shapley')).toBe('last_click');
     expect(parseReportModel('linear')).toBe('linear');
   });
@@ -317,6 +326,8 @@ function memoryStore(seed: Partial<OrderAttributionFacts> = {}) {
     salesBetween: async () => sales,
     creditsBetween: async (model) => saved.filter((c) => c.model === model),
     creditsForOrder: async () => saved.map((c) => ({ ...c, computedAt: orderAt })),
+    entryTouches: async (ids) => ids.filter((id) => id === order.orderId && order.observed.length)
+      .map((orderId) => ({ orderId, landingPath: '/products/bl-49ft-battery', channel: order.observed[0].channel })),
   };
   return { store, order, saved, links, setSales: (s: SaleFacts[]) => { sales = s; } };
 }
@@ -394,6 +405,15 @@ describe('attribution use cases', () => {
     const r = await new GetWeeklyChannelReportUseCase(m.store, { weeklySpend: async () => ({ status: 'NOT_AVAILABLE' }) }, () => orderAt).execute({ model: 'last_click', weeks: 4 });
     expect(r.totals).toMatchObject({ orders: 1, revenueUGX: '150000', spendUGX: null });
     expect(r.channels.map((c) => c.channel)).toEqual(['paid_social']);
+    // Where that sale started, from the same sales (the cancelled and unpaid ones are not asked about).
+    expect(r.entryPages).toMatchObject({ sales: 1, salesWithVisit: 1, pages: [{ path: '/products/bl-49ft-battery', section: 'Product pages', channel: 'paid_social', channelLabel: 'Paid social', orders: 1, revenueUGX: '150000' }] });
+  });
+  it('the report stands when the entry-page read fails', async () => {
+    const m = memoryStore();
+    m.store.entryTouches = async () => { throw new Error('db down'); };
+    const r = await new GetWeeklyChannelReportUseCase(m.store, { weeklySpend: async () => ({ status: 'NOT_AVAILABLE' }) }, () => orderAt).execute({ model: 'last_click', weeks: 4 });
+    expect(r.entryPages).toBeNull();
+    expect(r.model).toBe('last_click');
   });
   it('the order view shows touches, answers and credits as strings', async () => {
     const m = memoryStore();

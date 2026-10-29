@@ -1,3 +1,4 @@
+import type { FinderFitIndexDto } from '@goldplus/shared';
 import { apiBase } from './api';
 
 /**
@@ -112,6 +113,19 @@ export async function publicBattery<T>(path: string, sessionId?: string | null):
   } catch {
     return { ok: false, unavailable: true, status: 0 };
   }
+}
+
+/**
+ * The finder's phone index (every phone with a published battery fit), kept two minutes in this process: every phone
+ * page, the hub and the hubs sitemap read it, and a fetch per render made a slow index delay every phone page. Only
+ * a good answer is kept; a failure is retried on the next request.
+ */
+let fitIndexMemo: { at: number; value: PublicResult<FinderFitIndexDto> } | null = null;
+export async function fitIndexCached(maxAgeMs = 120_000, now: () => number = Date.now): Promise<PublicResult<FinderFitIndexDto>> {
+  if (fitIndexMemo && now() - fitIndexMemo.at < maxAgeMs) return fitIndexMemo.value;
+  const value = await publicBattery<FinderFitIndexDto>('/finder/fit-index');
+  if (value.ok) fitIndexMemo = { at: now(), value };
+  return value;
 }
 
 /** The device a customer is shopping for. Slug + label only; no personal data. */

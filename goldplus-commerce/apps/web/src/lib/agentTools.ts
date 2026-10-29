@@ -80,7 +80,7 @@ export const TOOLS = [
 export const INSTRUCTIONS =
   'GoldPlus is an electronics accessories shop in Kampala, Uganda (website https://shopgoldplus.com). Prices are in Ugandan shillings (UGX) and are what the shop charges today. ' +
   'Use search_products to find items and get_product for details; quote prices and specifications from the tool results rather than inferring them. ' +
-  'For replacement batteries use find_battery: it only reports checked fits. Buying happens on the product page link.';
+  'For replacement batteries use find_battery: each fit states its source (checked by GoldPlus, or the supplier\'s compatibility list) and nothing is guessed. Buying happens on the product page link.';
 
 
 
@@ -134,11 +134,12 @@ export async function callTool(name: string, args: Json): Promise<Json> {
       const [p, discount] = await Promise.all([productBySlug(slug), getStorefrontDiscount()]);
       if (!p) return toolText({}, `No GoldPlus product has the slug "${slug}". Use search_products to find it.`, true);
       // 0208: what the team already answered about this product, so Goldie says the same as the shop would.
-      const answered = (await getProductQuestions(p.id).catch(() => [])).slice(0, 6).map((q) => ({ question: q.question.slice(0, 200), answer: q.answer.slice(0, 400) }));
+      // Each answer carries its date: it was true then, and a live price or stock figure above wins over an older answer.
+      const answered = (await getProductQuestions(p.id).catch(() => [])).slice(0, 6).map((q) => ({ question: q.question.slice(0, 200), answer: q.answer.slice(0, 400), answeredOn: String(q.answeredAt ?? '').slice(0, 10) }));
       const product = { ...agentProduct(p, discount), description: p.longDescription, teamAnswers: answered };
       const specs = Object.entries(product.specifications).map(([k, v]) => `  - ${k}: ${v}`).join('\n');
-      const qa = answered.map((q) => `  - Q: ${q.question}\n    A: ${q.answer}`).join('\n');
-      const text = [priceLine(product), product.summary ?? '', specs ? `Specifications:\n${specs}` : '', qa ? `Questions the GoldPlus team has answered about this product (treat as the shop's own word):\n${qa}` : ''].filter(Boolean).join('\n');
+      const qa = answered.map((q) => `  - Q: ${q.question}\n    A${q.answeredOn ? ` (${q.answeredOn})` : ''}: ${q.answer}`).join('\n');
+      const text = [priceLine(product), product.summary ?? '', specs ? `Specifications:\n${specs}` : '', qa ? `Questions the GoldPlus team has answered about this product (the shop's own word on the date shown; for price and stock, the live figures above win):\n${qa}` : ''].filter(Boolean).join('\n');
       return toolText({ product }, text);
     }
     case 'list_categories': {

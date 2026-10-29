@@ -44,8 +44,12 @@ class FakeRepo implements IAbandonmentRepository {
   async expireOverdue() {
     return this.expiredCount;
   }
+  resumedCount = 0;
+  async resumeChanged() {
+    return this.resumedCount;
+  }
   async summary() {
-    return { open: this.openCartIds.size, expired: 0, recovered: 0, last24h: 0 };
+    return { open: this.openCartIds.size, expired: 0, recovered: 0, resumed: 0, remindersSent7d: 0, last24h: 0 };
   }
   async recent() {
     return this.created;

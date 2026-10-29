@@ -18,6 +18,20 @@ import { tagShopLinks } from '@goldplus/shared';
  *  - plain sentences with full stops. No dashes.
  */
 
+/** A product name inside an SMS: plain GSM characters, at most 40. */
+const smsName = (name: unknown): string => {
+  const n = gsmPlain(String(name ?? '')).slice(0, 40).trim();
+  return n || 'the product';
+};
+/** Free text inside an SMS: plain GSM characters, cut at a word boundary with "..." when it is longer than `max`. */
+export function smsCut(text: string, max: number): string {
+  const t = gsmPlain(text);
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max - 3);
+  const atWord = cut.lastIndexOf(' ');
+  return `${(atWord > max * 0.6 ? cut.slice(0, atWord) : cut).replace(/[\s.,;:!?-]+$/, '')}...`;
+}
+
 export type CustomerTemplate =
   | 'ORDER_RECEIVED_UNPAID'
   | 'ORDER_PAYMENT_PENDING'
@@ -349,13 +363,18 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
       }
       return `${SHOP_NAME}: you are now a ${d.tierName || 'new tier'} member. See what that gets you: ${publicBaseUrl()}/account/loyalty`;
     case 'PRODUCT_QUESTION_RECEIVED':
-      return `${SHOP_NAME}: we have your question about ${d.productName ?? 'the product'}. A person at the shop will answer it and send the answer to this number. Need it sooner? Call ${phone}.`;
+      return `${SHOP_NAME}: we have your question about ${smsName(d.productName)}. A person at the shop will answer it and send the answer to this number. Need it sooner? Call ${phone}.`;
     case 'PRODUCT_QUESTION_ANSWERED':
-      // The answer itself travels in the SMS, so the customer never has to open a page to get it.
-      return `${SHOP_NAME}: about ${d.productName ?? 'the product'} you asked us. Our answer: ${String(d.questionAnswer ?? '').slice(0, 320)}${d.productUrl ? ` See it: ${d.productUrl}` : ''} Any other question, call ${phone}.`;
+      // The answer travels in the SMS (cut at a word near 150 characters, folded to plain GSM so one curly quote
+      // cannot turn it into Unicode at 70 characters a part); the full answer is on the product page. It used to carry
+      // up to 320 characters of answer: four parts, nine with one emoji (2026-10-29).
+      return `${SHOP_NAME}: your question about ${smsName(d.productName)}. Our answer: ${smsCut(String(d.questionAnswer ?? ''), 150)}${d.productUrl ? ` Full answer: ${d.productUrl}` : ` Questions? Call ${phone}.`}`;
     case 'BASKET_REMINDER':
-      // Marketing, by the customer's own tick: short, names what they left, and says where to stop these.
-      return `${SHOP_NAME}: you left ${d.basketItems ?? 'some items'} in your basket. It is still here: ${d.basketUrl ?? `${publicBaseUrl()}/cart`} To stop basket reminders: ${d.preferencesUrl ?? `${publicBaseUrl()}/account/preferences`}`;
+      // Marketing, by the customer's own tick: names what they left, says the basket is saved on their account (a
+      // signed-out phone is asked to sign in, not shown an empty basket) and how to stop these texts. The names are
+      // folded to plain GSM and cut, so the text stays at two parts: "It is still here" with two long names and one
+      // curly quote was billed as five Unicode parts, and was wrong on a phone that was not signed in (2026-10-29).
+      return `${SHOP_NAME}: you left ${smsCut(String(d.basketItems ?? 'some items'), 110)} in your basket. It is saved on your account: ${d.basketUrl ?? `${publicBaseUrl()}/cart`} To stop these texts: ${d.preferencesUrl ?? `${publicBaseUrl()}/account/preferences`}`;
     case 'SUPPORT_REQUEST_RECEIVED':
       return `${SHOP_NAME}: we have your request${d.reference ? ` (ref ${d.reference})` : ''}. Our team will call you on this number. Need us sooner? Call ${phone}.`;
     case 'QUOTE_REQUEST_RECEIVED':

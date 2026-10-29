@@ -368,6 +368,19 @@ const productReviews = await productReviewsP;
 // Answered questions (0208): what other shoppers asked and what the shop said.
 const answeredQuestions = await answeredQuestionsP;
 const askedFlag = Astro.url.searchParams.get('asked');
+// Why a question posted without JavaScript was refused (the relay passes the API's code; the words are the API's own).
+const ASKED_WHY: Record<string, string> = {
+  NO_NAME: 'Tell us your name, so we know who we are answering.',
+  TOO_SHORT: 'Ask the question in a few more words.',
+  TOO_LONG: 'Keep the question under 500 characters.',
+  BAD_CONTACT: 'Use a Ugandan mobile number (07…) or an email address: we text answers to Ugandan mobiles only.',
+  CONTACT_IN_TEXT: 'Put your number or email in the box for it, not in your name or the question: those are shown on the page once we answer.',
+  TOO_MANY: 'You have asked a few questions today. Ask us the rest on WhatsApp.',
+  SHOP_BUSY: 'We have had a lot of questions today. Ask us on WhatsApp and we answer there.',
+  NO_VISITOR: 'Refresh the page and try again.',
+  UNAVAILABLE: 'We could not take your question just now. Try again in a minute, or ask us on WhatsApp.',
+};
+const askedWhy = ASKED_WHY[Astro.url.searchParams.get('why') ?? ''] ?? 'We could not take that question. Check the name and the question, or ask us on WhatsApp.';
 const ratingNode = aggregateRatingNode(productReviews, product.availability.kind === 'in_stock');
 const askAboutHref = `${bizForPdp.whatsappUrl}?text=${encodeURIComponent(`Hello GoldPlus, is the ${product.name} available?`)}`;
 
@@ -435,7 +448,6 @@ const keySpecs = verifiedAttributes.slice(0, 3).map((v) => ({ name: v.name, valu
 // returns window the JSON-LD already publishes, and the checkout's own
 // admin-editable payment labels (both methods are offered at checkout).
 const storefrontCopy = await storefrontCopyP;
-const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
 
 const pdpDescriptions: Record<string, { intro: string; description: string }> = {
   'goldplus-16gb-usb-flash-drive': {
@@ -914,7 +926,9 @@ if (product) {
               <span class="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-brand-charcoal shrink-0" aria-hidden="true">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
               </span>
-              <span>{storefrontCopy.payment.pesapal.label}, or {lowerFirst(storefrontCopy.payment.offline.label)}.</span>
+              {/* Online only (owner decision 2026-10-16; checkout sends 'pesapal' and the API refuses anything else unless
+                  STOREFRONT_PAY_ON_DELIVERY=on). The page offered pay on delivery until 2026-10-29. */}
+              <span>{storefrontCopy.payment.pesapal.label}. A GoldPlus gift card or store credit pays first.</span>
             </li>
             {/* Authenticity, said where the decision is made (2026-10-08 design
                 audit), in the /verification page's own words: every genuine
@@ -1016,7 +1030,7 @@ if (product) {
         class="mt-24 space-y-16"
         data-product-tracking
         data-product-id={product.id}
-        data-battery-device={battery && selectedDevice ? selectedDevice.slug : ''}
+        data-battery-device={fitForSelected && selectedDevice ? selectedDevice.slug : ''}
         data-battery={battery ? '1' : ''}
         data-product-sku={hasValidSku ? product.sku : ''}
         data-product-slug={product.slug}
@@ -1158,7 +1172,7 @@ if (product) {
         <section id="questions" aria-labelledby="questions-h" class="scroll-mt-24 mt-8">
           <h2 id="questions-h" class="text-lg font-black tracking-tight text-gray-900">Questions about this product</h2>
           {askedFlag === '1' && <p class="mt-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800" role="status">We have your question. A person at the shop will answer it, and the answer appears here.</p>}
-          {askedFlag === '0' && <p class="mt-2 rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800" role="status">We could not take that question. Check the name and the question, or ask us on WhatsApp.</p>}
+          {askedFlag === '0' && <p class="mt-2 rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800" role="status">{askedWhy}</p>}
           {answeredQuestions.length > 0 ? (
             <ul class="mt-4 space-y-3">
               {answeredQuestions.slice(0, 8).map((q) => (
@@ -1183,7 +1197,7 @@ if (product) {
                 <label class="block text-sm"><span class="font-semibold text-slate-700">Your name</span>
                   <input name="name" required minlength="2" maxlength="80" autocomplete="name" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" /></label>
                 <label class="block text-sm"><span class="font-semibold text-slate-700">Phone or email <span class="font-normal text-slate-500">(optional: we send you the answer)</span></span>
-                  <input name="phone" maxlength="32" inputmode="tel" autocomplete="tel" placeholder="07xx xxx xxx" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" /></label>
+                  <input name="phone" maxlength="254" autocomplete="tel" placeholder="07xx xxx xxx or you@example.com" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" /></label>
               </div>
               <input type="hidden" name="email" value="" />
               <p class="text-xs text-slate-500">Your name and the question are shown with the answer; your number is not.</p>

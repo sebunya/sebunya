@@ -30,9 +30,32 @@ export function phonePageIndexable(results: ReadonlyArray<Pick<FinderBatteryResu
   return results.length > 0;
 }
 
+/** "Replacement battery", not "battery replacement": the shop sells the battery and does not fit it (the page says so). */
 export function phonePageTitle(device: Pick<FinderDeviceDto, 'label'>): string {
-  return `${device.label} battery replacement in Kampala | GoldPlus`;
+  return `${device.label} replacement battery, price in Kampala | GoldPlus`;
 }
+
+export type FitProvenance = 'checked' | 'listed' | 'mixed' | 'conditional';
+const CHECKED = new Set(['VERIFIED_IN_STOCK', 'VERIFIED_OUT_OF_STOCK']);
+
+/**
+ * Where this page's fits come from, as one word, so the description and the page body cannot disagree. "Checked"
+ * only when every fit was checked by the shop; a mix says so (each battery carries its own label).
+ */
+export function fitProvenance(results: ReadonlyArray<Pick<FinderBatteryResultDto, 'fitState'>>): FitProvenance {
+  const states = results.map((r) => r.fitState);
+  if (states.every((x) => x === 'AWAITING_VERIFICATION')) return 'listed';
+  if (states.every((x) => CHECKED.has(x))) return 'checked';
+  if (states.every((x) => x === 'CONDITIONAL')) return 'conditional';
+  return 'mixed';
+}
+
+export const PROVENANCE_WORDS: Record<FitProvenance, string> = {
+  checked: 'checked for this phone',
+  listed: 'listed by our supplier for this phone',
+  conditional: 'fits this phone with a condition (read it before you order)',
+  mixed: 'checked by us or listed by our supplier (each battery says which)',
+};
 
 export function phonePageH1(device: Pick<FinderDeviceDto, 'label'>): string {
   return `Replacement battery for the ${device.label}`;
@@ -43,7 +66,7 @@ const ugx = (n: number): string => `UGX ${n.toLocaleString('en-UG')}`;
 /** One honest sentence: how many, the code(s), the price, and where the fit comes from. */
 export function phonePageDescription(
   device: Pick<FinderDeviceDto, 'label' | 'verifiedFits'>,
-  results: ReadonlyArray<Pick<FinderBatteryResultDto, 'canonicalCode' | 'priceUgx' | 'fitState'>>,
+  results: ReadonlyArray<Pick<FinderBatteryResultDto, 'canonicalCode' | 'priceUgx' | 'fitState' | 'inStock'>>,
 ): string {
   if (results.length === 0) {
     return `We have not matched a battery to the ${device.label} yet. Tell us the model number, or send a photo of the old battery's label, and we check it.`;
@@ -51,11 +74,13 @@ export function phonePageDescription(
   const codes = [...new Set(results.map((r) => r.canonicalCode))].slice(0, 3).join(', ');
   const prices = results.map((r) => r.priceUgx).filter((p): p is number => typeof p === 'number' && p > 0);
   const price = prices.length ? ` from ${ugx(Math.min(...prices))}` : '';
-  const provenance = results.every((r) => r.fitState === 'AWAITING_VERIFICATION')
-    ? "listed by our supplier for this phone"
-    : 'checked for this phone';
-  // "Dispatch", never "arrives": the day's run is a condition the page body states (docs/growth/README.md §5).
-  return `Replacement battery for the ${device.label}: pack code ${codes}${price}, ${provenance}. Order online for same-day dispatch in Kampala and Wakiso, or collect at the shop.`;
+  const provenance = PROVENANCE_WORDS[fitProvenance(results)];
+  // "Dispatch", never "arrives": the day's run is a condition the page body states (docs/growth/README.md §5). And
+  // only when something is in stock: an out-of-stock page promised a same-day run it could not make.
+  const buy = results.some((r) => r.inStock)
+    ? 'Order online for same-day dispatch in Kampala and Wakiso, or collect at the shop.'
+    : 'Out of stock right now: ask us when it is back.';
+  return `Replacement battery for the ${device.label}: pack code ${codes}${price}, ${provenance}. ${buy}`;
 }
 
 /**
@@ -119,47 +144,31 @@ export function batteryProductJsonLdProps(battery: BatteryJsonLdFacts, hasOwnMpn
 }
 
 /**
- * ItemList of the batteries on the page, each a Product with the offer the
- * page shows. Facts only: the code as mpn, capacity only when recorded, the
- * phone as `isAccessoryOrSparePartFor` so an engine reads "spare part for
- * <phone>" rather than inferring it from prose. No rating, no gtin, no
- * invented fields.
+ * The batteries on the page as Google's summary list (ItemList of ListItem: position, url, name). The product facts,
+ * the offer and the spare-part relation live on each product's own page (ProductJsonLd): Google reads product
+ * snippets from a page about one product, and a list of full Products here duplicated them with fewer facts (an
+ * unpriced one was an invalid Product with no offer). 2026-10-29 review.
  */
 export function phonePageItemListJsonLd(
-  device: Pick<FinderDeviceDto, 'label' | 'modelNumber'>,
-  results: ReadonlyArray<Pick<FinderBatteryResultDto, 'slug' | 'name' | 'canonicalCode' | 'imageUrl' | 'priceUgx' | 'inStock' | 'capacityMah'>>,
+  device: Pick<FinderDeviceDto, 'label'>,
+  results: ReadonlyArray<Pick<FinderBatteryResultDto, 'slug' | 'name'>>,
 ): Record<string, unknown> {
-  const abs = (u: string) => (/^https?:\/\//i.test(u) ? u : `${SITE_ORIGIN}${u}`);
   return {
     '@context': 'https://schema.org',
     '@type': 'ItemList',
     name: `Replacement batteries for the ${device.label}`,
     numberOfItems: results.length,
-    itemListElement: results.map((r, i) => ({
-      '@type': 'ListItem',
-      position: i + 1,
-      item: {
-        '@type': 'Product',
-        name: r.name,
-        url: `${SITE_ORIGIN}/products/${r.slug}`,
-        mpn: r.canonicalCode,
-        brand: { '@type': 'Brand', name: 'GoldPlus' },
-        isAccessoryOrSparePartFor: { '@type': 'Product', name: device.label, ...(device.modelNumber ? { model: device.modelNumber } : {}) },
-        ...(r.imageUrl ? { image: abs(r.imageUrl) } : {}),
-        ...(r.capacityMah ? { additionalProperty: [{ '@type': 'PropertyValue', name: 'Capacity', value: r.capacityMah, unitText: 'mAh' }] } : {}),
-        ...(typeof r.priceUgx === 'number' && r.priceUgx > 0
-          ? {
-              offers: {
-                '@type': 'Offer',
-                priceCurrency: 'UGX',
-                price: r.priceUgx,
-                url: `${SITE_ORIGIN}/products/${r.slug}`,
-                itemCondition: 'https://schema.org/NewCondition',
-                availability: r.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-              },
-            }
-          : {}),
-      },
-    })),
+    itemListElement: results.map((r, i) => ({ '@type': 'ListItem', position: i + 1, url: `${SITE_ORIGIN}/products/${r.slug}`, name: r.name })),
   };
+}
+
+/**
+ * A battery's product properties merged with the product's own verified ones: the live fit relation replaces the
+ * free-text "Fits" attribute (they drift apart when a fit is added or rejected), and the pack code is not stated a
+ * second time when a verified attribute already holds that value ("Battery model").
+ */
+export function mergeBatteryProperties(existing: ReadonlyArray<Record<string, unknown>>, battery: ReadonlyArray<Record<string, unknown>>): Array<Record<string, unknown>> {
+  const kept = existing.filter((p) => String(p.name ?? '').toLowerCase() !== 'fits');
+  const values = new Set(kept.map((p) => String(p.value ?? '').toUpperCase()));
+  return [...kept, ...battery.filter((p) => !(p.name === 'Battery pack code' && values.has(String(p.value ?? '').toUpperCase())))];
 }

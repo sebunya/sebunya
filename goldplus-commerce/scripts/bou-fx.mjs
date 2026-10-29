@@ -73,6 +73,8 @@ async function main() {
   const csv = await readFromPage();
   const row = parseUsdRow(csv);
   if (row.mid === null) { console.error('no U.S. Dollar/Uganda Shillings row in the export; first lines:\n' + String(csv).split('\n').slice(0, 6).join('\n')); process.exit(2); }
+  // Dated by the run day: the export's rows carry no date (their first cell is '.'), so a table BoU has not yet
+  // refreshed by 13:00 is filed under today. The AllRatesToday path dates by BoU's own rate_date (2026-10-29 review).
   const reading = { day: kampalaDay(), mid: row.mid, buying: row.buying, selling: row.selling, source: 'bou.or.ug Power BI export' };
   console.log(JSON.stringify(reading));
   if (DRY) return;

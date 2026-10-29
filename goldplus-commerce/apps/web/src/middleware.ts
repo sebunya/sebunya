@@ -13,6 +13,7 @@ import { INVITE_NOTE_COOKIE, forgetInvite, rememberedInvite } from "./lib/referr
 import { makeNonce, nonceScriptStream, strictPolicyMode, strictReportOnlyPolicy } from "./lib/contentSecurityPolicy";
 import { PublicFormLimiter, budgetedFormPath, tooManySubmissionsResponse, visitorKey } from "./lib/publicFormLimiter";
 import { campaignOnRedirect } from './lib/carryQuery';
+import { trailingSlashTarget } from './lib/pageAddress';
 
 // Public forms reach the API server side, where its per-visitor budgets cannot
 // see the visitor (lib/publicFormLimiter.ts). The budget is applied here.
@@ -174,13 +175,12 @@ async function applyRememberedInvite(context: Parameters<Parameters<typeof defin
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
-  // /products/<slug>/ served a second copy of every product page (canonical
-  // included); one address per product.
-  if (/^\/products\/[^/]+\/+$/.test(context.url.pathname)) {
-    return context.redirect(`${context.url.pathname.replace(/\/+$/, '')}${context.url.search}`, 301);
-  }
+  // A moved page first (it already ignores a trailing slash: one hop, not two),
+  // then one address per page, site-wide (lib/pageAddress): /x/ → /x.
   const moved = MOVED_PATHS[context.url.pathname.replace(/\/+$/, '') || '/'];
   if (moved) return context.redirect(`${moved}${context.url.search}`, 301);
+  const slashTarget = trailingSlashTarget(context.request.method, context.url.pathname, context.url.search);
+  if (slashTarget) return context.redirect(slashTarget, 301);
   if (!context.url.pathname.startsWith('/_astro/')) await renewSessionIfDue(context);
 
   if (context.request.method === 'POST') {
@@ -236,8 +236,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const path = context.url.pathname;
   // Machine endpoints (/mcp, /.well-known/*) are not pages: no analytics visitor
   // cookie and no page Link headers on their responses.
+  // Review photos (/review-photo/<id>, and the admin copy) have no extension but are images: each one ran the whole
+  // page work (identity lookup, cookies, basket, delivery place), up to 18 per product page (2026-10-29).
   const isDocument =
     !path.startsWith("/api/") && !path.startsWith("/_astro/") && !path.startsWith("/.well-known/") && path !== "/mcp" &&
+    !path.startsWith("/review-photo/") && !path.startsWith("/admin/review-photo/") &&
     !/\.[A-Za-z0-9]{2,8}$/.test(path);
 
   // The analytics visitor id (`_fp_cid`, GA's client_id) is set by the SERVER

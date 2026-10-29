@@ -37,8 +37,26 @@ const since = status?.since ? new Date(status.since).toLocaleDateString('en-GB',
   {status && status.status === 'OPTED_IN' && (
     <div class="mt-4 grid gap-3">
       <p class="text-sm text-slate-800"><strong>On</strong>{since ? ` since ${since}` : ''}{status.phoneMasked ? `, for ${status.phoneMasked}` : ''}.</p>
-      {!status.covered && status.coverageReason === 'PHONE_CHANGED_SINCE_OPT_IN' && (
-        <p class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Your phone number changed after you said yes, so no reminder goes to the new number unless you switch this off and on again.</p>
+      {!status.covered && (status.coverageReason === 'PHONE_CHANGED_SINCE_OPT_IN' || status.coverageReason === 'NO_OPT_IN_EVIDENCE') && (
+        <form method="POST" class="grid gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <input type="hidden" name="formKind" value="basket-reminders" />
+          <input type="hidden" name="requested" value="granted" />
+          <input type="hidden" name="copyVersionId" value={status.copyVersionId} />
+          <p class="text-sm text-amber-900">
+            {status.coverageReason === 'PHONE_CHANGED_SINCE_OPT_IN'
+              ? 'Your phone number changed after you said yes, so no reminder goes to the new number yet.'
+              : 'We could not keep the record of when you said yes, so no reminder goes out yet.'}
+            {' '}Tick the box to switch them on{status.phoneMasked ? ` for ${status.phoneMasked}` : ''}.
+          </p>
+          <label class="flex gap-3 text-sm text-amber-900">
+            <input type="checkbox" name="confirmation" value="yes" required class="mt-1 h-5 w-5" />
+            <span>{status.copy}</span>
+          </label>
+          <button type="submit" class="justify-self-start min-h-11 rounded-xl bg-slate-950 px-6 py-3 text-sm font-black text-white">Switch reminders on for this number</button>
+        </form>
+      )}
+      {!status.covered && status.coverageReason === 'PHONE_NOT_VERIFIED' && (
+        <p class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">We text basket reminders only to a number we know is yours: one you verified with a code, or one an order of yours was delivered to. Your number is neither yet, so no reminder goes out for now. Your choice is kept.</p>
       )}
       {!status.covered && status.coverageReason === 'SUPPRESSED' && (
         <p class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">You asked us to stop texting you, so no basket reminders go out. Contact us if that is not what you want.</p>

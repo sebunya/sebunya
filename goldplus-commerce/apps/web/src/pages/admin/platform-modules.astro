@@ -24,7 +24,23 @@ if (Astro.request.method === "POST") {
       const id = String(form.get("id") || "");
       const res = await fetch(`${apiBase}/admin/modules/questions/${encodeURIComponent(id)}/answer`, { method: "POST", headers, body: JSON.stringify({ answer: String(form.get("answer") || "") }) });
       const json = await res.json().catch(() => null);
-      notice = json?.success ? { kind: "success", text: json.data.notified ? "Answer published and sent to the asker." : "Answer published on the product page." } : { kind: "error", text: json?.error?.message || "Answer failed." };
+      // What became of the message to the asker, said plainly: "could not be queued" read the same as "no contact" (2026-10-29).
+      const said: Record<string, string> = {
+        queued: "Answer published and queued to the asker.",
+        no_contact: "Answer published on the product page. The asker left no contact, so nothing was sent.",
+        failed: "Answer published, but the message to the asker could not be queued. Use \"Send the answer to the asker\" under Answered.",
+      };
+      notice = json?.success ? { kind: json.data.notice === "failed" ? "error" : "success", text: said[json.data.notice] ?? (json.data.notified ? said.queued : said.no_contact) } : { kind: "error", text: json?.error?.message || "Answer failed." };
+    } else if (intent === "edit_answer") {
+      const id = String(form.get("id") || "");
+      const res = await fetch(`${apiBase}/admin/modules/questions/${encodeURIComponent(id)}/edit`, { method: "POST", headers, body: JSON.stringify({ answer: String(form.get("answer") || "") }) });
+      const json = await res.json().catch(() => null);
+      notice = json?.success ? { kind: "success", text: "Answer corrected on the product page (not sent to the asker again)." } : { kind: "error", text: json?.error?.message || "Correction failed." };
+    } else if (intent === "resend_answer") {
+      const id = String(form.get("id") || "");
+      const res = await fetch(`${apiBase}/admin/modules/questions/${encodeURIComponent(id)}/resend`, { method: "POST", headers, body: "{}" });
+      const json = await res.json().catch(() => null);
+      notice = json?.success && json.data.notice === "queued" ? { kind: "success", text: "Answer queued to the asker." } : { kind: "error", text: json?.error?.message || "The message could not be queued. Try again in a minute." };
     } else if (intent === "reject_question") {
       const id = String(form.get("id") || "");
       const res = await fetch(`${apiBase}/admin/modules/questions/${encodeURIComponent(id)}/reject`, { method: "POST", headers, body: "{}" });
@@ -168,11 +184,29 @@ const HUB_CARDS = hub?.counts
                   <p class="mt-1 text-xs text-slate-500">{q.askerName}{q.askerPhone ? ` · ${q.askerPhone}` : ""}{q.askerEmail ? ` · ${q.askerEmail}` : ""}{q.createdAt ? ` · ${new Date(q.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Kampala" })}` : ""}</p>
                 </td>
                 <td class="align-top max-w-md">
-                  {q.status === "answered" ? <p class="whitespace-pre-line text-slate-700">{q.answer}</p> : q.status === "rejected" ? <p class="text-slate-500">Hidden.</p> : (
+                  {q.status === "answered" ? (
+                    <div>
+                      <p class="whitespace-pre-line text-slate-700">{q.answer}</p>
+                      <p class="mt-1 text-xs text-slate-500">{q.askerPhone || q.askerEmail ? (q.notifiedAt ? "Sent to the asker." : "Not sent to the asker yet.") : "No contact left: published only."}</p>
+                      {(q.askerPhone || q.askerEmail) && !q.notifiedAt && (
+                        <form method="POST" class="mt-1"><input type="hidden" name="intent" value="resend_answer" /><input type="hidden" name="id" value={q.id} /><button class="rounded bg-emerald-600 px-2 py-1 text-xs font-bold text-white">Send the answer to the asker</button></form>
+                      )}
+                      <details class="mt-1">
+                        <summary class="cursor-pointer text-xs font-bold text-slate-600">Correct this answer</summary>
+                        <form method="POST" class="mt-1 grid gap-1">
+                          <input type="hidden" name="intent" value="edit_answer" /><input type="hidden" name="id" value={q.id} />
+                          <textarea name="answer" required minlength="2" maxlength="1500" rows="3" class="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm">{q.answer}</textarea>
+                          <button class="justify-self-start rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">Save the correction (not sent again)</button>
+                        </form>
+                      </details>
+                      <form method="POST" class="mt-1"><input type="hidden" name="intent" value="reject_question" /><input type="hidden" name="id" value={q.id} /><button class="rounded bg-slate-200 px-2 py-1 text-xs font-bold text-slate-700">Hide from the product page</button></form>
+                    </div>
+                  ) : q.status === "rejected" ? <p class="text-slate-500">Hidden.</p> : (
                     <div>
                       <form method="POST" class="grid gap-1">
                         <input type="hidden" name="intent" value="answer_question" /><input type="hidden" name="id" value={q.id} />
-                        <textarea name="answer" required minlength="2" maxlength="1500" rows="3" class="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm" placeholder="Yes, it fits the Spark 10 (model BL-49FT). It is in stock at 45,000."></textarea>
+                        <textarea name="answer" required minlength="2" maxlength="1500" rows="3" class="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm" placeholder="Yes, it fits the Spark 10 (pack code BL-49FT)."></textarea>
+                        <p class="text-xs text-slate-500">Leave out price and stock: the page shows them live, and an answer stays published.</p>
                         <button class="justify-self-start rounded bg-emerald-600 px-2 py-1 text-xs font-bold text-white">Publish answer{q.askerPhone || q.askerEmail ? " and send" : ""}</button>
                       </form>
                       <form method="POST" class="mt-1"><input type="hidden" name="intent" value="reject_question" /><input type="hidden" name="id" value={q.id} /><button class="rounded bg-slate-200 px-2 py-1 text-xs font-bold text-slate-700">Hide (spam or not about the product)</button></form>

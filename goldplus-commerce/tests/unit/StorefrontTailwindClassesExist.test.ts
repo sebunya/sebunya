@@ -40,6 +40,8 @@ const KNOWN_ELSEWHERE: Record<string, string[]> = {
   'pages/terms.astro': ['shadow-xs'],
   'pages/privacy.astro': ['shadow-xs'],
   'pages/track-order.astro': ['shadow-xs'],
+  // Not a class: createImageBitmap's imageOrientation value (the review photo shrink keeps a phone photo upright).
+  'pages/review.astro': ['from-image'],
 };
 
 /** The product group's files: these must be clean, full stop. */

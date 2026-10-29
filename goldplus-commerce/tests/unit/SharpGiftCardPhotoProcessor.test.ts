@@ -21,6 +21,18 @@ describe('gift card photo processing (0201, real sharp)', () => {
     expect(out.image.includes(Buffer.from('32.5825'))).toBe(false);
   });
 
+  it('a review photo keeps its whole frame within the box; a frame too narrow for the minimum side is squared', async () => {
+    const landscape = await sharp({ create: { width: 2000, height: 1500, channels: 3, background: '#336699' } }).jpeg().toBuffer();
+    expect(await processor.process(landscape, { whole: true })).toMatchObject({ ok: true, width: 1080, height: 810 });
+    const portrait = await sharp({ create: { width: 900, height: 1600, channels: 3, background: '#336699' } }).jpeg().toBuffer();
+    expect(await processor.process(portrait, { whole: true })).toMatchObject({ ok: true, width: 608, height: 1080 });
+    // 3000 x 400 inside 1080 would be 1080 x 144, under the 200 px the table allows: squared, as a card photo is
+    const panorama = await sharp({ create: { width: 3000, height: 400, channels: 3, background: '#336699' } }).jpeg().toBuffer();
+    expect(await processor.process(panorama, { whole: true })).toMatchObject({ ok: true, width: 400, height: 400 });
+    // and a card photo is still a square
+    expect(await processor.process(landscape)).toMatchObject({ ok: true, width: 1080, height: 1080 });
+  });
+
   it('a small photo is kept at its own size (never blown up); a tiny one or a non-image is refused, with a reason', async () => {
     const small = await sharp({ create: { width: 640, height: 480, channels: 3, background: '#000000' } }).png().toBuffer();
     expect(await processor.process(small)).toMatchObject({ ok: true, width: 480, height: 480 });

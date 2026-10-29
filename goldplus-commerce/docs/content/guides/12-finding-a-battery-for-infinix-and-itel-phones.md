@@ -38,7 +38,7 @@ On sealed phones, do not prise the back open. The model number from Step 1 is en
 
 # Step 3: search, do not guess
 
-Use the [battery finder](/battery-finder) and search by your model number or the battery code. Our finder lists fits from our own checks and our supplier's compatibility list. Where a fit is still awaiting full verification, it says so.
+Use the [battery finder](/battery-finder) and search by your model number or the battery code. Our finder lists fits from our own checks and our supplier's compatibility list. Each fit says where it comes from: "Verified fit" means we checked it ourselves; "Fits, from our supplier's compatibility list" means it comes from that list.
 
 What to avoid:
 

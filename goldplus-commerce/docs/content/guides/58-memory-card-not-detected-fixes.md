@@ -66,7 +66,7 @@ If the card has nothing you need on it, format it **in the device you will use i
 
 # If you bought it from us
 
-Every memory card we sell is written full and read back before it is sold. If a card from us develops a fault, contact [support](/support) with your order number and a description of the fault. A faulty product is replaced or refunded, and we pay the cost of getting it back to us. See our [returns policy](/returns).
+If a memory card you bought from us develops a fault, contact [support](/support) with your order number and a description of the fault. A faulty product is replaced or refunded, and we pay the cost of getting it back to us. See our [returns policy](/returns).
 
 # Next step
 

@@ -21,7 +21,11 @@ export const JOURNEY_MODELS = ['last_click', 'first_touch', 'linear', 'time_deca
 export type JourneyModel = typeof JOURNEY_MODELS[number];
 export const REPORT_MODELS = [...JOURNEY_MODELS, 'self_reported'] as const;
 export type ReportModel = typeof REPORT_MODELS[number];
-export const MODEL_VERSION = 'channel-credit-v1';
+/**
+ * v2 (2026-10-29): direct visits no longer take credit from a source (journeyFor), and an answer beats a
+ * direct-only journey. The nightly recompute (120 days) and Recompute rewrite every order's rows under it.
+ */
+export const MODEL_VERSION = 'channel-credit-v2';
 export const LOOKBACK_DAYS = 30;
 
 const RULE_OF: Record<JourneyModel, RuleMethod> = {
@@ -32,8 +36,11 @@ const RULE_OF: Record<JourneyModel, RuleMethod> = {
   position_based: 'position_based',
 };
 
+/** Said once under the model switcher: the rule every journey model shares. */
+export const DIRECT_RULE_HELP = 'A direct visit (a typed address, a bookmark, the installed app) says nothing about why the customer came, so no model gives it credit while a source was recorded; it counts only when it is all there was, and a customer\'s answer to "How did you hear about us?" beats it.';
+
 export const MODEL_LABELS: Record<ReportModel, { label: string; help: string }> = {
-  last_click: { label: 'Last click', help: 'All credit to the last recorded source before the order.' },
+  last_click: { label: 'Last click', help: 'All credit to the last recorded source before the order (direct visits skipped, as in GA4).' },
   first_touch: { label: 'First touch', help: 'All credit to the first recorded source in the 30 days before the order.' },
   linear: { label: 'Linear', help: 'Credit shared equally across the recorded sources.' },
   time_decay: { label: 'Time decay', help: 'Recent sources count more; weight halves every 7 days.' },
@@ -69,7 +76,7 @@ export const CHANNEL_LABELS: Record<string, string> = {
   search_declared: 'Search (customer said)',
   social_declared: 'Social media (customer said)',
   word_of_mouth: 'Friends and family (customer said)',
-  offline_media: 'Radio, TV and print (customer said)',
+  offline_media: 'Radio, TV, podcasts and papers',
   shop_floor: 'Walked into the shop',
   phone_order: 'Phoned the shop',
   returning_customer: 'Returning customer (customer said)',
@@ -107,7 +114,8 @@ export function codeTouchFrom(r: { creator_handle?: unknown; attributed_handle?:
   if (handle) return { kind: 'creator', detail: String(handle).slice(0, 80) };
   if (!r.code) return null;
   // A code given to a YouTube channel, a radio station or a paper for its placement (0206) is that placement's
-  // channel, named "outlet: title", so the money and the sales it brought sit on one row.
+  // channel, named by its link slug (the key its link visits and its scorecard use), so the money and the sales it
+  // brought sit on one row. The store picks the placement published on or before the order day.
   if (r.placement_detail) return { kind: r.placement_medium === 'youtube' ? 'youtube' : 'offline_media', detail: String(r.placement_detail).slice(0, 80) };
   // A batch of single-use codes is one campaign; naming each code would split it into hundreds of rows.
   const detail = r.code_type === 'bulk_batch' && r.promotion_name ? String(r.promotion_name) : String(r.code).toUpperCase();
@@ -124,20 +132,37 @@ export interface JourneyInput {
 export interface JourneyStep { channel: string; detail: string; at: Date }
 export interface OrderJourney { steps: JourneyStep[]; basis: CreditBasis | null }
 
+/**
+ * One order's journey, oldest first. The rules, in order:
+ *  1. Visits in the 30 days before the order, two in a row from the same place counted once.
+ *  2. Direct visits are dropped while anything else was recorded (v2, 2026-10-29). "Direct" means no evidence
+ *     (Channels), and every customer returns that way to pay: a shopper who found a guide on Google and came back
+ *     two days later by typing the address used to be filed 100% Direct under Last click, which buried search,
+ *     social, WhatsApp and the YouTube placements under the one channel that explains nothing. GA4 applies the
+ *     same rule to all its models: direct only counts when the whole path was direct.
+ *  3. A creator or promo code on the order is its final step.
+ *  4. Nothing but direct visits: the customer's answer, when there is one, is the better evidence (basis
+ *     declared); otherwise Direct it is.
+ *  5. Nothing at all: the customer's answer, else no journey ("No recorded source").
+ */
 export function journeyFor(input: JourneyInput): OrderJourney {
   const lookbackMs = (input.lookbackDays ?? LOOKBACK_DAYS) * 86_400_000;
   const t0 = input.orderAt.getTime();
   const inWindow = input.observed
     .filter((t) => t.at.getTime() <= t0 && t0 - t.at.getTime() <= lookbackMs)
     .sort((a, b) => a.at.getTime() - b.at.getTime() || (a.touchId < b.touchId ? -1 : a.touchId > b.touchId ? 1 : 0));
-  // Two tabs opened from the same place are one arrival (the nightly models do the same).
-  const steps: JourneyStep[] = collapseConsecutive(inWindow).map((t) => ({ channel: t.channel, detail: (t as ObservedTouch).detail, at: t.at }));
+  const toSteps = (ts: ObservedTouch[]): JourneyStep[] =>
+    // Two tabs opened from the same place are one arrival (the nightly models do the same).
+    collapseConsecutive(ts).map((t) => ({ channel: t.channel, detail: (t as ObservedTouch).detail, at: t.at }));
+  const steps = toSteps(inWindow.filter((t) => t.channel !== 'direct'));
   if (input.code) steps.push({ channel: input.code.kind, detail: input.code.detail, at: input.orderAt });
   if (steps.length) return { steps, basis: 'observed' };
   if (input.declared) {
     const d = declaredChannel(input.declared);
     return { steps: [{ ...d, at: input.orderAt }], basis: 'declared' };
   }
+  const direct = toSteps(inWindow);
+  if (direct.length) return { steps: direct, basis: 'observed' };
   return { steps: [], basis: null };
 }
 

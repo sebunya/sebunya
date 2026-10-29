@@ -131,7 +131,10 @@ describe('the PDP buy area', () => {
     expect(pdp).toContain("import { RETURNS_POLICY } from '../../lib/returnsPolicy'");
     expect(pdp).toContain('{RETURNS_POLICY.windowDays}-day returns if unused and complete');
     expect(pdp).toContain('storefrontCopy.payment.pesapal.label');
-    expect(pdp).toContain('storefrontCopy.payment.offline.label');
+    // Online only since 2026-10-16 (the storefront checkout sends 'pesapal' alone): the page stopped offering pay on
+    // delivery on 2026-10-29, and says a gift card or store credit is taken first (checkout's storeCreditCode).
+    expect(pdp).not.toContain('storefrontCopy.payment.offline.label');
+    expect(pdp).toContain('A GoldPlus gift card or store credit pays first.');
     expect(pdp).not.toMatch(/free returns|\d+-day returns/i);
   });
 
