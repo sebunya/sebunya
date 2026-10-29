@@ -2,9 +2,10 @@ name: Bank of Uganda dollar rate
 
 # Reads the day's USD/UGX mid, buying and selling rates off bou.or.ug (a Power BI report with no JSON feed) in a
 # real browser at 13:00 Kampala, Monday to Friday, and posts them to the shop (POST /internal/fx/bou, shared
-# secret BOU_FX_TOKEN). The shop's nightly cost run then prices dollar spend at the Bank of Uganda mid rate plus
-# the owner's margin, falling back to the open market feed when no fresh BoU reading exists (weekends, holidays,
-# a failed run). Also on demand (workflow_dispatch; tick dry run to only print the reading).
+# secret BOU_FX_TOKEN). The shop prices dollar spend at the HIGHER of the market quote and the Bank of Uganda
+# selling rate plus the owner's margin (resolveUgxPerUsd); BoU's last rate stands over weekends and holidays. The
+# AllRatesToday BoU feed already covers this; the schedule runs only with BOU_FX_ENABLED=true. Also on demand
+# (workflow_dispatch; tick dry run to only print the reading).
 on:
   schedule:
     - cron: '0 10 * * 1-5'

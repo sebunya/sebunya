@@ -5,6 +5,8 @@ import { SITE_ORIGIN } from '../../lib/sitemap';
 import { getBusinessInfo } from '../../lib/businessInfo';
 import { serializeJsonLd, breadcrumbJsonLd } from '../../lib/jsonld';
 import { fitIndexCached, publicBattery, ugx, FIT_BADGE } from '../../lib/batteries';
+import { findRecordedRedirect } from '../../lib/recordedRedirect';
+import { carryQuery } from '../../lib/carryQuery';
 import {
   fitProvenance, isDeviceSlug, phoneBatteryPath, phonePageIndexable, phonePageTitle, phonePageH1, phonePageDescription, phoneGuides, phonePageItemListJsonLd,
   type FitProvenance,
@@ -21,7 +23,13 @@ import type { BatteryFinderConfig, FinderBatteryResultDto, FinderDeviceDto } fro
  * what the demand report's funnel reads.
  */
 const slug = (Astro.params.device ?? '').trim();
-if (!isDeviceSlug(slug)) return Astro.redirect('/404', 404);
+// A recorded redirect (a manual row, a retired address) is answered before the 404, as the hub and product pages do:
+// handed to 404.astro it cannot redirect (2026-10-29 review).
+const notFound = async () => {
+  const recorded = await findRecordedRedirect(Astro.url.pathname);
+  return recorded ? Astro.redirect(carryQuery(recorded.target, Astro.url.search), recorded.status) : Astro.redirect('/404', 404);
+};
+if (!isDeviceSlug(slug)) return notFound();
 
 const [deviceRes, indexRes, biz] = await Promise.all([
   publicBattery<{ device: FinderDeviceDto; results: FinderBatteryResultDto[]; config: BatteryFinderConfig }>(`/finder/devices/${encodeURIComponent(slug)}?record=0`),
@@ -29,7 +37,7 @@ const [deviceRes, indexRes, biz] = await Promise.all([
   getBusinessInfo(),
 ]);
 
-if (!deviceRes.ok && deviceRes.status === 404) return Astro.redirect('/404', 404);
+if (!deviceRes.ok && deviceRes.status === 404) return notFound();
 // A merged or renamed phone answers under its new slug: one address, a permanent move (not a duplicate page).
 if (deviceRes.ok && deviceRes.data.device.slug !== slug) return Astro.redirect(phoneBatteryPath(deviceRes.data.device.slug), 301);
 const unavailable = !deviceRes.ok;

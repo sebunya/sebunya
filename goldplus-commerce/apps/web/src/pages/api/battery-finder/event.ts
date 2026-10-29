@@ -3,6 +3,7 @@ import { apiBase } from '../../../lib/api';
 import { readBodyCapped } from '../../../lib/boundedBody';
 import { apiHeaders, readClientAddress } from '../../../lib/forwardClient';
 import { finderSessionId } from '../../../lib/batteries';
+import { isLikelyHuman } from '../../../lib/humanTraffic';
 
 /**
  * Same-origin relay for the finder's own funnel events (0125
@@ -18,13 +19,14 @@ import { finderSessionId } from '../../../lib/batteries';
  * crawler that renders the page but keeps no cookies never has, so crawls do
  * not inflate "page viewed" (docs/growth/README.md §7). A browser with cookies
  * switched off cannot hold a basket either, so the funnel loses nothing real.
- * Known crawler user agents are dropped as well, for the ones that do keep cookies.
+ * Known automated user agents are dropped as well, for the ones that do keep cookies: the site's one rule
+ * (lib/humanTraffic, as search demand uses), where Telegram's in-app browser is a shopper and only its preview bot
+ * is not. A hand-rolled list here also dropped every shopper browsing inside Telegram (2026-10-29).
  */
 const EVENT_TYPES = new Set(['RESULT_VIEWED', 'PRODUCT_VIEWED', 'ADDED_TO_CART']);
 const MODES = new Set(['FIND_BY_PHONE', 'SEARCH_CODE', 'PRODUCT_PAGE', 'CART']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SLUG = /^[a-z0-9-]{1,160}$/;
-const CRAWLER_UA = /bot|crawl|spider|slurp|headless|lighthouse|pagespeed|preview|facebookexternalhit|whatsapp|telegram|curl\/|python-requests/i;
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -41,7 +43,7 @@ export const POST: APIRoute = async (context) => {
   if (!eventType || !mode) return json(400, { success: false, error: { code: 'INVALID_BODY', message: 'Invalid event.' } });
 
   const session = finderSessionId(locals);
-  if (!session || CRAWLER_UA.test(request.headers.get('user-agent') ?? '')) return notCounted();
+  if (!session || !isLikelyHuman(request.headers.get('user-agent'))) return notCounted();
 
   const body = {
     eventType,

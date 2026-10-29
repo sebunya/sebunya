@@ -10,8 +10,9 @@ import { bouReadingProblem } from '../../domain/measurement/BouReading';
  * on the same day and key is never overwritten (the person who typed it knew something the feed did not).
  *
  *  - usd_ugx: the day's market rate, shillings per dollar. With ALLRATES_API_KEY: allratestoday.com's market quote
- *    (hourly, every day, retail level: on 2026-10-24 it was 4,420 against BoU selling 4,215 + 200). Without the key:
- *    open.er-api.com (daily, keyless, interbank level; the margin is added when USED, never when stored).
+ *    (hourly, every day, retail level: on 2026-10-24 it was 4,420 against BoU selling 4,215 + 200). Without the key,
+ *    or when the keyed quote fails: open.er-api.com (daily, keyless, interbank level; the margin is added when USED,
+ *    never when stored), never over a day that already holds a keyed quote.
  *  - usd_ugx_bou: the Bank of Uganda selling rate (business days; the cover for the market quote, see resolveUgxPerUsd).
  *  - rain_mm: daily rainfall in Kampala (0.3476 N, 32.5825 E) from Open-Meteo's archive (keyless, free for this
  *    volume). Rain keeps people off the road and out of the shop; a model without it would credit the weather to

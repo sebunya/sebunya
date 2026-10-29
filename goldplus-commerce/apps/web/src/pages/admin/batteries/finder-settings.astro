@@ -50,10 +50,17 @@ const FIELDS: Array<[keyof Config, string, string, 'input' | 'textarea']> = [
   ['noResultBody', 'No result explanation', 'Say plainly that we have not checked it, and what to do next.', 'textarea'],
   ['requestCta', 'Request button', '', 'input'],
   ['whatsappPrefill', 'WhatsApp message prefix', 'The phone model is added to the end of this.', 'input'],
-  ['awaitingVerificationNote', 'Note on an unchecked fit', 'Shown beside a fit a supplier lists but we have not confirmed.', 'textarea'],
+  // Since the owner's policy of 2026-10-28 a supplier-listed fit is a fit, shown under "Fits, from our supplier's
+  // compatibility list". The note sits under that badge, so it says where the fit comes from, not that it is unchecked.
+  ['awaitingVerificationNote', 'Note on a supplier-listed fit', "Shown under the badge \"Fits, from our supplier's compatibility list\". Say where the fit comes from; do not call it unchecked or ask the customer to confirm before buying.", 'textarea'],
   ['conditionalNote', 'Note on a conditional fit', '', 'input'],
   ['outOfStockNote', 'Note when a verified battery is out of stock', '', 'input'],
 ];
+// Wording saved before that policy (0211 deliberately left hand-edited text alone) can still call a listed fit unchecked,
+// right under a "Fits" badge: said here so it is reworded rather than found by a customer.
+const STALE_FIT_WORDS = /not (been )?(checked|confirmed)|unchecked|confirm (it )?with us before you (buy|pay|order)/i;
+const staleFields = c ? ([['awaitingVerificationNote', 'note on a supplier-listed fit'], ['intro', 'introduction']] as const)
+  .filter(([key]) => STALE_FIT_WORDS.test(String(c[key] ?? ''))).map(([, name]) => name) : [];
 ---
 
 <AdminLayout title="Finder settings" description="The wording, ordering and honesty rules of the public battery finder." activePath="/admin/batteries">
@@ -74,6 +81,14 @@ const FIELDS: Array<[keyof Config, string, string, 'input' | 'textarea']> = [
       </div>
     )}
     {!current.ok && <div role="status" class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{batteryMessage(current.error)}</div>}
+
+    {staleFields.length > 0 && (
+      <p role="status" class="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        The {staleFields.join(' and ')} still {staleFields.length > 1 ? 'call' : 'calls'} a supplier-listed fit unchecked, or
+        asks the customer to confirm it first, while the finder shows that fit under "Fits, from our supplier's
+        compatibility list". Reword it to say where the fit comes from.
+      </p>
+    )}
 
     {c && (
       <form method="POST" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
@@ -97,7 +112,8 @@ const FIELDS: Array<[keyof Config, string, string, 'input' | 'textarea']> = [
             </select>
           </label>
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Verified fits before the page is indexed</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Public fits before /battery-finder is indexed</span>
+            <span class="block text-xs text-gray-500 mt-0.5">Checked fits, plus supplier-listed ones while they are shown.</span>
             <input name="minVerifiedFitsForIndexing" type="number" min="0" max="1000" value={c.minVerifiedFitsForIndexing} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
           <label class="flex items-start gap-2 text-xs font-bold text-gray-600 pt-6">

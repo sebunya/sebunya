@@ -127,3 +127,31 @@ describe('measurement jobs that heal instead of wedging or drifting', () => {
   });
 });
 
+describe('loose ends of #187, #189 and #190 (2026-10-29)', () => {
+  it('the returns page offers "Start a return online" whichever policy wording is live', () => {
+    const page = read('apps/web/src/pages/returns.astro');
+    const afterSwitch = page.slice(page.indexOf('</>}'));
+    expect(afterSwitch).toContain('href="/returns/start"');
+    expect(afterSwitch).toContain('Start a return online');
+  });
+  it('the bare parent addresses move permanently, kept by a browser for a day only; dealers find their page', () => {
+    for (const [p, target] of [['dealers', '/dealers/apply'], ['delivery', '/delivery/kampala-wakiso'], ['locations', '/locations/zainab-aziza']]) {
+      expect(read(`apps/web/src/pages/${p}/index.astro`)).toContain(`status: 301, headers: { Location: '${target}', 'Cache-Control': 'public, max-age=86400' }`);
+    }
+    expect(read('apps/web/src/pages/dealers/apply.astro')).toContain('href="/dealers/dashboard"');
+  });
+  it('finder settings name the supplier-listed note and the index threshold for what they now are', () => {
+    const page = read('apps/web/src/pages/admin/batteries/finder-settings.astro');
+    expect(page).not.toContain('Note on an unchecked fit');
+    expect(page).toContain('Note on a supplier-listed fit');
+    expect(page).toContain('Public fits before /battery-finder is indexed');
+    expect(page).toContain('const STALE_FIT_WORDS');
+  });
+  it('a phone page answers a recorded redirect before it gives up with a 404', () => {
+    const page = read('apps/web/src/pages/phone-batteries/[device].astro');
+    expect(page).toContain('const recorded = await findRecordedRedirect(Astro.url.pathname);');
+    expect(page).toContain("if (!isDeviceSlug(slug)) return notFound();");
+    expect(page).toContain('if (!deviceRes.ok && deviceRes.status === 404) return notFound();');
+  });
+});
+

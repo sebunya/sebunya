@@ -209,8 +209,17 @@ describe('finder funnel: who is counted', () => {
   });
   it('the relay records nothing for a client that kept no visit cookie or names itself a crawler', () => {
     const relay = read('apps/web/src/pages/api/battery-finder/event.ts');
-    expect(relay).toMatch(/if \(!session \|\| CRAWLER_UA\.test\(/);
+    // The site's one human-traffic rule (as search demand): a shopper inside Telegram's browser counts, its preview bot does not.
+    expect(relay).toMatch(/if \(!session \|\| !isLikelyHuman\(request\.headers\.get\('user-agent'\)\)\)/);
     expect(relay).toContain('apiHeaders(');
+  });
+  it('who counts as a person in the finder funnel', async () => {
+    const { isLikelyHuman } = await import('../../apps/web/src/lib/humanTraffic');
+    expect(isLikelyHuman('Mozilla/5.0 (Linux; Android 13; TECNO KI5) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36 Telegram-Android/10.5.0')).toBe(true);
+    expect(isLikelyHuman('TelegramBot (like TwitterBot)')).toBe(false);
+    expect(isLikelyHuman('Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Mobile Safari/537.36 Chrome-Lighthouse')).toBe(false);
+    expect(isLikelyHuman('Mozilla/5.0 (compatible; Google Page Speed Insights)')).toBe(false);
+    expect(isLikelyHuman('WhatsApp/2.23.20.0 A')).toBe(false);
   });
   it('the cart says where a match comes from and links the phone\'s page', () => {
     expect(cartDeviceFitNote(0, 0)).toBe('None of the batteries in your cart are matched to this phone yet.');

@@ -61,9 +61,8 @@ export class MmmDataset {
     for (const r of rows(await db.execute(sql`select platform, config->>'ugxPerUsd' as rate from ad_destinations`))) {
       const n = Number(r.rate); if (Number.isFinite(n) && n > 0) rates.set(String(r.platform), n);
     }
-    // A day's dollar spend is converted at that day's rate plus the margin: the Bank of Uganda mid (usd_ugx_bou,
-    // read at 1 pm) where there is one, else the fed market rate (both series are without the margin). Days with
-    // no reading use the resolved fallback. A hand-set rate pins every day, as the settings help says.
+    // A day's dollar spend is converted at that day's own rate (the rule just below, the same as resolveUgxPerUsd's).
+    // Days with no reading use the resolved fallback. A hand-set rate pins every day, as the settings help says.
     const margin = effectiveNumber(values, 'usd_ugx_margin') ?? 0;
     const dayRates = new Map<string, number>();
     if (fx.basis !== 'manual') {
