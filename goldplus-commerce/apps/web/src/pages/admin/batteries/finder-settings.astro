@@ -1,5 +1,6 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { STALE_FIT_WORDS } from '../../../lib/finderSettingsWording';
 import { readSessionToken } from '../../../lib/session';
 import { adminBattery, batteryMessage } from '../../../lib/batteries';
 
@@ -56,9 +57,8 @@ const FIELDS: Array<[keyof Config, string, string, 'input' | 'textarea']> = [
   ['conditionalNote', 'Note on a conditional fit', '', 'input'],
   ['outOfStockNote', 'Note when a verified battery is out of stock', '', 'input'],
 ];
-// Wording saved before that policy (0211 deliberately left hand-edited text alone) can still call a listed fit unchecked,
-// right under a "Fits" badge: said here so it is reworded rather than found by a customer.
-const STALE_FIT_WORDS = /not (been )?(checked|confirmed)|unchecked|confirm (it )?with us before you (buy|pay|order)/i;
+// Saved wording that still calls a listed fit unchecked, right under a "Fits" badge: said here so it is reworded rather
+// than found by a customer (lib/finderSettingsWording).
 const staleFields = c ? ([['awaitingVerificationNote', 'note on a supplier-listed fit'], ['intro', 'introduction']] as const)
   .filter(([key]) => STALE_FIT_WORDS.test(String(c[key] ?? ''))).map(([, name]) => name) : [];
 ---

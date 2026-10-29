@@ -136,16 +136,21 @@ describe('loose ends of #187, #189 and #190 (2026-10-29)', () => {
   });
   it('the bare parent addresses move permanently, kept by a browser for a day only; dealers find their page', () => {
     for (const [p, target] of [['dealers', '/dealers/apply'], ['delivery', '/delivery/kampala-wakiso'], ['locations', '/locations/zainab-aziza']]) {
-      expect(read(`apps/web/src/pages/${p}/index.astro`)).toContain(`status: 301, headers: { Location: '${target}', 'Cache-Control': 'public, max-age=86400' }`);
+      const page = read(`apps/web/src/pages/${p}/index.astro`);
+      expect(page).toContain(`const moved = Astro.redirect('${target}', 301);`);
+      expect(page).toContain("moved.headers.set('Cache-Control', 'public, max-age=86400');");
     }
     expect(read('apps/web/src/pages/dealers/apply.astro')).toContain('href="/dealers/dashboard"');
   });
-  it('finder settings name the supplier-listed note and the index threshold for what they now are', () => {
+  it('finder settings name the supplier-listed note and the index threshold for what they now are', async () => {
     const page = read('apps/web/src/pages/admin/batteries/finder-settings.astro');
     expect(page).not.toContain('Note on an unchecked fit');
     expect(page).toContain('Note on a supplier-listed fit');
     expect(page).toContain('Public fits before /battery-finder is indexed');
-    expect(page).toContain('const STALE_FIT_WORDS');
+    expect(page).toContain("import { STALE_FIT_WORDS } from '../../../lib/finderSettingsWording';");
+    const { STALE_FIT_WORDS } = await import('../../apps/web/src/lib/finderSettingsWording');
+    expect(STALE_FIT_WORDS.test('Our supplier lists this fit; we have not checked it. Confirm with us before you buy.')).toBe(true);
+    expect(STALE_FIT_WORDS.test("Listed as a fit by our supplier's compatibility list.")).toBe(false);
   });
   it('a phone page answers a recorded redirect before it gives up with a 404', () => {
     const page = read('apps/web/src/pages/phone-batteries/[device].astro');
