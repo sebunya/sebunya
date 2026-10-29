@@ -44,7 +44,7 @@ export interface BasketReminderCandidate {
 }
 
 /** Why a basket got no text (recorded, so it is not re-read every hour). */
-export type BasketReminderRefusal = 'not_opted_in' | 'no_phone' | 'suppressed' | 'unverified' | 'inactive' | 'nothing_left' | 'held_out';
+export type BasketReminderRefusal = 'not_opted_in' | 'no_phone' | 'suppressed' | 'unverified' | 'inactive' | 'phone_changed' | 'no_evidence' | 'nothing_left' | 'held_out';
 
 export interface IBasketReminderCandidates {
   findDue(input: { classifiedBefore: Date; classifiedAfter: Date; noReminderSince: Date; limit: number }): Promise<BasketReminderCandidate[]>;
@@ -56,6 +56,7 @@ export interface IBasketReminderCandidates {
 
 const REFUSAL_OF: Record<string, BasketReminderRefusal> = {
   SUPPRESSED: 'suppressed', NO_PHONE: 'no_phone', PHONE_NOT_VERIFIED: 'unverified', ACCOUNT_INACTIVE: 'inactive',
+  PHONE_CHANGED_SINCE_OPT_IN: 'phone_changed', NO_OPT_IN_EVIDENCE: 'no_evidence',
 };
 
 export class SendBasketRemindersUseCase {

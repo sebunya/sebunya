@@ -43,7 +43,7 @@ describeIf('cart abandonment lifecycle (real PostgreSQL)', () => {
   afterAll(async () => {
     if (!raw) return;
     if (cartIds.length) { await raw`delete from cart_abandonments where cart_id = any(${cartIds})`; await raw`delete from cart_items where cart_id = any(${cartIds})`; await raw`delete from carts where id = any(${cartIds})`; }
-    if (userIds.length) { await raw`delete from orders where user_id = any(${userIds})`; await raw`delete from users where id = any(${userIds})`; }
+    if (userIds.length) { await raw`delete from orders where user_id = any(${userIds}) or order_number = ${`BC${tag}`.slice(0, 20)}`; await raw`delete from users where id = any(${userIds})`; }
     if (hiddenProductId) await raw`delete from products where id = ${hiddenProductId}`;
     if (productId) await raw`delete from products where id = ${productId}`;
     if (ownCategoryId) await raw`delete from categories where id = ${ownCategoryId}`;
@@ -153,17 +153,22 @@ describeIf('cart abandonment lifecycle (real PostgreSQL)', () => {
     const ordered = await user('ordered'); const afterOrder = await basket(ordered.id);
     await raw`insert into orders (order_number, user_id, customer_name, customer_phone, delivery_area, delivery_address, subtotal_amount, delivery_fee, total_amount, status, payment_status, payment_method, created_at)
       values (${`BR${tag}`.slice(0, 20)}, ${ordered.id}, 'IT', ${ordered.phone}, 'Kira', 'Adr', 10000, 0, 10000, 'delivered', 'paid', 'pesapal', ${new Date(now.getTime() - 1 * H)})`;
+    // Bought at the counter: staff recorded the sale under their number, spelt differently, with no account on it.
+    const counter = await user('counter'); const afterCounterSale = await basket(counter.id);
+    await raw`insert into orders (order_number, customer_name, customer_phone, delivery_area, delivery_address, subtotal_amount, delivery_fee, total_amount, status, payment_status, payment_method, created_at)
+      values (${`BC${tag}`.slice(0, 20)}, 'IT', ${`+256 ${counter.phone.slice(1, 4)} ${counter.phone.slice(4)}`}, 'Kampala', 'Shop', 10000, 0, 10000, 'completed', 'paid', 'cash', ${new Date(now.getTime() - 1 * H)})`;
     const gone = await user('gone'); const nothingLeft = await basket(gone.id, { product: hiddenProductId });
     const capped = await user('capped'); const cappedBasket = await basket(capped.id);
     await raw`insert into cart_abandonments (cart_id, owner_kind, owner_id, item_count, subtotal_ugx, status, classified_at, last_activity_at, reminded_at, reminder_outcome)
       values (${cartIds[cartIds.length - 1]}, 'USER', ${capped.id}, 1, 10000, 'EXPIRED', now() - interval '3 days', now() - interval '3 days', now() - interval '2 days', 'sent')`;
 
-    const mine = new Set([older, newer, touched, afterOrder, nothingLeft, cappedBasket]);
+    const mine = new Set([older, newer, touched, afterOrder, afterCounterSale, nothingLeft, cappedBasket]);
     const due = (await repo.findDue({
       classifiedBefore: new Date(now.getTime() - 1 * H), classifiedAfter: new Date(now.getTime() - 48 * H),
       noReminderSince: new Date(now.getTime() - 7 * 24 * H), limit: 500,
     })).filter((d: any) => mine.has(d.abandonmentId));
-    // the newest of two baskets; the gone product counts as nothing to buy; the returned, the ordered and the capped are out
+    // the newest of two baskets; the gone product counts as nothing to buy; the returned, the ordered (online or at the
+    // counter) and the capped are out
     expect(due.map((d: any) => d.abandonmentId).sort()).toEqual([newer, nothingLeft].sort());
     expect(due.find((d: any) => d.abandonmentId === newer)).toMatchObject({ itemCount: 1, itemNames: ['Abandon Test'] });
     expect(due.find((d: any) => d.abandonmentId === nothingLeft)).toMatchObject({ itemCount: 0, itemNames: [] });

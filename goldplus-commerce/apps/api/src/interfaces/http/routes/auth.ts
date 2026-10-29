@@ -172,7 +172,10 @@ routes.post('/register', async (c) => {
   let basketReminders: { applied: boolean } | undefined;
   if (body.basketReminders === true) {
     const r = await registry.basketReminderConsentUseCases.change({
-      userId: result.user.id, requested: 'granted', confirmationTicked: true, copyVersionId: BASKET_REMINDERS_COPY_VERSION, surface: 'registration',
+      // The version of the words the sign-up page showed (it echoes it): a page with other words is refused, not recorded
+      // as consent to these. A page from before the echo sends none and is taken as the current words.
+      userId: result.user.id, requested: 'granted', confirmationTicked: true, surface: 'registration',
+      copyVersionId: typeof body.basketRemindersCopyVersion === 'string' && body.basketRemindersCopyVersion ? body.basketRemindersCopyVersion : BASKET_REMINDERS_COPY_VERSION,
       idempotencyKey: `register:${result.user.id}`, correlationId: c.req.header('x-correlation-id')?.trim().slice(0, 120) || `register:${result.user.id}`,
       ipAddress: clientIp(c), userAgent: c.req.header('x-shopper-user-agent') ?? c.req.header('user-agent') ?? null,
     }).catch(() => null);

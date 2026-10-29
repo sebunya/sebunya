@@ -79,7 +79,11 @@ export class BasketReminderConsentUseCases implements IBasketReminderGate {
       };
       return { ok: false, code: plan.reason, message: message[plan.reason] ?? 'That choice was not saved.' };
     }
-    if (plan.noOp) return { ok: true, status: basketReminderStatus(plan.next), alreadyApplied: true };
+    // Ticking again while "On" used to do nothing, even when the grant covered nothing: its evidence never landed (it is
+    // written after the commit) or it names a number the account no longer has, so every reminder was refused while the
+    // switch read "On" (2026-10-29 review). Such a tick now records a fresh confirmation for today's number.
+    const reconfirm = plan.noOp && plan.next === 'granted' && !!phone && (await this.grantNeedsReconfirming(current?.last_consent_event_id ?? null, phone));
+    if (plan.noOp && !reconfirm) return { ok: true, status: basketReminderStatus(plan.next), alreadyApplied: true };
 
     const surface = BASKET_REMINDERS_SURFACES[input.surface];
     const consentEventId = eventIdFor(input.userId, input.idempotencyKey);
@@ -96,7 +100,8 @@ export class BasketReminderConsentUseCases implements IBasketReminderGate {
       actor_id: input.userId,
       copy_version_id: BASKET_REMINDERS_COPY_VERSION,
       reason: input.requested === 'granted'
-        ? (input.surface === 'registration' ? 'customer ticked the basket reminders box when creating the account' : 'customer ticked the basket reminders box in the preference centre')
+        ? (reconfirm ? 'customer ticked the basket reminders box again, for the number now on the account'
+          : input.surface === 'registration' ? 'customer ticked the basket reminders box when creating the account' : 'customer ticked the basket reminders box in the preference centre')
         : 'customer switched basket reminders off in the preference centre',
       correlation_id: input.correlationId,
       idempotency_key: input.idempotencyKey,
@@ -122,6 +127,13 @@ export class BasketReminderConsentUseCases implements IBasketReminderGate {
       });
     }
     return { ok: true, status: basketReminderStatus(receipt.state), alreadyApplied: receipt.already_applied };
+  }
+
+  /** A grant with no evidence, or evidence for another number, covers nothing until the customer confirms again. */
+  private async grantNeedsReconfirming(lastConsentEventId: string | null, phoneE164: string): Promise<boolean> {
+    if (!lastConsentEventId) return true;
+    const evidence = await this.evidence.latestFor(lastConsentEventId);
+    return !evidence?.endpointHash || evidence.endpointHash !== this.hasher.hash(phoneE164);
   }
 
   /** The gate the reminder reads: a grant that covers today's number, and no STOP against it. */

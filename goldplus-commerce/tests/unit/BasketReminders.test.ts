@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { BASKET_REMINDERS_COPY_VERSION, basketRemindersCopyHash, planBasketReminderChange, basketReminderStatus } from '../../apps/api/src/domain/consent/BasketReminderConsent';
+import { BASKET_REMINDERS_COPY, BASKET_REMINDERS_COPY_VERSION, basketRemindersCopyHash, planBasketReminderChange, basketReminderStatus } from '../../apps/api/src/domain/consent/BasketReminderConsent';
 import { SendBasketRemindersUseCase, basketItemsWords, basketReminderSendRefusal, type BasketReminderCandidate, type IBasketReminderCandidates } from '../../apps/api/src/application/use-cases/abandonment/SendBasketRemindersUseCase';
 import { BasketReminderConsentUseCases } from '../../apps/api/src/application/use-cases/first-party/BasketReminderConsentUseCases';
 import { DefaultNotificationRouter } from '../../apps/api/src/infrastructure/notifications/NotificationRouter';
@@ -28,8 +28,13 @@ describe('basket reminders: consent', () => {
     const sql = readFileSync(resolve(root, 'apps/api/src/infrastructure/db/migrations/0210_basket_reminders.sql'), 'utf8');
     expect(sql).toContain(basketRemindersCopyHash());
     const reg = readFileSync(resolve(root, 'apps/web/src/pages/register.astro'), 'utf8');
-    expect(reg).toContain('Yes, text me if I leave something in my basket, at the phone number on my account. At most one text a week.');
+    // The whole sentence, not a prefix: the hash pins all of it, so the page must show all of it.
+    expect(reg).toContain(BASKET_REMINDERS_COPY);
     expect(reg).not.toMatch(/name="basketReminders"[^>]*checked/);
+    // The page echoes the version of the words it showed; the API records that version, and refuses another.
+    expect(reg).toContain(`name="basketRemindersCopyVersion" value="${BASKET_REMINDERS_COPY_VERSION}"`);
+    const auth = readFileSync(resolve(root, 'apps/api/src/interfaces/http/routes/auth.ts'), 'utf8');
+    expect(auth).toContain("copyVersionId: typeof body.basketRemindersCopyVersion === 'string' && body.basketRemindersCopyVersion ? body.basketRemindersCopyVersion : BASKET_REMINDERS_COPY_VERSION");
   });
 });
 
@@ -140,6 +145,56 @@ describe('basket reminders: sending', () => {
     const stale = await router.route('BASKET_REMINDER', { ...payload, notAfter: new Date(Date.now() - 60_000).toISOString() });
     const r = await stale[0].provider.dispatch(stale[0].payload);
     expect(r).toMatchObject({ status: 'DISABLED', providerCode: 'BASKET_REMINDER_REFUSED', retryable: false });
+  });
+
+  it('at send time the router reads the consent again: off since it was queued is refused, an unreadable read is retried', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOON_EAT);
+    try {
+      const prov = { dispatch: async () => ({ status: 'SENT' as const, providerCode: null, providerMessage: 'ok' }), canCarry: () => true };
+      const router = new DefaultNotificationRouter(prov as never, prov as never, prov as never);
+      const payload = { customerPhone: '+256772123456', userId: 'u1', relatedEntity: 'cart', relatedEntityId: '00000000-0000-4000-8000-000000000001', notAfter: new Date(NOON_EAT.getTime() + 30 * 60_000).toISOString() };
+      const outcome = async (p: Record<string, unknown>) => { const [t] = await router.route('BASKET_REMINDER', p); return t.provider.dispatch(t.payload); };
+      router.setBasketReminderRecheck(async () => false);
+      expect(await outcome(payload)).toMatchObject({ status: 'DISABLED', providerCode: 'BASKET_REMINDER_REFUSED', retryable: false });
+      router.setBasketReminderRecheck(async () => { throw new Error('db down'); });
+      expect(await outcome(payload)).toMatchObject({ status: 'FAILED', retryable: true });
+      router.setBasketReminderRecheck(async (u, phone) => u === 'u1' && phone === '+256772123456');
+      expect(await outcome(payload)).toMatchObject({ status: 'SENT' });
+      // queued without the customer's id (before this check existed): nothing says the consent still holds
+      expect(await outcome({ ...payload, userId: undefined })).toMatchObject({ status: 'DISABLED' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('records why a grant covered nothing: number changed since, or no evidence of the tick', async () => {
+    const st = store([cand('a', 'changed'), cand('b', 'noev')]);
+    const g = { mayRemind: async (u: string) => ({ allowed: false, reason: u === 'changed' ? 'PHONE_CHANGED_SINCE_OPT_IN' : 'NO_OPT_IN_EVIDENCE', phoneE164: null }) };
+    await new SendBasketRemindersUseCase(st.s, g, async () => undefined).execute(NOON_EAT);
+    expect(st.marked).toEqual([['a', 'phone_changed'], ['b', 'no_evidence']]);
+  });
+
+  it('ticking again while "On" repairs a grant that covers nothing (no evidence, or another number), and is a no-op otherwise', async () => {
+    const hasher = { hash: (v: string) => `h:${v}` };
+    const events: any[] = []; const recorded: any[] = [];
+    const uc = (evidenceHash: string | null) => new BasketReminderConsentUseCases(
+      {
+        getLatestConsentState: async () => ({ state: 'granted', last_consent_event_id: 'e1' }),
+        commitStateChange: async (e: any) => { events.push(e); return { consent_event_id: e.consent_event_id, state: e.new_state, already_applied: false }; },
+      } as never,
+      { latestFor: async () => (evidenceHash ? { endpointHash: evidenceHash } : null), record: async (r: any) => { recorded.push(r); } } as never,
+      { findAccount: async () => ({ id: 'u', email: null, phone: '0772123456', phoneVerified: true }) } as never,
+      hasher as never,
+    );
+    const tick = { userId: 'u', requested: 'granted' as const, confirmationTicked: true, copyVersionId: BASKET_REMINDERS_COPY_VERSION, surface: 'preferenceCentre' as const, idempotencyKey: 'k1', correlationId: 'c1' };
+    expect(await uc('h:+256772123456').change(tick)).toMatchObject({ ok: true, alreadyApplied: true });
+    expect(events).toHaveLength(0);
+    expect(await uc(null).change(tick)).toMatchObject({ ok: true, alreadyApplied: false });
+    expect(await uc('h:+256700000000').change({ ...tick, idempotencyKey: 'k2' })).toMatchObject({ ok: true, alreadyApplied: false });
+    expect(events.map((e) => [e.previous_state, e.new_state])).toEqual([['granted', 'granted'], ['granted', 'granted']]);
+    expect(events[0].reason).toMatch(/again, for the number now on the account/);
+    expect(recorded.map((r) => r.endpointHash)).toEqual(['h:+256772123456', 'h:+256772123456']);
   });
 
   it('the gate wants a number known to reach its owner: verified, or an order of theirs was delivered to it', async () => {

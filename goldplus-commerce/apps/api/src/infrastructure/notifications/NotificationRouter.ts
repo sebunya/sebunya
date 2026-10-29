@@ -13,6 +13,13 @@ export function basketRemindersEnabled(env: Record<string, string | undefined> =
 }
 
 export class DefaultNotificationRouter implements INotificationRouter {
+  private basketReminderRecheck: ((userId: string, phoneE164: string) => Promise<boolean>) | null = null;
+
+  /** 0210: the reminder's consent gate, read again when it is sent (Registry wires it once both exist). */
+  setBasketReminderRecheck(check: (userId: string, phoneE164: string) => Promise<boolean>): void {
+    this.basketReminderRecheck = check;
+  }
+
   constructor(
     private readonly emailProvider: INotificationProvider,
     private readonly whatsappProvider: INotificationProvider,
@@ -363,13 +370,23 @@ export class DefaultNotificationRouter implements INotificationRouter {
       // It was unrouted from 2026-10-28 (retired as "No channel mapping") until its review fixes of 2026-10-29. At
       // send time it is refused, as a final DISABLED outcome with the reason, when the switch is off, in quiet hours,
       // or past its send-by time: the outbox retries for hours, and a late reminder is dropped, never delayed.
+      // The consent is read again here too: a customer who switched reminders off, changed number or sent STOP
+      // after it was queued gets nothing. A read that fails is retried (still bounded by the send-by time).
       case 'BASKET_REMINDER': {
         const customerPhone = typeof payload.customerPhone === 'string' ? payload.customerPhone : '';
         if (!customerPhone) break;
-        const refusal = basketReminderSendRefusal(payload, new Date(), basketRemindersEnabled());
+        let refusal = basketReminderSendRefusal(payload, new Date(), basketRemindersEnabled());
+        let recheckFailed = false;
+        if (!refusal && this.basketReminderRecheck) {
+          const userId = typeof payload.userId === 'string' ? payload.userId : '';
+          const still = userId ? await this.basketReminderRecheck(userId, customerPhone).catch(() => { recheckFailed = true; return false; }) : false;
+          if (!still && !recheckFailed) refusal = 'Not sent: basket reminders no longer cover this customer and number (switched off, number changed or STOP since it was queued).';
+        }
         const provider: INotificationProvider = refusal
           ? { dispatch: async () => ({ status: 'DISABLED', providerCode: 'BASKET_REMINDER_REFUSED', providerMessage: refusal, retryable: false }) }
-          : honourDryRun(this.smsProvider, payload.dryRunOnly === true);
+          : recheckFailed
+            ? { dispatch: async () => ({ status: 'FAILED', providerCode: 'BASKET_REMINDER_RECHECK_FAILED', providerMessage: 'The consent could not be read just now; tried again shortly.', retryable: true }) }
+            : honourDryRun(this.smsProvider, payload.dryRunOnly === true);
         targets.push({
           channel: 'sms',
           provider,

@@ -2357,8 +2357,9 @@ export class Registry {
         // The basket link is tagged here, always (ch=s.basket: GA4 and our touches file the visit as a basket reminder,
         // not "sms / link"; the SMS adapter tags links only when the tag costs no extra part). The cart page also reads
         // it: a signed-out phone is told its basket is saved on the account and asked to sign in, not shown "empty".
-        // notAfter: the router drops a reminder not out by then (NotificationRouter, basketReminderSendRefusal).
-        data: { basketItems: basketItemsWords(c.itemNames, c.itemCount), basketUrl: tagShopUrl(`${publicBaseUrl()}/cart`, 's', 'basket'), preferencesUrl: `${publicBaseUrl()}/account/preferences`, notAfter: sendBy.toISOString() },
+        // notAfter: the router drops a reminder not out by then (NotificationRouter, basketReminderSendRefusal); userId:
+        // the router reads the consent again at send time.
+        data: { basketItems: basketItemsWords(c.itemNames, c.itemCount), basketUrl: tagShopUrl(`${publicBaseUrl()}/cart`, 's', 'basket'), preferencesUrl: `${publicBaseUrl()}/account/preferences`, notAfter: sendBy.toISOString(), userId: c.userId },
         idempotencyKey: `basket-reminder:${c.abandonmentId}`,
         relatedEntity: 'cart',
         relatedEntityId: c.cartId,
@@ -3666,6 +3667,7 @@ export class Registry {
       Registry._instance = new Registry();
       Registry._instance.registerOrderTransitionSubscribers();
       Registry._instance.registerMarketingSuppressionReader();
+      Registry._instance.registerBasketReminderRecheck();
     }
     return Registry._instance;
   }
@@ -3749,6 +3751,17 @@ export class Registry {
    */
   private registerMarketingSuppressionReader(): void {
     outboundGovernance.setMarketingSuppressionReader(buildMarketingSuppressionReader(new FirstPartyConsentRepository()));
+  }
+
+  /**
+   * 0210: a queued basket reminder is sent only if the customer's consent still covers that number when it goes out
+   * (they may have switched reminders off, changed number or sent STOP since it was queued).
+   */
+  private registerBasketReminderRecheck(): void {
+    this.notificationRouter.setBasketReminderRecheck(async (userId, phoneE164) => {
+      const gate = await this.basketReminderConsentUseCases.mayRemind(userId);
+      return gate.allowed && gate.phoneE164 === phoneE164;
+    });
   }
 
   private registerOrderTransitionSubscribers(): void {

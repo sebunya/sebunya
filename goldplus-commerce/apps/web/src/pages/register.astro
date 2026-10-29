@@ -126,7 +126,7 @@ if (Astro.request.method === 'POST') {
         method: 'POST',
         signal: AbortSignal.timeout(8000),
         headers: jsonApiHeaders(clientAddress),
-        body: JSON.stringify({ email, phone, password, ...(referralCode ? { referralCode, referralSource } : {}), ...(basketReminders ? { basketReminders: true } : {}) }),
+        body: JSON.stringify({ email, phone, password, ...(referralCode ? { referralCode, referralSource } : {}), ...(basketReminders ? { basketReminders: true, basketRemindersCopyVersion: String(form.get('basketRemindersCopyVersion') ?? '') } : {}) }),
       });
       const json: any = await res.json().catch(() => null);
 
@@ -229,6 +229,7 @@ const focusField = firstErrorField(fieldErrors);
         />
         <label class="flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-800">
           <input type="checkbox" name="basketReminders" value="yes" class="mt-0.5 h-5 w-5 shrink-0 accent-[#456B00]" />
+          <input type="hidden" name="basketRemindersCopyVersion" value="basket-reminders-v1" />
           <span>Yes, text me if I leave something in my basket, at the phone number on my account. At most one text a week. I can switch this off in My preferences at any time.</span>
         </label>
         <button

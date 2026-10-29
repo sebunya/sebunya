@@ -99,7 +99,8 @@ export class DrizzleAbandonmentRepository implements IAbandonmentRepository, IBa
   /**
    * 0210: baskets due a reminder, at most one per customer (their newest), with the names and count of what can still
    * be bought, worked out now. Skipped (2026-10-29 review): a basket changed since it was classified (the shopper is
-   * back; the hourly scan closes that row), a customer who has ordered since, and anything inside the weekly cap.
+   * back; the hourly scan closes that row), a customer who has ordered since (online, or at the counter under their
+   * number), and anything inside the weekly cap.
    * itemCount 0 = nothing purchasable left (the caller records it, nothing is sent).
    */
   async findDue(input: { classifiedBefore: Date; classifiedAfter: Date; noReminderSince: Date; limit: number }): Promise<BasketReminderCandidate[]> {
@@ -111,6 +112,7 @@ export class DrizzleAbandonmentRepository implements IAbandonmentRepository, IBa
              coalesce(live.n, 0) as "itemCount", coalesce(live.names, '{}') as "itemNames", a.classified_at as "classifiedAt"
       from cart_abandonments a
       join carts c on c.id = a.cart_id
+      left join users u on u.id::text = a.owner_id
       left join lateral (
         select count(*)::int as n, (array_agg(p.name order by ci.quantity desc, p.name))[1:2] as names
         from cart_items ci join products p on p.id = ci.product_id
@@ -119,7 +121,12 @@ export class DrizzleAbandonmentRepository implements IAbandonmentRepository, IBa
       where a.status = 'OPEN' and a.owner_kind = 'USER' and a.owner_id is not null and a.reminded_at is null
         and a.classified_at <= ${input.classifiedBefore} and a.classified_at >= ${input.classifiedAfter}
         and c.updated_at <= a.last_activity_at + ${UNCHANGED_SLACK}
-        and not exists (select 1 from orders o where o.user_id::text = a.owner_id and o.created_at > a.last_activity_at)
+        -- No order since: their own online order, or one staff recorded at the counter or by phone under their number
+        -- (no account on it; matched on the last nine digits, the expression orders_phone_last9_idx indexes).
+        and not exists (select 1 from orders o where o.created_at > a.last_activity_at
+          and (o.user_id::text = a.owner_id
+            or (length(regexp_replace(coalesce(u.phone, ''), '\\D', '', 'g')) >= 9
+                and right(regexp_replace(o.customer_phone, '\\D', '', 'g'), 9) = right(regexp_replace(u.phone, '\\D', '', 'g'), 9))))
         and not exists (select 1 from cart_abandonments b where b.owner_id = a.owner_id and b.reminder_outcome in ('sent', 'sending') and b.reminded_at > ${input.noReminderSince})
       order by a.owner_id, a.classified_at desc
       ) d order by d."classifiedAt", d."abandonmentId"
