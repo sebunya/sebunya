@@ -1291,7 +1291,7 @@ routes.get('/reviews/photos/:id', async (c) => {
   const image = await registry.reviewPhotoUseCases.image(c.req.param('id'));
   if (!image) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No such photo.' } }, 404);
   return c.body(new Uint8Array(image.buffer as ArrayBuffer, image.byteOffset, image.byteLength), 200, {
-    'Content-Type': 'image/jpeg', 'Content-Length': String(image.byteLength), 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff',
+    'Content-Type': 'image/jpeg', 'Content-Length': String(image.byteLength), 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff',
   });
 });
 

@@ -12,7 +12,8 @@ export interface ProcessedGiftCardPhoto {
  * only a fault (a bug, the machine) throws.
  */
 export interface IGiftCardPhotoProcessor {
-  process(input: Buffer): Promise<
+  /** `whole`: keep the photo's own frame (a review photo) instead of centring it to a square (a card photo). */
+  process(input: Buffer, options?: { whole?: boolean }): Promise<
     | ({ ok: true } & ProcessedGiftCardPhoto)
     | { ok: false; reason: Extract<GiftCardPhotoRefusal, 'not_an_image' | 'too_small' | 'too_large' | 'too_detailed' | 'unavailable'> }
   >;

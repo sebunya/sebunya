@@ -236,8 +236,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const path = context.url.pathname;
   // Machine endpoints (/mcp, /.well-known/*) are not pages: no analytics visitor
   // cookie and no page Link headers on their responses.
+  // Review photos (/review-photo/<id>, and the admin copy) have no extension but are images: each one ran the whole
+  // page work (identity lookup, cookies, basket, delivery place), up to 18 per product page (2026-10-29).
   const isDocument =
     !path.startsWith("/api/") && !path.startsWith("/_astro/") && !path.startsWith("/.well-known/") && path !== "/mcp" &&
+    !path.startsWith("/review-photo/") && !path.startsWith("/admin/review-photo/") &&
     !/\.[A-Za-z0-9]{2,8}$/.test(path);
 
   // The analytics visitor id (`_fp_cid`, GA's client_id) is set by the SERVER

@@ -15,13 +15,14 @@ const ids = ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', 'aaaaaaaa-aaaa-4aaa-8aaa-aa
 const NOW = new Date('2026-10-25T12:00:00Z');
 
 function fakePhotoRepo() {
-  const photos: Array<{ id: string; reviewId: string | null; uploaderKey: string | null; createdAt: Date; published: boolean }> = [];
+  const photos: Array<{ id: string; reviewId: string | null; uploaderKey: string | null; createdAt: Date; published: boolean; rejectedAt?: Date }> = [];
   const repo: IReviewPhotoRepository = {
     async save(_p, uploaderKey) { const id = ids[photos.length] ?? `bbbbbbbb-bbbb-4bbb-8bbb-${String(photos.length).padStart(12, '0')}`; photos.push({ id, reviewId: null, uploaderKey, createdAt: NOW, published: false }); return id; },
     async countSince(since, uploaderKey) { return photos.filter((p) => p.createdAt > since && (!uploaderKey || p.uploaderKey === uploaderKey)).length; },
     async attach(reviewId, photoIds, claimableAfter, now, max) { let n = 0; for (const p of photos) if (n < max && photoIds.includes(p.id) && !p.reviewId && p.createdAt > claimableAfter) { p.reviewId = reviewId; n++; void now; } return n; },
     async image(id, includeUnpublished) { const p = photos.find((x) => x.id === id && x.reviewId); return p && (p.published || includeUnpublished) ? Buffer.from('jpeg') : null; },
     async deleteUnattachedBefore(before) { const n = photos.filter((p) => !p.reviewId && p.createdAt < before).length; for (let i = photos.length - 1; i >= 0; i--) if (!photos[i].reviewId && photos[i].createdAt < before) photos.splice(i, 1); return n; },
+    async deleteOfRejectedBefore(before) { let n = 0; for (let i = photos.length - 1; i >= 0; i--) if (photos[i].rejectedAt && photos[i].rejectedAt! < before) { photos.splice(i, 1); n++; } return n; },
   };
   return { repo, photos };
 }
@@ -61,6 +62,27 @@ describe('review photos', () => {
     await uc.attach('rev-1', [ids[0]], NOW);
     expect(await uc.sweep(new Date(NOW.getTime() + 3 * 86_400_000))).toBe(1);
     expect(photos.map((p) => p.id)).toEqual([ids[0]]);
+  });
+
+  it('a rejected review keeps its photos for 30 days (moderation can be reversed), then they go', async () => {
+    const { repo, photos } = fakePhotoRepo();
+    const seen: string[] = [];
+    const uc = new ReviewPhotoUseCases(repo, processor, (raw) => raw, (e) => { seen.push(e); });
+    await uc.upload(Buffer.from('a real photo file'), 'v1', NOW);
+    await uc.attach('rev-1', [ids[0]], NOW);
+    photos[0].rejectedAt = NOW;
+    expect(await uc.sweep(new Date(NOW.getTime() + 29 * 86_400_000))).toBe(0);
+    expect(await uc.sweep(new Date(NOW.getTime() + 31 * 86_400_000))).toBe(1);
+    expect(photos).toHaveLength(0);
+  });
+
+  it('review photos keep their whole frame; served for an hour, outside the page middleware, swept on their own', () => {
+    const read = (f: string) => fs.readFileSync(path.resolve(__dirname, '../..', f), 'utf8');
+    expect(read('apps/api/src/application/use-cases/reviews/ReviewPhotoUseCases.ts')).toContain('this.processor.process(bytes, { whole: true })');
+    expect(read('apps/web/src/pages/review-photo/[id].ts')).toContain("'Cache-Control': 'public, max-age=3600'");
+    expect(read('apps/web/src/middleware.ts')).toContain('!path.startsWith("/review-photo/") && !path.startsWith("/admin/review-photo/")');
+    const ticker = read('apps/api/src/infrastructure/scheduler/PaymentReconcileTicker.ts');
+    expect(ticker).toMatch(/try \{[^}]*reviewPhotoUseCases\.sweep\(new Date\(\)\);\s*\} catch \(error\) \{\s*logger\.error\(\{ err: error \}, '\[review-photo\] sweep failed'\)/);
   });
 
   it('the review submission attaches the photos it was given and still succeeds when attaching fails', async () => {

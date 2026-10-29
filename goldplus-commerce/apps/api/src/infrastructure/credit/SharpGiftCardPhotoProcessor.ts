@@ -53,7 +53,7 @@ export function takingTurns(max: number) {
 const inTurn = takingTurns(2);
 
 export class SharpGiftCardPhotoProcessor implements IGiftCardPhotoProcessor {
-  async process(input: Buffer): ReturnType<IGiftCardPhotoProcessor['process']> {
+  async process(input: Buffer, options: { whole?: boolean } = {}): ReturnType<IGiftCardPhotoProcessor['process']> {
     let sharp: Sharp;
     try { sharp = await loadSharp(); } catch { loaded = null; return { ok: false, reason: 'unavailable' }; }
     return inTurn(async () => {
@@ -66,11 +66,18 @@ export class SharpGiftCardPhotoProcessor implements IGiftCardPhotoProcessor {
 
       // Decode once: oriented, centred and sized, as raw pixels; then encode, stepping down in quality only if needed.
       const side = Math.min(GIFT_CARD_PHOTO_MAX_SIDE, meta.width, meta.height);
+      // A review photo keeps its whole frame within the same box (a buyer's photo of what arrived is rarely square, and
+      // a centre square cut the edges off: 2026-10-29). A card photo, and a frame so narrow that its short side would fall
+      // under the minimum the table allows, is centred to a square. Width and height swap under rotation; min/max do not.
+      const scale = Math.min(1, GIFT_CARD_PHOTO_MAX_SIDE / Math.max(meta.width, meta.height));
+      const whole = options.whole === true && Math.min(meta.width, meta.height) * scale >= GIFT_CARD_PHOTO_MIN_SIDE + 1;
       let raw;
       try {
         raw = await sharp(input, { limitInputPixels: GIFT_CARD_PHOTO_MAX_INPUT_PIXELS, failOn: 'error' })
           .rotate() // honour the phone's orientation, then forget it
-          .resize(side, side, { fit: 'cover', position: 'centre' })
+          .resize(whole
+            ? { width: GIFT_CARD_PHOTO_MAX_SIDE, height: GIFT_CARD_PHOTO_MAX_SIDE, fit: 'inside', withoutEnlargement: true }
+            : { width: side, height: side, fit: 'cover', position: 'centre' })
           .flatten({ background: '#ffffff' }) // a transparent PNG becomes white, as the phone's cropper makes it
           .raw()
           .toBuffer({ resolveWithObject: true });
