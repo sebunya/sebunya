@@ -88,8 +88,37 @@ routes.post('/questions/:id/answer', requirePermissions([PERMISSIONS.REVIEWS_MOD
     if (result.reason === 'ALREADY') return bad(c, 'ALREADY_ANSWERED', 'That question already has an answer.', 409);
     return bad(c, 'BAD_ANSWER', 'Write the answer in 2 to 1,500 characters.');
   }
-  await new CreateAuditLogUseCase(registry.auditRepo).execute({ actorId: (c.get('user') as any).id, action: 'PRODUCT_QUESTION_ANSWERED', entity: 'product_question', entityId: id, newState: { status: 'answered', notified: result.notified } });
-  return ok(c, { status: 'answered', notified: result.notified });
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({ actorId: (c.get('user') as any).id, action: 'PRODUCT_QUESTION_ANSWERED', entity: 'product_question', entityId: id, newState: { status: 'answered', notified: result.notified, notice: result.notice } });
+  return ok(c, { status: 'answered', notified: result.notified, notice: result.notice });
+});
+// A published answer corrected (stale price or stock, a typo). Not sent again; the audit keeps both wordings.
+routes.post('/questions/:id/edit', requirePermissions([PERMISSIONS.REVIEWS_MODERATE]), async (c) => {
+  const id = String(c.req.param('id'));
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const actorId = (c.get('user') as any).id;
+  const result = await registry.answerProductQuestionUseCase.edit({ id, answer: body?.answer, editedBy: actorId });
+  if (!result.ok) {
+    if (result.reason === 'NOT_FOUND') return bad(c, 'NOT_FOUND', 'Question not found.', 404);
+    if (result.reason === 'NOT_ANSWERED') return bad(c, 'NOT_ANSWERED', 'Only a published answer can be corrected.', 409);
+    return bad(c, 'BAD_ANSWER', 'Write the answer in 2 to 1,500 characters.');
+  }
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({ actorId, action: 'PRODUCT_QUESTION_ANSWER_EDITED', entity: 'product_question', entityId: id, previousState: { answer: result.previous }, newState: { answer: String(body?.answer ?? '').trim() } });
+  return ok(c, { status: 'answered', edited: true });
+});
+// The answer sent to the asker when the first try could not be queued (never a second copy: the message key).
+routes.post('/questions/:id/resend', requirePermissions([PERMISSIONS.REVIEWS_MODERATE]), async (c) => {
+  const id = String(c.req.param('id'));
+  const registry = Registry.getInstance();
+  const result = await registry.answerProductQuestionUseCase.resend(id);
+  if (!result.ok) {
+    if (result.reason === 'NOT_FOUND') return bad(c, 'NOT_FOUND', 'Question not found.', 404);
+    if (result.reason === 'NOT_ANSWERED') return bad(c, 'NOT_ANSWERED', 'Answer the question first.', 409);
+    if (result.reason === 'NO_CONTACT') return bad(c, 'NO_CONTACT', 'The asker left no phone or email.', 409);
+    return bad(c, 'ALREADY_SENT', 'The answer was already sent to the asker.', 409);
+  }
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({ actorId: (c.get('user') as any).id, action: 'PRODUCT_QUESTION_ANSWER_RESENT', entity: 'product_question', entityId: id, newState: { notice: result.notice } });
+  return ok(c, { notice: result.notice });
 });
 routes.post('/questions/:id/reject', requirePermissions([PERMISSIONS.REVIEWS_MODERATE]), async (c) => {
   const id = String(c.req.param('id'));

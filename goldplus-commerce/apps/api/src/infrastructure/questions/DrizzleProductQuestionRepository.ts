@@ -7,7 +7,7 @@ import { REMOVED_TEXT } from '../../domain/first-party/PrivacyRequests';
 
 const row = (r: typeof productQuestions.$inferSelect & { productName?: string | null; productSlug?: string | null }): ProductQuestionRow => ({
   id: r.id, productId: r.productId, askerName: r.askerName, askerPhone: r.askerPhone, askerEmail: r.askerEmail, question: r.question,
-  status: r.status as QuestionStatus, answer: r.answer, answeredAt: r.answeredAt, createdAt: r.createdAt, productName: r.productName ?? null, productSlug: r.productSlug ?? null,
+  status: r.status as QuestionStatus, answer: r.answer, answeredAt: r.answeredAt, createdAt: r.createdAt, notifiedAt: r.notifiedAt ?? null, productName: r.productName ?? null, productSlug: r.productSlug ?? null,
 });
 
 export class DrizzleProductQuestionRepository implements IProductQuestionRepository {
@@ -61,6 +61,12 @@ export class DrizzleProductQuestionRepository implements IProductQuestionReposit
   async answer(input: { id: string; answer: string; answeredBy: string; now: Date }) {
     const r = await db.update(productQuestions).set({ status: 'answered', answer: input.answer, answeredBy: input.answeredBy, answeredAt: input.now, updatedAt: input.now })
       .where(and(eq(productQuestions.id, input.id), sql`${productQuestions.status} <> 'answered'`)).returning({ id: productQuestions.id });
+    return r.length > 0;
+  }
+
+  async updateAnswer(input: { id: string; answer: string; by: string; now: Date }) {
+    const r = await db.update(productQuestions).set({ answer: input.answer, answeredBy: input.by, answeredAt: input.now, updatedAt: input.now })
+      .where(and(eq(productQuestions.id, input.id), eq(productQuestions.status, 'answered'))).returning({ id: productQuestions.id });
     return r.length > 0;
   }
 
