@@ -370,8 +370,11 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
       // up to 320 characters of answer: four parts, nine with one emoji (2026-10-29).
       return `${SHOP_NAME}: your question about ${smsName(d.productName)}. Our answer: ${smsCut(String(d.questionAnswer ?? ''), 150)}${d.productUrl ? ` Full answer: ${d.productUrl}` : ` Questions? Call ${phone}.`}`;
     case 'BASKET_REMINDER':
-      // Marketing, by the customer's own tick: short, names what they left, and says where to stop these.
-      return `${SHOP_NAME}: you left ${d.basketItems ?? 'some items'} in your basket. It is still here: ${d.basketUrl ?? `${publicBaseUrl()}/cart`} To stop basket reminders: ${d.preferencesUrl ?? `${publicBaseUrl()}/account/preferences`}`;
+      // Marketing, by the customer's own tick: names what they left, says the basket is saved on their account (a
+      // signed-out phone is asked to sign in, not shown an empty basket) and how to stop these texts. The names are
+      // folded to plain GSM and cut, so the text stays at two parts: "It is still here" with two long names and one
+      // curly quote was billed as five Unicode parts, and was wrong on a phone that was not signed in (2026-10-29).
+      return `${SHOP_NAME}: you left ${smsCut(String(d.basketItems ?? 'some items'), 110)} in your basket. It is saved on your account: ${d.basketUrl ?? `${publicBaseUrl()}/cart`} To stop these texts: ${d.preferencesUrl ?? `${publicBaseUrl()}/account/preferences`}`;
     case 'SUPPORT_REQUEST_RECEIVED':
       return `${SHOP_NAME}: we have your request${d.reference ? ` (ref ${d.reference})` : ''}. Our team will call you on this number. Need us sooner? Call ${phone}.`;
     case 'QUOTE_REQUEST_RECEIVED':

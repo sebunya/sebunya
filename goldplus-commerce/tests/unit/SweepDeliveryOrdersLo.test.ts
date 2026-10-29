@@ -252,9 +252,9 @@ describe('support and quote acknowledgements reach the customer (router fall-thr
 
   it('every event type the Registry hands to a customer notifier routes somewhere (none is silently retired)', async () => {
     // The question messages (0208) and the basket reminder (0210) were enqueued with no case here: the outbox marked
-    // each "No channel mapping" and nothing was sent (2026-10-29). BASKET_REMINDER stays unrouted on purpose until its
-    // consent and per-customer cap rules are fixed (docs: PR #191); remove it from this list when it is routed.
-    const DELIBERATELY_UNROUTED = new Set(['BASKET_REMINDER']);
+    // each "No channel mapping" and nothing was sent (2026-10-29). All are routed now (the reminder after its consent,
+    // cap and send-time fixes); an event type added here with no route fails this test.
+    const DELIBERATELY_UNROUTED = new Set<string>();
     const registry = readFileSync(resolve(__dirname, '../../apps/api/src/infrastructure/Registry.ts'), 'utf8');
     const types = new Set<string>();
     for (const m of registry.matchAll(/(customerOutboxNotifier\.enqueue|sendPublicFormAcknowledgementUseCase\.execute)\(\{[\s\S]{0,400}?eventType: '([A-Z_]+)'/g)) types.add(m[2]);

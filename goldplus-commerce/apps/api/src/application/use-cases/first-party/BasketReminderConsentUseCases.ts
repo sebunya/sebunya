@@ -133,12 +133,23 @@ export class BasketReminderConsentUseCases implements IBasketReminderGate {
       ? (await this.evidence.latestFor(row.last_consent_event_id))?.endpointHash ?? null
       : null;
     const gate = mayReceiveBasketReminder({ state: row?.state ?? null, consentedPhoneHash, currentPhoneHash: phone ? this.hasher.hash(phone) : null });
-    if (gate.allowed && this.consent.hasActiveChannelSuppression) {
+    if (!gate.allowed || !account || !phone) return { ...gate, phoneE164: null };
+    // Only a number known to reach its owner, on an account still open (checked after the consent, so a customer who
+    // never ticked the box reads "not opted in", not "unverified"). The box can be ticked at sign-up, where the number
+    // is only typed: a mistyped or borrowed one would be texted a stranger's basket every week (2026-10-29 review).
+    // Known = verified by code, or an order of this account was delivered to it (the rider reached them there). Phone
+    // verification is offered only while the loyalty programme pays for it, so a code alone would have stopped every
+    // reminder. The tick is kept either way; the texts start once the number is known.
+    if (account.isActive === false) return { allowed: false, reason: 'ACCOUNT_INACTIVE', phoneE164: null };
+    if (!account.phoneVerified && !(await this.accounts.phoneReachedByOrder?.(userId, phone).catch(() => false))) {
+      return { allowed: false, reason: 'PHONE_NOT_VERIFIED', phoneE164: null };
+    }
+    if (this.consent.hasActiveChannelSuppression) {
       const refs = [keyFor(userId).endpoint_ref, ...(phone ? [`phone:${phone}`] : [])];
       if (await this.consent.hasActiveChannelSuppression(refs, BASKET_REMINDERS_CHANNEL, BASKET_REMINDERS_PURPOSE)) {
         return { allowed: false, reason: 'SUPPRESSED', phoneE164: null };
       }
     }
-    return { ...gate, phoneE164: gate.allowed ? phone : null };
+    return { ...gate, phoneE164: phone };
   }
 }

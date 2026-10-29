@@ -187,11 +187,26 @@ export const KNOWN_TEMPLATE_CLASSES: ReadonlyArray<{ template: string; messageCl
 ];
 
 /**
- * 0210: a MARKETING message sent on the customer's own recorded consent carries `consent: { granted: true }` in its
- * payload (CustomerOutboxNotifier). True only for that exact shape; anything else is undefined, so the governance
- * falls back to the class rule (marketing without a recorded consent is blocked).
+ * The marketing templates allowed to carry their own recorded consent, the purpose it must name, and the channels it
+ * covers. A consent marker in a payload lifts the marketing block ONLY for an exact match here: any template naming
+ * any purpose used to pass, on SMS and email alike, which reversed this file's rule that classification never comes
+ * from payload data a caller could influence (2026-10-29 review).
  */
-export function consentGrantedIn(data: Record<string, unknown> | null | undefined): true | undefined {
+const CONSENT_MARKERS: Readonly<Record<string, { purpose: string; channels: readonly string[] }>> = {
+  BASKET_REMINDER: { purpose: 'basket_reminders', channels: ['sms'] },
+};
+
+/**
+ * 0210: a MARKETING message sent on the customer's own recorded consent carries `consent: { purpose, granted: true }`
+ * in its payload (CustomerOutboxNotifier). True only when the template, the purpose and the channel are on the
+ * allowlist above; anything else is undefined, so the governance falls back to the class rule (marketing without a
+ * recorded consent is blocked).
+ */
+export function consentGrantedIn(data: Record<string, unknown> | null | undefined, template?: string | null, channel?: 'sms' | 'email' | 'whatsapp'): true | undefined {
   const c = data && typeof data === 'object' ? (data as { consent?: unknown }).consent : undefined;
-  return c && typeof c === 'object' && (c as { granted?: unknown }).granted === true && typeof (c as { purpose?: unknown }).purpose === 'string' ? true : undefined;
+  if (!c || typeof c !== 'object' || (c as { granted?: unknown }).granted !== true) return undefined;
+  const rule = template ? CONSENT_MARKERS[template] : undefined;
+  if (!rule || (c as { purpose?: unknown }).purpose !== rule.purpose) return undefined;
+  if (!channel || !rule.channels.includes(channel)) return undefined;
+  return true;
 }

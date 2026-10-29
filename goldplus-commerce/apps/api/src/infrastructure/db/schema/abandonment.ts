@@ -20,7 +20,7 @@ export const cartAbandonments = pgTable(
     itemCount: integer('item_count').notNull(),
     subtotalUgx: bigint('subtotal_ugx', { mode: 'number' }).notNull(),
     reason: varchar('reason', { length: 30 }).default('STALE_TIMEOUT').notNull(),
-    status: varchar('status', { length: 12 }).default('OPEN').notNull(), // OPEN | EXPIRED | RECOVERED
+    status: varchar('status', { length: 12 }).default('OPEN').notNull(), // OPEN | EXPIRED | RECOVERED | RESUMED (2026-10-29: the shopper came back)
     classifiedAt: timestamp('classified_at', { withTimezone: true }).defaultNow().notNull(),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull(),

@@ -93,7 +93,7 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
       messageClass: classifyMessage(payload),
       recipientClass: recipientAllowlisted ? 'TEST' : 'CUSTOMER',
       // 0210: consent recorded by the sender (a basket reminder the customer ticked for). Absent = the class decides.
-      consentGranted: consentGrantedIn(payload.data),
+      consentGranted: consentGrantedIn(payload.data, payload.template, 'sms'),
       // The credential check moves INTO the decision so an unconfigured provider is
       // reported by the same vocabulary as every other block, in the right order.
       providerConfigured: Boolean(username && apiKey && senderId),

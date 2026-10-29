@@ -28,7 +28,15 @@ export class DrizzleAccountIdentityReader implements IAccountIdentityReader {
     const [row] = await db.select({ id: users.id, email: users.email, phone: users.phone, phoneVerifiedAt: users.phoneVerifiedAt, isActive: users.isActive })
       .from(users).where(eq(users.id, userId)).limit(1);
     if (!row) return null;
-    return { id: row.id, email: row.email ?? null, phone: row.phone ?? null, phoneVerified: !!row.phoneVerifiedAt };
+    return { id: row.id, email: row.email ?? null, phone: row.phone ?? null, phoneVerified: !!row.phoneVerifiedAt, isActive: row.isActive !== false };
+  }
+
+  async phoneReachedByOrder(userId: string, phoneE164: string): Promise<boolean> {
+    const digits = phoneE164.replace(/\D/g, '').slice(-9);
+    if (!/^[0-9a-f-]{36}$/i.test(userId) || digits.length !== 9) return false;
+    const found = await db.execute(sql`select 1 from orders where user_id = ${userId}::uuid and status in ('delivered', 'completed')
+      and right(regexp_replace(coalesce(customer_phone, ''), '\\D', '', 'g'), 9) = ${digits} limit 1`);
+    return (Array.isArray(found) ? found : ((found as { rows?: unknown[] }).rows ?? [])).length > 0;
   }
 }
 

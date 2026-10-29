@@ -2,7 +2,7 @@ import { RedisFailureLockout } from './security/RedisFailureLockout';
 import { ReholdStockOnLatePaymentUseCase } from '../application/use-cases/payments/ReholdStockOnLatePaymentUseCase';
 import { cancelRefundUpdate } from '../application/notifications/CustomerMessages';
 import './logging/appLoggerBinding';
-import { PERMISSIONS as SHARED_PERMISSIONS, toEatParts, DEFAULT_BUSINESS_INFO } from '@goldplus/shared';
+import { PERMISSIONS as SHARED_PERMISSIONS, toEatParts, DEFAULT_BUSINESS_INFO, tagShopUrl } from '@goldplus/shared';
 import { MeasurementOperationsUseCases } from '../application/use-cases/measurement/MeasurementOperationsUseCases';
 import { CollectBrowserBatchUseCase } from '../application/use-cases/telemetry/CollectBrowserBatchUseCase';
 import { DrizzleCollectorStore } from './db/repositories/DrizzleCollectorStore';
@@ -309,7 +309,7 @@ import { MetaWhatsAppTemplateCatalog, markWhatsAppDeliveryFailed } from './notif
 import { ZeptoMailAdapter } from './notifications/zeptomail/ZeptoMailAdapter';
 import { DisabledSmsAdapter } from './notifications/sms/DisabledSmsAdapter';
 import { PahappaCommsSmsAdapter } from './notifications/sms/PahappaCommsSmsAdapter';
-import { DefaultNotificationRouter } from './notifications/NotificationRouter';
+import { DefaultNotificationRouter, basketRemindersEnabled } from './notifications/NotificationRouter';
 
 import { ProductSignalExtractor } from '../application/recommendations/ProductSignalExtractor';
 import { CompatibilityRuleService } from '../application/recommendations/CompatibilityRuleService';
@@ -2349,19 +2349,26 @@ export class Registry {
   public readonly sendBasketRemindersUseCase = new SendBasketRemindersUseCase(
     this.abandonmentRepo,
     this.basketReminderConsentUseCases,
-    async (c, phoneE164) => {
+    async (c, phoneE164, sendBy) => {
       await this.customerOutboxNotifier.enqueue({
         eventType: 'BASKET_REMINDER',
         template: 'BASKET_REMINDER',
         customerPhone: phoneE164,
-        data: { basketItems: basketItemsWords(c.itemNames, c.itemCount), basketUrl: `${publicBaseUrl()}/cart`, preferencesUrl: `${publicBaseUrl()}/account/preferences`, subtotalUgx: c.subtotalUgx },
+        // The basket link is tagged here, always (ch=s.basket: GA4 and our touches file the visit as a basket reminder,
+        // not "sms / link"; the SMS adapter tags links only when the tag costs no extra part). The cart page also reads
+        // it: a signed-out phone is told its basket is saved on the account and asked to sign in, not shown "empty".
+        // notAfter: the router drops a reminder not out by then (NotificationRouter, basketReminderSendRefusal).
+        data: { basketItems: basketItemsWords(c.itemNames, c.itemCount), basketUrl: tagShopUrl(`${publicBaseUrl()}/cart`, 's', 'basket'), preferencesUrl: `${publicBaseUrl()}/account/preferences`, notAfter: sendBy.toISOString() },
         idempotencyKey: `basket-reminder:${c.abandonmentId}`,
         relatedEntity: 'cart',
         relatedEntityId: c.cartId,
         consent: { purpose: 'basket_reminders', granted: true },
       });
     },
-    () => (process.env.BASKET_REMINDERS || '').trim().toLowerCase() !== 'off',
+    () => basketRemindersEnabled(),
+    // The abandoned-basket programme's holdout (MeasurementConfig: 10% by default), as review and mission messages.
+    async (c) => this.holdoutGate.decide({ programme: 'abandoned_basket', subjectRef: c.abandonmentId, userId: c.userId, channel: 'sms' }),
+    (event, detail) => logger.warn(detail, `[basket-reminders] ${event}`),
   );
   /** The one review reminder per order, a few days after delivery or collection. */
   public readonly sendReviewRemindersUseCase = new SendReviewRemindersUseCase(

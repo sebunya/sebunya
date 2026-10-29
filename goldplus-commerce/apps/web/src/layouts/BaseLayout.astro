@@ -163,16 +163,17 @@ const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, 
         so setting the id alone would have shipped a loader aimed at nothing. */}
     {/* Microsoft Clarity (heatmaps, session recordings): only with a project id,
         never for robots, our probes or staff (same gate as the GA4 tag). Clarity masks typed input by default; checkout and
-        account pages are masked entirely (data-clarity-mask on <body>). */}
+        account pages are masked entirely (data-clarity-mask on <body>).
+        Clarity records the address itself, and masking never applies to it: a gift card's spendable code rides
+        the #fragment of its text link (stripped only once the page's own script runs), and order references,
+        tokens and codes ride query strings. Such a visit is not recorded at all (same list GA4 redacts).
+        Our own share token (#s=<6>, the tag loader's dark-social marker) is random and nobody's: not a secret.
+        (Notes here, not in the script: inline scripts ship as written.) */}
     {clarityId && (
       <script nonce={Astro.locals.cspNonce} define:vars={{ clarityId, bots: arrivalRules.bots, red: arrivalRules.red, share: arrivalRules.share.frag }}>
         (function () {
           if (navigator.webdriver === true || new RegExp(bots, 'i').test(navigator.userAgent || '')
             || /(?:^|; )(?:gp_probe|gp_staff)=/.test(document.cookie)) return;
-          // Clarity records the address itself, and masking never applies to it: a gift card's spendable code rides
-          // the #fragment of its text link (stripped only once the page's own script runs), and order references,
-          // tokens and codes ride query strings. Such a visit is not recorded at all (same list GA4 redacts).
-          // Our own share token (#s=<6>, the tag loader's dark-social marker) is random and nobody's: not a secret.
           var secret = location.hash.length > 1 && !new RegExp(share).test(location.hash), rx = new RegExp(red, 'i');
           new URLSearchParams(location.search).forEach(function (v, k) { if (rx.test(k)) secret = true; });
           if (secret) return;

@@ -22,7 +22,11 @@ Placeholders in `{braces}` stay exactly as they are. Prices stay as "UGX 45,000"
 | sms.delivered | {shop}: your order {ref} has been delivered. Thank you. How was it? | {shop}: oda yo {ref} etuuse. Webale nnyo. Yali etya? | |
 | sms.payment_reminder | {shop}: your order {ref} for {due} is saved but not paid yet. Pay here: {track} If you already paid, do not pay again. | {shop}: oda yo {ref} eya {due} ekuumiddwa naye tennasasulwa. Sasula wano: {track} Bw'oba wasasula dda, tosasula nate. | |
 | sms.otp | Your {shop} code is {code}. It expires in {min} minutes. Never share this code with anyone. | Koodi yo eya {shop} ye {code}. Eggwaako mu ddakiika {min}. Togiwa muntu yenna. | |
-| sms.basket_reminder | {shop}: you left {items} in your basket. It is still here: {url} | {shop}: walekayo {items} mu kibbo kyo. Kikyali wano: {url} | |
+| sms.basket_reminder | {shop}: you left {items} in your basket. It is saved on your account: {url} To stop these texts: {prefs} | {shop}: walekayo {items} mu kibbo kyo. Kikuumiddwa ku akawunti yo: {url} Okulekera awo obubaka buno: {prefs} | |
+
+Changed 2026-10-29: `sms.basket_reminder` now says the basket is saved on the account (a phone that is not signed in
+is asked to sign in) and ends with how to stop these texts. The stop line is required in every language: a reminder is
+a marketing text. The two new Luganda phrases need the reviewer's check like every other line.
 
 ## How it goes live once reviewed
 

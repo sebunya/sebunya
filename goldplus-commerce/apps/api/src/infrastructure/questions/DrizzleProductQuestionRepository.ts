@@ -3,6 +3,7 @@ import { db } from '../db/client';
 import { productQuestions } from '../db/schema/questions';
 import { products } from '../db/schema/products';
 import type { IProductQuestionRepository, ProductQuestionRow, PublicQuestion, QuestionStatus } from '../../application/use-cases/questions/ProductQuestionUseCases';
+import { REMOVED_TEXT } from '../../domain/first-party/PrivacyRequests';
 
 const row = (r: typeof productQuestions.$inferSelect & { productName?: string | null; productSlug?: string | null }): ProductQuestionRow => ({
   id: r.id, productId: r.productId, askerName: r.askerName, askerPhone: r.askerPhone, askerEmail: r.askerEmail, question: r.question,
@@ -33,7 +34,8 @@ export class DrizzleProductQuestionRepository implements IProductQuestionReposit
   async listAnswered(productId: string, limit: number): Promise<PublicQuestion[]> {
     const rows = await db.select().from(productQuestions).where(and(eq(productQuestions.productId, productId), eq(productQuestions.status, 'answered')))
       .orderBy(desc(productQuestions.answeredAt)).limit(limit);
-    return rows.filter((r) => r.answer && r.answeredAt).map((r) => ({ id: r.id, askerName: r.askerName, question: r.question, answer: r.answer as string, answeredAt: (r.answeredAt as Date).toISOString() }));
+    // An asker erased at their request (DrizzlePersonalDataEraser) is shown as "a customer", not as the removal notice.
+    return rows.filter((r) => r.answer && r.answeredAt).map((r) => ({ id: r.id, askerName: r.askerName === REMOVED_TEXT ? 'a customer' : r.askerName, question: r.question, answer: r.answer as string, answeredAt: (r.answeredAt as Date).toISOString() }));
   }
 
   async listByStatus(status: QuestionStatus, limit: number) {

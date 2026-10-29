@@ -5,6 +5,12 @@ import { paidOrderAlertText } from '../../domain/fulfilment/PaidOrderAlert';
 import { IAutomationActionRepository } from '../../application/ports/IAutomationActionRepository';
 import { AutomationOutcomeTrackingProvider } from '../automation/AutomationOutcomeTrackingProvider';
 import { toRelatedEntityId } from '../../domain/notifications/RelatedEntityId';
+import { basketReminderSendRefusal } from '../../application/use-cases/abandonment/SendBasketRemindersUseCase';
+
+/** BASKET_REMINDERS=off stops basket reminders, the queued ones included, without a deploy. On unless switched off. */
+export function basketRemindersEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return (env.BASKET_REMINDERS || '').trim().toLowerCase() !== 'off';
+}
 
 export class DefaultNotificationRouter implements INotificationRouter {
   constructor(
@@ -311,7 +317,7 @@ export class DefaultNotificationRouter implements INotificationRouter {
       //
       // Product questions (0208): the "we have your question" note and the answer itself. Both were enqueued from
       // 2026-10-28 and retired here as "No channel mapping": no asker ever received an answer, while staff were told
-      // it had been sent (found 2026-10-29). BASKET_REMINDER is deliberately NOT routed yet.
+      // it had been sent (found 2026-10-29).
       case 'SUPPORT_REQUEST_RECEIVED':
       case 'QUOTE_REQUEST_RECEIVED':
       case 'DEALER_APPLICATION_RECEIVED':
@@ -349,6 +355,26 @@ export class DefaultNotificationRouter implements INotificationRouter {
             payload: { recipient: customerEmail, template, data: payload, relatedEntity: entity, relatedEntityId },
           });
         }
+        break;
+      }
+
+      // 0210: the basket reminder. Marketing, sent only on the customer's own SMS consent (the gate ran when it was
+      // queued), so SMS only: never WhatsApp (transactional templates only) and never email (not what they ticked).
+      // It was unrouted from 2026-10-28 (retired as "No channel mapping") until its review fixes of 2026-10-29. At
+      // send time it is refused, as a final DISABLED outcome with the reason, when the switch is off, in quiet hours,
+      // or past its send-by time: the outbox retries for hours, and a late reminder is dropped, never delayed.
+      case 'BASKET_REMINDER': {
+        const customerPhone = typeof payload.customerPhone === 'string' ? payload.customerPhone : '';
+        if (!customerPhone) break;
+        const refusal = basketReminderSendRefusal(payload, new Date(), basketRemindersEnabled());
+        const provider: INotificationProvider = refusal
+          ? { dispatch: async () => ({ status: 'DISABLED', providerCode: 'BASKET_REMINDER_REFUSED', providerMessage: refusal, retryable: false }) }
+          : honourDryRun(this.smsProvider, payload.dryRunOnly === true);
+        targets.push({
+          channel: 'sms',
+          provider,
+          payload: { recipient: customerPhone, template: 'BASKET_REMINDER', data: payload, relatedEntity: relatedEntity || 'cart', relatedEntityId },
+        });
         break;
       }
 

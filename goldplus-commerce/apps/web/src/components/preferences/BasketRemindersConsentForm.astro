@@ -40,6 +40,9 @@ const since = status?.since ? new Date(status.since).toLocaleDateString('en-GB',
       {!status.covered && status.coverageReason === 'PHONE_CHANGED_SINCE_OPT_IN' && (
         <p class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Your phone number changed after you said yes, so no reminder goes to the new number unless you switch this off and on again.</p>
       )}
+      {!status.covered && status.coverageReason === 'PHONE_NOT_VERIFIED' && (
+        <p class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">We text basket reminders only to a number we know is yours: one you verified with a code, or one an order of yours was delivered to. Your number is neither yet, so no reminder goes out for now. Your choice is kept.</p>
+      )}
       {!status.covered && status.coverageReason === 'SUPPRESSED' && (
         <p class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">You asked us to stop texting you, so no basket reminders go out. Contact us if that is not what you want.</p>
       )}

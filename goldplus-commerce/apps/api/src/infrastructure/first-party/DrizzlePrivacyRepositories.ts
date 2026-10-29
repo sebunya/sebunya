@@ -298,6 +298,17 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
           or ${plain.phoneDigits.length ? phoneIn(sql.raw('buyer_phone'), plain.phoneDigits) : sql`false`}
           or ${plain.phoneDigits.length ? phoneIn(sql.raw('recipient_phone'), plain.phoneDigits) : sql`false`}
        order by created_at`));
+    // 0208: questions asked on product pages with their proven phone or email (as the erasure finds them).
+    const questions = rows(await db.execute(sql`
+      select q.question, q.status, q.answer, q.created_at, q.answered_at, q.asker_name, q.asker_phone, q.asker_email, p.name as product_name
+        from product_questions q left join products p on p.id = q.product_id
+       where ${plain.phoneDigits.length ? phoneIn(sql.raw('q.asker_phone'), plain.phoneDigits) : sql`false`}
+          or ${plain.emails.length ? emailIn(sql.raw('q.asker_email'), plain.emails) : sql`false`}
+       order by q.created_at`));
+    // 0210: basket reminders about their baskets, and what became of each.
+    const basketReminders = rows(await db.execute(sql`
+      select a.reminded_at, a.reminder_outcome, a.item_count, a.subtotal_ugx from cart_abandonments a
+       where a.owner_kind = 'USER' and a.owner_id = ${userId} and a.reminded_at is not null order by a.reminded_at`));
     const goldieConversations = goldieIds.length ? rows(await db.execute(sql`
       select id, channel, started_at, last_message_at, outcome, csat, contact_name, contact_phone, contact_email from assistant_conversations
       where id in (${uuidList(goldieIds)}) order by started_at`)) : [];
@@ -376,6 +387,11 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
         name: c.contact_name ?? null, phone: c.contact_phone ?? null, email: c.contact_email ?? null,
         messages: goldieMessages.filter((m) => String(m.conversation_id) === String(c.id)).map((m) => ({ from: m.role === 'customer' ? 'you' : m.role === 'team' ? 'GoldPlus team' : 'Goldie', text: m.content, at: iso(m.created_at) })),
       })),
+      productQuestions: questions.map((q) => ({
+        product: q.product_name ?? null, question: q.question, askedAt: iso(q.created_at), name: q.asker_name, phone: q.asker_phone ?? null,
+        email: q.asker_email ?? null, status: q.status, answer: q.answer ?? null, answeredAt: q.answered_at ? iso(q.answered_at) : null,
+      })),
+      basketReminders: basketReminders.map((b) => ({ at: iso(b.reminded_at), outcome: b.reminder_outcome, items: Number(b.item_count), basketValueUgx: Number(b.subtotal_ugx) })),
       goldieFollowUps: goldieTasks.map((t) => ({ kind: t.kind, title: t.title, status: t.status, openedAt: iso(t.created_at), closedAt: t.resolved_at ? iso(t.resolved_at) : null })),
       goldieInterests: goldieInterests.map((i) => ({ topic: i.topic, at: iso(i.captured_at) })),
       quoteRequests: quotes.map((q) => ({
@@ -399,7 +415,7 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
     const counts: Record<string, number> = {
       addresses: addresses.length, orders: orders.length, quoteRequests: quotes.length, batteryRequests: batteryRequests.length,
       loyaltyEntries: loyalty.length, supportRequests: support.length, messages: messages.length, identityRecords: identity.length,
-      giftCards: giftCards.length, giftCardsBoughtOnline: giftPurchases.length,
+      giftCards: giftCards.length, giftCardsBoughtOnline: giftPurchases.length, productQuestions: questions.length, basketReminders: basketReminders.length,
     };
     return { sections, counts };
   }
@@ -418,6 +434,9 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
  *   - quote requests and battery requests matched to the customer: contact removed;
  *   - support tickets: description removed;
  *   - message log and outbox payloads for their orders: recipient removed;
+ *   - product questions asked with their proven phone or email: name and contacts removed (the question and the
+ *     answer stay published, as asked by "a customer"), with the messages that carried them;
+ *   - basket reminders about their baskets: phone, items and wording removed from the queued messages;
  *   - admin-recorded offline sales for their orders: contact hashes removed;
  *   - identity: every contact and browser link of their profile is deleted (the
  *     keys ARE their contact, hashed). Consent-only browser anchors are KEPT:
@@ -623,6 +642,31 @@ export class DrizzlePersonalDataEraser implements IPersonalDataEraser {
              where related_entity = 'gift_card_purchase' and related_entity_id in (${uuidList(purchaseIds)}) and ${OUTBOX_IS_OBJECT}`);
           await exec.execute(sql`update notification_attempts set recipient = 'removed' where related_entity = 'gift_card_purchase' and related_entity_id in (${uuidList(purchaseIds)})`);
         }
+      }
+
+      // 0208: questions they asked on product pages, found by their proven phone or email (a question carries no
+      // account). The question and the shop's answer stay published, shown as asked by "a customer"; their name and
+      // contacts go, and so do the messages that carried them.
+      const questionIds = rows(await exec.execute(sql`
+        select id from product_questions where ${byPhone('asker_phone')} or ${byEmail('asker_email')}`)).map((r) => String(r.id));
+      if (questionIds.length) {
+        counts.productQuestions = affected(await exec.execute(sql`
+          update product_questions set asker_name = ${REMOVED_TEXT}, asker_phone = null, asker_email = null, updated_at = now()
+           where id in (${uuidList(questionIds)})`));
+        await exec.execute(sql`
+          update outbox_events set payload = ${OUTBOX_OBJECT} - 'customerPhone' - 'customerEmail' - 'customerName'
+           where related_entity = 'product_question' and related_entity_id in (${uuidList(questionIds)}) and ${OUTBOX_IS_OBJECT}`);
+        await exec.execute(sql`update notification_attempts set recipient = 'removed' where related_entity = 'product_question' and related_entity_id in (${uuidList(questionIds)})`);
+      }
+
+      // 0210: basket reminders queued or sent to them name what was in their basket, to their phone (a queued one with
+      // no phone is never sent). The abandonment rows hold counts and values only, and stay.
+      const cartIds = rows(await exec.execute(sql`select id from carts where owner_kind = 'USER' and owner_id = ${input.userId}`)).map((r) => String(r.id));
+      if (cartIds.length) {
+        counts.basketReminders = affected(await exec.execute(sql`
+          update outbox_events set payload = ${OUTBOX_OBJECT} - 'customerPhone' - 'customerEmail' - 'customerName' - 'basketItems' - 'message'
+           where event_type = 'BASKET_REMINDER' and related_entity = 'cart' and related_entity_id in (${uuidList(cartIds)}) and ${OUTBOX_IS_OBJECT}`));
+        await exec.execute(sql`update notification_attempts set recipient = 'removed' where related_entity = 'cart' and related_entity_id in (${uuidList(cartIds)})`);
       }
 
       await exec.execute(sql`update privacy_requests set result = ${JSON.stringify({ counts })}::text::jsonb where id = ${input.requestId}::uuid`);

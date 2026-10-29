@@ -25,12 +25,14 @@ export interface AbandonmentCandidate {
 export interface AbandonmentRecord {
   id: string;
   cartId: string;
-  status: 'OPEN' | 'EXPIRED' | 'RECOVERED';
+  status: 'OPEN' | 'EXPIRED' | 'RECOVERED' | 'RESUMED';
   reason: string;
   itemCount: number;
   subtotalUgx: number;
   classifiedAt: Date;
   lastActivityAt: Date;
+  /** 0210: what became of the basket reminder (sent, or why not); null = none was due. */
+  reminderOutcome?: string | null;
 }
 
 export interface IAbandonmentRepository {
@@ -39,7 +41,9 @@ export interface IAbandonmentRepository {
   createOpen(candidate: AbandonmentCandidate): Promise<AbandonmentRecord | null>;
   /** OPEN rows whose cart has passed its expiry → EXPIRED. Returns count. */
   expireOverdue(now: Date): Promise<number>;
-  summary(): Promise<{ open: number; expired: number; recovered: number; last24h: number }>;
+  /** OPEN rows whose cart changed after it was classified → RESUMED (the shopper came back). Returns count. */
+  resumeChanged(now: Date): Promise<number>;
+  summary(): Promise<{ open: number; expired: number; recovered: number; resumed: number; remindersSent7d: number; last24h: number }>;
   recent(limit: number): Promise<AbandonmentRecord[]>;
 }
 
@@ -58,8 +62,11 @@ export class AbandonmentUseCase {
   ) {}
 
   /** Hourly scan: classify new abandonments, expire overdue ones. */
-  async scan(): Promise<{ classified: number; expired: number }> {
+  async scan(): Promise<{ classified: number; expired: number; resumed: number }> {
     const now = this.now();
+    // First, close the idle periods that ended: a basket touched since it was classified is no longer abandoned, and
+    // its next idle period needs a row of its own (one OPEN row per cart).
+    const resumed = await this.repo.resumeChanged(now);
     const staleBefore = new Date(now.getTime() - ABANDONMENT_STALE_HOURS * 3600_000);
     const candidates = await this.repo.findNewlyAbandoned(staleBefore, 500, now);
     let classified = 0;
@@ -72,7 +79,7 @@ export class AbandonmentUseCase {
       }
     }
     const expired = await this.repo.expireOverdue(now);
-    return { classified, expired };
+    return { classified, expired, resumed };
   }
 
   async summary() {
