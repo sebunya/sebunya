@@ -1,3 +1,5 @@
+import { DeliveryProofPhotoUseCases } from '../application/use-cases/fulfilment/DeliveryProofPhotoUseCases';
+import { DrizzleDeliveryProofPhotoRepository } from './fulfilment/DrizzleDeliveryProofPhotoRepository';
 import { LowStockAlertUseCase } from '../application/use-cases/inventory/LowStockAlertUseCase';
 import { RedisFailureLockout } from './security/RedisFailureLockout';
 import { ReholdStockOnLatePaymentUseCase } from '../application/use-cases/payments/ReholdStockOnLatePaymentUseCase';
@@ -888,6 +890,8 @@ export class Registry {
   public readonly submitReviewUseCase = new SubmitReviewUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
   public readonly orderReviewEligibilityUseCase = new GetOrderReviewEligibilityUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
   /** 0209: photos on reviews, through the gift-card photo pipeline. */
+  /** 0212: photos as proof of delivery (staff-only), the review photo pipeline. */
+  public readonly deliveryProofPhotoUseCases = new DeliveryProofPhotoUseCases(new DrizzleDeliveryProofPhotoRepository(), new SharpGiftCardPhotoProcessor());
   public readonly reviewPhotoUseCases = new ReviewPhotoUseCases(new DrizzleReviewPhotoRepository(), new SharpGiftCardPhotoProcessor(), (raw) => piiHasher.hashName(raw), (event, detail) => logger.info({ event, ...detail }, `[review-photo] ${event}`));
   public readonly submitOrderReviewUseCase = new SubmitOrderReviewUseCase(this.reviewRepo, this.submitReviewUseCase, (reviewId, ids) => this.reviewPhotoUseCases.attach(reviewId, ids));
   public readonly productReviewsUseCase = new GetProductReviewsUseCase(this.reviewRepo);

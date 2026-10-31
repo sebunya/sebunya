@@ -1,3 +1,6 @@
+import { bodyLimit } from 'hono/body-limit';
+import { GIFT_CARD_PHOTO_MAX_BYTES } from '../../../../domain/credit/GiftCardPhoto';
+import { DELIVERY_PROOF_REFUSAL_WORDS } from '../../../../application/use-cases/fulfilment/DeliveryProofPhotoUseCases';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { authMiddleware } from '../../middleware/auth';
@@ -535,6 +538,29 @@ routes.post('/:id/delivery', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), as
   });
   if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, deliveryErrStatus(result.code));
   return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
+});
+
+// 0212: photos as proof of delivery, on the task's latest attempt. Staff-only: no public route serves them.
+routes.post('/:id/delivery/photos', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), bodyLimit({
+  maxSize: GIFT_CARD_PHOTO_MAX_BYTES,
+  onError: (c) => c.json({ success: false, error: { code: 'PHOTO_REFUSED', reason: 'too_large', message: DELIVERY_PROOF_REFUSAL_WORDS.too_large } }, 413),
+}), async (c) => {
+  const actorId = (c.get('user') as any).id as string;
+  const bytes = Buffer.from(await c.req.arrayBuffer());
+  const result = await Registry.getInstance().deliveryProofPhotoUseCases.upload({ taskId: String(c.req.param('id') ?? ''), bytes, actorId });
+  if (!result.ok) return c.json({ success: false, error: { code: 'PHOTO_REFUSED', reason: result.reason, message: result.message } }, result.reason === 'unavailable' ? 503 : 400);
+  return c.json({ success: true, data: { photoId: result.photoId, deliveryId: result.deliveryId } });
+});
+routes.get('/:id/delivery/photos', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const photos = await Registry.getInstance().deliveryProofPhotoUseCases.list(String(c.req.param('id') ?? ''));
+  return c.json({ success: true, data: { photos } });
+});
+routes.get('/delivery-photos/:photoId', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const image = await Registry.getInstance().deliveryProofPhotoUseCases.image(String(c.req.param('photoId') ?? ''));
+  if (!image) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No such photo.' } }, 404);
+  return c.body(new Uint8Array(image.buffer as ArrayBuffer, image.byteOffset, image.byteLength), 200, {
+    'Content-Type': 'image/jpeg', 'Content-Length': String(image.byteLength), 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
+  });
 });
 
 // The rider delivered (task Delivered) but the order never followed: bring the order up to date (2026-10-22).

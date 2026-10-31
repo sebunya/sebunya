@@ -1478,6 +1478,13 @@
       "when": 1790140000088,
       "tag": "0211_finder_supplier_list_fits",
       "breakpoints": true
+    },
+    {
+      "idx": 211,
+      "version": "5",
+      "when": 1790140000089,
+      "tag": "0212_delivery_proof_photos",
+      "breakpoints": true
     }
   ]
 }
