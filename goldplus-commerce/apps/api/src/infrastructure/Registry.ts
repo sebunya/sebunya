@@ -1,3 +1,6 @@
+import { GoldieOrderActionsUseCases } from '../application/use-cases/assistant/GoldieOrderActionsUseCases';
+import { verifyOrderByContact } from '../application/services/OrderContactVerification';
+import { GOLDIE_ACTOR_ID } from '../domain/assistant/CareDesk';
 import { DeliveryProofPhotoUseCases } from '../application/use-cases/fulfilment/DeliveryProofPhotoUseCases';
 import { DrizzleDeliveryProofPhotoRepository } from './fulfilment/DrizzleDeliveryProofPhotoRepository';
 import { LowStockAlertUseCase } from '../application/use-cases/inventory/LowStockAlertUseCase';
@@ -3330,6 +3333,32 @@ export class Registry {
   );
   /** The daily stock alert (2026-10-31): products to reorder, as one Care Desk task. */
   public readonly lowStockAlertUseCase = new LowStockAlertUseCase(this.inventoryRepo, this.careDeskUseCases);
+  /**
+   * Goldie acting on an order herself (owner, 2026-10-13; wired 2026-10-31): the same order proof and lockout as Track
+   * my order, the real state machine for the cancel, the Pesapal refund ledger for the money (up to
+   * GOLDIE_REFUND_CAP_UGX, default UGX 300,000), an audited note for rider instructions. Goldie is the actor.
+   */
+  public readonly goldieOrderActionsUseCases = new GoldieOrderActionsUseCases({
+    verify: async (reference, contact) => {
+      const v = await verifyOrderByContact({ reference, contact, now: Date.now() }, { lockout: new RedisFailureLockout('lockout:order-contact'), findOrder: (r: string) => this.getOrderByIdUseCase.execute(r) });
+      if (!v.ok) return v;
+      const o = v.order as unknown as { id: string; orderNumber: string; orderStatus: string; paymentStatus: string; totalUgx: number; customerName: string; customerPhone: string };
+      return { ok: true, order: { id: o.id, orderNumber: o.orderNumber, orderStatus: String(o.orderStatus), paymentStatus: String(o.paymentStatus), totalUgx: Number(o.totalUgx), customerName: o.customerName, customerPhone: o.customerPhone } };
+    },
+    cancel: async (orderId, note, idempotencyKey) => {
+      await this.orderTransitionService.transition(orderId, 'cancelled', { actorId: GOLDIE_ACTOR_ID, actorType: 'customer', source: 'customer', reasonCode: 'CUSTOMER_CANCELLED_VIA_GOLDIE', note, idempotencyKey });
+    },
+    completedPayments: async (orderId) => (await this.pesapalPaymentRepo.findAttemptsByOrderId(orderId))
+      .filter((a) => a.status === 'completed').map((a) => ({ merchantReference: a.merchantReference, amount: Number(a.amount) })),
+    refund: async (input) => {
+      const r = await this.refundPesaPalPaymentUseCase.execute({ ...input, actorId: GOLDIE_ACTOR_ID, actorUsername: 'Goldie (shop assistant)' });
+      return r.ok ? { ok: true as const, refundId: r.refundId } : { ok: false as const, code: r.code, message: r.message };
+    },
+    note: async (orderId, note) => {
+      await new CreateAuditLogUseCase(this.auditRepo).execute({ actorId: GOLDIE_ACTOR_ID, action: 'ORDER_NOTE_ADDED', entity: 'order', entityId: orderId, newState: { note } });
+    },
+    openTask: (input) => this.careDeskUseCases.openTask({ ...input, openedBy: 'goldie' }),
+  }, { refundCapUgx: Math.max(0, Number(process.env.GOLDIE_REFUND_CAP_UGX ?? 300_000) || 300_000) });
   /** Self-service returns (gap analysis #8): a verified order's return request becomes a Care Desk task. */
   public readonly requestReturnUseCase = new RequestReturnUseCase(new DrizzleOrderDeliveredAt(), this.careDeskUseCases);
   /** Questions and answers on product pages (0208, gap analysis #14). */
