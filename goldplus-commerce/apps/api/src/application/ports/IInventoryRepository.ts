@@ -60,6 +60,8 @@ export interface IInventoryRepository {
   summariseReservations(orderId: string): Promise<ReservationStatusSummary>;
   /** Current availability for specific products (admin view). */
   getAvailability(productIds: string[]): Promise<AvailabilityRow[]>;
+  /** Live products at their reorder point, or selling fast enough to run out within coverDays (the daily staff alert). */
+  listRunningOut(coverDays: number, limit: number): Promise<AvailabilityRow[]>;
   /** Products at or below their reorder point (admin low-stock alert). */
   listLowStock(limit: number): Promise<AvailabilityRow[]>;
 }

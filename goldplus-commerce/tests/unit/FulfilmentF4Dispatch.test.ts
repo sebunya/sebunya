@@ -82,6 +82,7 @@ class InventoryStub implements IInventoryRepository {
   async summariseReservations() { return this.summary; }
   async getAvailability(): Promise<AvailabilityRow[]> { return []; }
   async listLowStock(): Promise<AvailabilityRow[]> { return []; }
+  async listRunningOut(): Promise<AvailabilityRow[]> { return []; }
 }
 const consumed: ReservationStatusSummary = { total: 2, reserved: 0, consumed: 2, released: 0, fullyConsumed: true };
 

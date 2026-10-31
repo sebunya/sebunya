@@ -21,6 +21,7 @@ import { startPaymentReconcileTicker, stopPaymentReconcileTicker } from '../../i
 import { startLighthouseWatchTicker, stopLighthouseWatchTicker } from '../../infrastructure/scheduler/LighthouseWatchTicker';
 import { startProductCostTicker, stopProductCostTicker } from '../../infrastructure/scheduler/ProductCostTicker';
 import { startReviewReminderTicker, stopReviewReminderTicker } from '../../infrastructure/scheduler/ReviewReminderTicker';
+import { startLowStockAlertTicker, stopLowStockAlertTicker } from '../../infrastructure/scheduler/LowStockAlertTicker';
 import { startUnpaidOrderReminderTicker, stopUnpaidOrderReminderTicker } from '../../infrastructure/scheduler/UnpaidOrderReminderTicker';
 import { startBasketReminderTicker, stopBasketReminderTicker } from '../../infrastructure/scheduler/BasketReminderTicker';
 import { startCreditExpiryReminderTicker, stopCreditExpiryReminderTicker } from '../../infrastructure/scheduler/CreditExpiryReminderTicker';
@@ -65,6 +66,8 @@ const server = serve({
     startProductCostTicker();
     // The one review reminder per delivered or collected order.
     startReviewReminderTicker();
+    // The daily stock alert: products to reorder, to the Care Desk.
+    startLowStockAlertTicker();
     startUnpaidOrderReminderTicker();
     startBasketReminderTicker();
     startCreditExpiryReminderTicker();
@@ -132,6 +135,7 @@ async function gracefulShutdown(signal: string) {
     stopLighthouseWatchTicker();
     stopProductCostTicker();
     stopReviewReminderTicker();
+    stopLowStockAlertTicker();
     stopUnpaidOrderReminderTicker();
     stopBasketReminderTicker();
     stopCreditExpiryReminderTicker();

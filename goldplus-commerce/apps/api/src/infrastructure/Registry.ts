@@ -1,3 +1,4 @@
+import { LowStockAlertUseCase } from '../application/use-cases/inventory/LowStockAlertUseCase';
 import { RedisFailureLockout } from './security/RedisFailureLockout';
 import { ReholdStockOnLatePaymentUseCase } from '../application/use-cases/payments/ReholdStockOnLatePaymentUseCase';
 import { cancelRefundUpdate } from '../application/notifications/CustomerMessages';
@@ -3323,6 +3324,8 @@ export class Registry {
       // Before the team is set up, urgent customers page the shop's own order inboxes and phone.
       fallback: { emails: String(process.env.ADMIN_ORDER_NOTIFICATION_EMAILS ?? '').split(',').map((e) => e.trim()).filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)).slice(0, 5), phone: `+${DEFAULT_BUSINESS_INFO.whatsappNumber}` } },
   );
+  /** The daily stock alert (2026-10-31): products to reorder, as one Care Desk task. */
+  public readonly lowStockAlertUseCase = new LowStockAlertUseCase(this.inventoryRepo, this.careDeskUseCases);
   /** Self-service returns (gap analysis #8): a verified order's return request becomes a Care Desk task. */
   public readonly requestReturnUseCase = new RequestReturnUseCase(new DrizzleOrderDeliveredAt(), this.careDeskUseCases);
   /** Questions and answers on product pages (0208, gap analysis #14). */
