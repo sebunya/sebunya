@@ -24,3 +24,11 @@ describe('GP-C08 is 10W, not 12W (outputs 5V⎓2A, 9V⎓1A)', () => {
     }
   });
 });
+
+describe('the correction script also fixes the PDP "Output power" attribute row', () => {
+  it('updates product_attribute_values, where the page reads that row from', () => {
+    const s = readFileSync('apps/api/src/scripts/correct-gp-c08-wattage.ts', 'utf8');
+    expect(s).toContain('update product_attribute_values set value = \'10\'');
+    expect(s).toContain("a.name ~* '^\\\\s*output power\\\\s*$'");
+  });
+});

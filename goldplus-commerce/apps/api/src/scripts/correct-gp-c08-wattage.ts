@@ -29,7 +29,12 @@ async function main(): Promise<void> {
     name: rewriteTwelveWatts(before.name), short: rewriteTwelveWatts(before.short), long: rewriteTwelveWatts(before.long),
     features: rewriteTwelveWattsDeep(before.features), specs: rewriteTwelveWattsDeep(before.specs),
   };
-  const changed = (Object.keys(before) as Array<keyof typeof before>).filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]));
+  const changed: string[] = (Object.keys(before) as Array<keyof typeof before>).filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]));
+  // The PDP's "Output power" row is a typed attribute value (product_attribute_values), not the specifications jsonb.
+  const attrs = rowsOf(await db.execute(sql`
+    select v.attribute_id from product_attribute_values v join attributes a on a.id = v.attribute_id
+    where v.product_id = ${String(row.id)} and a.name ~* '^\\s*output power\\s*$' and v.value ~ '^\\s*12\\s*(W)?\\s*$'`));
+  if (attrs.length) changed.push('output power attribute');
   console.log(`${GP_C08_SKU}: ${changed.length ? `would change ${changed.join(', ')}` : 'already says 10W'}${apply ? '' : ' (dry run; set APPLY=1 to write)'}`);
   console.log(`  name → "${after.name}"`);
   if (/\b12 ?W\b/.test(JSON.stringify(after))) console.log('WARNING: a 12W the rules do not know is left');
@@ -38,6 +43,10 @@ async function main(): Promise<void> {
     name = ${after.name}, short_description = ${after.short}, long_description = ${after.long},
     features = ${JSON.stringify(after.features)}::jsonb, specifications = ${JSON.stringify(after.specs)}::jsonb,
     updated_at = now() where id = ${String(row.id)}`);
+  for (const a of attrs) {
+    await db.execute(sql`update product_attribute_values set value = '10', updated_at = now()
+      where product_id = ${String(row.id)} and attribute_id = ${String(a.attribute_id)}`);
+  }
   await new CreateAuditLogUseCase(Registry.getInstance().auditRepo).execute({
     actorId, action: 'PRODUCT_SPEC_CORRECTED', entity: 'product', entityId: String(row.id),
     previousState: { name: before.name, specifications: before.specs },
