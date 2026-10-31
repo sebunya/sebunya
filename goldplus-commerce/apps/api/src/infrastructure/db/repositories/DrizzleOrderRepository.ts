@@ -11,7 +11,7 @@ import { PricingQuote } from '../../../domain/pricing/PricingEvaluator';
 import { decodePricingJsonb, encodePricingJsonb } from '../PricingJsonbCodec';
 import { ICustomerOrderRepository } from '../../../application/ports/ICustomerOrderRepository';
 import { loyaltyEarnSourceFromOrder } from '../../../domain/loyalty/LoyaltyEarnEligibility';
-import { OrderDetailDto, OrderSummaryDto, OrderStatus } from '@goldplus/shared';
+import { OrderDetailDto, OrderSummaryDto, OrderStatus, normalizeUgandanPhone } from '@goldplus/shared';
 
 export interface AdminOrderFacts {
   reservationState: string | null;
@@ -82,10 +82,27 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       paymentMethod: orders.paymentMethod,
       status: orders.status,
       buyerType: orders.buyerType,
+      customerPhone: orders.customerPhone,
     }).from(orders).where(eq(orders.id, id)).limit(1);
+    // An order placed signed out earns for the account whose VERIFIED phone is
+    // the order's phone (users.phone is unique, so at most one). Before this,
+    // such an order earned only through the backfill at verification time, so
+    // a customer already verified never earned on a later signed-out order.
+    if (row && !row.userId) row.userId = await this.verifiedOwnerOfPhone(row.customerPhone);
     // Paid online, or cash on delivery that reached delivered/completed; retail
     // only (PART K). The rule lives in the domain so it is tested once.
     return loyaltyEarnSourceFromOrder(row);
+  }
+
+  /** The account whose verified phone is this number, typed in any Ugandan form (0772…, +256 772…, 256772…). */
+  private async verifiedOwnerOfPhone(phone: string | null): Promise<string | null> {
+    const e164 = normalizeUgandanPhone(phone)?.e164;
+    if (!e164) return null;
+    const rows = (await db.execute(sql`
+      select id from users
+      where phone_verified_at is not null and phone = ${e164}
+      limit 1`)) as unknown as Array<{ id: string }>;
+    return rows[0]?.id ?? null;
   }
 
 

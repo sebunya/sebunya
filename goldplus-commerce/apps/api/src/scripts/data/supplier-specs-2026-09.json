@@ -3,8 +3,8 @@
   "products": [
     {
       "sku": "GP-C08",
-      "title": "GoldPlus GP-C08 12W USB Fast Charger, 2A (UK plug)",
-      "longDescription": "A compact 12W wall charger with a single USB-A port and a UK 3-pin plug. Charges at up to 2A (5V) and supports 9V/1A fast charging for phones that accept it. Works with iPhone, Android and other USB-powered devices. ABS body with circuit protection and an explosion-proof resistor. Same-day delivery in Kampala and Wakiso.",
+      "title": "GoldPlus GP-C08 10W USB Fast Charger, 2A (UK plug)",
+      "longDescription": "A compact 10W wall charger with a single USB-A port and a UK 3-pin plug. Charges at up to 2A (5V) and supports 9V/1A fast charging for phones that accept it. Works with iPhone, Android and other USB-powered devices. ABS body with circuit protection and an explosion-proof resistor. Same-day delivery in Kampala and Wakiso.",
       "specs": [
         {
           "name": "Input",
@@ -16,7 +16,7 @@
         },
         {
           "name": "Output power",
-          "value": "12",
+          "value": "10",
           "unit": "W"
         },
         {
@@ -44,7 +44,7 @@
           "value": "Circuit protection with explosion-proof resistor"
         }
       ],
-      "shortDescription": "12W USB wall charger, 2A, UK plug. Charges iPhone, Android and any USB device."
+      "shortDescription": "10W USB wall charger, 2A, UK plug. Charges iPhone, Android and any USB device."
     },
     {
       "sku": "GP-C10",
