@@ -174,19 +174,22 @@ channel because the customer started the chat). The result reaches the model as 
 - The next-best action Goldie was given is stored on the conversation and shown on the thread. The rating is shown on
   the thread and included in the CSV.
 
-**Order actions without a person** (owner's instruction; written, NOT wired):
-- `GoldieOrderActionsUseCases` holds the policy:
-  - cancel any order not yet with the rider;
+**Order actions without a person** (owner's instruction 2026-10-13; WIRED 2026-10-31 on the owner's go-ahead):
+- `request_order_change` with `cancel` or `refund_failed_delivery` acts at once, but only after the customer's own
+  newest message says yes (`customerSaidYes` in `apps/web/src/lib/goldieCare.ts`: English, Luganda, Swahili; any
+  "no / wait / later" in it is a no). Without it Goldie asks "shall I cancel it now?".
+- `delivery_time` writes the customer's words on the order as an audited note for the rider.
+- `delivery_address`, `items` and `other` still go to the desk (a new area changes the fee).
+- The web layer calls `POST /internal/assistant/order-action`; the API proves the order exactly as Track my order
+  does (same lockout), then `GoldieOrderActionsUseCases` applies the policy:
+  - cancel any order not yet with the rider, through the order state machine (actor Goldie
+    `601d1e00-0000-4000-8000-000000000001`, reason `CUSTOMER_CANCELLED_VIA_GOLDIE`);
   - refund Pesapal payments in full on cancellation, up to `GOLDIE_REFUND_CAP_UGX` (default UGX 300,000), through the
-    refund ledger and audit with Goldie's actor id `601d1e00-0000-4000-8000-000000000001`;
-  - over the cap, or paid offline: cancelled, and the refund goes to the desk as urgent;
-  - refund a failed delivery;
-  - write rider instructions on the order;
+    refund ledger;
+  - over the cap, paid offline, refused by the provider, or a cancel the state machine refuses: an urgent desk task;
   - never refund faulty items unseen (warranty needs the item).
-- Policy tests: `tests/unit/GoldieCareDesk.test.ts`.
-- Wiring it to the live state machine and refund ledger was stopped by Claude Code's real-world-transaction safety
-  check, so it needs the owner's explicit go-ahead (or the owner's own commit). Until then `request_order_change`
-  files the change on the Care Desk and Goldie tells the customer the team will confirm.
+- `GOLDIE_ORDER_ACTIONS=off` (compose default `on`) puts every request back on the desk.
+- The Pesapal refund path had not moved real money before this; watch the first Goldie refunds on Admin > Payments.
 - Tests: `tests/unit/GoldieCareDesk.test.ts`, `tests/integration/GoldieCareDesk.integration.test.ts`.
 
 Goldie is the shop's host on every storefront page: a named, warm, plain-spoken

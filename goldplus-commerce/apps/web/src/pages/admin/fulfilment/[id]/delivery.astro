@@ -17,9 +17,29 @@ const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application
 type Notice = { kind: "success" | "error"; text: string };
 let notice: Notice | null = null;
 
+/** 0212: photos as proof of delivery go to the task's latest attempt; returns a sentence about what happened. */
+async function uploadPhotos(files: File[]): Promise<string> {
+  let added = 0; const refused: string[] = [];
+  for (const file of files.slice(0, 3)) {
+    try {
+      const res = await fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/delivery/photos`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" }, body: await file.arrayBuffer(),
+      });
+      const json = await res.json().catch(() => null);
+      if (json?.success) added++; else refused.push(json?.error?.message || "That photo could not be saved.");
+    } catch { refused.push("The photo service is unreachable right now."); }
+  }
+  return [added ? `${added} photo${added === 1 ? "" : "s"} added.` : "", ...new Set(refused)].filter(Boolean).join(" ");
+}
+const photoFiles = (form: FormData) => form.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0);
+
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
-  try {
+  if (form.get("action") === "photos") {
+    const files = photoFiles(form);
+    const said = files.length ? await uploadPhotos(files) : "Choose a photo first.";
+    notice = { kind: said.includes("added") ? "success" : "error", text: said };
+  } else try {
     const outcome = String(form.get("outcome") || "");
     const dq = String(form.get("deliveredQuantity") || "").trim();
     const rq = String(form.get("returnedQuantity") || "").trim();
@@ -43,6 +63,8 @@ if (Astro.request.method === "POST") {
       : json.data?.orderTransition === "delivered" ? { kind: "success", text: "Delivery confirmed. The order says delivered." }
       : { kind: "error", text: "The delivery is recorded, but the order did not move to delivered. Open the order and press \"Mark the order delivered\"." };
     else notice = { kind: "error", text: json?.error?.message || "The delivery service rejected that attempt." };
+    const files = photoFiles(form);
+    if (json?.success && files.length && notice) notice = { ...notice, text: `${notice.text} ${await uploadPhotos(files)}` };
   } catch {
     notice = { kind: "error", text: "The delivery service is unreachable right now." };
   }
@@ -54,6 +76,7 @@ interface Delivery {
   rescheduledFor: string | null; deliveredQuantity: number; returnedQuantity: number; notes: string | null; createdAt: string;
 }
 let deliveries: Delivery[] = [];
+let photos: Array<{ id: string; deliveryId: string; attempt: number }> = [];
 let status = "";
 let orderNumber = taskId;
 let loadFailed = false;
@@ -72,6 +95,9 @@ try {
     if (json?.success) { deliveries = json.data.deliveries; status = json.data.status; }
     else { loadFailed = true; apiError = `Delivery history responded with HTTP ${dRes.status}.`; }
   }
+  const pRes = await fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/delivery/photos`, { headers }).catch(() => null);
+  const pJson = pRes ? await pRes.json().catch(() => null) : null;
+  if (pJson?.success) photos = pJson.data.photos;
   const tJson = await tRes.json().catch(() => null);
   if (tJson?.success && tJson.data?.orderNumber) orderNumber = tJson.data.orderNumber;
 } catch {
@@ -119,7 +145,7 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
 
     {!notFound && !permissionDenied && !loadFailed && (
       canRecord ? (
-        <form method="POST" class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm grid gap-4 sm:grid-cols-2 mb-8">
+        <form method="POST" enctype="multipart/form-data" class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm grid gap-4 sm:grid-cols-2 mb-8">
           <div class="sm:col-span-2">
             <label for="outcome" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Outcome</label>
             <select id="outcome" name="outcome" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
@@ -141,6 +167,11 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
           <div>
             <label for="proofReference" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Proof reference</label>
             <input id="proofReference" name="proofReference" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
+          </div>
+          <div>
+            <label for="photos" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Proof photos (up to 3)</label>
+            <input id="photos" name="photos" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple class="w-full text-xs" />
+            <p class="mt-1 text-[10px] text-gray-500">The parcel at the door, the customer holding it, or a signed note. Staff only.</p>
           </div>
           <div>
             <label for="recipientConfirmation" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Confirmation (OTP/signature ref)</label>
@@ -193,6 +224,22 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
               </dl>
               {d.failedReason && <p class="mt-2 text-[11px] text-red-700">Reason: {d.failedReason}</p>}
               {d.notes && <p class="mt-1 text-[11px] text-gray-500">Notes: {d.notes}</p>}
+              {photos.some((p) => p.deliveryId === d.id) && (
+                <div class="mt-3 flex flex-wrap gap-2">
+                  {photos.filter((p) => p.deliveryId === d.id).map((p) => (
+                    <a href={`/admin/fulfilment/delivery-photo/${p.id}`} target="_blank" rel="noopener">
+                      <img src={`/admin/fulfilment/delivery-photo/${p.id}`} alt={`Proof of delivery, attempt ${d.attempt}`} class="h-24 w-24 object-cover rounded-lg border border-gray-200" loading="lazy" />
+                    </a>
+                  ))}
+                </div>
+              )}
+              {d.attempt === Math.max(...deliveries.map((x) => x.attempt)) && photos.filter((p) => p.deliveryId === d.id).length < 3 && (
+                <form method="POST" enctype="multipart/form-data" class="mt-3 flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="action" value="photos" />
+                  <input name="photos" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple class="text-[11px]" aria-label={`Proof photos for attempt ${d.attempt}`} />
+                  <button type="submit" class="text-[11px] font-black px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50">Add photo</button>
+                </form>
+              )}
             </div>
           ))}
         </div>

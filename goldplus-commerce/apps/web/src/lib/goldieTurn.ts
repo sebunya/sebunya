@@ -117,7 +117,7 @@ export function profileFirstName(name: string | null | undefined): string | null
 export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
   const last = input.turns[input.turns.length - 1]!.content;
   const mood = readMood(last);
-  input = { ...input, care: { ...input.care, channel: input.channel, mood: mood.mood } };
+  input = { ...input, care: { ...input.care, channel: input.channel, mood: mood.mood, lastCustomerMessage: last } };
   let classified = classify(last);
   if (isOrderFollowUp(input.turns)) classified = { intent: 'ORDER', deterministic: true, query: '' };
   // The answer to the battery finder's own "Which of these is your phone?" ("Spark 10 Pro") goes back to the finder,
