@@ -31,6 +31,14 @@ export function refundsProvenByReversal(outstandingAcceptedIds: string[], alread
   return outstandingAcceptedIds.length === 1 && alreadySettledCount === 0 ? [...outstandingAcceptedIds] : [];
 }
 
+/**
+ * What may still go back in cash on one payment: collected, less cash refunds
+ * not rejected, less store credit issued as a refund for the order.
+ */
+export function cashRefundableUgx(collectedUgx: number, cashRefundedUgx: number, storeCreditRefundedUgx: number): number {
+  return collectedUgx - Math.max(0, cashRefundedUgx) - Math.max(0, storeCreditRefundedUgx);
+}
+
 /** Refunded share in basis points, floored and capped at the whole. */
 export function refundedShareBps(refundedUgx: number, collectedUgx: number): number {
   if (!(collectedUgx > 0) || !(refundedUgx > 0)) return 0;
@@ -111,8 +119,19 @@ export class DrizzleRefundLedgerRepository implements IRefundLedgerRepository {
           and status <> 'rejected'
       `);
       const totalsRow = Array.isArray(totals) ? totals[0] : totals?.rows?.[0];
-      const alreadyRefundedUgx = Number(totalsRow?.refunded ?? 0);
-      const refundableUgx = input.collectedUgx - alreadyRefundedUgx;
+      // Store credit issued as a refund for this order is money already given
+      // back too. Ignoring it let an order refunded as credit be refunded again
+      // in cash. Pending-approval credit counts: like a 'requested' row, it is
+      // not headroom.
+      const credit: any = await tx.execute(sql`
+        select coalesce(sum(initial_value_ugx), 0)::bigint as credited
+        from credit_instruments
+        where source_order_id = ${input.orderId}::uuid
+          and status <> 'void'
+      `);
+      const creditRow = Array.isArray(credit) ? credit[0] : credit?.rows?.[0];
+      const alreadyRefundedUgx = Number(totalsRow?.refunded ?? 0) + Number(creditRow?.credited ?? 0);
+      const refundableUgx = cashRefundableUgx(input.collectedUgx, Number(totalsRow?.refunded ?? 0), Number(creditRow?.credited ?? 0));
 
       if (input.amountUgx > refundableUgx) {
         return {
