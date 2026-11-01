@@ -115,6 +115,7 @@ export class SafeControlledActivationReadinessChecker implements ControlledActiv
       const files = fs.readdirSync(currentDir);
       for (const file of files) {
         if (ignoreDirs.includes(file)) continue;
+        // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal -- walks the repository tree from readdir results, no request input
         const fullPath = path.join(currentDir, file);
         const stat = fs.statSync(fullPath);
         if (stat.isDirectory()) {
@@ -138,6 +139,7 @@ export class SafeControlledActivationReadinessChecker implements ControlledActiv
     };
 
     for (const dir of dirs) {
+      // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal -- dir is from a fixed list of repository folders
       scanDir(path.join(rootDir, dir));
     }
     return matches;

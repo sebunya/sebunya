@@ -1,6 +1,18 @@
 import { randomUUID } from 'crypto';
 import { ControlledActivationCanaryPlanner, CanaryPlan } from '../../application/ports/activation/ControlledActivationCanaryPlanner.js';
 
+/**
+ * KNOWN LIMITATION (2026-09-23): plans live in THIS process's memory. Production
+ * runs two API containers and restarts on every deploy, so a plan validated on one
+ * container is missing on the other and gone after a restart — readiness checks and
+ * runbooks then fail with "Canary plan is missing". The fix is a table (migration)
+ * and a Drizzle repository behind this same port; deferred with the rest of the
+ * controlled-activation clients (trigger: the first measurement destination goes
+ * live). The segment names and the 100,000-audience base below are placeholders,
+ * not measured facts — replace them with real audience data when this is built.
+ * Within one process there is exactly ONE instance (the Registry's; a route used to
+ * build its own, which made every plan invisible to live review).
+ */
 export class DefaultControlledActivationCanaryPlanner implements ControlledActivationCanaryPlanner {
   private plans: Map<string, CanaryPlan> = new Map();
 
