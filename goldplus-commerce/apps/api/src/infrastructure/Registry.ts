@@ -1435,7 +1435,7 @@ export class Registry {
   /** Recovery for a task cancelled against a still-open order (see the use case). */
   public readonly reinstateFulfilmentTaskUseCase = new ReinstateFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo, {
     findById: (id: string) => this.orderRepo.findById(id),
-  });
+  }, { reacquireReleasedForOrder: (orderId: string) => this.inventoryRepo.reacquireReleasedForOrder(orderId) });
   public readonly listFulfilmentQueueUseCase = new ListFulfilmentQueueUseCase(this.fulfilmentRepo);
   public readonly fulfilmentSlaEventRepo = new DrizzleFulfilmentSlaEventRepository();
   public readonly getFulfilmentOverviewUseCase = new GetFulfilmentOverviewUseCase(this.fulfilmentRepo, this.fulfilmentSlaEventRepo);
