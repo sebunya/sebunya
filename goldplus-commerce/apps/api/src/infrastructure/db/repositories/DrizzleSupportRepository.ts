@@ -74,13 +74,18 @@ export class DrizzleSupportRepository implements ISupportRepository {
     return this.findById(row.id);
   }
 
-  async findForCustomer(query: { customerId: string; email: string | null }): Promise<SupportTicket[]> {
+  async findForCustomer(query: { customerId: string; email: string | null; phone?: string | null }): Promise<SupportTicket[]> {
     const email = (query.email ?? '').trim().toLowerCase();
+    const phone = (query.phone ?? '').trim();
     const byCustomer = eq(supportIssues.customerId, query.customerId);
+    const matches = [byCustomer];
+    if (email) matches.push(sql`lower(${supportIssues.metadata}->>'email') = ${email}`);
+    // Tickets store the phone normalised (+256...), the same form the caller passes.
+    if (phone) matches.push(sql`${supportIssues.metadata}->>'phone' = ${phone}`);
     const rows = await db
       .select()
       .from(supportIssues)
-      .where(email ? or(byCustomer, sql`lower(${supportIssues.metadata}->>'email') = ${email}`) : byCustomer);
+      .where(matches.length > 1 ? or(...matches) : byCustomer);
     return rows.map(toTicket);
   }
 

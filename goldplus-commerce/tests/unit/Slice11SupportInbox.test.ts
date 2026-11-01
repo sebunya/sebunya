@@ -96,6 +96,8 @@ describe('Support inbox use cases (Slice 11)', () => {
     expect(body).toMatch(/eq\(supportIssues\.customerId/);
     expect(body).toMatch(/metadata\}->>'email'/);
     expect(body).not.toMatch(/findMany\(\)/);
+    // A ticket with no email is still found by the customer's phone.
+    expect(body).toMatch(/metadata\}->>'phone'/);
   });
 
   it('sorts overdue tickets first', async () => {

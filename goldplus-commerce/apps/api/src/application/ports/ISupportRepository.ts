@@ -9,7 +9,8 @@ export interface ISupportRepository {
    * with this email (metadata.email, compared case-insensitively). Used by the
    * customer workspace so it never reads the whole inbox.
    */
-  findForCustomer(query: { customerId: string; email: string | null }): Promise<SupportTicket[]>;
+  /** A customer's tickets: by id, by email, or by their VERIFIED phone (a ticket may carry no email at all). */
+  findForCustomer(query: { customerId: string; email: string | null; phone?: string | null }): Promise<SupportTicket[]>;
   /** Slice 11: inbox mutations — status transitions and assignment. */
   update(id: string, patch: { status?: SupportTicket['status']; assignedTo?: string | null }): Promise<SupportTicket | null>;
 }

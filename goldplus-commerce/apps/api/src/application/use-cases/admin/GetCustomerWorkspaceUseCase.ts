@@ -1,3 +1,4 @@
+import { normalizePhone } from '../../services/validationHelpers';
 import type { OrderSummaryDto } from '@goldplus/shared';
 import { computeBalance, type LoyaltyLedgerEntry, type LoyaltyBalance } from '../../../domain/loyalty/LoyaltyLedger';
 
@@ -30,7 +31,7 @@ export interface CustomerWorkspaceDeps {
    * `ticket.email` field that tickets do not have, so emailed tickets never
    * showed.
    */
-  support: { forCustomer(query: { customerId: string; email: string | null }, now: Date): Promise<Array<{ ticket: { id: string; subject?: string | null; status: string; priority: string; createdAt: Date; assignedTo?: string | null }; sla?: unknown }>> };
+  support: { forCustomer(query: { customerId: string; email: string | null; phone?: string | null }, now: Date): Promise<Array<{ ticket: { id: string; subject?: string | null; status: string; priority: string; createdAt: Date; assignedTo?: string | null }; sla?: unknown }>> };
 }
 
 export interface CustomerWorkspace {
@@ -76,7 +77,10 @@ export class GetCustomerWorkspaceUseCase {
     const email = user.email.trim().toLowerCase() || null;
     // A ticket filed while signed in carries the customer's id even when it
     // was sent with another email (or a phone number) — the query matches either.
-    const tickets = options.includeSupport ? await this.deps.support.forCustomer({ customerId: user.id, email }, now) : [];
+    // Email is optional on a ticket, so the customer's phone matches too, but only once they have proved it: an
+    // unverified number could pull a stranger's ticket into this workspace.
+    const phone = user.phoneVerifiedAt && user.phone ? normalizePhone(user.phone) : null;
+    const tickets = options.includeSupport ? await this.deps.support.forCustomer({ customerId: user.id, email, ...(phone ? { phone } : {}) }, now) : [];
     const support = tickets
       .map(({ ticket, sla }) => ({
         id: ticket.id, subject: ticket.subject ?? null, status: ticket.status, priority: ticket.priority,
