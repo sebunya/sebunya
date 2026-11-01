@@ -620,13 +620,14 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
     source: string;
     spendMinor: number;
     taxOrFeeMinor: number;
-  }): Promise<{ corrected: boolean; previous: { spendMinor: number; taxOrFeeMinor: number } | null }> {
+    currency?: string;
+  }): Promise<{ corrected: boolean; previous: { spendMinor: number; taxOrFeeMinor: number } | null; storedCurrency?: string }> {
     // RETURNING sees the NEW row, so the old values are captured in a CTE
     // first — an audit trail that echoes back what you just wrote records
     // nothing.
     const rows = (await db.execute(sql`
       with before as (
-        select id, spend_minor, tax_or_fee_minor
+        select id, spend_minor, tax_or_fee_minor, currency
         from media_cost_facts
         where spend_date = ${input.spendDate}::date
           and channel = ${input.channel}
@@ -645,13 +646,17 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
             ingested_at = now()
         from before b
         where m.id = b.id
+          -- A correction keeps the fact's currency: a USD figure must never overwrite a UGX one.
+          and (${input.currency ?? null}::text is null or b.currency = ${input.currency ?? null}::text)
         returning m.id
       )
-      select b.spend_minor as prev_spend, b.tax_or_fee_minor as prev_tax
-      from before b join upd on upd.id = b.id
+      select b.spend_minor as prev_spend, b.tax_or_fee_minor as prev_tax, b.currency as stored_currency,
+             (upd.id is not null) as updated
+      from before b left join upd on upd.id = b.id
     `)) as unknown as Array<Record<string, unknown>>;
 
     if (rows.length === 0) return { corrected: false, previous: null };
+    if (!rows[0].updated) return { corrected: false, previous: null, storedCurrency: String(rows[0].stored_currency) };
     return {
       corrected: true,
       previous: { spendMinor: Number(rows[0].prev_spend ?? 0), taxOrFeeMinor: Number(rows[0].prev_tax ?? 0) },
