@@ -40,6 +40,7 @@ suite('Goldie order actions (real PostgreSQL)', () => {
         await transitions.transition(orderId, 'cancelled', { actorId: GOLDIE_ACTOR_ID, actorType: 'customer', source: 'customer', reasonCode: 'CUSTOMER_CANCELLED_VIA_GOLDIE', note, idempotencyKey });
       },
       completedPayments: async () => [],
+      paymentInFlight: async () => false,
       refund: async (i: unknown) => { refunds.push(i); return { ok: true, refundId: 'r' }; },
       note: async () => undefined,
       openTask: async (i: unknown) => { tasks.push(i); return {}; },
