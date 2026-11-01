@@ -8,7 +8,8 @@ import crypto from 'node:crypto';
  */
 
 const URL = process.env.COMMERCE_TEST_DATABASE_URL;
-const suite = URL && process.env.DATABASE_URL ? describe : describe.skip;
+// The app db client connects to DATABASE_URL: run only when that IS the test database, never a dev or prod-clone one.
+const suite = URL && process.env.DATABASE_URL === URL ? describe : describe.skip;
 
 suite('hero loyalty meter: lifetime points on real PostgreSQL', () => {
   let pg: typeof import('../../apps/api/src/infrastructure/db/client').client;
