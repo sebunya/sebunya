@@ -44,6 +44,23 @@ export interface VerifyPesaPalPaymentOutput {
    * order whose money arrived.
    */
   superseded?: boolean;
+  /**
+   * The caller's reference does not belong to this payment. Nothing about the
+   * payment was learned, so nothing may move: not a release of a held
+   * checkout, not a failure, not a confirmation (review 2026-11).
+   */
+  untrusted?: boolean;
+  /**
+   * An already-completed attempt answered again (duplicate callback, IPN,
+   * poll). A replay of money already counted is never a second payment.
+   */
+  replay?: boolean;
+  /**
+   * The provider reported REVERSED and the ledger read it as partial: money was
+   * collected and some went back. Paid, but never grounds to CONFIRM a
+   * checkout that was not already confirmed (a held PAYMENT_REVIEW one).
+   */
+  refundObserved?: boolean;
 }
 
 export type { RefundLoyaltyPort };
@@ -114,6 +131,26 @@ export class VerifyPesaPalPaymentUseCase {
       };
     }
 
+    // The CALLER's reference comes from the public callback/return URL. A
+    // wrong one says nothing about the payment, so it changes nothing: it used
+    // to mark the attempt verification_failed, letting anyone holding a
+    // tracking id knock a live payment into review (2026-10-07). It also used
+    // to answer with the STORED status, so a failed attempt's tracking id plus
+    // any reference read as FAILED and released a PAYMENT_REVIEW hold; and it
+    // stamped callbackReceivedAt first. Checked before anything is written, and
+    // answered as untrusted so settlement moves nothing (review 2026-11).
+    if (reference !== attempt.merchantReference) {
+      return {
+        ok: false,
+        untrusted: true,
+        status: 'reference_mismatch',
+        amount: attempt.amount,
+        currency: attempt.currency,
+        orderId: attempt.orderId,
+        message: 'REFERENCE_MISMATCH: the reference supplied does not belong to this payment; nothing was changed.',
+      };
+    }
+
     // Mark attempt webhook/callback received timestamp
     const now = new Date();
     // Timestamps only: re-stamping the status read above could write it over a
@@ -157,6 +194,7 @@ export class VerifyPesaPalPaymentUseCase {
           return {
             ok: true,
             lifecycleConflict: true,
+            replay: true,
             status: 'completed',
             amount: attempt.amount,
             currency: attempt.currency,
@@ -168,6 +206,7 @@ export class VerifyPesaPalPaymentUseCase {
       }
       return {
         ok: true,
+        replay: true,
         status: 'completed',
         amount: attempt.amount,
         currency: attempt.currency,
@@ -192,20 +231,6 @@ export class VerifyPesaPalPaymentUseCase {
     }
 
     // 3. Strict Verification & Integrity Checks
-    // - The CALLER's reference comes from the public callback/return URL. A
-    //   wrong one says nothing about the payment, so it changes nothing: it
-    //   used to mark the attempt verification_failed, letting anyone holding a
-    //   tracking id knock a live payment into review (2026-10-07).
-    if (reference !== attempt.merchantReference) {
-      return {
-        ok: false,
-        status: attempt.status as never,
-        amount: attempt.amount,
-        currency: attempt.currency,
-        orderId: attempt.orderId,
-        message: 'REFERENCE_MISMATCH: the reference supplied does not belong to this payment; nothing was changed.',
-      };
-    }
     // - Only the PROVIDER disagreeing with our record is an integrity failure.
     if (statusResponse.merchant_reference !== attempt.merchantReference) {
       await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, { status: 'verification_failed' });
@@ -296,6 +321,7 @@ export class VerifyPesaPalPaymentUseCase {
           // the sweep counted it as a failure.
           return {
             ok: true,
+            refundObserved: true,
             status: 'completed',
             amount: attempt.amount,
             currency: attempt.currency,
@@ -388,7 +414,7 @@ export class VerifyPesaPalPaymentUseCase {
       // actor is the verified payment provider — never a request field. The
       // stable idempotency key means a retried callback/IPN writes no duplicate.
       try {
-        await this.orderTransition.transition(attempt.orderId, lifecycleTarget, {
+        const moved = await this.orderTransition.transition(attempt.orderId, lifecycleTarget, {
           actorType: 'payment_provider',
           source: 'payment',
           reasonCode,
@@ -396,6 +422,25 @@ export class VerifyPesaPalPaymentUseCase {
           idempotencyKey: `pesapal:${mappedStatus}:${trackingId}`,
           correlationId: reference,
         });
+        // An order held for owner review takes a payment without moving, so a
+        // SECOND payment on it raised no conflict and settled silently. Another
+        // completed attempt on the same order means the customer paid twice:
+        // reported as a lifecycle conflict with money, which settlement names
+        // SECOND_PAYMENT_TAKEN (review 2026-11).
+        if (mappedStatus === 'completed' && moved?.heldForOwnerReview) {
+          const siblings = await Promise.resolve().then(() => this.paymentRepo.findAttemptsByOrderId(attempt.orderId)).catch(() => []);
+          if (siblings.some((a) => a.id !== attempt.id && a.status === 'completed')) {
+            return {
+              ok: true,
+              lifecycleConflict: true,
+              status: 'completed',
+              amount: attempt.amount,
+              currency: attempt.currency,
+              orderId: attempt.orderId,
+              message: 'SECOND_PAYMENT_TAKEN: another payment on this order, held for owner review, already completed.',
+            };
+          }
+        }
       } catch (err) {
         // The order is in a state that does not permit this lifecycle move (e.g.
         // a reversal arriving after the order already completed). Do NOT force an
