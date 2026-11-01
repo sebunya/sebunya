@@ -9,11 +9,14 @@ export interface AppendEntryInput {
   idempotencyKey: string;
   expiresAt: Date | null;
   reversedEntryId: string | null;
+  /** 0085: the rule version that granted the entry (append-only provenance). */
+  ruleCode?: string | null;
+  ruleVersion?: number | null;
 }
 
 export type DebitResult =
   | { ok: true; entry: LoyaltyLedgerEntry; replay: boolean; expired: LoyaltyLedgerEntry[] }
-  | { ok: false; code: 'INSUFFICIENT_BALANCE' | 'IDEMPOTENCY_CONFLICT'; available?: number };
+  | { ok: false; code: 'INSUFFICIENT_BALANCE' | 'IDEMPOTENCY_CONFLICT' | 'ACCOUNT_MERGED'; available?: number };
 
 export type ReverseEntryResult =
   | { ok: true; entry: LoyaltyLedgerEntry; replay: boolean }
@@ -36,10 +39,22 @@ export interface ILoyaltyRepository {
   findEntryByIdempotencyKey(idempotencyKey: string): Promise<LoyaltyLedgerEntry | null>;
   /** Returns the existing entry when the idempotency key was already used. */
   append(input: AppendEntryInput): Promise<{ entry: LoyaltyLedgerEntry; replay: boolean }>;
-  appendDebitIfAvailable(input: AppendEntryInput, now: Date): Promise<DebitResult>;
+  /**
+   * `expireDue: false` skips the lazy expiry that normally runs first: while
+   * redemption is paused no points may expire (loyalty terms, section 4), and
+   * a debit posted during the pause must not expire them on the side.
+   */
+  appendDebitIfAvailable(input: AppendEntryInput, now: Date, options?: { expireDue?: boolean }): Promise<DebitResult>;
+  /**
+   * The survivor this account was merged into, or null. A merged account's
+   * points are spent from the survivor only: its entries already count there.
+   */
+  mergedInto(accountId: string): Promise<string | null>;
   expireDue(accountId: string, now: Date): Promise<LoyaltyLedgerEntry[]>;
   reverseEntry(entryId: string, reason: string): Promise<ReverseEntryResult>;
   getOperationsSnapshot(input: { now: Date; limit: number }): Promise<LoyaltyOperationsSnapshot>;
   getConfig(): Promise<LoyaltyConfig>;
+  /** When lifetime points began counting reductions (0174); null = always. */
+  lifetimeReductionsFrom(): Promise<Date | null>;
   saveConfig(config: LoyaltyConfig): Promise<LoyaltyConfig>;
 }
