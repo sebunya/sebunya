@@ -8,6 +8,15 @@ export const TRANSACTIONAL_EMAIL_FAILURE_CLASSIFICATIONS = [
   'payload_validation',
   'template_missing',
   'rate_limited',
+  /**
+   * The account has no sending credit left. HTTP 429 says "too many requests",
+   * but this is not a burst to wait out: nothing will send, at any pace, until
+   * somebody buys credit. ZeptoMail answers TM_5001 / LE_102 "Credit
+   * exhausted"; production collapsed that to `rate_limited, retryable=yes` and
+   * retried it 244 times over six weeks while every screen implied a temporary
+   * blip (2026-09-20).
+   */
+  'credit_exhausted',
   'provider_5xx',
   'network_timeout',
   'transport_adapter_bug',
@@ -41,6 +50,10 @@ const hints: ReadonlyArray<readonly [RegExp, TransactionalEmailFailureClassifica
   [/(recipient|mailbox|address).*(reject|invalid|suppress|not.allowed)/, 'recipient_rejected'],
   [/(invalid|expired).*(credential|token|key)|credential.*invalid/, 'invalid_credential'],
   [/unauthori[sz]ed|authentication.*fail/, 'unauthorized'],
+  // Checked BEFORE the rate-limit hint: a credit failure arrives as a 429 and
+  // some providers word it as a limit, so the more specific rule must win.
+  [/(credit|balance).*(exhaust|deplet|insufficient|empty)|insufficient.*(credit|balance|fund)|out.of.credit|no.*credits?.*(left|remaining)/, 'credit_exhausted'],
+  [/resource.limit.exhausted|quota.*(exceed|exhaust)|le_102|tm_5001/, 'credit_exhausted'],
   [/rate.*limit|too.many.requests/, 'rate_limited'],
   [/payload|validation|invalid.*request|bad.*request/, 'payload_validation'],
 ];
@@ -81,13 +94,15 @@ export function classifyTransactionalEmailFailure(
   else if (status === 400 || status === 422) classification = 'payload_validation';
   else if (evidence.adapter_bug_confirmed) classification = 'transport_adapter_bug';
 
+  // Credit exhaustion is deliberately NOT retryable: retrying spends attempts,
+  // fills the log with noise and disguises an account problem as a transient one.
   const retryable = classification === 'rate_limited' || classification === 'provider_5xx'
     || classification === 'network_timeout' ? 'yes'
     : classification === 'unknown' ? 'unknown' : 'no';
   const safeLocal = classification === 'payload_validation' || classification === 'transport_adapter_bug';
   const providerAction = [
     'invalid_credential', 'unauthorized', 'forbidden_sender', 'domain_not_verified',
-    'recipient_rejected', 'template_missing', 'missing_configuration',
+    'recipient_rejected', 'template_missing', 'missing_configuration', 'credit_exhausted',
   ].includes(classification);
 
   return Object.freeze({

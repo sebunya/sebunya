@@ -1,0 +1,56 @@
+---
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../../lib/session";
+import { advertisingApi } from "../../../../lib/adminAdvertising";
+import { SITE_ORIGIN } from "../../../../lib/sitemap";
+import { SPOTIFY_COOKIE_PATH, SPOTIFY_REDIRECT_PATH, SPOTIFY_RESULT_COOKIE, SPOTIFY_STATE_COOKIE, SPOTIFY_VERIFIER_COOKIE, isSpotifyCode, sameState } from "../../../../lib/spotifyConnect";
+
+/**
+ * The GoldPlus Ads app's Redirect URI (2026-10-06). Spotify sends the owner
+ * here with a one-time `code` and the `state` this browser was given.
+ *  - A reply whose state is not this browser's is refused.
+ *  - The code is exchanged at once with this browser's PKCE verifier (no
+ *    secret is involved), then the page redirects to itself without the code,
+ *    so it is not left in history, logs or a Referer header.
+ *  - The refresh token never reaches this page.
+ */
+const url = new URL(Astro.request.url);
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect(`/admin/login?returnTo=${encodeURIComponent(url.pathname + url.search)}`, 303);
+Astro.response.headers.set("Referrer-Policy", "no-referrer");
+Astro.response.headers.set("Cache-Control", "no-store");
+
+const opts = { path: SPOTIFY_COOKIE_PATH, httpOnly: true, sameSite: "lax" as const, secure: import.meta.env.PROD };
+const code = (url.searchParams.get("code") ?? "").trim();
+const spotifyError = (url.searchParams.get("error") ?? "").trim();
+if (code || spotifyError) {
+  const keptState = Astro.cookies.get(SPOTIFY_STATE_COOKIE)?.value ?? "";
+  const verifier = Astro.cookies.get(SPOTIFY_VERIFIER_COOKIE)?.value ?? "";
+  let result: string;
+  if (spotifyError) result = `refused:Spotify did not approve the app (${spotifyError.replace(/[^a-z_]/gi, "").slice(0, 40)}). Nothing was saved.`;
+  else if (!sameState(url.searchParams.get("state"), keptState) || !verifier || !isSpotifyCode(code)) result = "refused:This reply does not belong to a sign-in started in this browser, or it expired. Nothing was saved. Start again from Connect Spotify.";
+  else {
+    const r = await advertisingApi(token, "POST", "/spotify/connect", { code, codeVerifier: verifier, redirectUri: `${SITE_ORIGIN}${SPOTIFY_REDIRECT_PATH}` });
+    result = r.ok ? `ok:Connected to ad account ${r.data.adAccountName ? `"${r.data.adAccountName}" ` : ""}(${r.data.adAccountId}).` : `refused:${r.message}`;
+  }
+  // One use: neither the state nor the verifier is good for anything now.
+  Astro.cookies.delete(SPOTIFY_STATE_COOKIE, { path: SPOTIFY_COOKIE_PATH });
+  Astro.cookies.delete(SPOTIFY_VERIFIER_COOKIE, { path: SPOTIFY_COOKIE_PATH });
+  Astro.cookies.set(SPOTIFY_RESULT_COOKIE, result.slice(0, 600), { ...opts, maxAge: 120 });
+  return Astro.redirect(SPOTIFY_REDIRECT_PATH, 303);
+}
+const raw = Astro.cookies.get(SPOTIFY_RESULT_COOKIE)?.value ?? "";
+Astro.cookies.delete(SPOTIFY_RESULT_COOKIE, { path: SPOTIFY_COOKIE_PATH });
+const ok = raw.startsWith("ok:");
+const message = raw.replace(/^(ok|refused):/, "");
+---
+<AdminLayout title="Connect Spotify" description="The result of approving the GoldPlus Ads app in Spotify.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-2xl">
+    <p class="text-sm mb-2"><a class="underline" href="/admin/advertising">Advertising</a> / <a class="underline" href="/admin/advertising/spotify">Spotify rotation</a> / Connect</p>
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-4">Connect Spotify</h2>
+    {message
+      ? <div role={ok ? "status" : "alert"} class={`rounded-xl border p-4 text-sm ${ok ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-red-300 bg-red-50 text-red-900"}`}>{message}</div>
+      : <p class="text-sm text-gray-700">Nothing to show here. Start from <a class="underline" href="/admin/advertising/spotify/connect">Connect Spotify</a>.</p>}
+    <p class="mt-6 text-sm"><a class="underline" href="/admin/advertising/spotify">Back to the Spotify rotation</a></p>
+  </div>
+</AdminLayout>

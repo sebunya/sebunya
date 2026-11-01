@@ -1,5 +1,44 @@
 import { Registry } from '../Registry';
 import { telemetryDispatcher } from '../telemetry/TelemetryDispatchService';
+import { processAdConversionBatch } from '../advertising/AdConversionDispatch';
+import { confirmGoogleUploads, deliverOne, recoverExpiredLeases, routeBusinessEvents, scheduleDueDeliveries } from '../measurement/DeliveryService';
+
+/**
+ * One measurement-delivery cycle. With the queue up, due intents become BullMQ
+ * jobs (gp-<delivery>-g<generation>); with Redis down, the same intents are
+ * delivered inline here, so a queue outage delays nothing durable.
+ */
+async function runMeasurementDelivery() {
+  const routed = await routeBusinessEvents();
+  const leases = await recoverExpiredLeases();
+  const { QueueService, QUEUES, QueueUnavailableError } = await import('../queues/QueueService');
+  const qs = QueueService.getInstance();
+  // isReady, not getQueue: getQueue returns a queue whenever the connection object
+  // exists, so the inline path below could never run and a Redis outage hung the
+  // whole tick (and with it notifications and checkout side effects).
+  let queueUp = qs.isReady();
+  const scheduled = await scheduleDueDeliveries(async (jobId, data) => {
+    if (queueUp) {
+      try {
+        await qs.enqueue(QUEUES.MEASUREMENT_DELIVERY, 'deliver', data, jobId);
+        return true;
+      } catch (err) {
+        if (!(err instanceof QueueUnavailableError)) throw err;
+        queueUp = false; // Redis went away mid-cycle: the rest go inline too.
+        logger.warn({ jobId }, '[OutboxTicker] measurement queue unavailable; delivering inline');
+      }
+    }
+    await deliverOne(data.deliveryId, data.enqueueGeneration);
+    return true;
+  });
+  // Google answers conversion uploads later (requestStatus): ask how the accepted ones ended.
+  const google = await confirmGoogleUploads().catch((err) => { logger.warn({ err }, '[OutboxTicker] Google upload confirmation failed'); return null; });
+  if (google?.failed) logger.warn(google, '[OutboxTicker] Google rejected conversions after accepting them');
+  // Nightly attribution batch: one bounded job under the analytics lease (addendum 17).
+  const { maybeRunScheduledAttribution } = await import('../measurement/AttributionJob');
+  void maybeRunScheduledAttribution().catch((err) => logger.error({ err }, '[OutboxTicker] attribution schedule failed'));
+  if (routed.routed || scheduled || leases.toPending || leases.toUnknown) logger.info({ ...routed, ...leases, scheduled, queueUp }, '[OutboxTicker] measurement delivery cycle');
+}
 import { logger } from '../logging/logger';
 
 let tickerHandle: NodeJS.Timeout | null = null;
@@ -32,11 +71,19 @@ async function runTick(): Promise<void> {
     // not outbound messages, so they must not share a failure domain with a
     // provider that can hang for its whole timeout — a stalled email provider must
     // never be the reason an order gets no fulfilment task.
-    const [notifResult, telemetryResult, sideEffectResult] = await Promise.allSettled([
+    const [notifResult, telemetryResult, sideEffectResult, adsResult, deliveryResult] = await Promise.allSettled([
       registry.processOutboxBatchUseCase.execute(),
       telemetryDispatcher.processBatch(),
       registry.processCheckoutSideEffectBatchUseCase.execute(),
+      // Advertising conversions (0138): a fourth isolated domain, so a slow ad
+      // platform never delays GA4, notifications or checkout work.
+      processAdConversionBatch(),
+      // Durable commerce-event deliveries (0140): route → recover leases → schedule.
+      runMeasurementDelivery(),
     ]);
+    if (adsResult.status === 'fulfilled' && adsResult.value.claimed > 0) logger.info(adsResult.value, '[OutboxTicker] Ad conversions batch complete');
+    if (adsResult.status === 'rejected') logger.error({ err: adsResult.reason }, '[OutboxTicker] Ad conversions batch failed');
+    if (deliveryResult.status === 'rejected') logger.error({ err: deliveryResult.reason }, '[OutboxTicker] Measurement delivery cycle failed');
 
     // Log notification results
     if (notifResult.status === 'fulfilled') {

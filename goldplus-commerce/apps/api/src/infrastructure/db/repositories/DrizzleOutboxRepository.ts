@@ -1,12 +1,48 @@
 import { eq, lte, and, asc, desc, inArray, notInArray, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db } from '../client';
+import { pgJsonb } from '../PgParams';
 import { outboxEvents } from '../schema/system';
 import {
   IOutboxRepository,
   OutboxClaimFilter,
   PersistedOutboxEvent,
 } from '../../../application/ports/IOutboxRepository';
+import { DEAD_LETTER_STATE, DEAD_LETTER_STATES } from '../../../domain/outbox/TerminalState';
+
+/**
+ * Events whose payload carries a live secret (a phone verification code). The outbox needs it until the event is
+ * handled; after that it is removed, so a database or queue reader cannot read codes, and the event is never
+ * replayed (the code has expired, and the message would go out without it).
+ */
+export const SECRET_PAYLOAD_EVENT_TYPES: readonly string[] = ['PHONE_VERIFICATION_REQUESTED'];
+/**
+ * The payload as a jsonb OBJECT. drizzle 0.29 + postgres-js store a jsonb value written through `.values({ payload })`
+ * as a JSON STRING (the repo-wide gotcha; see PgParams), which is how CustomerOutboxNotifier writes. `?` and `-` on
+ * such a string match nothing (and `-` on a scalar errors), so every secret check reads through this.
+ */
+const payloadObject = () => sql`(case when jsonb_typeof(${outboxEvents.payload}) = 'string' and left(${outboxEvents.payload} #>> '{}', 1) = '{' then (${outboxEvents.payload} #>> '{}')::jsonb else ${outboxEvents.payload} end)`;
+const scrubbedPayload = () => sql`case when ${outboxEvents.eventType} in (${sql.join(SECRET_PAYLOAD_EVENT_TYPES.map((t) => sql`${t}`), sql`, `)})
+  then (${payloadObject()} - 'code') || jsonb_build_object('message', 'Verification code (removed once handled).')
+  when ${payloadObject()} ? 'creditCode'
+  then (${payloadObject()} - 'creditCode') || jsonb_build_object('message', 'Gift card / store credit code (removed once handled).', 'creditCodeRemoved', true)
+  else ${outboxEvents.payload} end`;
+/**
+ * 0196: a gift card / store credit code is a bearer secret that rides a shared event type (CUSTOMER_ORDER_MESSAGE),
+ * so it is recognised by its key, not its type. Never replayed: after the scrub the message has no code, and a card
+ * whose SMS failed is re-sent by staff (cancel the rest and issue a new card).
+ */
+const notSecretPayload = () => and(notInArray(outboxEvents.eventType, [...SECRET_PAYLOAD_EVENT_TYPES]), sql`not (${payloadObject()} ?| array['creditCode', 'creditCodeRemoved'])`);
+
+/**
+ * The read-compatible state list as a literal IN-list.
+ *
+ * Interpolating the JS array as a bound parameter makes Drizzle emit a record,
+ * and `status = any(row(...))` fails with "cannot cast type record to text[]".
+ * These are compile-time constants from TerminalState, never user input, so a
+ * raw literal list is both safe and the thing PostgreSQL actually wants.
+ */
+const DEAD_LETTER_STATES_SQL = sql.raw(DEAD_LETTER_STATES.map((s) => `'${s}'`).join(', '));
 
 function rowToPersisted(row: typeof outboxEvents.$inferSelect): PersistedOutboxEvent {
   return {
@@ -51,6 +87,16 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
    * completion — so a worker whose lease had expired could still come back and
    * overwrite the outcome recorded by its successor.
    */
+  async renewLease(eventId: string, now: Date): Promise<boolean> {
+    const leaseExpiresAt = new Date(now.getTime() + LEASE_DURATION_MS);
+    const renewed = await db
+      .update(outboxEvents)
+      .set({ leaseExpiresAt, nextAttemptAt: leaseExpiresAt })
+      .where(and(eq(outboxEvents.id, eventId), eq(outboxEvents.workerId, this.workerId), eq(outboxEvents.isProcessed, false)))
+      .returning({ id: outboxEvents.id });
+    return renewed.length === 1;
+  }
+
   async claimDueBatch(
     now: Date,
     limit: number,
@@ -121,6 +167,7 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         lastError: opts?.lastError ?? null,
         workerId: null,
         leaseExpiresAt: null,
+        payload: scrubbedPayload(),
       })
       .where(and(eq(outboxEvents.id, eventId), eq(outboxEvents.workerId, this.workerId)))
       .returning({ id: outboxEvents.id });
@@ -140,17 +187,19 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         isProcessed: true,
         processedAt: now,
         deadLetteredAt: now,
-        status: 'dead_letter',
+        status: DEAD_LETTER_STATE,
         lastError: error,
         workerId: null,
         leaseExpiresAt: null,
+        payload: scrubbedPayload(),
       })
       .where(and(eq(outboxEvents.id, eventId), eq(outboxEvents.workerId, this.workerId)))
       .returning({ id: outboxEvents.id });
     return updated.length === 1;
   }
 
-  async recordFailure(eventId: string, error: string, nextAttemptAt: Date): Promise<boolean> {
+  async recordFailure(eventId: string, error: string, nextAttemptAt: Date, opts?: { sentTargets?: string[] }): Promise<boolean> {
+    const sent = opts?.sentTargets?.length ? { _sentTargets: opts.sentTargets } : null;
     const updated = await db
       .update(outboxEvents)
       .set({
@@ -160,6 +209,8 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         attemptCount: sql`${outboxEvents.attemptCount} + 1`,
         workerId: null,
         leaseExpiresAt: null,
+        // Into the payload's OBJECT form (string || object is an array: the retry lost its phone/email).
+        ...(sent ? { payload: sql`coalesce(${payloadObject()}, '{}'::jsonb) || ${pgJsonb(sent)}` } : {}),
       })
       .where(and(eq(outboxEvents.id, eventId), eq(outboxEvents.workerId, this.workerId)))
       .returning({ id: outboxEvents.id });
@@ -184,7 +235,7 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         pending: sql<number>`count(*) filter (where is_processed = false)::int`,
         due: sql<number>`count(*) filter (where is_processed = false and next_attempt_at <= ${now})::int`,
         processing: sql<number>`count(*) filter (where status = 'processing')::int`,
-        deadLettered: sql<number>`count(*) filter (where status = 'dead_letter')::int`,
+        deadLettered: sql<number>`count(*) filter (where status in (${DEAD_LETTER_STATES_SQL}))::int`,
         oldest: sql<number | null>`extract(epoch from (${now} - min(created_at) filter (where is_processed = false)))::int`,
         expiredLeases: sql<number>`count(*) filter (where status = 'processing' and lease_expires_at < ${now})::int`,
       })
@@ -203,7 +254,9 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
     const rows = await db
       .select()
       .from(outboxEvents)
-      .where(eq(outboxEvents.status, 'dead_letter'))
+      // Both historical spellings. Filtering on one hid every telemetry dead
+      // letter from the operator list entirely.
+      .where(inArray(outboxEvents.status, [...DEAD_LETTER_STATES]))
       .orderBy(desc(outboxEvents.deadLetteredAt))
       .limit(Math.min(Math.max(1, limit), 500));
     return rows.map(rowToPersisted);
@@ -230,7 +283,9 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         workerId: null,
         leaseExpiresAt: null,
       })
-      .where(and(eq(outboxEvents.id, eventId), eq(outboxEvents.status, 'dead_letter')))
+      // Accepts either spelling, so a telemetry dead letter can actually be
+      // replayed. Before this it matched nothing and returned false forever.
+      .where(and(eq(outboxEvents.id, eventId), inArray(outboxEvents.status, [...DEAD_LETTER_STATES]), notSecretPayload()))
       .returning({ id: outboxEvents.id });
     return updated.length === 1;
   }
@@ -299,7 +354,8 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         and(
           eq(outboxEvents.id, eventId),
           eq(outboxEvents.isProcessed, true),
-          sql`${outboxEvents.lastError} is not null`
+          sql`${outboxEvents.lastError} is not null`,
+          notSecretPayload()
         )
       )
       .returning({ id: outboxEvents.id });

@@ -8,7 +8,13 @@ import { telemetryDeadLetterQueue } from '../db/schema/telemetry';
 export class RecommendationMaterializer {
   async execute(): Promise<{ success: boolean; durationMs: number; processedCount: number }> {
     const start = Date.now();
-    logger.info('[RecommendationMaterializer] Starting pre-computation of recommendations...');
+
+    // Experience profiles are NEVER pruned (owner decision 2026-09-20:
+    // personalisation is kept forever). The old 180-day prune existed because a
+    // page render minted a profile; renders no longer create one, so the table
+    // grows only with visitors who did something. The ~780k render-minted rows
+    // already there are historical telemetry: untouched until off-host restore
+    // is proven and the R3 review has passed.
 
     // 0. Prune telemetry DLQ records older than 30 days
     try {
@@ -21,6 +27,7 @@ export class RecommendationMaterializer {
     }
 
     let processedCount = 0;
+    let failedCount = 0;
 
     try {
       const registry = Registry.getInstance();
@@ -46,38 +53,51 @@ export class RecommendationMaterializer {
       // 3. Pre-compute category_popular for each category
       logger.info('[RecommendationMaterializer] Pre-computing category_popular...');
       const allCategories = await db.select().from(categories);
+      // One unhappy category must not cost every later category and every
+      // product its refresh: this runs hourly, and an abort halfway left the
+      // rest of the catalogue serving whatever was cached last time, silently.
       for (const cat of allCategories) {
-        const catCandidates = await getRecsUseCase.generateV1ScoredCandidates({
-          placement: 'category_popular',
-          categoryId: cat.id
-        }, 20);
-        await recReader.saveCachedRecommendations('category_popular', cat.id, catCandidates);
-        processedCount++;
+        try {
+          const catCandidates = await getRecsUseCase.generateV1ScoredCandidates({
+            placement: 'category_popular',
+            categoryId: cat.id
+          }, 20);
+          await recReader.saveCachedRecommendations('category_popular', cat.id, catCandidates);
+          processedCount++;
+        } catch (err) {
+          failedCount++;
+          logger.error({ err, categoryId: cat.id }, '[RecommendationMaterializer] Category skipped');
+        }
       }
 
       // 4. Pre-compute product_related and complete_setup for each product
       logger.info('[RecommendationMaterializer] Pre-computing product_related and complete_setup...');
       const activeProducts = await recReader.findPublicProducts({ limit: 500 });
       for (const prod of activeProducts) {
-        // product_related
-        const relatedCandidates = await getRecsUseCase.generateV1ScoredCandidates({
-          placement: 'product_related',
-          productId: prod.id
-        }, 10);
-        await recReader.saveCachedRecommendations('product_related', prod.id, relatedCandidates);
-        processedCount++;
+        try {
+          // product_related
+          const relatedCandidates = await getRecsUseCase.generateV1ScoredCandidates({
+            placement: 'product_related',
+            productId: prod.id
+          }, 10);
+          await recReader.saveCachedRecommendations('product_related', prod.id, relatedCandidates);
+          processedCount++;
 
-        // complete_setup
-        const setupCandidates = await getRecsUseCase.generateV1ScoredCandidates({
-          placement: 'complete_setup',
-          productId: prod.id
-        }, 10);
-        await recReader.saveCachedRecommendations('complete_setup', prod.id, setupCandidates);
-        processedCount++;
+          // complete_setup
+          const setupCandidates = await getRecsUseCase.generateV1ScoredCandidates({
+            placement: 'complete_setup',
+            productId: prod.id
+          }, 10);
+          await recReader.saveCachedRecommendations('complete_setup', prod.id, setupCandidates);
+          processedCount++;
+        } catch (err) {
+          failedCount++;
+          logger.error({ err, productId: prod.id }, '[RecommendationMaterializer] Product skipped');
+        }
       }
 
       const durationMs = Date.now() - start;
-      logger.info({ durationMs, processedCount }, '[RecommendationMaterializer] Completed recommendation pre-computation successfully');
+      logger.info({ durationMs, processedCount, failedCount }, '[RecommendationMaterializer] Completed recommendation pre-computation');
       return { success: true, durationMs, processedCount };
     } catch (err: any) {
       const durationMs = Date.now() - start;

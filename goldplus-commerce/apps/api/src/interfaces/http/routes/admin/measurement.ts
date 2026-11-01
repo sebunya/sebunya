@@ -8,9 +8,9 @@ const registry = Registry.getInstance();
 const getOverviewUseCase = registry.getMeasurementOverviewUseCase;
 const listDlqUseCase = registry.listMeasurementDlqUseCase;
 const replayDlqUseCase = registry.replayMeasurementDlqUseCase;
+const dismissDlqUseCase = registry.dismissMeasurementDlqUseCase;
 const listConsentAuditUseCase = registry.listConsentAuditUseCase;
 const getMatchQualityUseCase = registry.getMatchQualitySummaryUseCase;
-const attributionService = registry.attributionService;
 const loggerAdapter = registry.measurementLogger;
 
 const routes = new Hono();
@@ -41,8 +41,9 @@ routes.get('/overview', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c
 
 routes.get('/dlq', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   try {
-    const rows = await listDlqUseCase.execute(100);
-    return c.json({ success: true, data: rows });
+    // `data` is capped at 100 rows; `total` is the true unresolved count.
+    const { items, total } = await listDlqUseCase.executeWithTotal(100);
+    return c.json({ success: true, data: items, total });
   } catch (err) {
     loggerAdapter.error({ err }, '[AdminMeasurement] DLQ list failed');
     return c.json({ success: false, error: 'INTERNAL_ERROR' }, 500);
@@ -51,10 +52,12 @@ routes.get('/dlq', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => 
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /admin/measurement/dlq/:id/replay — replay a DLQ entry
-// audit-exempt: Audit is handled internally by ReplayMeasurementDlqUseCase
+// Replay re-enqueues an outbound dispatch and resolves the DLQ row: a write.
+// It sat on reports.read, the dashboard bar, while its twin
+// (measurement-payments POST /:orderId/retry) required a mutating right.
 // ─────────────────────────────────────────────────────────────────────────────
 
-routes.post('/dlq/:id/replay', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+routes.post('/dlq/:id/replay', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const id = c.req.param('id');
   if (!id) return c.json({ success: false, error: 'MISSING_ID' }, 400);
 
@@ -63,12 +66,54 @@ routes.post('/dlq/:id/replay', requirePermissions([PERMISSIONS.REPORTS_READ]), a
 
   try {
     const result = await replayDlqUseCase.execute(id, actorId);
+    // Replaying a dead-lettered event re-emits it to the measurement
+    // providers. Record who did it; the use case writes no audit of its own.
+    await registry.createAuditLogUseCase.execute({
+      actorId,
+      action: 'MEASUREMENT_DLQ_REPLAYED',
+      entity: 'measurement_dlq',
+      entityId: id,
+      newState: { message: result.message },
+    }).catch((err: unknown) => loggerAdapter.error({ err, dlqId: id }, '[AdminMeasurement] audit write failed'));
     return c.json({ success: true, message: result.message });
   } catch (err: any) {
     if (err.message === 'NOT_FOUND') return c.json({ success: false, error: 'NOT_FOUND' }, 404);
     if (err.message === 'ALREADY_RESOLVED') return c.json({ success: false, error: 'ALREADY_RESOLVED' }, 400);
 
     loggerAdapter.error({ err, dlqId: id }, '[AdminMeasurement] DLQ replay failed');
+    return c.json({ success: false, error: 'INTERNAL_ERROR' }, 500);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /admin/measurement/dlq/:id/dismiss — resolve WITHOUT re-sending
+// Same right as replay (it resolves the row). A reason is required and is
+// kept on the row (resolved_note "DISMISSED: …") and in the audit log.
+// ─────────────────────────────────────────────────────────────────────────────
+
+routes.post('/dlq/:id/dismiss', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const id = c.req.param('id');
+  if (!id) return c.json({ success: false, error: 'MISSING_ID' }, 400);
+
+  const body = await c.req.json().catch(() => null) as { reason?: unknown } | null;
+  const adminUser = c.get('user');
+  const actorId = adminUser?.id || 'system';
+
+  try {
+    const result = await dismissDlqUseCase.execute(id, body?.reason, actorId);
+    await registry.createAuditLogUseCase.execute({
+      actorId,
+      action: 'MEASUREMENT_DLQ_DISMISSED',
+      entity: 'measurement_dlq',
+      entityId: id,
+      newState: { message: result.message, reason: typeof body?.reason === 'string' ? body.reason.trim() : null },
+    }).catch((err: unknown) => loggerAdapter.error({ err, dlqId: id }, '[AdminMeasurement] audit write failed'));
+    return c.json({ success: true, message: result.message });
+  } catch (err: any) {
+    if (err.message === 'INVALID_REASON') return c.json({ success: false, error: 'INVALID_REASON' }, 400);
+    if (err.message === 'NOT_FOUND') return c.json({ success: false, error: 'NOT_FOUND' }, 404);
+    if (err.message === 'ALREADY_RESOLVED') return c.json({ success: false, error: 'ALREADY_RESOLVED' }, 400);
+    loggerAdapter.error({ err, dlqId: id }, '[AdminMeasurement] DLQ dismiss failed');
     return c.json({ success: false, error: 'INTERNAL_ERROR' }, 500);
   }
 });
@@ -95,7 +140,11 @@ routes.get('/consent-audit', requirePermissions([PERMISSIONS.REPORTS_READ]), asy
 // ─────────────────────────────────────────────────────────────────────────────
 
 routes.get('/match-quality', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
-  const days = parseInt(c.req.query('days') || '7', 10);
+  // parseInt('abc') is NaN, which reached the query as an invalid date (a 500).
+  const days = Number(c.req.query('days') || '7');
+  if (!Number.isInteger(days) || days < 1 || days > 90) {
+    return c.json({ success: false, error: 'INVALID_DAYS' }, 400);
+  }
 
   try {
     const summary = await getMatchQualityUseCase.execute(days);
@@ -110,24 +159,49 @@ routes.get('/match-quality', requirePermissions([PERMISSIONS.REPORTS_READ]), asy
 // GET /admin/measurement/attribution/:orderId — attribution for specific order
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Marketing attribution for a specific order, by its order reference (0111).
 routes.get('/attribution/:orderId', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
-  const orderId = c.req.param('orderId');
-  if (!orderId) return c.json({ success: false, error: 'MISSING_ORDER_ID' }, 400);
-
+  const ref = (c.req.param('orderId') || '').trim();
+  if (!ref) return c.json({ success: false, error: 'MISSING_ORDER_ID' }, 400);
   try {
-    const report = await attributionService.getAttributionReport(orderId);
-    if (!report) {
-      return c.json({ success: false, error: 'NOT_FOUND' }, 404);
-    }
-    return c.json({ success: true, data: report });
+    const row = await registry.orderAttributionRepo.getByOrderNumber(ref);
+    if (!row) return c.json({ success: false, error: 'NOT_FOUND' }, 404);
+    return c.json({
+      success: true,
+      data: {
+        orderNumber: row.orderNumber,
+        source: row.source ?? '(direct)',
+        medium: row.medium ?? '(none)',
+        campaign: row.campaign ?? '(none)',
+        term: row.term ?? null,
+        content: row.content ?? null,
+        landingPath: row.landingPath ?? null,
+        referrer: row.referrer ?? null,
+        firstAt: row.firstAt ?? null,
+        recordedAt: row.createdAt ?? null,
+      },
+    });
   } catch (err) {
-    loggerAdapter.error({ err, orderId }, '[AdminMeasurement] Attribution report failed');
+    loggerAdapter.error({ err, ref }, '[AdminMeasurement] Attribution lookup failed');
     return c.json({ success: false, error: 'INTERNAL_ERROR' }, 500);
   }
 });
 
-import measurementPaymentsRoutes from './measurement-payments';
+// Orders grouped by marketing channel over a window (0111).
+routes.get('/attribution-summary', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const windowDays = Math.min(365, Math.max(1, Number(c.req.query('windowDays')) || 30));
+  try {
+    const rows = await registry.orderAttributionRepo.summary(windowDays);
+    return c.json({ success: true, data: { windowDays, channels: rows } });
+  } catch (err) {
+    loggerAdapter.error({ err }, '[AdminMeasurement] Attribution summary failed');
+    return c.json({ success: false, error: 'INTERNAL_ERROR' }, 500);
+  }
+});
 
-routes.route('/payments', measurementPaymentsRoutes);
+// The payments router is mounted ONCE, in app.ts at '/admin/measurement/payments',
+// alongside its gtm/paid-social siblings. A second mount here registered the same
+// handlers at the same final path; Hono served the first registration and the inner
+// one was dead weight that made ownership of the path ambiguous.
 
 export default routes;

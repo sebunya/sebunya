@@ -1,12 +1,15 @@
 import { outboundGovernance } from '../OutboundGovernanceService';
-import { classifyMessage } from '../messageClassification';
+import { classifyMessage, consentGrantedIn } from '../messageClassification';
+import { smsText } from '../../../application/notifications/CustomerMessages';
 import {
   INotificationProvider,
   NotificationDispatchPayload,
   NotificationDispatchResult,
   NotificationStatus,
+  OUTCOME_UNKNOWN_PROVIDER_CODE,
 } from '../../../application/ports/INotificationProvider';
-import { resilientFetch } from '../../http/HttpClient';
+import { resilientFetch, sendMayHaveReachedProvider } from '../../http/HttpClient';
+import { smsSegments, tagShopLinksInSms } from '@goldplus/shared';
 
 export class PahappaCommsSmsAdapter implements INotificationProvider {
   /**
@@ -85,17 +88,19 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
       return allowedNormalized !== null && allowedNormalized === normalizedNumber;
     });
 
-    const decision = outboundGovernance.decide({
+    const decision = await outboundGovernance.decideForRecipient({
       channel: 'SMS',
       messageClass: classifyMessage(payload),
       recipientClass: recipientAllowlisted ? 'TEST' : 'CUSTOMER',
+      // 0210: consent recorded by the sender (a basket reminder the customer ticked for). Absent = the class decides.
+      consentGranted: consentGrantedIn(payload.data, payload.template, 'sms'),
       // The credential check moves INTO the decision so an unconfigured provider is
       // reported by the same vocabulary as every other block, in the right order.
       providerConfigured: Boolean(username && apiKey && senderId),
       allowlistActive: allowlist.length > 0,
       recipientAllowlisted,
       maskedRecipient: this.maskPhone(normalizedNumber),
-    });
+    }, `phone:+${normalizedNumber}`);
 
     if (decision.kind === 'ALLOW_DRY_RUN') {
       return {
@@ -120,7 +125,21 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
       };
     }
 
-    // 4. Live Send Dispatch
+    // 4. The text. A producer may attach one; otherwise it comes from the one
+    // customer wording table. It used to fall back to `payload.template`, which
+    // would have put "LOYALTY_EXPIRY_WARNING" on a customer's phone.
+    // Our shop links say they came from an SMS (shared/links/shopLinkTag): SMS apps send no referrer. Never at the
+    // price of one more SMS part: a message the tag would push over the boundary goes as it was.
+    const text = tagShopLinksInSms(String(payload.data?.message || smsText(payload.template, (payload.data || {}) as never) || '').trim());
+    if (!text) {
+      return {
+        status: 'FAILED' as NotificationStatus,
+        providerCode: 'NO_MESSAGE_BODY',
+        providerMessage: `SMS not sent: no customer wording for template ${payload.template}.`,
+      };
+    }
+
+    // 5. Live Send Dispatch
     try {
       const body = {
         method: 'SendSms',
@@ -131,14 +150,16 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
         msgdata: [
           {
             number: normalizedNumber,
-            message: String(payload.data.message || payload.template),
+            message: text,
             senderid: senderId,
             priority: priority,
           },
         ],
       };
 
-      const timeoutMs = parseInt(process.env.SMS_TIMEOUT_MS || '3000', 10);
+      // 10 s, as .env.example says: a timeout is now final (never re-sent), so a slow provider must not look lost.
+      const configuredTimeout = parseInt(process.env.SMS_TIMEOUT_MS || '', 10);
+      const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 10_000;
       const response = await resilientFetch(baseUrl, {
         method: 'POST',
         headers: {
@@ -163,7 +184,8 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
         return {
           status: 'SENT' as NotificationStatus,
           providerCode: resJson.MsgFollowUpUniqueCode || 'SENT_OK',
-          providerMessage: resJson.Message || 'Successfully Sent!',
+          // "[parts=N]" is read by the nightly cost derivation: the provider bills per part, not per message.
+          providerMessage: `${resJson.Message || 'Successfully Sent!'} [parts=${smsSegments(text)}]`,
         };
       }
 
@@ -174,6 +196,15 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
       };
     } catch (err: any) {
       const isTimeout = err.name === 'AbortError';
+      if (sendMayHaveReachedProvider(err)) {
+        // It may have been delivered: the outbox must neither re-send it nor hand it to a fallback channel.
+        return {
+          status: 'FAILED' as NotificationStatus,
+          providerCode: OUTCOME_UNKNOWN_PROVIDER_CODE,
+          retryable: false,
+          providerMessage: this.sanitizeErrorMessage(`SMS (egosms) ${isTimeout ? 'timed out after sending' : 'failed after sending (' + (err.message || 'network error') + ')'}; outcome unknown. Not retried, no fallback.`),
+        };
+      }
       return {
         status: 'FAILED' as NotificationStatus,
         providerCode: 'PROVIDER_ERROR',

@@ -46,14 +46,18 @@ describe('Slice 8-B0 admin Measurement route protection', () => {
   });
 
   it('guards live-review routes before any server-side admin API fetch', () => {
+    // Any server-side API call (direct apiFetch or the live-review helpers that wrap it).
     for (const source of routeSources.slice(4)) {
-      expect(source.indexOf('if (!token)')).toBeLessThan(source.indexOf('apiFetch('));
+      const firstCall = source.search(/\b(apiFetch|liveReviewGet|liveReviewAct)(<[^>(]*>)?\(/);
+      expect(firstCall).toBeGreaterThan(-1);
+      expect(source.indexOf('if (!token)')).toBeLessThan(firstCall);
     }
   });
 
   it('keeps login public and preserves its local-admin return target validation', () => {
     expect(login).not.toContain('readSessionToken(Astro.request)');
-    expect(login).toContain("returnTo.startsWith('/admin') && !returnTo.startsWith('//')");
+    // Replaced by the shared safeReturnTo helper, still scoped to /admin.
+    expect(login).toContain("safeReturnTo(returnTo, '/admin')");
   });
 
   it('preserves the existing protected Admin Trust Centre route', () => {
@@ -81,7 +85,8 @@ describe('Slice 8-B0 admin Measurement route protection', () => {
   });
 
   it('uses 303 redirects and never renders an access-denied page after protected content', () => {
-    const redirects = routeBundle.match(/Astro\.redirect\([^\n]+, 303\)/g) ?? [];
+    // One login redirect per route (a page may also 303 to itself after a form action).
+    const redirects = routeBundle.match(/Astro\.redirect\('\/admin\/login[^\n]+, 303\)/g) ?? [];
     expect(redirects).toHaveLength(measurementRoutes.length);
     expect(routeBundle).not.toContain('status: 200, accessDenied: true');
   });

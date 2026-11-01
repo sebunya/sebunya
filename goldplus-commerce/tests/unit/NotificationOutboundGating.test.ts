@@ -330,7 +330,7 @@ describe('both adapters delegate rather than deciding for themselves', () => {
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
     it('asks the shared policy', () => {
-      expect(code).toContain('outboundGovernance.decide(');
+      expect(code).toContain('outboundGovernance.decideForRecipient(');
     });
 
     it('no longer reads the outbound flags itself', () => {
@@ -348,7 +348,7 @@ describe('both adapters delegate rather than deciding for themselves', () => {
 
     it('decides before any network call', () => {
       const dispatch = code.slice(code.indexOf('async dispatch('));
-      const decideAt = dispatch.indexOf('outboundGovernance.decide(');
+      const decideAt = dispatch.indexOf('outboundGovernance.decideForRecipient(');
       const fetchAt = dispatch.search(/await (resilientFetch|fetch)\(/);
       expect(decideAt).toBeGreaterThan(-1);
       expect(fetchAt).toBeGreaterThan(-1);
@@ -392,5 +392,23 @@ describe('the email preflight uses the same policy it reports on', () => {
   it('still reports PASS when the environment is genuinely locked down', () => {
     const tail = preflight.slice(preflight.lastIndexOf("status: 'PASS'"));
     expect(tail).toContain('Safe dry-run defaults are active');
+  });
+});
+
+/* ── Account recovery is never marketing (2026-08-07) ────────────────────── */
+
+describe('a password reset is transactional, and nobody consents to it', () => {
+  it('classifies password_reset as TRANSACTIONAL, in either case', () => {
+    // Production refused the first real reset with NO_CONSENT_FOR_MARKETING:
+    // the template was unclassified, so the fail-closed default treated a
+    // security message as an offer. A customer locked out of their account was
+    // told a link was coming and never got one, because they had not opted in
+    // to receiving marketing.
+    expect(classifyTemplate('password_reset')).toBe('TRANSACTIONAL');
+    expect(classifyTemplate('PASSWORD_RESET')).toBe('TRANSACTIONAL');
+  });
+
+  it('the fail-closed default is untouched — an unknown template is still MARKETING', () => {
+    expect(classifyTemplate('SOME_TEMPLATE_NOBODY_CLASSIFIED')).toBe('MARKETING');
   });
 });

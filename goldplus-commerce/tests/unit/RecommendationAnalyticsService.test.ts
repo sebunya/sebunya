@@ -98,10 +98,12 @@ describe("RecommendationAnalyticsService", () => {
       .rejects.toThrow("startDate must be before endDate.");
   });
 
-  it("includes unavailable metrics", async () => {
-    const result = await service.getAnalytics({});
-    expect(result.unavailableMetrics).toEqual(expect.arrayContaining([
-      expect.objectContaining({ metric: "revenueAttribution" })
-    ]));
+  it("no longer declares the five commercial metrics unavailable", () => {
+    // They are implemented by RecommendationCommercialService, which the
+    // analytics page renders. Listing them as unavailable made the page
+    // contradict the working panels directly above that list.
+    return service.getAnalytics({}).then((result) => {
+      expect(result.unavailableMetrics).toEqual([]);
+    });
   });
 });

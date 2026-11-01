@@ -26,29 +26,32 @@ describe('NotificationTemplateRenderer Truthfulness & Privacy Safeguards', () =>
   describe('Truthfulness Checks', () => {
     it('should never say "Payment successful" in ORDER_RECEIVED_UNPAID email receipt template', () => {
       const html = renderer.renderEmail('ORDER_RECEIVED_UNPAID', mockOrder);
-      expect(html).not.toContain('Payment verified');
+      expect(html).not.toContain('Payment received');
       expect(html).not.toContain('Excellent news');
-      expect(html).toContain('Order received. Payment is still pending.');
+      expect(html).toContain('We have your order');
+      expect(html).toContain('not paid yet');
     });
 
     it('should render verified state only when paymentStatus is paid in ORDER_PAYMENT_SUCCESS', () => {
       const paidOrder = { ...mockOrder, paymentStatus: 'paid', orderStatus: 'processing' };
       const html = renderer.renderEmail('ORDER_PAYMENT_SUCCESS', paidOrder);
-      expect(html).toContain('Payment verified');
-      expect(html).toContain('processing');
+      expect(html).toContain('Payment received');
+      expect(html).toContain('being prepared');
     });
 
     it('should handle pending state with ORDER_PAYMENT_PENDING template', () => {
       const pendingOrder = { ...mockOrder, paymentStatus: 'pending', orderStatus: 'pending_payment' };
       const html = renderer.renderEmail('ORDER_PAYMENT_PENDING', pendingOrder);
-      expect(html).toContain('Payment pending verification');
-      expect(html).not.toContain('Payment verified');
+      expect(html).toContain('waiting for your payment to clear');
+      expect(html).toContain('do not pay again');
+      expect(html).not.toContain('Payment received');
     });
 
     it('should handle cancelled states correctly without marking them as failures', () => {
       const cancelledOrder = { ...mockOrder, orderStatus: 'cancelled' };
       const html = renderer.renderEmail('ORDER_PAYMENT_CANCELLED', cancelledOrder);
-      expect(html).toContain('Checkout cancelled. Your order has not been paid.');
+      expect(html).toContain('Payment cancelled');
+      expect(html).toContain('Nothing was charged');
       expect(html).not.toContain('failed');
     });
   });
@@ -96,13 +99,14 @@ describe('NotificationTemplateRenderer Truthfulness & Privacy Safeguards', () =>
     });
 
     it('should render exact CTA labels per order template type', () => {
-      expect(renderer.renderEmail('ORDER_RECEIVED_UNPAID', mockOrder)).toContain('Complete Payment');
-      expect(renderer.renderEmail('ORDER_PAYMENT_PENDING', mockOrder)).toContain('Track Order');
-      expect(renderer.renderEmail('ORDER_PAYMENT_SUCCESS', mockOrder)).toContain('Track Order');
-      expect(renderer.renderEmail('ORDER_PAYMENT_FAILED', mockOrder)).toContain('Retry Payment');
-      expect(renderer.renderEmail('ORDER_PAYMENT_CANCELLED', mockOrder)).toContain('Return to Checkout');
-      expect(renderer.renderEmail('ORDER_FULFILLMENT_PROCESSING', mockOrder)).toContain('Track Order');
-      expect(renderer.renderEmail('ORDER_FULFILLMENT_COMPLETED', mockOrder)).toContain('View Order');
+      // Each label says what pressing it does; none over-promises ("Complete Payment" for a redirect).
+      expect(renderer.renderEmail('ORDER_RECEIVED_UNPAID', mockOrder)).toContain('Pay for this order');
+      expect(renderer.renderEmail('ORDER_PAYMENT_PENDING', mockOrder)).toContain('Track this order');
+      expect(renderer.renderEmail('ORDER_PAYMENT_SUCCESS', mockOrder)).toContain('Track this order');
+      expect(renderer.renderEmail('ORDER_PAYMENT_FAILED', mockOrder)).toContain('Try payment again');
+      expect(renderer.renderEmail('ORDER_PAYMENT_CANCELLED', mockOrder)).toContain('Pay for this order');
+      expect(renderer.renderEmail('ORDER_FULFILLMENT_PROCESSING', mockOrder)).toContain('Track this order');
+      expect(renderer.renderEmail('ORDER_FULFILLMENT_COMPLETED', mockOrder)).toContain('See this order');
     });
 
     it('should include Uganda support hotline and order reference inside support footer card', () => {
@@ -131,16 +135,17 @@ describe('NotificationTemplateRenderer Truthfulness & Privacy Safeguards', () =>
       const pendingOrder = { ...mockOrder, orderStatus: 'pending_payment' };
       const waText = renderer.renderWhatsApp(pendingOrder);
       
-      expect(waText).toContain('Pending verification');
-      expect(waText).not.toContain('Successfully Verified');
+      expect(waText).toContain('has not cleared yet');
+      expect(waText).toContain('do not pay again');
+      expect(waText).not.toContain('Payment received');
     });
 
     it('should adapt WhatsApp notification content for paid and processing status', () => {
       const paidOrder = { ...mockOrder, paymentStatus: 'paid', orderStatus: 'processing' };
       const waText = renderer.renderWhatsApp(paidOrder);
       
-      expect(waText).toContain('Successfully Verified');
-      expect(waText).toContain('Fulfillment is in progress');
+      expect(waText).toContain('being packed');
+      expect(waText).not.toContain('Fulfillment');
     });
   });
 
@@ -174,7 +179,7 @@ describe('NotificationTemplateRenderer Truthfulness & Privacy Safeguards', () =>
     it('should enforce Official GoldPlus Online Store or approved copy positioning', () => {
       templates.forEach(tpl => {
         const html = renderer.renderEmail(tpl, mockOrder);
-        expect(html).toContain('Official GoldPlus Online Store');
+        expect(html).toContain('Verified electronics, Kampala');
       });
     });
 
@@ -196,26 +201,26 @@ describe('NotificationTemplateRenderer Truthfulness & Privacy Safeguards', () =>
     it('should enforce state-truthful messaging across templates', () => {
       // Unpaid order received template
       const unpaidHtml = renderer.renderEmail('ORDER_RECEIVED_UNPAID', mockOrder);
-      expect(unpaidHtml).toContain('Payment is still pending');
-      expect(unpaidHtml).not.toContain('Payment verified');
-      expect(unpaidHtml).toContain('>unpaid<');
+      expect(unpaidHtml).toContain('not paid yet');
+      expect(unpaidHtml).not.toContain('Payment received');
+      expect(unpaidHtml).toContain('>Not paid yet<');
 
       // Paid order success template
       const paidOrder = { ...mockOrder, paymentStatus: 'paid', orderStatus: 'processing' };
       const successHtml = renderer.renderEmail('ORDER_PAYMENT_SUCCESS', paidOrder);
-      expect(successHtml).toContain('Payment verified');
-      expect(successHtml).toContain('>paid<');
+      expect(successHtml).toContain('Payment received');
+      expect(successHtml).toContain('>Paid<');
 
       // Cancelled template
       const cancelledOrder = { ...mockOrder, orderStatus: 'cancelled' };
       const cancelledHtml = renderer.renderEmail('ORDER_PAYMENT_CANCELLED', cancelledOrder);
-      expect(cancelledHtml).toContain('Checkout cancelled');
+      expect(cancelledHtml).toContain('Payment cancelled');
       expect(cancelledHtml).not.toContain('failed');
 
       // Failed template
       const failedOrder = { ...mockOrder, orderStatus: 'failed' };
       const failedHtml = renderer.renderEmail('ORDER_PAYMENT_FAILED', failedOrder);
-      expect(failedHtml).toContain('Payment was not completed');
+      expect(failedHtml).toContain('Payment did not go through');
       expect(failedHtml).not.toContain('cancelled');
     });
   });
@@ -268,15 +273,16 @@ describe('NotificationTemplateRenderer Truthfulness & Privacy Safeguards', () =>
     it('should fallback to standard contact text when disabled in HTML email templates', () => {
       process.env.WHATSAPP_SUPPORT_NUMBER = 'none';
       const html = renderer.renderEmail('ORDER_RECEIVED_UNPAID', mockOrder);
-      expect(html).toContain('Contact GoldPlus Support');
-      expect(html).not.toContain('Chat with GoldPlus Support');
+      expect(html).toContain('Need help with your order?');
+      expect(html).toContain('Call 0705 004545');
+      expect(html).not.toContain('Ask us on WhatsApp');
       expect(html).not.toContain('wa.me/');
     });
 
     it('should fallback to standard text message in plain text bodies when disabled', () => {
       process.env.WHATSAPP_SUPPORT_NUMBER = 'none';
       const text = renderer.renderTextBody('ORDER_RECEIVED_UNPAID', mockOrder);
-      expect(text).toContain('WhatsApp support: not configured.');
+      expect(text).toContain('Need help? Call 0705 004545.');
       expect(text).not.toContain('wa.me/');
     });
   });

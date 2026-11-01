@@ -20,6 +20,8 @@ export const utmLinks = pgTable('utm_links', {
   content: varchar('utm_content', { length: 100 }),
   term: varchar('utm_term', { length: 100 }),
   shortUrl: varchar('short_url', { length: 100 }).unique(),
+  /** The landing page the tags were built for (0163). Null for links saved before it. */
+  destinationUrl: text('destination_url'),
 });
 
 export const productFeeds = pgTable('product_feeds', {

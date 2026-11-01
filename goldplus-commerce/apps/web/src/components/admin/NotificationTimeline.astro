@@ -48,7 +48,7 @@ function formatTimestamp(isoStr: string) {
   <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center flex-wrap gap-2">
     <div>
       <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Order Notification Timeline</h3>
-      <p class="text-[9px] text-gray-400 mt-0.5">Chronological audit log of outbox events, channel eligibility planning, and provider dispatch attempts.</p>
+      <p class="text-[9px] text-gray-500 mt-0.5">Chronological audit log of outbox events, channel eligibility planning, and provider dispatch attempts.</p>
     </div>
     
     <span class="bg-blue-50 text-blue-700 border border-blue-100 text-[8px] font-black px-2.5 py-1 rounded-xl uppercase tracking-wider">
@@ -58,7 +58,7 @@ function formatTimestamp(isoStr: string) {
 
   <div class="p-6">
     {items.length === 0 ? (
-      <div class="p-8 text-center text-gray-400 italic bg-gray-50 border border-gray-100 rounded-2xl">
+      <div class="p-8 text-center text-gray-500 italic bg-gray-50 border border-gray-100 rounded-2xl">
         <svg class="w-8 h-8 text-gray-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
         No notification timeline records found for this order. (Events are enqueued during order transitions and payment settlements).
       </div>
@@ -80,12 +80,12 @@ function formatTimestamp(isoStr: string) {
             <div class="bg-gray-50 border border-gray-200 rounded-xl p-5 relative transition-colors duration-200 hover:border-gray-300">
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                 <div>
-                  <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest block mb-0.5">
+                  <span class="text-[8px] font-bold text-gray-500 uppercase tracking-widest block mb-0.5">
                     {item.type.toUpperCase()} EVENT • {formatTimestamp(item.timestamp)}
                   </span>
                   <h4 class="text-xs font-black text-brand-dark flex items-center gap-2 flex-wrap">
                     {item.template}
-                    <span class="text-[9px] font-mono text-gray-400 font-medium bg-gray-100 px-1.5 py-0.5 rounded">
+                    <span class="text-[9px] font-mono text-gray-600 font-medium bg-gray-100 px-1.5 py-0.5 rounded">
                       via {item.channel.toUpperCase()}
                     </span>
                   </h4>
@@ -100,13 +100,13 @@ function formatTimestamp(isoStr: string) {
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div>
-                  <span class="text-[8px] font-bold text-gray-400 uppercase block mb-0.5">Masked Recipient</span>
+                  <span class="text-[8px] font-bold text-gray-600 uppercase block mb-0.5">Masked Recipient</span>
                   <span class="font-mono font-bold text-brand-dark break-all">{item.recipient || 'N/A'}</span>
                 </div>
 
                 {item.idempotencyKey && (
                   <div>
-                    <span class="text-[8px] font-bold text-gray-400 uppercase block mb-0.5">Idempotency Key (Masked/Safe)</span>
+                    <span class="text-[8px] font-bold text-gray-600 uppercase block mb-0.5">Idempotency Key (Masked/Safe)</span>
                     <span class="font-mono font-bold text-gray-500 break-all">{item.idempotencyKey}</span>
                   </div>
                 )}

@@ -15,8 +15,173 @@ import { recommendationEvents, recommendationRules } from "../schema/recommendat
 import { identityLinks } from "../schema/identity";
 import { products } from "../schema/products";
 import { db } from "../client";
+import { humanTrafficOnly } from "../../first-party/AnalysisExclusion";
+
+/** postgres-js returns an array; some drivers wrap it in `.rows`. */
+const rowsOf = (r: unknown): any[] => (Array.isArray(r) ? r : (r as any)?.rows ?? []);
 
 export class DrizzleRecommendationAnalyticsRepository implements IRecommendationAnalyticsRepository {
+  /**
+   * Serving truth (R6, 2026-08-06) — computed from the engine's own
+   * RECOMMENDATION_RESPONSE events, not from browser beacons. "Is the engine
+   * serving, are placements filled, and how deep into the fallback ladder are
+   * we living?" are answerable even with zero client JavaScript.
+   */
+  async getServingHealth(sinceDays: number): Promise<{
+    windowDays: number;
+    placements: Array<{
+      placement: string;
+      responses: number;
+      empty: number;
+      fallbackServed: number;
+      lastResponseAt: Date | null;
+    }>;
+    totalResponses: number;
+  }> {
+    // The metadata column carries double-encoded rows (the drizzle +
+    // postgres.js jsonb double-stringify, same as the materialized cache) —
+    // normalise a string-typed jsonb back to its object before reading keys,
+    // or fill/fallback would read zero forever against real data.
+    const rows = (await db.execute(sql`
+      with responses as (
+        select
+          placement,
+          created_at,
+          case when jsonb_typeof(metadata) = 'string' then (metadata #>> '{}')::jsonb else metadata end as meta
+        from recommendation_events
+        where event_type = 'RECOMMENDATION_RESPONSE'
+          and created_at >= now() - make_interval(days => ${sinceDays})
+          and placement is not null
+      )
+      -- Since 0144 a rendered rail is counted hourly, not stored as an event.
+      -- Older windows still hold RESPONSE rows; the two never overlap in time
+      -- for the same serve, so they add.
+      , combined as (
+        select
+          placement,
+          count(*)::int as responses,
+          count(*) filter (where meta ? 'emptyReason')::int as empty,
+          count(*) filter (where coalesce((meta->>'fallbackLevel')::int, 0) > 0)::int as fallback_served,
+          max(created_at) as last_response_at
+        from responses
+        group by placement
+        union all
+        select placement, sum(responses)::int, sum(empty)::int, sum(fallback_served)::int, max(last_response_at)
+        from recommendation_serving_hourly
+        where hour >= date_trunc('hour', now() - make_interval(days => ${sinceDays}))
+        group by placement
+      )
+      select
+        placement,
+        sum(responses)::int as responses,
+        sum(empty)::int as empty,
+        sum(fallback_served)::int as fallback_served,
+        max(last_response_at) as last_response_at
+      from combined
+      group by placement
+      order by placement
+    `)) as unknown as Array<{
+      placement: string;
+      responses: number;
+      empty: number;
+      fallback_served: number;
+      last_response_at: Date | null;
+    }>;
+
+    const placements = rows.map((r) => ({
+      placement: r.placement,
+      responses: Number(r.responses),
+      empty: Number(r.empty),
+      fallbackServed: Number(r.fallback_served),
+      lastResponseAt: r.last_response_at,
+    }));
+    return {
+      windowDays: sinceDays,
+      placements,
+      totalResponses: placements.reduce((sum, p) => sum + p.responses, 0),
+    };
+  }
+
+  /**
+   * Event lineage and data-quality classification (R4, 2026-08-06; §21).
+   * Historic rows are NEVER reclassified or backfilled — schema_version NULL
+   * simply means "written before the contract existed", and stays that way.
+   * An orphan click is a click whose attribution chain has no impression:
+   * either a lost impression write or a fabricated beacon — both are facts an
+   * operator should see counted, not silently absorbed into CTR.
+   */
+  async getLineageReport(sinceDays: number): Promise<{
+    windowDays: number;
+    total: number;
+    historicPreContract: number;
+    contractV2: number;
+    identityUnavailable: number;
+    railEventsMissingPlacement: number;
+    orphanClicks: number;
+    attributedAtcWithoutExposure: number;
+    profileStamped: number;
+    totalClicks: number;
+    clientContractV2: number;
+    clientProfileStamped: number;
+  }> {
+    const rows = await db.execute(sql`
+      with windowed as (
+        select * from recommendation_events
+        where created_at >= now() - make_interval(days => ${sinceDays})
+      )
+      select
+        count(*)::int as total,
+        count(*) filter (where schema_version is null)::int as historic_pre_contract,
+        count(*) filter (where schema_version = 2)::int as contract_v2,
+        count(*) filter (where anonymous_id is null and customer_id is null and profile_id is null)::int as identity_unavailable,
+        count(*) filter (
+          where event_type in ('RECOMMENDATION_IMPRESSION','RECOMMENDATION_CLICKED','RECOMMENDATION_ADD_TO_CART')
+          and placement is null
+        )::int as rail_events_missing_placement,
+        count(*) filter (
+          where event_type = 'RECOMMENDATION_CLICKED'
+          and attribution_id is not null
+          and not exists (
+            select 1 from recommendation_events i
+            where i.event_type = 'RECOMMENDATION_IMPRESSION'
+              and i.attribution_id = windowed.attribution_id
+          )
+        )::int as orphan_clicks,
+        count(*) filter (
+          where event_type = 'RECOMMENDATION_ADD_TO_CART'
+          and (
+            attribution_id is null
+            or not exists (
+              select 1 from recommendation_events e
+              where e.attribution_id = windowed.attribution_id
+                and e.event_type in ('RECOMMENDATION_IMPRESSION','RECOMMENDATION_CLICKED')
+                and e.id <> windowed.id
+            )
+          )
+        )::int as attributed_atc_without_exposure,
+        count(*) filter (where profile_id is not null)::int as profile_stamped,
+        count(*) filter (where event_type = 'RECOMMENDATION_CLICKED')::int as total_clicks,
+        count(*) filter (where schema_version = 2 and coalesce(producer,'') in ('web-relay','public-api'))::int as client_contract_v2,
+        count(*) filter (where profile_id is not null and coalesce(producer,'') in ('web-relay','public-api'))::int as client_profile_stamped
+      from windowed
+    `);
+    const row = (rows as unknown as Array<Record<string, number>>)[0] ?? {};
+    return {
+      windowDays: sinceDays,
+      total: Number(row.total ?? 0),
+      historicPreContract: Number(row.historic_pre_contract ?? 0),
+      contractV2: Number(row.contract_v2 ?? 0),
+      identityUnavailable: Number(row.identity_unavailable ?? 0),
+      railEventsMissingPlacement: Number(row.rail_events_missing_placement ?? 0),
+      orphanClicks: Number(row.orphan_clicks ?? 0),
+      attributedAtcWithoutExposure: Number(row.attributed_atc_without_exposure ?? 0),
+      profileStamped: Number(row.profile_stamped ?? 0),
+      totalClicks: Number(row.total_clicks ?? 0),
+      clientContractV2: Number(row.client_contract_v2 ?? 0),
+      clientProfileStamped: Number(row.client_profile_stamped ?? 0),
+    };
+  }
+
   async getSummaryMetrics(query: Omit<RecommendationAnalyticsQuery, "startDate" | "endDate"> & { startDate: Date; endDate: Date }): Promise<AnalyticsSummary> {
     const filters = this.buildFilters(query);
 
@@ -24,7 +189,7 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
       .select({
         totalEvents: count(),
         impressions: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_IMPRESSION' then 1 end)::int`,
-        clicks: sql<number>`count(case when ${recommendationEvents.eventType} in ('RECOMMENDATION_CLICKED', 'RECOMMENDATION_CLICK') then 1 end)::int`,
+        clicks: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_CLICKED' then 1 end)::int`,
         addToCart: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_ADD_TO_CART' then 1 end)::int`,
         attributedEvents: sql<number>`count(case when ${recommendationEvents.attributionId} is not null then 1 end)::int`,
         unattributedEvents: sql<number>`count(case when ${recommendationEvents.attributionId} is null then 1 end)::int`,
@@ -47,7 +212,7 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
       .select({
         placement: recommendationEvents.placement,
         impressions: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_IMPRESSION' then 1 end)::int`,
-        clicks: sql<number>`count(case when ${recommendationEvents.eventType} in ('RECOMMENDATION_CLICKED', 'RECOMMENDATION_CLICK') then 1 end)::int`,
+        clicks: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_CLICKED' then 1 end)::int`,
         addToCart: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_ADD_TO_CART' then 1 end)::int`,
         attributedEvents: sql<number>`count(case when ${recommendationEvents.attributionId} is not null then 1 end)::int`,
         organicEvents: sql<number>`count(case when ${recommendationEvents.ruleId} is null then 1 end)::int`,
@@ -68,7 +233,7 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
         ruleId: recommendationEvents.ruleId,
         ruleName: recommendationRules.name,
         impressions: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_IMPRESSION' then 1 end)::int`,
-        clicks: sql<number>`count(case when ${recommendationEvents.eventType} in ('RECOMMENDATION_CLICKED', 'RECOMMENDATION_CLICK') then 1 end)::int`,
+        clicks: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_CLICKED' then 1 end)::int`,
         addToCart: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_ADD_TO_CART' then 1 end)::int`,
         placementsTouched: sql<string[]>`array_agg(distinct ${recommendationEvents.placement})`,
         productsTouched: sql<number>`count(distinct ${recommendationEvents.recommendationProductId})::int`,
@@ -95,7 +260,7 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
         productName: products.name,
         sku: products.sku,
         impressions: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_IMPRESSION' then 1 end)::int`,
-        clicks: sql<number>`count(case when ${recommendationEvents.eventType} in ('RECOMMENDATION_CLICKED', 'RECOMMENDATION_CLICK') then 1 end)::int`,
+        clicks: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_CLICKED' then 1 end)::int`,
         addToCart: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_ADD_TO_CART' then 1 end)::int`,
         placements: sql<string[]>`array_agg(distinct ${recommendationEvents.placement})`,
         ruleAssistedCount: sql<number>`count(case when ${recommendationEvents.ruleId} is not null then 1 end)::int`,
@@ -124,7 +289,27 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
         missingAttributionId: sql<number>`count(case when ${recommendationEvents.attributionId} is null then 1 end)::int`,
         missingPlacement: sql<number>`count(case when ${recommendationEvents.placement} is null then 1 end)::int`,
         missingProductId: sql<number>`count(case when ${recommendationEvents.productId} is null and ${recommendationEvents.recommendationProductId} is null then 1 end)::int`,
-        missingAnonymousId: sql<number>`count(case when ${recommendationEvents.anonymousId} is null then 1 end)::int`,
+        // Scoped to client producers: api-engine rows carry no anonymous id BY
+        // DESIGN, and counting them made this warning a permanent false alarm.
+        missingAnonymousId: sql<number>`count(case when ${recommendationEvents.anonymousId} is null and coalesce(${recommendationEvents.producer}, '') <> 'api-engine' then 1 end)::int`,
+        // Events that could carry a browser identifier at all. Server-rendered
+        // events (api-engine serving records, SSR search) are excluded: they
+        // identify the visitor through the visit profile instead, and counting
+        // them as "missing anonymousId" measures an absence that was never a
+        // gap.
+        identityEligibleEvents: sql<number>`count(case when coalesce(${recommendationEvents.producer}, '') <> 'api-engine' and ${recommendationEvents.eventType} <> 'PRODUCT_SEARCHED' then 1 end)::int`,
+        // Numerator scoped to EXACTLY the same population as the denominator
+        // above. Reusing the older missingAnonymousId here would mix
+        // populations — it excludes api-engine but still counts SSR search —
+        // and produce a share above 100%.
+        missingAnonymousIdEligible: sql<number>`count(case when ${recommendationEvents.anonymousId} is null and coalesce(${recommendationEvents.producer}, '') <> 'api-engine' and ${recommendationEvents.eventType} <> 'PRODUCT_SEARCHED' then 1 end)::int`,
+        // The question that actually matters: is this event attributable to
+        // ANY visitor at all? An event with a profile but no anonymousId is
+        // fully attributable.
+        eventsWithoutAnyIdentity: sql<number>`count(case when ${recommendationEvents.anonymousId} is null and ${recommendationEvents.profileId} is null and ${recommendationEvents.customerId} is null then 1 end)::int`,
+        // Placement is only meaningful for the events that have one.
+        placementEligibleEvents: sql<number>`count(case when ${recommendationEvents.eventType} in ('RECOMMENDATION_IMPRESSION','RECOMMENDATION_CLICKED','RECOMMENDATION_ADD_TO_CART') then 1 end)::int`,
+        missingPlacementEligible: sql<number>`count(case when ${recommendationEvents.eventType} in ('RECOMMENDATION_IMPRESSION','RECOMMENDATION_CLICKED','RECOMMENDATION_ADD_TO_CART') and ${recommendationEvents.placement} is null then 1 end)::int`,
         latestEventAt: sql<Date>`max(${recommendationEvents.createdAt})`,
       })
       .from(recommendationEvents)
@@ -145,7 +330,8 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
     }
 
     return {
-      ...(rows[0] || { totalEvents: 0, missingAttributionId: 0, missingPlacement: 0, missingProductId: 0, missingAnonymousId: 0, latestEventAt: null }),
+      ...(rows[0] || { totalEvents: 0, missingAttributionId: 0, missingPlacement: 0, missingProductId: 0, missingAnonymousId: 0,
+        identityEligibleEvents: 0, missingAnonymousIdEligible: 0, eventsWithoutAnyIdentity: 0, placementEligibleEvents: 0, missingPlacementEligible: 0, latestEventAt: null }),
       eventsByType
     };
   }
@@ -184,7 +370,10 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
   private buildFilters(query: Omit<RecommendationAnalyticsQuery, "startDate" | "endDate"> & { startDate: Date; endDate: Date }) {
     const conditions = [
       gte(recommendationEvents.createdAt, query.startDate),
-      lte(recommendationEvents.createdAt, query.endDate)
+      lte(recommendationEvents.createdAt, query.endDate),
+      // 0155: rows marked as our own monitor / SSR / probe exhaust are left out
+      // of behaviour analysis (reversible; ANALYSIS_EXCLUSIONS=off restores them).
+      humanTrafficOnly('recommendation_events', recommendationEvents.id),
     ];
 
     if (query.placement) conditions.push(eq(recommendationEvents.placement, query.placement));
@@ -194,7 +383,18 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
         eq(sql`coalesce(${recommendationEvents.recommendationProductId}, ${recommendationEvents.productId})`, query.productId)
       )!);
     }
-    if (query.eventType) conditions.push(eq(recommendationEvents.eventType, query.eventType));
+    if (query.eventType) {
+      conditions.push(eq(recommendationEvents.eventType, query.eventType));
+    } else {
+      // R9 (M4): the engine's own server-native rows (RECOMMENDATION_RESPONSE /
+      // RECOMMENDATION_ERROR) are serving telemetry, not customer behaviour —
+      // without this exclusion they inflated totalEvents, "organic" counts and
+      // every share computed against them. An explicit eventType filter may
+      // still ask for them by name.
+      conditions.push(
+        sql`${recommendationEvents.eventType} not in ('RECOMMENDATION_RESPONSE', 'RECOMMENDATION_ERROR')`,
+      );
+    }
 
     return and(...conditions);
   }
@@ -214,4 +414,65 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
       uniqueCarts: 0
     };
   }
+
+  async depthMetricsRaw(windowDays: number) {
+    const { sql } = await import('drizzle-orm');
+    const { recommendationEvents } = await import('../schema/recommendations');
+    const { products } = await import('../schema/products');
+    const { isRecommendationPlacement } = await import('../../../application/recommendations/RecommendationValidation');
+    const since = new Date(Date.now() - windowDays * 24 * 3600_000);
+
+    const [totals] = await db
+      .select({
+        totalEvents: sql<number>`count(*)::int`,
+        distinctRecommendedProducts: sql<number>`count(distinct recommendation_product_id) filter (where recommendation_product_id is not null)::int`,
+        // R9 (m10): only RAIL event types owe a placement — counting
+        // PRODUCT_VIEWED page events as "unknown placement" manufactured a
+        // permanent defect signal.
+        nullPlacementEvents: sql<number>`count(*) filter (where placement is null and event_type in ('RECOMMENDATION_IMPRESSION','RECOMMENDATION_CLICKED','RECOMMENDATION_ADD_TO_CART','RECOMMENDATION_VIEWED'))::int`,
+      })
+      .from(recommendationEvents)
+      .where(sql`${recommendationEvents.createdAt} >= ${since}`);
+
+    const placements = await db
+      .select({ placement: recommendationEvents.placement, events: sql<number>`count(*)::int` })
+      .from(recommendationEvents)
+      .where(sql`${recommendationEvents.createdAt} >= ${since} and ${recommendationEvents.placement} is not null`)
+      .groupBy(recommendationEvents.placement);
+    const invalidPlacementEvents = placements
+      .filter((p) => !isRecommendationPlacement(p.placement))
+      .reduce((sum, p) => sum + p.events, 0);
+
+    // R9 (m10): the coverage denominator is the SELLABLE catalogue — counting
+    // drafts and inactive rows made coverage read systematically low.
+    const [{ activeProducts }] = await db
+      .select({ activeProducts: sql<number>`count(*) filter (where ${products.active} = true and ${products.approvalStatus} = 'approved')::int` })
+      .from(products);
+
+    const topProducts = await db
+      .select({ productId: recommendationEvents.recommendationProductId, events: sql<number>`count(*)::int` })
+      .from(recommendationEvents)
+      .where(sql`${recommendationEvents.createdAt} >= ${since} and ${recommendationEvents.recommendationProductId} is not null`)
+      .groupBy(recommendationEvents.recommendationProductId)
+      .orderBy(sql`count(*) desc`)
+      .limit(5);
+
+    const sourceBreakdown = await db
+      .select({ source: sql<string>`coalesce(${recommendationEvents.source}, 'unknown')`, events: sql<number>`count(*)::int` })
+      .from(recommendationEvents)
+      .where(sql`${recommendationEvents.createdAt} >= ${since}`)
+      .groupBy(sql`coalesce(${recommendationEvents.source}, 'unknown')`)
+      .orderBy(sql`count(*) desc`);
+
+    return {
+      totalEvents: totals?.totalEvents ?? 0,
+      distinctRecommendedProducts: totals?.distinctRecommendedProducts ?? 0,
+      activeProducts: activeProducts ?? 0,
+      nullPlacementEvents: totals?.nullPlacementEvents ?? 0,
+      invalidPlacementEvents,
+      topProducts: topProducts.map((t) => ({ productId: t.productId as string, events: t.events })),
+      sourceBreakdown,
+    };
+  }
+
 }

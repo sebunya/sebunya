@@ -1,0 +1,4 @@
+# Minimal runtime for contract validation, readiness gate, synthetic data and the CLI.
+# Safe to install anywhere, including Python 3.14. No model libraries.
+pandas>=2.0
+numpy>=1.24
