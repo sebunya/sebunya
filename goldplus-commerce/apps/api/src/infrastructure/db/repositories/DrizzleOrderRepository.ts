@@ -1,14 +1,24 @@
 import { db } from '../client';
+import { holdStoreCreditInTx } from '../../credit/DrizzleCreditRepository';
+import { guardedMeasurementWrite, recordOrderPlaced } from '../../measurement/BusinessEventWriter';
 import { orders, orderItems , checkoutIdempotency } from '../schema/commerce';
 import { pricingQuotes, promotionRedemptions, promotionReservations } from '../schema/pricing';
-import { products } from '../schema/products';
+import { products, productPrices } from '../schema/products';
 import { and, eq, desc, inArray, sql } from 'drizzle-orm';
 import { Order, OrderStatus as DomainOrderStatus, PaymentStatus, BuyerType } from '../../../domain/commerce/Order';
 import type { ITransactionalPricedOrderRepository } from '../../../application/use-cases/commerce/CheckoutUseCase';
 import { PricingQuote } from '../../../domain/pricing/PricingEvaluator';
 import { decodePricingJsonb, encodePricingJsonb } from '../PricingJsonbCodec';
 import { ICustomerOrderRepository } from '../../../application/ports/ICustomerOrderRepository';
-import { OrderDetailDto, OrderSummaryDto, OrderStatus } from '@goldplus/shared';
+import { loyaltyEarnSourceFromOrder } from '../../../domain/loyalty/LoyaltyEarnEligibility';
+import { OrderDetailDto, OrderSummaryDto, OrderStatus, normalizeUgandanPhone } from '@goldplus/shared';
+
+export interface AdminOrderFacts {
+  reservationState: string | null;
+  paymentMethod: string | null;
+}
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransactionalPricedOrderRepository {
   private hydrate(result: typeof orders.$inferSelect & { items: Array<typeof orderItems.$inferSelect> }): Order {
@@ -20,7 +30,9 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       result.items.map((item) => ({ productId: item.productId, sku: item.sku, name: item.productName, price: item.unitPrice, quantity: item.quantity, canonicalUnitPrice: item.canonicalUnitPrice, baseSubtotal: item.baseSubtotal, discountAmount: item.discountAmount, finalLineTotal: item.finalLineTotal })),
       result.subtotalAmount, result.deliveryFee, result.totalAmount, result.paymentStatus as PaymentStatus,
       result.status as DomainOrderStatus, result.createdAt, result.updatedAt, (result.deliveryLocation as any) ?? null,
-      result.deliveryFeeConfirmed ?? false, pricing
+      result.deliveryFeeConfirmed ?? false, pricing, result.userId ?? null,
+      (result as { loyaltyDiscountUgx?: number }).loyaltyDiscountUgx ?? 0, (result as { loyaltyRedemptionId?: string | null }).loyaltyRedemptionId ?? null,
+      Number((result as { storeCreditAppliedUgx?: number | null }).storeCreditAppliedUgx ?? 0),
     );
   }
   async findById(id: string): Promise<Order | null> {
@@ -37,16 +49,60 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
     return this.hydrate(result as typeof orders.$inferSelect & { items: Array<typeof orderItems.$inferSelect> });
   }
 
+  /** How the customer chose to pay ('pesapal' | 'offline'), or null for a legacy/admin order. */
+  async findPaymentMethod(id: string): Promise<string | null> {
+    const [row] = await db.select({ paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, id)).limit(1);
+    return row?.paymentMethod ?? null;
+  }
+
+  /**
+   * Admin-only operational facts that the Order entity does not carry:
+   * the stock reservation state (BACKORDERED, RESERVED, ...) and how the
+   * customer chose to pay. Read-only; keyed by order id.
+   */
+  async findAdminFacts(ids: string[]): Promise<Map<string, AdminOrderFacts>> {
+    const out = new Map<string, AdminOrderFacts>();
+    if (!ids.length) return out;
+    const rows = await db
+      .select({ id: orders.id, reservationState: orders.reservationState, paymentMethod: orders.paymentMethod })
+      .from(orders)
+      .where(inArray(orders.id, ids));
+    for (const row of rows) {
+      out.set(row.id, { reservationState: row.reservationState ?? null, paymentMethod: row.paymentMethod ?? null });
+    }
+    return out;
+  }
+
   /** Server-owned paid-order facts used by the dormant Loyalty earn boundary. */
   async findLoyaltyEarnSource(id: string): Promise<{ userId: string; totalUgx: number } | null> {
     const [row] = await db.select({
       userId: orders.userId,
       totalUgx: orders.totalAmount,
       paymentStatus: orders.paymentStatus,
+      paymentMethod: orders.paymentMethod,
+      status: orders.status,
+      buyerType: orders.buyerType,
+      customerPhone: orders.customerPhone,
     }).from(orders).where(eq(orders.id, id)).limit(1);
-    return row?.userId && row.paymentStatus === 'paid'
-      ? { userId: row.userId, totalUgx: row.totalUgx }
-      : null;
+    // An order placed signed out earns for the account whose VERIFIED phone is
+    // the order's phone (users.phone is unique, so at most one). Before this,
+    // such an order earned only through the backfill at verification time, so
+    // a customer already verified never earned on a later signed-out order.
+    if (row && !row.userId) row.userId = await this.verifiedOwnerOfPhone(row.customerPhone);
+    // Paid online, or cash on delivery that reached delivered/completed; retail
+    // only (PART K). The rule lives in the domain so it is tested once.
+    return loyaltyEarnSourceFromOrder(row);
+  }
+
+  /** The account whose verified phone is this number, typed in any Ugandan form (0772…, +256 772…, 256772…). */
+  private async verifiedOwnerOfPhone(phone: string | null): Promise<string | null> {
+    const e164 = normalizeUgandanPhone(phone)?.e164;
+    if (!e164) return null;
+    const rows = (await db.execute(sql`
+      select id from users
+      where phone_verified_at is not null and phone = ${e164}
+      limit 1`)) as unknown as Array<{ id: string }>;
+    return rows[0]?.id ?? null;
   }
 
 
@@ -66,6 +122,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       await tx.insert(orders).values({
         id: order.id,
         orderNumber: order.orderNumber,
+        userId: order.userId ?? null,
         buyerType: order.buyerType,
         customerName: order.customerName,
         customerPhone: order.customerPhone,
@@ -133,12 +190,18 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
    */
   async savePricedOrder(input: {
     order: Order;
+    paymentMethod?: 'pesapal' | 'offline' | null;
     quote: PricingQuote;
     reservationIds: string[];
     clientOrderKey: string | null;
     checkoutLink?: { identity: string; claimToken: string; fencingNumber: number };
+    stitching?: { profileId?: string | null; cartId?: string | null } | null;
+    /** 0196: the HMAC of a store credit / gift card code to hold against this order (gap analysis #17). */
+    storeCredit?: { codeHash: string; maxUgx?: number | null } | null;
   }): Promise<{ order: Order; duplicate: boolean }> {
-    if (!input.order.pricingSnapshot || input.order.pricingSnapshot.quoteId !== input.quote.id || input.order.totalUgx !== input.quote.finalTotalUgx) throw new Error('PRICING_ORDER_SNAPSHOT_MISMATCH');
+    // The order total may sit BELOW the quote total by exactly the loyalty
+    // redemption discount (0085) — any other divergence is still a mismatch.
+    if (!input.order.pricingSnapshot || input.order.pricingSnapshot.quoteId !== input.quote.id || input.order.totalUgx + (input.order.loyaltyDiscountUgx ?? 0) !== input.quote.finalTotalUgx) throw new Error('PRICING_ORDER_SNAPSHOT_MISMATCH');
     return db.transaction(async (tx) => {
       if (input.clientOrderKey) await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.clientOrderKey}, 0))`);
       if (input.clientOrderKey) {
@@ -155,16 +218,20 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       const reservations = input.reservationIds.length ? await tx.select().from(promotionReservations).where(inArray(promotionReservations.id, input.reservationIds)) : [];
       if (reservations.length !== input.reservationIds.length || reservations.some((row) => row.quoteId !== input.quote.id || row.status !== 'RESERVED' || row.expiresAt <= new Date())) throw new Error('PRICING_RESERVATION_COMMIT_MISMATCH');
       await tx.insert(orders).values({
-        id: input.order.id, orderNumber: input.order.orderNumber, buyerType: input.order.buyerType,
+        id: input.order.id, orderNumber: input.order.orderNumber, userId: input.order.userId ?? null, buyerType: input.order.buyerType,
         customerName: input.order.customerName, customerPhone: input.order.customerPhone, customerEmail: input.order.customerEmail,
         deliveryArea: input.order.deliveryArea, deliveryAddress: input.order.deliveryAddress, status: input.order.orderStatus,
         paymentStatus: input.order.paymentStatus, subtotalAmount: input.order.subtotalUgx, deliveryFee: input.order.deliveryFeeUgx,
         totalAmount: input.order.totalUgx, createdAt: input.order.createdAt, updatedAt: input.order.updatedAt,
         deliveryLocation: input.order.deliveryLocation ?? null, deliveryFeeConfirmed: input.order.deliveryFeeConfirmed,
+        // R3.1: server-issued provenance for commercial attribution.
+        profileId: input.stitching?.profileId ?? null, cartId: input.stitching?.cartId ?? null,
+        loyaltyDiscountUgx: input.order.loyaltyDiscountUgx ?? 0, loyaltyRedemptionId: input.order.loyaltyRedemptionId ?? null,
         clientOrderKey: input.clientOrderKey, pricingQuoteId: input.quote.id, pricingCurrency: input.quote.currency,
         pricingBaseSubtotal: input.quote.baseSubtotalUgx, pricingDiscountTotal: input.quote.discountTotalUgx,
         pricingTaxTotal: input.quote.taxUgx, pricingCalculationVersion: input.quote.calculationVersion,
         pricingSnapshot: encodePricingJsonb(input.order.pricingSnapshot as any) as any,
+        paymentMethod: input.paymentMethod ?? null,
       });
 
       // Same transaction as the insert above. A zero-row result means the lease
@@ -185,12 +252,39 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
           .returning({ identity: checkoutIdempotency.identity });
         if (linked.length !== 1) throw new Error('CHECKOUT_LEASE_LOST');
       }
-      await tx.insert(orderItems).values(input.order.items.map((item) => ({ orderId: input.order.id, productId: item.productId, sku: item.sku, productName: item.name, quantity: item.quantity, unitPrice: item.price, canonicalUnitPrice: item.canonicalUnitPrice ?? item.price, baseSubtotal: item.baseSubtotal ?? item.price * item.quantity, discountAmount: item.discountAmount ?? 0, finalLineTotal: item.finalLineTotal ?? item.price * item.quantity })));
+      // R3.1 (0102): freeze the line's COST at sale time. Profit is only ever
+      // computed from this snapshot — a later cost_price edit must not rewrite
+      // sold history. NULL cost_price (all of today's catalogue) stays NULL:
+      // the line's profit reports PARTIAL, never a fabricated margin.
+      const cogsRows = await tx
+        .select({ productId: productPrices.productId, costPrice: productPrices.costPrice })
+        .from(productPrices)
+        .where(inArray(productPrices.productId, input.order.items.map((item) => item.productId)));
+      const cogsByProduct = new Map(cogsRows.map((r) => [r.productId, r.costPrice]));
+      await tx.insert(orderItems).values(input.order.items.map((item) => {
+        const cost = cogsByProduct.get(item.productId);
+        return {
+          orderId: input.order.id, productId: item.productId, sku: item.sku, productName: item.name,
+          quantity: item.quantity, unitPrice: item.price, canonicalUnitPrice: item.canonicalUnitPrice ?? item.price,
+          baseSubtotal: item.baseSubtotal ?? item.price * item.quantity, discountAmount: item.discountAmount ?? 0,
+          finalLineTotal: item.finalLineTotal ?? item.price * item.quantity,
+          cogsSnapshotUgx: typeof cost === 'number' && cost >= 0 ? cost * item.quantity : null,
+        };
+      }));
       if (reservations.length) {
         await tx.insert(promotionRedemptions).values(reservations.map((reservation) => ({ reservationId: reservation.id, orderId: input.order.id, redeemedAt: new Date() })));
         await tx.update(promotionReservations).set({ status: 'REDEEMED', updatedAt: new Date() }).where(inArray(promotionReservations.id, reservations.map((row) => row.id)));
       }
-      return { order: input.order, duplicate: false };
+      // 0196: store credit / a gift card pays part of the order. Held in THIS transaction, under the instrument's
+      // row lock, so two orders can never spend one balance and an order never exists with a hold half-written.
+      // A card that stopped being spendable since the customer checked it rolls the order back (named error).
+      const appliedCredit = input.storeCredit
+        ? await holdStoreCreditInTx(tx, { codeHash: input.storeCredit.codeHash, orderId: input.order.id, orderTotalUgx: input.order.totalUgx, maxUgx: input.storeCredit.maxUgx ?? null })
+        : 0;
+      // order_created (+ order_confirmed for cash on delivery, D-006) in the
+      // same transaction as the order; guarded so it never blocks checkout (D-008).
+      await guardedMeasurementWrite(tx, input.order.id, 'order_placed', (sp) => recordOrderPlaced(sp, input.order.id, input.order.createdAt));
+      return { order: appliedCredit > 0 ? input.order.withStoreCredit(appliedCredit) : input.order, duplicate: false };
     });
   }
 
@@ -209,10 +303,17 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       totalAmountUgx: row.totalAmount,
       itemCount: (row as any).items?.length ?? 0,
       createdAt: row.createdAt.toISOString(),
+      // So the account pages can offer "Pay now" after a declined payment
+      // (offersOnlinePayment, @goldplus/shared). Additive.
+      paymentStatus: row.paymentStatus ?? null,
+      paymentMethod: row.paymentMethod ?? null,
     }));
   }
 
   async findByIdForUser(orderId: string, userId: string): Promise<OrderDetailDto | null> {
+    // orders.id is uuid. Binding an order NUMBER (what every email and message
+    // shows) raised 22P02 and surfaced as a 500 instead of not found.
+    if (!UUID_SHAPE.test(orderId)) return null;
     const row = await db.query.orders.findFirst({
       where: and(eq(orders.id, orderId), eq(orders.userId, userId)),
       with: { items: true },
@@ -224,13 +325,19 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       ? await db.query.products.findMany({ where: (p, { inArray }) => inArray(p.id, productIds) })
       : [];
     const productById = new Map(productRows.map((p) => [p.id, p]));
+    const paidRows = await db.execute(sql`select max(paid_at) as "paidAt" from payments where order_id = ${row.id} and paid_at is not null`);
+    const paidAtRaw = (Array.isArray(paidRows) ? paidRows : ((paidRows as { rows?: unknown[] }).rows ?? []))[0] as { paidAt?: Date | string | null } | undefined;
+    const paidAt = paidAtRaw?.paidAt ? new Date(paidAtRaw.paidAt).toISOString() : null;
 
     return {
       id: row.id,
       orderNumber: row.orderNumber,
       status: row.status as OrderStatus,
       totalAmountUgx: row.totalAmount,
+      storeCreditAppliedUgx: Number(row.storeCreditAppliedUgx ?? 0),
       createdAt: row.createdAt.toISOString(),
+      paymentStatus: row.paymentStatus ?? null,
+      paymentMethod: row.paymentMethod ?? null,
       items: ((row as any).items ?? []).map((i: any) => {
         const product = productById.get(i.productId);
         return {
@@ -239,11 +346,22 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
           productSlug: product?.slug ?? null,
           unitPriceUgx: i.unitPrice,
           quantity: i.quantity,
+          nameAtPurchase: i.productName ?? product?.name ?? undefined,
+          sku: i.sku ?? null,
+          lineTotalUgx: i.finalLineTotal > 0 ? i.finalLineTotal : i.unitPrice * i.quantity,
         };
       }),
       customer: {
         email: row.customerEmail ?? null,
         phone: row.customerPhone ?? null,
+      },
+      receipt: {
+        customerName: row.customerName,
+        subtotalUgx: row.subtotalAmount,
+        deliveryFeeUgx: row.deliveryFee ?? 0,
+        discountUgx: (row as any).pricingDiscountTotal ?? 0,
+        deliveryArea: row.deliveryArea,
+        paidAt,
       },
     };
   }

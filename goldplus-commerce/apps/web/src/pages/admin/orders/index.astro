@@ -12,24 +12,12 @@ const url = new URL(Astro.request.url);
 const search = url.searchParams.get('search')?.trim() || '';
 const statusFilter = url.searchParams.get('status')?.trim() || '';
 const paymentStatusFilter = url.searchParams.get('paymentStatus')?.trim() || '';
+const reservationFilter = url.searchParams.get('reservation')?.trim().toLowerCase() === 'backordered' ? 'backordered' : '';
 
-const fallbackOrders = [
-  {
-    id: "fallback-1",
-    orderNumber: "GP-FALLBACK-1",
-    customerName: "Sample John",
-    customerPhone: "0788000000",
-    customerEmail: "john@example.com",
-    buyerType: "retail",
-    totalUgx: 150000,
-    paymentStatus: "unpaid",
-    orderStatus: "received",
-    createdAt: new Date().toISOString()
-  }
-];
-
-let orders = [];
-let isSample = false;
+// Live data only: no invented order is ever listed (a 'Sample John' fallback
+// used to render here whenever the API did not answer 200).
+let orders: any[] = [];
+let loadFailed = false;
 let apiError = '';
 
 try {
@@ -37,6 +25,7 @@ try {
   if (search) queryParams.set('search', search);
   if (statusFilter) queryParams.set('status', statusFilter);
   if (paymentStatusFilter) queryParams.set('paymentStatus', paymentStatusFilter);
+  if (reservationFilter) queryParams.set('reservation', reservationFilter);
 
   const fetchUrl = `${apiBase}/governance/admin/orders${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
   
@@ -52,22 +41,23 @@ try {
     if (json && json.success && Array.isArray(json.data)) {
       orders = json.data;
     } else {
-      orders = fallbackOrders;
-      isSample = true;
-      apiError = 'Unexpected schema returned from active API route.';
+      loadFailed = true;
+      apiError = 'The API answered with an unexpected response.';
     }
   } else {
-    orders = fallbackOrders;
-    isSample = true;
-    apiError = `API query responded with HTTP ${res.status}.`;
+    loadFailed = true;
+    apiError = res.status === 401 || res.status === 403
+      ? 'Your role cannot read orders (orders.read required).'
+      : `The API answered HTTP ${res.status}.`;
   }
 } catch {
-  orders = fallbackOrders;
-  isSample = true;
-  apiError = 'Commerce API is currently unreachable.';
+  loadFailed = true;
+  apiError = 'The orders service is unreachable.';
 }
 
-const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
+import { formatUgx } from '../../../lib/money';
+// UGX code format via the single money source (en-UG's currency symbol is "USh").
+const formatter = { format: (n: unknown) => formatUgx(n) };
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -101,10 +91,10 @@ function getStatusColor(status: string) {
       </div>
     </div>
 
-    {isSample && (
-      <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex flex-col gap-1">
-        <div class="text-xs font-black uppercase tracking-wider">Interactive Fallback Mode</div>
-        <div class="text-xs leading-relaxed"><strong>System note:</strong> {apiError} Displaying fallback data.</div>
+    {loadFailed && (
+      <div role="alert" class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl mb-8 flex flex-col gap-1">
+        <div class="text-xs font-black uppercase tracking-wider">Orders could not be loaded</div>
+        <div class="text-xs leading-relaxed">{apiError} No sample data is shown.</div>
       </div>
     )}
 
@@ -112,29 +102,32 @@ function getStatusColor(status: string) {
     <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-8">
       <form method="GET" class="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
         <div class="sm:col-span-2">
-          <label for="search" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Search Query</label>
+          <label for="search" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Search Query</label>
           <input 
             type="text" 
             name="search" 
             id="search" 
             value={search} 
             placeholder="Order number, customer name, email or phone..."
-            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold transition-colors"
+            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk transition-colors"
           />
         </div>
 
         <div>
-          <label for="status" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Fulfillment State</label>
+          <label for="status" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Fulfillment State</label>
           <select 
             name="status" 
             id="status"
-            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold transition-colors appearance-none"
+            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk transition-colors appearance-none"
           >
             <option value="">All Fulfillment Statuses</option>
             <option value="received" selected={statusFilter === 'received'}>Received</option>
             <option value="pending_payment" selected={statusFilter === 'pending_payment'}>Pending Payment</option>
             <option value="pending_owner_review" selected={statusFilter === 'pending_owner_review'}>Pending Owner Review</option>
             <option value="processing" selected={statusFilter === 'processing'}>Processing</option>
+            <option value="dispatched" selected={statusFilter === 'dispatched'}>Dispatched</option>
+            <option value="delivered" selected={statusFilter === 'delivered'}>Delivered</option>
+            <option value="delivery_failed" selected={statusFilter === 'delivery_failed'}>Delivery failed</option>
             <option value="completed" selected={statusFilter === 'completed'}>Completed</option>
             <option value="cancelled" selected={statusFilter === 'cancelled'}>Cancelled</option>
             <option value="failed" selected={statusFilter === 'failed'}>Failed</option>
@@ -142,11 +135,11 @@ function getStatusColor(status: string) {
         </div>
 
         <div>
-          <label for="paymentStatus" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Payment State</label>
+          <label for="paymentStatus" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Payment State</label>
           <select 
             name="paymentStatus" 
             id="paymentStatus"
-            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold transition-colors appearance-none"
+            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk transition-colors appearance-none"
           >
             <option value="">All Payment Statuses</option>
             <option value="unpaid" selected={paymentStatusFilter === 'unpaid'}>Unpaid</option>
@@ -157,7 +150,8 @@ function getStatusColor(status: string) {
         </div>
 
         <div class="sm:col-span-4 flex justify-end gap-2 mt-2">
-          {(search || statusFilter || paymentStatusFilter) && (
+          {reservationFilter && <input type="hidden" name="reservation" value={reservationFilter} />}
+          {(search || statusFilter || paymentStatusFilter || reservationFilter) && (
             <a 
               href="/admin/orders" 
               class="px-4 py-2.5 border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-bold text-gray-500 transition-colors uppercase tracking-wider text-center"
@@ -173,6 +167,14 @@ function getStatusColor(status: string) {
           </button>
         </div>
       </form>
+      <nav aria-label="Orders needing attention" class="mt-4 flex flex-wrap gap-2 text-[11px] font-bold">
+        <span class="self-center text-gray-500">Needs attention:</span>
+        <a href="/admin/orders?paymentStatus=paid&status=received" class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Paid, not started</a>
+        <a href="/admin/orders?paymentStatus=failed" class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Payment failed</a>
+        <a href="/admin/orders?status=delivery_failed" class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Delivery failed</a>
+        <a href="/admin/orders?status=pending_owner_review" class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Owner review</a>
+        <a href="/admin/orders?reservation=backordered" aria-current={reservationFilter ? 'true' : undefined} class={`rounded-full border px-3 py-1 hover:border-gray-900 ${reservationFilter ? 'border-purple-700 bg-purple-50 text-purple-800' : 'border-gray-200'}`}>Backordered</a>
+      </nav>
     </div>
 
     {/* Table Display */}
@@ -180,7 +182,7 @@ function getStatusColor(status: string) {
       <div class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
           <thead>
-            <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
+            <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-500 tracking-widest border-b border-gray-100">
               <th class="p-6">Order Key</th>
               <th class="p-6">Submission</th>
               <th class="p-6">Customer / Type</th>
@@ -194,16 +196,16 @@ function getStatusColor(status: string) {
             {orders.map(order => (
               <tr class="hover:bg-gray-50 transition-colors">
                 <td class="p-6 font-mono font-bold text-brand-dark text-sm">
-                  <a href={`/admin/orders/${order.id}`} class="hover:underline hover:text-brand-gold transition-colors">
+                  <a href={`/admin/orders/${order.id}`} class="hover:underline hover:text-brand-primaryInk transition-colors">
                     {order.orderNumber || order.id.substring(0,8).toUpperCase()}
                   </a>
                 </td>
                 <td class="p-6 text-gray-500 font-medium">
-                  {new Date(order.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  {new Date(order.createdAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala',  day: '2-digit', month: 'short', year: 'numeric' })}
                 </td>
                 <td class="p-6">
                   <div class="font-bold text-brand-dark text-sm">{order.customerName}</div>
-                  <div class="text-[10px] text-gray-400 mt-0.5 flex items-center gap-2">
+                  <div class="text-[10px] text-gray-500 mt-0.5 flex items-center gap-2">
                     <span>{order.customerPhone}</span>
                     <span class="uppercase font-black tracking-wide border border-gray-200 bg-gray-50 text-gray-500 px-1.5 py-0.5 rounded text-[8px]">
                       {order.buyerType}
@@ -227,6 +229,9 @@ function getStatusColor(status: string) {
                   <span class={`inline-block px-2.5 py-1 rounded-lg font-black text-[9px] uppercase tracking-wide border ${getStatusColor(order.orderStatus)}`}>
                     {order.orderStatus.replace(/_/g, ' ')}
                   </span>
+                  {order.reservationState === 'BACKORDERED' && (
+                    <span class="mt-1 block mx-auto w-fit px-2 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wide border bg-purple-50 text-purple-800 border-purple-200" title="Placed while stock was short; waiting on stock before it can be fulfilled.">Backordered</span>
+                  )}
                 </td>
                 <td class="p-6 text-right">
                   <a 
@@ -240,8 +245,8 @@ function getStatusColor(status: string) {
             ))}
             {orders.length === 0 && (
               <tr>
-                <td colspan="7" class="p-20 text-center text-gray-400 italic text-xs leading-relaxed">
-                  Zero active orders matched your filtering criteria.
+                <td colspan="7" class="p-20 text-center text-gray-500 italic text-xs leading-relaxed">
+                  {loadFailed ? 'Orders could not be loaded — see the notice above.' : 'Zero active orders matched your filtering criteria.'}
                 </td>
               </tr>
             )}

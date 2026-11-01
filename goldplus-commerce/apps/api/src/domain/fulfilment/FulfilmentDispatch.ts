@@ -36,6 +36,8 @@ export interface FulfilmentDispatchSnapshot {
   method: FulfilmentDispatchMethod;
   carrierName: string | null;
   riderName: string | null;
+  /** 0191: stops on the trip this order went out on, when the operator knew it. */
+  stopsOnTrip?: number | null;
   contactMasked: string | null;
   paymentPolicy: FulfilmentDispatchPaymentPolicy;
   trackingStatus: FulfilmentDispatchTrackingStatus;

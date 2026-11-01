@@ -169,7 +169,8 @@ describe('the checkout page refuses before it mints', () => {
   });
 
   it('does not resolve an intent at all for a refused request', () => {
-    expect(code).toContain('originDecision.allowed\n  ? resolveCheckoutIntent');
+    // Nor for an UNKNOWN session (SessionUnknownKeepsTheBasket.test.ts).
+    expect(code).toContain('originDecision.allowed && !sessionUnknown\n  ? resolveCheckoutIntent');
   });
 
   it('does not run the submission branch for a refused request', () => {

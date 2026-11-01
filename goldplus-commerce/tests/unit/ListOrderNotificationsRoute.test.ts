@@ -63,7 +63,8 @@ describe('ListOrderNotificationsRoute Unit Tests', () => {
       }
     ]);
 
-    const res = await app.request('/admin/notifications/order/order-123/timeline', {
+    // Order ids are uuids; a malformed id is a 404 before any query (2026-09-24).
+    const res = await app.request('/admin/notifications/order/11111111-1111-4111-8111-111111111123/timeline', {
       headers: { Authorization: 'Bearer valid-token-123' }
     });
 

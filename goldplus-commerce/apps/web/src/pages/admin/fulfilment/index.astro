@@ -2,6 +2,7 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
 import { apiBase } from "../../../lib/api";
+import { readPaging, pagingLabel, pagingHrefs } from "../../../lib/adminPaging";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -23,11 +24,59 @@ const FORWARD: Record<Status, Status[]> = {
   PICKING: ["PACKED"],
   PACKED: ["READY_FOR_DISPATCH"],
   READY_FOR_DISPATCH: ["OUT_FOR_DELIVERY"],
-  OUT_FOR_DELIVERY: ["DELIVERED"],
+  // DELIVERED is deliberately absent: it is recorded on the task's Delivery
+  // page (RecordDeliveryUseCase), which writes the attempt and completes the
+  // ORDER. Setting the status here left the order "dispatched" forever — no
+  // loyalty vesting, no calibration, "On its way" to the customer — and the
+  // API now refuses it without a delivery record.
+  OUT_FOR_DELIVERY: [],
   DELIVERED: [],
   CANCELLED: [],
   ON_HOLD: ["ACKNOWLEDGED", "PICKING", "PACKED", "READY_FOR_DISPATCH", "OUT_FOR_DELIVERY"],
 };
+/**
+ * Plain words for machine states.
+ *
+ * The queue used to show ACKNOWLEDGED, READY_FOR_DISPATCH and "SLA" at a person
+ * who just needs to know what to do with an order. The states are unchanged —
+ * only what a human reads.
+ */
+const STATUS_WORDS: Record<Status, string> = {
+  NEW: "New",
+  ACKNOWLEDGED: "Seen",
+  PICKING: "Being picked",
+  PACKED: "Packed",
+  READY_FOR_DISPATCH: "Ready for the rider",
+  OUT_FOR_DELIVERY: "With the rider",
+  DELIVERED: "Delivered",
+  CANCELLED: "Cancelled",
+  ON_HOLD: "On hold",
+};
+
+/** The single next step, as an instruction. Everything else goes under "More". */
+const NEXT_STEP: Partial<Record<Status, { to: Status; label: string }>> = {
+  NEW: { to: "PICKING", label: "Start picking" },
+  ACKNOWLEDGED: { to: "PICKING", label: "Start picking" },
+  PICKING: { to: "PACKED", label: "Mark packed" },
+  PACKED: { to: "READY_FOR_DISPATCH", label: "Ready for the rider" },
+  READY_FOR_DISPATCH: { to: "OUT_FOR_DELIVERY", label: "Hand to the rider" },
+};
+/** Next steps that live on a task's own page, not in the status dropdown. */
+const NEXT_STEP_PAGE: Partial<Record<Status, { path: string; label: string }>> = {
+  OUT_FOR_DELIVERY: { path: "delivery", label: "Record the delivery" },
+};
+
+/** "in 2 hours", "3 days late" — a time a person can act on. */
+function dueInWords(iso: string, overdue: boolean): string {
+  const due = new Date(iso).getTime();
+  if (!Number.isFinite(due)) return "";
+  const mins = Math.round(Math.abs(due - Date.now()) / 60000);
+  const amount = mins < 60 ? `${mins} minute${mins === 1 ? "" : "s"}`
+    : mins < 1440 ? `${Math.round(mins / 60)} hour${Math.round(mins / 60) === 1 ? "" : "s"}`
+    : `${Math.round(mins / 1440)} day${Math.round(mins / 1440) === 1 ? "" : "s"}`;
+  return overdue || due < Date.now() ? `${amount} late` : `due in ${amount}`;
+}
+
 function nextActions(from: Status): Status[] {
   const opts = new Set<Status>(FORWARD[from] ?? []);
   if (from !== "DELIVERED" && from !== "CANCELLED") {
@@ -50,11 +99,46 @@ try {
 } catch { /* non-fatal */ }
 
 let notice: { kind: "success" | "error"; text: string } | null = null;
+let alertRecipientValue = "";
+let alertEnabled = false;
+let alertActive: string[] = [];
 
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const id = String(form.get("id") || "");
   const action = String(form.get("action") || "status");
+
+  // Paid-order alerts (0143): who is told, on a phone, that money has landed.
+  if (action === "alert-save" || action === "alert-test") {
+    try {
+      if (action === "alert-test") {
+        const res = await fetch(`${apiBase}/admin/fulfilment/alerts/test`, { method: "POST", headers });
+        const json = await res.json().catch(() => null);
+        notice = json?.success
+          ? { kind: "success", text: "Test alert queued — it arrives within about a minute." }
+          : { kind: "error", text: json?.error?.message || "The test alert could not be queued." };
+      } else {
+        const number = String(form.get("recipient") || "").trim();
+        const enabled = form.get("enabled") === "on" ? "true" : "false";
+        let failed: string | null = null;
+        if (number) {
+          const r1 = await fetch(`${apiBase}/admin/fulfilment/alerts/paid_order_sms_recipient`, { method: "PUT", headers, body: JSON.stringify({ value: number }) });
+          const j1 = await r1.json().catch(() => null);
+          if (!j1?.success) failed = j1?.error?.message || "That number was not accepted.";
+        }
+        if (!failed) {
+          const r2 = await fetch(`${apiBase}/admin/fulfilment/alerts/paid_order_sms_enabled`, { method: "PUT", headers, body: JSON.stringify({ value: enabled }) });
+          const j2 = await r2.json().catch(() => null);
+          if (!j2?.success) failed = j2?.error?.message || "The setting was not saved.";
+        }
+        notice = failed
+          ? { kind: "error", text: failed }
+          : { kind: "success", text: enabled === "true" ? "Saved. A paid order will now send an SMS." : "Saved. The alert is off." };
+      }
+    } catch {
+      notice = { kind: "error", text: "Fulfilment service is unreachable right now." };
+    }
+  } else {
   try {
     let endpoint = `${apiBase}/admin/fulfilment/${encodeURIComponent(id)}/status`;
     let payload: Record<string, unknown> = {};
@@ -81,14 +165,19 @@ if (Astro.request.method === "POST") {
   } catch {
     notice = { kind: "error", text: "Fulfilment service is unreachable right now." };
   }
+  }
 }
 
 const statusFilter = Astro.url.searchParams.get("status") || "";
+// The API pages at 50 by default; without offset the rest of the queue was unreachable.
+const paging = readPaging(Astro.url.searchParams);
 
+// A typed-in place filled both the area and the address with the same words, and older tasks keep both: say it once.
+const placeOnce = (summary: string) => [...new Set(String(summary ?? "").split(" · ").map((p) => p.trim()).filter(Boolean))].join(" · ");
 interface ItemLine { sku: string; name: string; quantity: number; unitPriceUgx: number; lineTotalUgx: number; }
 interface Task {
-  id: string; orderNumber: string; status: Status; paymentStatus: string; paymentMethod: string | null;
-  customerName: string; customerContactMasked: string; deliveryArea: string; deliverySummary: string;
+  id: string; orderId: string; orderNumber: string; status: Status; paymentStatus: string; paymentMethod: string | null;
+  customerName: string; customerContactMasked: string; customerPhone?: string | null; deliveryArea: string; deliverySummary: string;
   totalUgx: number; deliveryFeeUgx: number; itemCount: number; items: ItemLine[]; warnings: string[];
   priority: "low" | "normal" | "high" | "urgent"; slaDueAt: string; assignedTo: string | null;
   overdue: boolean; createdAt: string;
@@ -100,9 +189,10 @@ let overdueBadge = 0;
 let loadFailed = false;
 let apiError = "";
 try {
+  const pageQuery = `limit=${paging.limit}&offset=${paging.offset}`;
   const listUrl = statusFilter
-    ? `${apiBase}/admin/fulfilment?status=${encodeURIComponent(statusFilter)}`
-    : `${apiBase}/admin/fulfilment?activeOnly=true`;
+    ? `${apiBase}/admin/fulfilment?status=${encodeURIComponent(statusFilter)}&${pageQuery}`
+    : `${apiBase}/admin/fulfilment?activeOnly=true&${pageQuery}`;
   const [listRes, badgeRes] = await Promise.all([
     fetch(listUrl, { headers }),
     fetch(`${apiBase}/admin/fulfilment/badge`, { headers }),
@@ -120,6 +210,19 @@ try {
     badge = badgeJson.data.newOrders;
     overdueBadge = badgeJson.data.overdue ?? 0;
   }
+  // Paid-order alerts (0143). Read separately so a failure here cannot empty
+  // the queue the operator came for.
+  try {
+    const alertRes = await fetch(`${apiBase}/admin/fulfilment/alerts`, { headers });
+    const alertJson = await alertRes.json().catch(() => null);
+    if (alertJson?.success) {
+      alertRecipientValue = alertJson.data.entries.find((e: any) => e.key === "paid_order_sms_recipient")?.value ?? "";
+      alertEnabled = alertJson.data.entries.find((e: any) => e.key === "paid_order_sms_enabled")?.value === "true";
+      alertActive = alertJson.data.activeRecipients ?? [];
+    }
+  } catch {
+    // Leave the section showing its unset state rather than a wrong number.
+  }
 } catch {
   loadFailed = true;
   apiError = "Fulfilment API is currently unreachable.";
@@ -133,7 +236,10 @@ try {
   if (slaJson?.success) sla = slaJson.data;
 } catch { /* non-fatal */ }
 
-const ugx = new Intl.NumberFormat("en-UG", { style: "currency", currency: "UGX", maximumFractionDigits: 0 });
+import { formatUgx } from "../../../lib/money";
+const pageHrefs = pagingHrefs(Astro.url, paging, tasks.length, total);
+// UGX code format via the single money source (en-UG's currency symbol is "USh").
+const ugx = { format: (n: unknown) => formatUgx(n) };
 
 function statusChip(s: string) {
   switch (s) {
@@ -165,6 +271,27 @@ function prioChip(p: string) {
   }
 }
 const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
+
+/**
+ * The warnings to show, judged against the order AS IT IS NOW. The task stores the
+ * warnings it was created with; "payment not yet confirmed" was written when an
+ * unpaid order was placed and stayed after the money arrived, so a card read
+ * "Paid" and "Payment not yet confirmed" at once. The payment line is derived
+ * from the live payment status instead of the stored snapshot.
+ */
+const PAYMENT_WARNING = /^Payment not yet confirmed/i;
+function liveWarnings(task: { paymentStatus: string; paymentMethod?: string | null; warnings: string[] }): string[] {
+  const rest = task.warnings.filter((w) => !PAYMENT_WARNING.test(w));
+  if (task.paymentStatus === 'paid') return rest;
+  // Pay on delivery is collected at the door; an online payment is confirmed before dispatch.
+  // Tasks created before the method was recorded say both, which is true of either.
+  const line = task.paymentMethod === 'offline'
+    ? 'Pay on delivery: collect the money when you hand it over.'
+    : task.paymentMethod === 'pesapal'
+      ? 'Online payment not confirmed yet. Do not dispatch until it is.'
+      : 'Not paid yet. If it is pay on delivery, collect the money when you hand it over; otherwise confirm payment before dispatch.';
+  return [...rest, line];
+}
 ---
 
 <AdminLayout
@@ -172,6 +299,32 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
   description="Actionable New Orders queue: every placed order, its products, truthful payment status, and lifecycle transitions."
 >
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <section aria-labelledby="alert-h" class="mb-8 rounded-2xl border border-gray-200 bg-white p-5">
+      <h3 id="alert-h" class="font-black text-brand-dark">Tell someone when an order is paid</h3>
+      <p class="text-sm text-gray-600 mt-1 max-w-3xl">
+        One SMS the moment money is confirmed, so an order is never sitting paid and unnoticed. It goes to the shop, never to the customer, and carries no customer name or address.
+        {alertActive.length > 0
+          ? <span class="block mt-1 text-emerald-800">Alerting {alertActive.length} number{alertActive.length === 1 ? "" : "s"}: <strong class="font-mono">{alertActive.join(", ")}</strong>. Each one gets its own SMS.</span>
+          : <span class="block mt-1 text-amber-800">No alert is being sent: add at least one number and switch it on.</span>}
+      </p>
+      <form method="POST" class="mt-4 flex flex-wrap items-end gap-3">
+        <input type="hidden" name="action" value="alert-save" />
+        <label class="text-xs font-bold text-gray-700">Phone numbers <span class="font-normal text-gray-500">(one per line, or separated by commas)</span>
+          <textarea name="recipient" rows="4" placeholder={"0776004545\n0705770907"}
+            class="mt-1 block w-72 rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal font-mono">{alertRecipientValue.split(",").join("\n")}</textarea>
+        </label>
+        <label class="flex items-center gap-2 text-sm font-bold text-gray-700 pb-2">
+          <input type="checkbox" name="enabled" checked={alertEnabled} class="w-4 h-4" />
+          Send the alert
+        </label>
+        <button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Save</button>
+      </form>
+      <form method="POST" class="mt-2">
+        <input type="hidden" name="action" value="alert-test" />
+        <button class="text-xs font-bold text-brand-dark underline">Send a test alert to that number</button>
+      </form>
+    </section>
+
     <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
       <div>
         <h2 class="text-2xl font-black text-brand-dark tracking-tight">Fulfilment Queue</h2>
@@ -181,25 +334,25 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
         <a href="/admin/fulfilment/report" class="bg-brand-dark text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
           Report
         </a>
-        <span class="bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold px-3 py-1.5 rounded-lg font-mono">
-          NEW ORDERS: {badge}
+        <span class="bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold px-3 py-1.5 rounded-lg">
+          {badge} waiting to be picked up
         </span>
-        <span class={`text-xs font-bold px-3 py-1.5 rounded-lg font-mono border ${overdueBadge > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-gray-100 text-gray-600 border-gray-200"}`}>
-          OVERDUE: {overdueBadge}
+        <span class={`text-xs font-bold px-3 py-1.5 rounded-lg border ${overdueBadge > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-gray-100 text-gray-600 border-gray-200"}`}>
+          {overdueBadge} late
         </span>
-        <span class="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-bold px-3 py-1.5 rounded-lg font-mono">
-          SHOWING: {total}
+        <span class="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-bold px-3 py-1.5 rounded-lg">
+          {pagingLabel(paging, tasks.length, total)}
         </span>
       </div>
     </div>
 
     {sla && (
       <div class="flex flex-wrap items-center gap-2 mb-6 text-[11px] font-bold">
-        <span class="text-gray-400 uppercase tracking-wider">SLA:</span>
-        <span class="px-2.5 py-1 rounded-lg border bg-green-50 text-green-700 border-green-200">On track {sla.onTrack}</span>
-        <span class="px-2.5 py-1 rounded-lg border bg-amber-50 text-amber-800 border-amber-200">Due soon {sla.dueSoon}</span>
-        <span class="px-2.5 py-1 rounded-lg border bg-orange-50 text-orange-700 border-orange-200">Overdue {sla.overdue}</span>
-        <span class="px-2.5 py-1 rounded-lg border bg-red-50 text-red-700 border-red-200">Escalated {sla.escalated}</span>
+        <span class="text-gray-500">Against the time we promised the customer:</span>
+        <span class="px-2.5 py-1 rounded-lg border bg-green-50 text-green-700 border-green-200">{sla.onTrack} on time</span>
+        <span class="px-2.5 py-1 rounded-lg border bg-amber-50 text-amber-800 border-amber-200">{sla.dueSoon} due soon</span>
+        <span class="px-2.5 py-1 rounded-lg border bg-orange-50 text-orange-700 border-orange-200">{sla.overdue} late</span>
+        <span class="px-2.5 py-1 rounded-lg border bg-red-50 text-red-700 border-red-200">{sla.escalated} escalated</span>
       </div>
     )}
 
@@ -217,10 +370,10 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 
     <form method="GET" class="flex flex-wrap items-end gap-3 mb-8">
       <div>
-        <label for="status" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Filter by stage</label>
-        <select name="status" id="status" class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
-          <option value="" selected={statusFilter === ""}>Active (all open)</option>
-          {ALL_STATUSES.map((s) => <option value={s} selected={statusFilter === s}>{s.replace(/_/g, " ")}</option>)}
+        <label for="status" class="block text-[11px] font-bold text-gray-500 mb-1.5">Show</label>
+        <select name="status" id="status" class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
+          <option value="" selected={statusFilter === ""}>Everything still open</option>
+          {ALL_STATUSES.map((s) => <option value={s} selected={statusFilter === s}>{STATUS_WORDS[s]}</option>)}
         </select>
       </div>
       <button type="submit" class="bg-brand-dark text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity">Apply</button>
@@ -232,25 +385,48 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
       </div>
     )}
 
+    {(pageHrefs.prev || pageHrefs.next) && (
+      <nav aria-label="Queue pages" class="flex items-center justify-between gap-3 mb-4 text-xs font-bold">
+        <span class="text-gray-500">{pagingLabel(paging, tasks.length, total)}</span>
+        <span class="flex gap-2">
+          {pageHrefs.prev && <a href={pageHrefs.prev} class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 hover:border-gray-900">← Previous</a>}
+          {pageHrefs.next && <a href={pageHrefs.next} class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 hover:border-gray-900">Next →</a>}
+        </span>
+      </nav>
+    )}
+
     <div class="space-y-4">
       {tasks.map((task) => (
         <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
           <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
             <div>
               <div class="flex items-center gap-2 flex-wrap">
-                <span class="font-mono font-black text-brand-dark">{task.orderNumber}</span>
-                <span class={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${statusChip(task.status)}`}>{task.status.replace(/_/g, " ")}</span>
-                <span class={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${payChip(task.paymentStatus)}`}>PAYMENT: {task.paymentStatus}</span>
-                <span class={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${prioChip(task.priority)}`}>{task.priority}</span>
+                <a href={`/admin/orders/${task.orderId}`} class="font-mono font-black text-brand-dark hover:underline" title="Open the order">{task.orderNumber}</a>
+                <span class={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${statusChip(task.status)}`}>{STATUS_WORDS[task.status]}</span>
+                <span class={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${payChip(task.paymentStatus)}`}>{task.paymentStatus === "paid" ? "Paid" : task.paymentStatus === "failed" ? "Payment failed" : "Not paid yet"}</span>
+                {task.priority !== "normal" && (
+                  <span class={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${prioChip(task.priority)}`}>{task.priority} priority</span>
+                )}
                 {task.overdue && (
-                  <span class="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border bg-red-600 text-white border-red-700">OVERDUE</span>
+                  <span class="text-[11px] font-bold px-2.5 py-1 rounded-lg border bg-red-600 text-white border-red-700">Late</span>
                 )}
               </div>
               <p class="text-xs text-gray-500 mt-1.5">
-                {task.customerName} · {task.customerContactMasked} · {task.deliverySummary || task.deliveryArea}
+                {task.customerName} ·{" "}
+                {task.customerPhone
+                  ? <a href={`tel:${task.customerPhone.replace(/\s+/g, "")}`} class="font-bold text-brand-dark underline" title="Call the customer">{task.customerPhone}</a>
+                  : task.customerContactMasked}
+                {" · "}{placeOnce(task.deliverySummary || task.deliveryArea)}
               </p>
+              {task.customerPhone && (
+                <p class="mt-2 flex flex-wrap gap-2 text-xs font-bold">
+                  <a href={`tel:${task.customerPhone.replace(/\s+/g, "")}`} class="inline-flex min-h-9 items-center rounded-full border border-slate-300 px-3 text-brand-dark">Call</a>
+                  <a href={`https://wa.me/${task.customerPhone.replace(/[^0-9]/g, "").replace(/^0/, "256")}`} target="_blank" rel="noopener noreferrer" class="inline-flex min-h-9 items-center rounded-full border border-slate-300 px-3 text-brand-dark">WhatsApp</a>
+                  <a href={`/admin/orders/${task.orderId}`} class="inline-flex min-h-9 items-center rounded-full border border-slate-300 px-3 text-brand-dark">Open order</a>
+                </p>
+              )}
               <p class="text-[11px] text-gray-400 mt-1">
-                SLA due {new Date(task.slaDueAt).toLocaleString("en-UG")} · {task.assignedTo ? (task.assignedTo === currentUserId ? "assigned to you" : "assigned") : "unassigned"}
+                Promised to the customer {new Date(task.slaDueAt).toLocaleString("en-GB", { timeZone: "Africa/Kampala", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} — {dueInWords(task.slaDueAt, task.overdue)} · {task.assignedTo ? (task.assignedTo === currentUserId ? "you are handling it" : "somebody is handling it") : "nobody is handling it yet"}
               </p>
             </div>
             <div class="text-right">
@@ -266,7 +442,7 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 
           <div class="border border-gray-100 rounded-xl overflow-hidden mb-4">
             <table class="w-full text-xs">
-              <thead class="bg-gray-50 text-gray-400">
+              <thead class="bg-gray-50 text-gray-500">
                 <tr>
                   <th class="text-left font-black uppercase tracking-wider px-4 py-2">Product</th>
                   <th class="text-left font-black uppercase tracking-wider px-4 py-2">SKU</th>
@@ -289,28 +465,36 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
             </table>
           </div>
 
-          {task.warnings.length > 0 && (
+          {liveWarnings(task).length > 0 && (
             <ul class="mb-4 space-y-1">
-              {task.warnings.map((w) => (
+              {liveWarnings(task).map((w) => (
                 <li class="text-[11px] text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-1.5">⚠ {w}</li>
               ))}
             </ul>
           )}
 
+          {NEXT_STEP_PAGE[task.status] && (
+            <a href={`/admin/fulfilment/${task.id}/${NEXT_STEP_PAGE[task.status]?.path}`} class="inline-block mb-3 bg-brand-gold text-brand-dark text-xs font-black px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity">{NEXT_STEP_PAGE[task.status]?.label} (next step)</a>
+          )}
           {nextActions(task.status).length > 0 ? (
             <form method="POST" class="flex flex-wrap items-end gap-3">
               <input type="hidden" name="id" value={task.id} />
               <div>
-                <label class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Move to</label>
-                <select name="toStatus" class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
-                  {nextActions(task.status).map((s) => <option value={s}>{s.replace(/_/g, " ")}</option>)}
+                <label class="block text-[11px] font-bold text-gray-500 mb-1.5">What happens next</label>
+                <select name="toStatus" required class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
+                  {!NEXT_STEP[task.status] && <option value="" disabled selected>Choose…</option>}
+                  {nextActions(task.status).map((s) => (
+                    <option value={s} selected={NEXT_STEP[task.status]?.to === s}>
+                      {NEXT_STEP[task.status]?.to === s ? `${NEXT_STEP[task.status]?.label} (next step)` : STATUS_WORDS[s]}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div class="flex-1 min-w-[180px]">
-                <label class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Note (optional)</label>
-                <input type="text" name="notes" maxlength="2000" placeholder="e.g. packed, awaiting boda" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+                <label class="block text-[11px] font-bold text-gray-500 mb-1.5">Note (optional)</label>
+                <input type="text" name="notes" maxlength="2000" placeholder="e.g. packed, awaiting boda" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk" />
               </div>
-              <button type="submit" class="bg-brand-gold text-brand-dark text-xs font-black px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity">Update</button>
+              <button type="submit" class="bg-brand-gold text-brand-dark text-xs font-black px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity">{NEXT_STEP[task.status]?.label ?? "Update"}</button>
             </form>
 
             <div class="flex flex-wrap items-end gap-3 mt-3 pt-3 border-t border-gray-100">
@@ -318,8 +502,8 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
                 <input type="hidden" name="id" value={task.id} />
                 <input type="hidden" name="action" value="priority" />
                 <div>
-                  <label class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Priority</label>
-                  <select name="priority" class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+                  <label class="block text-[11px] font-bold text-gray-500 mb-1.5">Priority</label>
+                  <select name="priority" class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
                     {PRIORITIES.map((p) => <option value={p} selected={p === task.priority}>{p}</option>)}
                   </select>
                 </div>
@@ -336,7 +520,7 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
               </form>
             </div>
           ) : (
-            <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400">Terminal state — no further action.</p>
+            <p class="text-[11px] font-bold uppercase tracking-wider text-gray-600">Terminal state — no further action.</p>
           )}
         </div>
       ))}

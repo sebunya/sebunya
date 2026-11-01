@@ -41,6 +41,11 @@ export type CartOutcomeKind =
   /** Someone else owns this cart. Reported to the caller as NOT_FOUND. */
   | 'NOT_OWNED'
   | 'PRODUCT_UNAVAILABLE'
+  /**
+   * An ADD, or an UPDATE that raises a line, asks for more than known stock.
+   * reason = productId; `available` = units left (0 = out of stock).
+   */
+  | 'OUT_OF_STOCK'
   | 'QUANTITY_OUT_OF_BOUNDS'
   | 'CART_LIMIT_EXCEEDED'
   | 'RETRYABLE_FAILURE';
@@ -48,8 +53,22 @@ export type CartOutcomeKind =
 export interface CartLine {
   productId: string;
   name: string;
+  /**
+   * The product page this line links to. Without it every server-held basket
+   * line linked to `/products/` — a 404 — because the storefront had nothing to
+   * build the link from. Optional: a line being added has no slug until it is
+   * read back from the catalogue.
+   */
+  slug?: string;
   unitPriceUgx: number;
   quantity: number;
+  /**
+   * Set by read() when the product can no longer be bought (withdrawn,
+   * unapproved) while it sat in the basket. Such a line is excluded from the
+   * subtotal, and every other change is refused until it is removed, so the
+   * storefront must be able to say WHICH line that is.
+   */
+  unavailable?: boolean;
 }
 
 export interface CartView {
@@ -62,7 +81,8 @@ export interface CartView {
 export type CartOutcome =
   | { kind: 'APPLIED'; cart: CartView }
   | { kind: 'VERSION_CONFLICT'; cart: CartView }
-  | { kind: Exclude<CartOutcomeKind, 'APPLIED' | 'VERSION_CONFLICT'>; reason: string };
+  | { kind: 'OUT_OF_STOCK'; reason: string; available: number }
+  | { kind: Exclude<CartOutcomeKind, 'APPLIED' | 'VERSION_CONFLICT' | 'OUT_OF_STOCK'>; reason: string };
 
 export function isCartApplied(outcome: CartOutcome): outcome is { kind: 'APPLIED'; cart: CartView } {
   return outcome.kind === 'APPLIED';
@@ -72,7 +92,14 @@ export function isCartApplied(outcome: CartOutcome): outcome is { kind: 'APPLIED
  * Bounds. Enforced here AND by a database constraint (migration 0060): validation in
  * one route protects that route, a constraint protects the column from every writer.
  */
-export const MAX_LINE_QUANTITY = 999;
+/**
+ * 99, the same bound pricing and checkout enforce (owner, 2026-09-24). At 999
+ * the basket accepted lines checkout could never place: the pricing preview
+ * silently dropped them, which read as a huge discount during a campaign, and
+ * checkout then refused with a field error nobody could fix. The column
+ * constraint (0060) is looser and stays; this is the tighter rule.
+ */
+export const MAX_LINE_QUANTITY = 99;
 export const MAX_DISTINCT_LINES = 50;
 
 export interface CartOwner {
@@ -90,6 +117,14 @@ export interface CartRecord {
 
 export interface ICartAuthorizedRepository {
   find(cartId: string): Promise<CartRecord | null>;
+  /**
+   * Creates the cart row for a cartId the caller's signed credential already names,
+   * owned by that credential. Idempotent (no-op if it already exists) so a race
+   * between two first-adds cannot fail. Without this, the first add to a freshly
+   * minted credential found no row and returned CART_NOT_FOUND — the server cart was
+   * never created for anyone.
+   */
+  create(cartId: string, owner: CartOwner): Promise<void>;
   /**
    * Claims an unowned cart for this owner, but only while it is still unowned.
    *
@@ -111,10 +146,19 @@ export interface ICartAuthorizedRepository {
   }): Promise<boolean>;
 }
 
+/** Known stock for a product (domain/inventory cartStockLimit). `available` null = untracked. */
+export interface CartStockLimit {
+  outOfStock: boolean;
+  available: number | null;
+}
+
 export interface CartProductReader {
-  /** Only products a customer may actually buy. Absent means not purchasable. */
+  /**
+   * Only products a customer may actually buy. Absent means not purchasable.
+   * `stock` absent means stock is unknown and never blocks the basket.
+   */
   findPurchasable(productIds: readonly string[]): Promise<
-    Array<{ id: string; name: string; unitPriceUgx: number }>
+    Array<{ id: string; name: string; unitPriceUgx: number; stock?: CartStockLimit }>
   >;
 }
 
@@ -132,7 +176,10 @@ function view(record: CartRecord): CartView {
     id: record.id,
     version: record.version,
     items: record.items,
-    subtotalUgx: record.items.reduce((sum, line) => sum + line.unitPriceUgx * line.quantity, 0),
+    subtotalUgx: record.items.reduce(
+      (sum, line) => (line.unavailable ? sum : sum + line.unitPriceUgx * line.quantity),
+      0,
+    ),
   };
 }
 
@@ -148,7 +195,36 @@ export class MutateCartUseCase {
   async read(args: { cartId: string; owner: CartOwner; traceId: string }): Promise<CartOutcome> {
     const authorized = await this.authorize(args.cartId, args.owner, args.traceId);
     if ('refusal' in authorized) return authorized.refusal;
-    return { kind: 'APPLIED', cart: view(authorized.record) };
+    return { kind: 'APPLIED', cart: view(await this.flagUnpurchasable(authorized.record)) };
+  }
+
+  /**
+   * Marks lines whose product can no longer be bought.
+   *
+   * The stored lines used to come back as they were: a product withdrawn while
+   * it sat in the basket showed at its old price, counted in the subtotal, and
+   * silently blocked every other add or update (mutate validates the whole
+   * resulting cart). Flagged, the storefront can name the line and offer its
+   * removal. Same purchasability source as mutate(). If the catalogue read
+   * fails the lines are returned unflagged, as before, rather than failing the
+   * read of the whole basket.
+   */
+  private async flagUnpurchasable(record: CartRecord): Promise<CartRecord> {
+    if (record.items.length === 0) return record;
+    let purchasable: Set<string>;
+    try {
+      const found = await this.deps.products.findPurchasable(record.items.map((line) => line.productId));
+      purchasable = new Set(found.map((product) => product.id));
+    } catch {
+      return record;
+    }
+    if (record.items.every((line) => purchasable.has(line.productId))) return record;
+    return {
+      ...record,
+      items: record.items.map((line) =>
+        purchasable.has(line.productId) ? line : { ...line, unavailable: true },
+      ),
+    };
   }
 
   async mutate(args: {
@@ -159,8 +235,19 @@ export class MutateCartUseCase {
     mutation: CartMutationKind;
     traceId: string;
   }): Promise<CartOutcome> {
-    const authorized = await this.authorize(args.cartId, args.owner, args.traceId);
-    if ('refusal' in authorized) return authorized.refusal;
+    let authorized = await this.authorize(args.cartId, args.owner, args.traceId);
+    if ('refusal' in authorized) {
+      // First write to a cart the credential already authorizes: the storefront mints a
+      // signed credential naming this cartId + owner but never creates the row, so the
+      // first ADD would otherwise fail CART_NOT_FOUND and the shopper would silently run
+      // on a browser-only basket. Create it (idempotently) for ADD, then authorize.
+      // REMOVE/UPDATE/CLEAR on a non-existent cart remain genuine not-founds.
+      if (authorized.refusal.kind === 'CART_NOT_FOUND' && args.mutation.kind === 'ADD') {
+        await this.deps.carts.create(args.cartId, args.owner);
+        authorized = await this.authorize(args.cartId, args.owner, args.traceId);
+      }
+      if ('refusal' in authorized) return authorized.refusal;
+    }
     const record = authorized.record;
 
     // A caller that names a version must be holding the current one. Omitting the
@@ -190,6 +277,21 @@ export class MutateCartUseCase {
       // Named by id, which is public catalogue data, so the storefront can tell the
       // customer which line to remove instead of showing an opaque failure.
       return { kind: 'PRODUCT_UNAVAILABLE', reason: missing.join(',') };
+    }
+
+    // Stock is checked only on the line being ADDED or RAISED. Lowering or
+    // removing a line, or touching another one, is never blocked by stock.
+    if (args.mutation.kind === 'ADD' || args.mutation.kind === 'UPDATE') {
+      const productId = args.mutation.productId;
+      const before = record.items.find((line) => line.productId === productId)?.quantity ?? 0;
+      const after = next.items.find((line) => line.productId === productId)?.quantity ?? 0;
+      const stock = byId.get(productId)?.stock;
+      if (after > before && stock) {
+        if (stock.outOfStock) return { kind: 'OUT_OF_STOCK', reason: productId, available: 0 };
+        if (stock.available !== null && after > stock.available) {
+          return { kind: 'OUT_OF_STOCK', reason: productId, available: stock.available };
+        }
+      }
     }
 
     const applied = await this.deps.carts.replaceItems({

@@ -18,7 +18,7 @@ export interface ListFulfilmentQueueInput {
 }
 
 /** A queue row plus the derived, non-persisted overdue flag. */
-export type FulfilmentQueueRow = FulfilmentTaskSnapshot & { overdue: boolean };
+export type FulfilmentQueueRow = FulfilmentTaskSnapshot & { overdue: boolean; /** Full number, for the people preparing the order to call (orders.read). */ customerPhone: string | null };
 
 export interface ListFulfilmentQueueResult {
   tasks: FulfilmentQueueRow[];
@@ -55,6 +55,7 @@ export class ListFulfilmentQueueUseCase {
     const now = input.now ?? new Date();
     const tasks: FulfilmentQueueRow[] = page.tasks.map((t) => ({
       ...t,
+      customerPhone: page.customerPhones?.[t.orderId] ?? null,
       overdue: !isTerminalFulfilmentStatus(t.status) && now.getTime() > new Date(t.slaDueAt).getTime(),
     }));
     return { tasks, total: page.total, limit, offset };

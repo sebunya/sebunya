@@ -27,6 +27,7 @@ vi.mock("../../apps/api/src/interfaces/http/middleware/permissions", () => ({
 describe('Order State Transitions Unit Tests', () => {
   let mockOrderRepo: any;
   let mockAuditRepo: any;
+  let mockTransition: any;
 
   beforeEach(() => {
     mockOrderRepo = {
@@ -40,8 +41,18 @@ describe('Order State Transitions Unit Tests', () => {
       findByEntity: vi.fn()
     };
 
+    // The admin route persists transitions through the canonical service, not
+    // orderRepo.save. Mock it so this unit test needs no database.
+    mockTransition = {
+      transition: vi.fn().mockResolvedValue({
+        orderId: 'order-1', fromStatus: 'received', toStatus: 'processing',
+        eventId: 'evt-1', idempotentReplay: false,
+      }),
+      history: vi.fn().mockResolvedValue([]),
+    };
+
     const registry = Registry.getInstance();
-    
+
     Object.defineProperty(registry, 'orderRepo', {
       value: mockOrderRepo,
       writable: true,
@@ -50,6 +61,12 @@ describe('Order State Transitions Unit Tests', () => {
 
     Object.defineProperty(registry, 'auditRepo', {
       value: mockAuditRepo,
+      writable: true,
+      configurable: true
+    });
+
+    Object.defineProperty(registry, 'orderTransitionService', {
+      value: mockTransition,
       writable: true,
       configurable: true
     });
@@ -88,7 +105,12 @@ describe('Order State Transitions Unit Tests', () => {
     const json = await res.json();
     expect(json.success).toBe(true);
     expect(json.data.orderStatus).toBe('processing');
-    expect(mockOrderRepo.save).toHaveBeenCalled();
+    // Persistence now goes through the canonical transition service (which writes
+    // the status change AND an order_event atomically), not orderRepo.save.
+    expect(mockTransition.transition).toHaveBeenCalledWith('order-1', 'processing', expect.objectContaining({
+      actorType: 'administrator',
+      source: 'admin_api',
+    }));
   });
 
   it('should allow transition from received to cancelled', async () => {

@@ -1,80 +1,359 @@
 ---
+import { onSitePaymentPath } from '../lib/payOnSite';
+import { readClientAddress } from '../lib/forwardClient';
+import { readGuestMemory, rememberedContact } from '../lib/guestMemory';
+import RememberedDetails from '../components/RememberedDetails.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { whatsappSupportNumber } from '../lib/api';
+import { postJson, whatsappSupportNumber } from '../lib/api';
+import { startPaymentByReference, paymentStartMessageFor, orderAwaitsPayment } from '../lib/checkoutClient';
+import { formatUgx } from '../lib/money';
+import { orderStatusCopy, paymentStatusCopy, STATUS_TONE_CLASS } from '../lib/orderStatusCopy';
 
 const orderHelpWhatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent(
   'Hello GoldPlus, I need help with an order. I have my order reference ready.'
 )}`;
+
+// Status words come from orderStatusCopy — the page used to title-case the
+// raw enum ("Pending Owner Review", "Payment: Review") with no sentence about
+// what it meant for the customer's money.
+
+const fmtDate = (iso: unknown) => {
+  const t = iso ? new Date(String(iso)).getTime() : NaN;
+  return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' }) : '';
+};
+
+// Dispatch stages the customer cares about — fulfilment progress, NOT live GPS.
+const STAGES = [
+  { key: 'placed', title: 'Order placed', desc: 'We have your order.' },
+  // Neutral about money: a cash-on-delivery order is 'processing' and unpaid,
+  // so "we have checked your payment" was untrue for it. The payment badge on
+  // the same card says what is true about the money.
+  { key: 'preparing', title: 'Confirmed & preparing', desc: 'Confirmed. Your items are being packed at our shop.' },
+  { key: 'dispatched', title: 'Dispatched', desc: 'Handed to our rider and on the way to you.' },
+  { key: 'delivered', title: 'Delivered', desc: 'Order completed.' },
+];
+const stageIndexOf = (orderStatus: unknown): number => {
+  const s = String(orderStatus ?? '').toLowerCase();
+  if (['delivered', 'completed'].includes(s)) return 3;
+  if (['dispatched', 'delivery_failed'].includes(s)) return 2;
+  if (s === 'processing') return 1;
+  // pending_owner_review is a wholesale/corporate order our team has NOT yet
+  // confirmed (its own badge says "being checked"): it is still at "placed".
+  return 0; // received, pending_owner_review, pending_payment, failed, cancelled (pre-dispatch)
+};
+
+async function lookupOrder(reference: string, contact: string) {
+  return postJson('/commerce/orders/lookup', { reference, contact }, null, readClientAddress(Astro));
+}
+
+let order: any = null;
+let errorMsg: string | undefined;
+// The payment-return page links here with the order number already known;
+// prefill it so the customer only has to add their phone number or email.
+let submittedRef = (Astro.url.searchParams.get('reference') ?? '').trim().slice(0, 80);
+let followupOk = false;
+let followupError: string | undefined;
+let payError: string | undefined;
+let submittedContact = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? 'lookup');
+  const reference = String(form.get('reference') ?? '').trim();
+  const contact = String(form.get('contact') ?? '').trim();
+  submittedRef = reference;
+  submittedContact = contact;
+
+  if (!reference || !contact) {
+    errorMsg = 'Enter both your order reference and the phone number or email used at checkout.';
+  } else {
+    // Both actions re-verify the order — a follow-up is never raised for an
+    // unverified reference, and the ticket carries the real order details.
+    // Pay by reference (2026-09-12): the same proof as the lookup, then the
+    // provider handoff. A success leaves this page for the payment provider; a refusal
+    // falls through to the lookup so the order is still shown with the reason.
+    if (intent === 'pay') {
+      const pay = await startPaymentByReference({ reference, contact });
+      if (pay.ok) return Astro.redirect(onSitePaymentPath({ redirectUrl: pay.data.redirectUrl, orderNumber: reference, phone: contact.includes('@') ? null : contact }), 303);
+      payError = pay.code === 'VERIFICATION_FAILED' || pay.code === 'TOO_MANY_REQUESTS'
+        ? pay.message
+        : paymentStartMessageFor(pay.code);
+    }
+    const result = await lookupOrder(reference, contact);
+    if (!result.ok) {
+      errorMsg = result.code === 'NETWORK'
+        ? 'We cannot reach the order service right now. Please try again shortly.'
+        : (result.message ?? 'We could not verify that order. Please check your reference and contact details.');
+    } else {
+      order = result.data;
+      if (intent === 'followup') {
+        const note = String(form.get('note') ?? '').trim().slice(0, 800);
+        // The API re-verifies and answers on the phone ON THE ORDER. Raising
+        // it through the public support form sent phone '' for a customer who
+        // verified with their email, and the ticket was refused for a phone
+        // number they were never asked for.
+        const ticket = await postJson('/commerce/orders/lookup/followup', { reference, contact, note }, null, readClientAddress(Astro));
+        if (ticket.ok) followupOk = true;
+        else followupError = ticket.message ?? 'We could not send your follow-up request. Please try WhatsApp instead.';
+      }
+    }
+  }
+}
+
+// From the order text ("Track it: …/track-order?reference=GP-…") on the device that placed
+// the order: the contact is remembered from checkout, so the order shows at once instead of
+// asking the shopper to type what this device already knows. The API applies the same proof
+// and lockout as a typed lookup; if it does not match, the form simply shows, pre-filled.
+let contactRemembered = false;
+if (Astro.request.method === 'GET' && !submittedContact) { submittedContact = rememberedContact(readGuestMemory(Astro.cookies, Astro.request)); contactRemembered = Boolean(submittedContact); }
+if (Astro.request.method === 'GET' && submittedRef && submittedContact && !order) {
+  const auto = await lookupOrder(submittedRef, submittedContact);
+  if (auto.ok) order = auto.data;
+}
+
+// Once an order is showing, the lookup form folds into one line above it and the "before you look up"
+// notes go away: on a phone they pushed the order a screen and a half down.
+const LookupWrap = order ? 'details' : 'div';
+
+const currentStage = order ? stageIndexOf(order.orderStatus) : -1;
+const orderStatusKey = String(order?.orderStatus ?? '').toLowerCase();
+const isCancelled = order && ['cancelled', 'failed'].includes(orderStatusKey);
+const isDeliveryFailed = order && orderStatusKey === 'delivery_failed';
+// An unpaid order used to get the same optimistic four-stage ladder as a paid
+// one, with "Payment reviewed" as the next step. It is not being prepared; it
+// is waiting for money — say so instead of implying progress.
+//
+// Read from the PAYMENT status: nothing writes the order status
+// 'pending_payment' (orders are created 'received', a declined payment only
+// sets paymentStatus 'failed'), so the old status-only check never matched.
+// A failed online payment is unpaid whatever the method. 'unpaid'/'pending'
+// alone also describes a cash-on-delivery order, which keeps its ladder, so
+// that case needs the payment method, and the lookup only sends it sometimes.
+// The rule lives in lib/checkoutClient.ts so /orders/[id] applies the same one.
+const isUnpaid = Boolean(order) && orderAwaitsPayment({ status: order?.orderStatus, paymentStatus: order?.paymentStatus, paymentMethod: order?.paymentMethod });
+const orderCopy = order ? orderStatusCopy(order.orderStatus) : null;
+const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
 ---
 
-<BaseLayout title="Order help | GoldPlus">
-  <main>
+<BaseLayout robotsMeta="noindex,follow" title="Track your order | GoldPlus">
+  {/* A div, not a second main element: BaseLayout already provides the page's main
+      landmark, and two of them is what screen-reader landmark lists showed. */}
+  <div>
     <section class="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">
       <div class="container mx-auto px-4 lg:px-8">
-        <a href="/support" class="text-xs font-bold text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-brand-primary">&larr; Customer support</a>
-        <p class="mt-8 text-xs font-black uppercase tracking-[0.18em] text-brand-primary">Order support</p>
-        <h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Need help with an order?</h1>
+        <a href="/support" class="text-xs font-bold text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-gray-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-primaryInk">&larr; Customer support</a>
+        <p class="mt-8 text-xs font-black uppercase tracking-[0.18em] text-brand-primaryInk">Track your order</p>
+        <h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Where's my order?</h1>
         <p class="mt-4 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
-          Have your order reference ready. GoldPlus support will help verify the order information available to us.
+          Enter your order reference and the phone number or email you used at checkout to see its dispatch progress.
         </p>
       </div>
     </section>
 
     <section class="container mx-auto px-4 py-10 sm:py-14 lg:px-8">
-      <div class="mx-auto grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
-          <h2 class="text-2xl font-black text-gray-900">Before you contact support</h2>
-          <ol class="mt-6 space-y-5" aria-label="Information to prepare for order support">
-            <li class="flex gap-4">
-              <span aria-hidden="true" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-primary text-sm font-black text-gray-950">1</span>
-              <div>
-                <h3 class="font-black text-gray-900">Find your order reference</h3>
-                <p class="mt-1 text-sm leading-relaxed text-slate-600">Use the reference shown after checkout or on any genuine order record you received.</p>
-              </div>
-            </li>
-            <li class="flex gap-4">
-              <span aria-hidden="true" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-primary text-sm font-black text-gray-950">2</span>
-              <div>
-                <h3 class="font-black text-gray-900">Keep your checkout contact ready</h3>
-                <p class="mt-1 text-sm leading-relaxed text-slate-600">Support may ask for the phone number or email used at checkout to protect order details.</p>
-              </div>
-            </li>
-            <li class="flex gap-4">
-              <span aria-hidden="true" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-primary text-sm font-black text-gray-950">3</span>
-              <div>
-                <h3 class="font-black text-gray-900">Ask us to verify</h3>
-                <p class="mt-1 text-sm leading-relaxed text-slate-600">Tell support what you need checked. Do not post payment credentials, passwords or one-time codes.</p>
-              </div>
-            </li>
-          </ol>
+      <div class="mx-auto grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-[1fr_0.9fr]">
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
+          {!order && <h2 class="text-xl font-black text-gray-900">Look up your order</h2>}
+          {/* Above the form, where it is seen: below it, on a phone, only its
+              first line showed at the bottom edge of the screen. */}
+          {errorMsg && (
+            <div id="lookup-error" role="alert" class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{errorMsg}</div>
+          )}
+          <LookupWrap class="group">
+          {order && <summary class="cursor-pointer list-none text-sm font-bold text-slate-700 marker:content-none flex items-center gap-2"><span aria-hidden="true" class="transition-transform group-open:rotate-90">▸</span> Look up a different order</summary>}
+          <form method="POST" action="/track-order" class="mt-5 space-y-4">
+            <input type="hidden" name="intent" value="lookup" />
+            <label class="block">
+              <span class="text-xs font-bold text-slate-700">Order reference</span>
+              <input name="reference" required maxlength="80" value={submittedRef}
+                placeholder="e.g. GP-202610-3F7A9C21"
+                autocapitalize="characters" spellcheck="false"
+                aria-invalid={errorMsg ? 'true' : undefined} aria-describedby={errorMsg ? 'lookup-error' : undefined}
+                class="mt-1 w-full rounded-xl border border-gray-500 px-4 py-3 text-base sm:text-sm placeholder:text-gray-500 outline-none focus:ring-2 focus:ring-brand-primaryInk" />
+            </label>
+            <label class="block">
+              <span class="text-xs font-bold text-slate-700">Phone or email used at checkout</span>
+              {/* Kept after a failed lookup (it used to come back empty), and no
+                  email keyboard: most customers check out with a phone number. */}
+              <input name="contact" required maxlength="120" value={submittedContact}
+                placeholder="07XX XXX XXX or you@example.com"
+                autocomplete="on" spellcheck="false"
+                aria-invalid={errorMsg ? 'true' : undefined} aria-describedby={errorMsg ? 'lookup-error' : undefined}
+                class="mt-1 w-full rounded-xl border border-gray-500 px-4 py-3 text-base sm:text-sm placeholder:text-gray-500 outline-none focus:ring-2 focus:ring-brand-primaryInk" />
+            </label>
+            <button type="submit"
+              class="inline-flex min-h-12 w-full items-center justify-center rounded-full px-6 text-sm font-bold outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk transition active:scale-[0.99]"
+              style="background:#93D500;color:#0A0A0A">
+              Track order
+            </button>
+            <p class="text-center text-xs text-slate-500">We only show order details when the reference and contact match. That is for your privacy.</p>
+            <p class="text-center text-xs text-slate-600">Have an account? <a href="/account/orders" class="font-bold underline">See all your orders</a> without a reference.</p>
+          </form>
+          </LookupWrap>
+          <RememberedDetails show={contactRemembered} back="/track-order" class="mt-3" />
 
-          <div class="mt-8 flex flex-col gap-3 sm:flex-row">
-            <a
-              href={orderHelpWhatsappUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Open GoldPlus order support on WhatsApp in a new tab"
-              class="inline-flex min-h-12 flex-1 items-center justify-center rounded-full bg-slate-900 px-6 py-3 text-center text-xs font-black uppercase tracking-wider text-white outline-none transition hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
-            >
-              Ask on WhatsApp
-            </a>
-            <a href="/support" class="inline-flex min-h-12 flex-1 items-center justify-center rounded-full border border-slate-300 px-6 py-3 text-center text-xs font-black uppercase tracking-wider text-slate-800 outline-none transition hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primary">See all support options</a>
-          </div>
-          <p class="mt-4 text-center text-xs leading-relaxed text-slate-500">WhatsApp opens as a link. No message is sent automatically.</p>
+
+          {order && (
+            <div class="mt-6 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p class="text-xs font-bold uppercase tracking-wider text-slate-500">Order</p>
+                  <p class="text-lg font-black text-gray-900 whitespace-nowrap">{order.orderNumber}</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <span class={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${STATUS_TONE_CLASS[orderCopy!.tone]}`}>{orderCopy!.label}</span>
+                  <span class={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${STATUS_TONE_CLASS[paymentCopy!.tone]}`}>{paymentCopy!.label}</span>
+                </div>
+              </div>
+              <p class="mt-3 text-sm text-slate-700">{orderCopy!.meaning} {paymentCopy!.meaning}</p>
+
+              {/* Dispatch progress — fulfilment stages, not live GPS tracking. */}
+              {isCancelled ? (
+                <div class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+                  This order is <strong>{orderCopy!.label.toLowerCase()}</strong>. If you think this is wrong, or you paid and have not heard from us, request a follow-up below and our team will check.
+                </div>
+              ) : isUnpaid ? (
+                <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  {order.paymentStatus === 'failed' ? (
+                    <>
+                      {/* The payment-return page's words, deliberately: FAILED also
+                          covers a reversal, where money DID leave and is coming
+                          back, so saying nothing left could be false. */}
+                      <p class="font-semibold">Your online payment did not go through, so the order is not paid. If money left your phone or card, it will come back. Tell us if it does not.</p>
+                      <p class="mt-1 text-xs">Your order is still saved. Pay now with Mobile Money or card.</p>
+                    </>
+                  ) : (
+                    <>
+                      <p class="font-semibold">Waiting for payment before we prepare it.</p>
+                      <p class="mt-1 text-xs">If you already paid online and it has not cleared, please do not pay again — ask us on WhatsApp and we will check. Otherwise you can pay now with Mobile Money or card.</p>
+                    </>
+                  )}
+                  {payError && (
+                    <p class="mt-3 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-800" role="alert">{payError}</p>
+                  )}
+                  <form method="POST" action="/track-order" class="mt-3">
+                    <input type="hidden" name="intent" value="pay" />
+                    <input type="hidden" name="reference" value={order.orderNumber} />
+                    <input type="hidden" name="contact" value={submittedContact} />
+                    <button type="submit" class="inline-flex items-center justify-center rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white hover:bg-black transition-colors">Pay now with Mobile Money or card →</button>
+                  </form>
+                </div>
+              ) : (
+                <ol class="mt-6 space-y-0" aria-label="Dispatch progress">
+                  {STAGES.map((stage, i) => {
+                    const done = i < currentStage;
+                    const active = i === currentStage;
+                    const last = i === STAGES.length - 1;
+                    return (
+                      <li class="relative flex gap-4 pb-6 last:pb-0">
+                        {!last && <span aria-hidden="true" class={`absolute left-[11px] top-6 h-full w-0.5 ${done ? 'bg-brand-primary' : 'bg-slate-200'}`}></span>}
+                        <span aria-hidden="true" class={`relative z-10 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-black ${done ? 'border-brand-primary bg-brand-primary text-gray-950' : active ? 'border-brand-primary bg-white text-brand-primaryInk' : 'border-slate-300 bg-white text-slate-300'}`}>
+                          {done ? '✓' : i + 1}
+                        </span>
+                        {/* Upcoming steps are what the customer reads to see what
+                            happens next: dimmed with opacity they fell to 2.6:1.
+                            The grey step circle is the "not yet" cue instead. */}
+                        <div>
+                          <p class={`text-sm font-black ${active ? 'text-brand-primaryInk' : done ? 'text-gray-900' : 'text-slate-700'}`}>{stage.title}{active && <span class="ml-2 rounded-full bg-brand-primary/15 px-2 py-0.5 text-[10px] font-bold text-brand-primaryInk align-middle">Now</span>}</p>
+                          <p class="mt-0.5 text-xs leading-relaxed text-slate-600">{stage.desc}</p>
+                          {active && isDeliveryFailed && <p class="mt-1 text-xs font-semibold text-amber-800">A delivery attempt did not succeed. Our team will try again or contact you.</p>}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+
+              <dl class="mt-5 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-slate-200 pt-4 text-sm">
+                {order.deliveryArea && (<><dt class="text-slate-500">Delivery area</dt><dd class="text-right font-semibold text-gray-900">{order.deliveryArea}</dd></>)}
+                {order.createdAt && (<><dt class="text-slate-500">Placed</dt><dd class="text-right font-semibold text-gray-900">{fmtDate(order.createdAt)}</dd></>)}
+                {typeof order.subtotalUgx === 'number' && (<><dt class="text-slate-500">Items</dt><dd class="text-right font-semibold text-gray-900 tabular-nums">{formatUgx(order.subtotalUgx)}</dd></>)}
+                {typeof order.deliveryFeeUgx === 'number' && (<><dt class="text-slate-500">Delivery</dt><dd class="text-right font-semibold text-gray-900 tabular-nums">{formatUgx(order.deliveryFeeUgx)}</dd></>)}
+                {typeof order.subtotalUgx === 'number' && typeof order.deliveryFeeUgx === 'number' && typeof order.totalUgx === 'number' && order.subtotalUgx + order.deliveryFeeUgx - order.totalUgx > 0 && (<><dt class="text-slate-500">Points and discounts</dt><dd class="text-right font-semibold text-gray-900 tabular-nums">−{formatUgx(order.subtotalUgx + order.deliveryFeeUgx - order.totalUgx)}</dd></>)}
+                {typeof order.totalUgx === 'number' && (<><dt class="text-slate-500">Total</dt><dd class="text-right font-black text-brand-primaryInk tabular-nums">{formatUgx(order.totalUgx)}</dd></>)}
+                {typeof order.totalUgx === 'number' && Number(order.storeCreditAppliedUgx) > 0 && (<><dt class="text-slate-500">Gift card or store credit</dt><dd class="text-right font-semibold text-gray-900 tabular-nums">−{formatUgx(Number(order.storeCreditAppliedUgx))}</dd>{order.totalUgx - Number(order.storeCreditAppliedUgx) > 0 && (<><dt class="text-slate-500">{order.paymentStatus === 'paid' ? 'Paid by Mobile Money or card' : 'To pay'}</dt><dd class="text-right font-black text-gray-900 tabular-nums">{formatUgx(order.totalUgx - Number(order.storeCreditAppliedUgx))}</dd></>)}</>)}
+              </dl>
+
+              {Array.isArray(order.items) && order.items.length > 0 && (
+                <div class="mt-3 border-t border-slate-200 pt-3">
+                  <p class="text-xs font-bold uppercase tracking-wider text-slate-500">Items</p>
+                  <ul class="mt-2 space-y-1.5 text-sm">
+                    {order.items.map((it: any) => (
+                      <li class="flex items-center justify-between gap-3">
+                        <span class="text-gray-800">{it.name ?? it.productName ?? 'Item'} <span class="text-slate-500">× {it.quantity ?? it.qty ?? 1}</span></span>
+                        {typeof (it.lineTotalUgx ?? it.unitPriceUgx) === 'number' && (
+                          <span class="font-semibold text-gray-900 tabular-nums">{formatUgx(it.lineTotalUgx ?? (it.unitPriceUgx * (it.quantity ?? 1)))}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Delivered: one tap to rate it. The reference and contact are the shopper's own, from this request. */}
+              {['delivered', 'completed'].includes(orderStatusKey) && (
+                <form method="POST" action="/review" class="mt-4">
+                  <input type="hidden" name="intent" value="lookup" />
+                  <input type="hidden" name="reference" value={submittedRef} />
+                  <input type="hidden" name="contact" value={submittedContact} />
+                  <button type="submit" class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border-2 border-brand-primaryInk px-5 text-xs font-black uppercase tracking-widest text-brand-primaryInk hover:bg-brand-primaryInk hover:text-white transition-colors"><span aria-hidden="true">★</span> Rate what you bought</button>
+                </form>
+              )}
+
+              {/* Back-office follow-up: notifies our team about THIS order. */}
+              <div class="mt-5 border-t border-slate-200 pt-4">
+                {followupOk ? (
+                  <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                    Thanks. Our team has been notified and will follow up on order {order.orderNumber} using your checkout contact.
+                  </div>
+                ) : (
+                  <details class="group">
+                    <summary class="flex cursor-pointer list-none items-center gap-2 text-sm font-black text-gray-900 marker:content-none">
+                      <span aria-hidden="true" class="transition-transform group-open:rotate-90">▸</span>
+                      Ask our team to follow up on this order
+                    </summary>
+                    <form method="POST" action="/track-order" class="mt-3 space-y-3">
+                      <input type="hidden" name="intent" value="followup" />
+                      <input type="hidden" name="reference" value={order.orderNumber} />
+                      {/* The contact the shopper just proved, carried forward: the API re-verifies it,
+                          so asking them to type it a second time added work and no safety. */}
+                      <input type="hidden" name="contact" value={submittedContact} />
+                      <label class="block">
+                        <span class="text-xs font-bold text-slate-700">Anything you'd like us to check? (optional)</span>
+                        <textarea name="note" rows="3" maxlength="800"
+                          placeholder="e.g. Please confirm dispatch date."
+                          class="mt-1 w-full rounded-xl border border-gray-500 px-4 py-2.5 text-base sm:text-sm placeholder:text-gray-500 outline-none focus:ring-2 focus:ring-brand-primaryInk"></textarea>
+                      </label>
+                      {followupError && <p role="alert" class="text-xs font-semibold text-red-700">{followupError}</p>}
+                      <button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-full border-2 border-brand-primary px-5 text-sm font-bold text-gray-900 outline-none hover:bg-brand-primary/10 focus-visible:ring-4 focus-visible:ring-brand-primaryInk">Request a follow-up</button>
+                      <p class="text-xs text-slate-500">Our team will see this and reply on the phone number from your order.</p>
+                    </form>
+                  </details>
+                )}
+                <a href={orderHelpWhatsappUrl} target="_blank" rel="noopener noreferrer"
+                  class="mt-3 inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900">Or ask on WhatsApp</a>
+              </div>
+            </div>
+          )}
         </div>
 
-        <aside aria-labelledby="order-status-truth" class="rounded-2xl border border-amber-200 bg-amber-50/60 p-6 sm:p-8">
-          <h2 id="order-status-truth" class="text-xl font-black text-amber-950">What this page does—and does not—show</h2>
-          <p class="mt-4 text-sm leading-relaxed text-amber-900">
-            This is an order-help page, not live courier tracking. It does not confirm payment, product availability, dispatch, delivery status or an arrival time.
+        {!order && <aside class="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
+          <h2 class="text-lg font-black text-gray-900">Before you look up</h2>
+          <ol class="mt-5 space-y-4" aria-label="What you need">
+            <li class="flex gap-3">
+              <span aria-hidden="true" class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-primary text-xs font-black text-gray-950">1</span>
+              <p class="text-sm leading-relaxed text-slate-600"><span class="font-bold text-gray-900">Your order reference</span>. Shown after checkout and on any genuine order record you received.</p>
+            </li>
+            <li class="flex gap-3">
+              <span aria-hidden="true" class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-primary text-xs font-black text-gray-950">2</span>
+              <p class="text-sm leading-relaxed text-slate-600"><span class="font-bold text-gray-900">The phone or email from checkout</span>. We match it to protect your order details. Never share payment credentials, passwords or one-time codes.</p>
+            </li>
+          </ol>
+          <p class="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
+            This shows dispatch progress (placed → preparing → dispatched → delivered), not a live map. Delivery timing depends on the product, availability and your location.
           </p>
-          <p class="mt-4 text-sm leading-relaxed text-amber-900">
-            Support will verify the details available for your order. Delivery timing depends on the order, product availability and location.
-          </p>
-          <p class="mt-4 text-sm font-bold leading-relaxed text-amber-950">
-            An order reference alone is not proof that an order is paid, confirmed or dispatched.
-          </p>
-        </aside>
+          <a href="/support" class="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-5 py-2.5 text-sm font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">See all support options</a>
+        </aside>}
       </div>
     </section>
 
@@ -86,13 +365,13 @@ const orderHelpWhatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${enco
             Warranty and returns are subject to the applicable GoldPlus policy and your order details. Contact support before returning an item so the relevant policy can be confirmed.
           </p>
           <nav aria-label="Order policy help" class="mt-6 flex flex-wrap gap-3">
-            <a href="/support#returns-warranty" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primary">Returns help</a>
-            <a href="/support#returns-warranty" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primary">Warranty help</a>
-            <a href="/support#terms-guidance" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primary">Terms guidance</a>
-            <a href="/support#privacy-guidance" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primary">Privacy guidance</a>
+            <a href="/returns" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Returns help</a>
+            <a href="/warranty" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Warranty help</a>
+            <a href="/support#terms-guidance" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Terms guidance</a>
+            <a href="/support#privacy-guidance" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Privacy guidance</a>
           </nav>
         </div>
       </div>
     </section>
-  </main>
+  </div>
 </BaseLayout>
