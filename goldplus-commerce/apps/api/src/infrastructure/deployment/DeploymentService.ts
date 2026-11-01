@@ -49,6 +49,15 @@ export function shadowSafeHeaders(headers: Record<string, string>): Record<strin
   for (const [name, value] of Object.entries(headers)) {
     const n = name.toLowerCase();
     if (
+      // Routing and client-address headers: the production Host breaks the shadow's host routing,
+      // and the forwarded addresses are the customer's IP (personal data that must not leave).
+      n === 'host' ||
+      n === 'forwarded' ||
+      n.startsWith('x-forwarded-') ||
+      n === 'x-real-ip' ||
+      n === 'cf-connecting-ip' ||
+      n === 'true-client-ip' ||
+      n === 'x-client-ip' ||
       n === 'authorization' ||
       n === 'cookie' ||
       n.startsWith('x-goldplus-') ||
@@ -61,6 +70,16 @@ export function shadowSafeHeaders(headers: Record<string, string>): Record<strin
     out[n] = value;
   }
   return out;
+}
+
+/**
+ * The freeze after a read of the shared flag. A missing key (never shared) keeps
+ * what this replica knows; a read issued before a local change is stale and
+ * keeps the local change.
+ */
+export function nextFreezeState(input: { current: boolean; shared: string | null; staleRead: boolean }): boolean {
+  if (input.staleRead || input.shared === null) return input.current;
+  return input.shared === '1';
 }
 
 /** The shared flags, read by every replica. */
@@ -136,6 +155,10 @@ export class DeploymentService {
   private flagStore: DeploymentFlagStore | null | undefined;
   private flagsReadAt = 0;
   private flagsShared = false;
+  /** Bumped by every local maintenance change: a read issued before it is stale and must not undo it. */
+  private maintenanceWrites = 0;
+  /** A maintenance value set here that Redis has not accepted yet (share failed); retried on refresh. */
+  private unsharedMaintenance: '1' | '0' | null = null;
 
   private constructor() {}
 
@@ -143,6 +166,7 @@ export class DeploymentService {
   public useFlagStore(store: DeploymentFlagStore | null): void {
     this.flagStore = store;
     this.flagsReadAt = 0;
+    this.unsharedMaintenance = null;
   }
 
   private store(): DeploymentFlagStore | null {
@@ -167,9 +191,19 @@ export class DeploymentService {
     const now = opts.now ?? Date.now();
     if (!store || (!opts.force && now - this.flagsReadAt < FLAG_CACHE_MS)) return this.isFreeze;
     this.flagsReadAt = now;
+    const writesBefore = this.maintenanceWrites;
     try {
+      // A local change Redis has not accepted yet is pushed first, so the read cannot lift it.
+      if (this.unsharedMaintenance !== null) {
+        await store.write('maintenance', this.unsharedMaintenance);
+        this.unsharedMaintenance = null;
+      }
       const flags = await store.read();
-      this.isFreeze = flags.maintenance === '1';
+      this.isFreeze = nextFreezeState({
+        current: this.isFreeze,
+        shared: flags.maintenance,
+        staleRead: this.maintenanceWrites !== writesBefore,
+      });
       if (flags.shadow) {
         const shadow = JSON.parse(flags.shadow) as { ratio?: unknown; url?: unknown };
         this.shadowRatio = clampRatio(Number(shadow.ratio) || 0);
@@ -210,10 +244,14 @@ export class DeploymentService {
   }
 
   /** Applies locally at once; resolves true when every replica will see it. */
-  public setMaintenanceMode(enabled: boolean): Promise<boolean> {
+  public async setMaintenanceMode(enabled: boolean): Promise<boolean> {
     this.isFreeze = enabled;
+    this.maintenanceWrites += 1;
     logger.warn({ enabled }, '[DeploymentService] Maintenance mode (write lock) toggled');
-    return this.share('maintenance', enabled ? '1' : '0');
+    const value = enabled ? '1' : '0';
+    const shared = await this.share('maintenance', value);
+    this.unsharedMaintenance = shared || !this.store() ? null : value;
+    return shared;
   }
 
   public getReleaseHealthScore(): number {

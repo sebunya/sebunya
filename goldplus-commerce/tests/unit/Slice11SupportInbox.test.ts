@@ -94,10 +94,10 @@ describe('Support inbox use cases (Slice 11)', () => {
     const src = (await import('node:fs')).readFileSync(require('node:path').resolve(__dirname, '../../apps/api/src/infrastructure/db/repositories/DrizzleSupportRepository.ts'), 'utf8');
     const body = src.slice(src.indexOf('async findForCustomer'), src.indexOf('async findAll'));
     expect(body).toMatch(/eq\(supportIssues\.customerId/);
-    expect(body).toMatch(/metadata\}->>'email'/);
+    expect(body).toMatch(/metadataField\('email'\)/);
     expect(body).not.toMatch(/findMany\(\)/);
     // A ticket with no email is still found by the customer's phone.
-    expect(body).toMatch(/metadata\}->>'phone'/);
+    expect(body).toMatch(/metadataField\('phone'\)/);
   });
 
   it('sorts overdue tickets first', async () => {
