@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, integer, numeric, text, jsonb, timestamp, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, integer, numeric, text, jsonb, timestamp, boolean, index, uniqueIndex, customType } from 'drizzle-orm/pg-core';
 import { orders } from './commerce';
 import { users } from './identity';
 
@@ -199,6 +199,27 @@ export const fulfilmentDeliveries = pgTable(
     orderIdx: index('fulfilment_deliveries_order_idx').on(table.orderId),
     outcomeIdx: index('fulfilment_deliveries_outcome_idx').on(table.outcome),
   })
+);
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType() { return 'bytea'; } });
+
+/** 0212: photos as proof of delivery, up to three per attempt. Staff-only; same pipeline and ceilings as review photos. */
+export const deliveryProofPhotos = pgTable(
+  'delivery_proof_photos',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    deliveryId: uuid('delivery_id').references(() => fulfilmentDeliveries.id, { onDelete: 'cascade' }).notNull(),
+    orderId: uuid('order_id').references(() => orders.id).notNull(),
+    image: bytea('image').notNull(),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    uploadedBy: uuid('uploaded_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    deliveryIdx: index('delivery_proof_photos_delivery_idx').on(t.deliveryId, t.createdAt),
+    orderIdx: index('delivery_proof_photos_order_idx').on(t.orderId),
+  }),
 );
 
 /** F2 — persisted, idempotent SLA escalation events (one per task/stage/version). */

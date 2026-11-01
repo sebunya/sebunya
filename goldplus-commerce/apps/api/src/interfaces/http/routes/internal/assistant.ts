@@ -213,6 +213,33 @@ routes.post('/care-task', async (c) => {
   return ok(c, { taskId: out.task.id, created: out.created, priority: out.task.priority, alerted: out.alerted.length });
 });
 
+/**
+ * Goldie acting on an order herself (wired 2026-10-31): cancel before dispatch (refunding online payments up to the
+ * cap), refund a failed delivery, or write rider instructions. The web layer has already checked the customer's own
+ * last message says yes; the order is proven here exactly as Track my order proves it.
+ */
+routes.post('/order-action', async (c) => {
+  const parsed = z.object({
+    action: z.enum(['cancel', 'refund_failed_delivery', 'delivery_instructions']),
+    reference: z.string().min(4).max(80), contact: z.string().min(3).max(120),
+    reason: z.string().max(500).optional(), instructions: z.string().max(500).optional(),
+    channel: z.enum(['web', 'whatsapp', 'messenger', 'instagram']), conversationKey: z.string().max(128).nullable().optional(),
+  }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return bad(c, 'INVALID_BODY', parsed.error.issues[0]?.message ?? 'Invalid body.');
+  if (String(process.env.GOLDIE_ORDER_ACTIONS ?? '').trim().toLowerCase() === 'off') return bad(c, 'ACTIONS_OFF', 'Goldie order actions are switched off.', 409);
+  const d = parsed.data;
+  const registry = Registry.getInstance();
+  const conv = d.conversationKey ? await registry.conversationArchiveUseCases.findByKey(d.channel, d.conversationKey).catch(() => null) : null;
+  const ctx = { reference: d.reference, contact: d.contact, channel: d.channel, conversationId: conv?.id ?? null };
+  const uc = registry.goldieOrderActionsUseCases;
+  const out = d.action === 'delivery_instructions'
+    ? await uc.deliveryInstructions({ ...ctx, instructions: d.instructions ?? '' })
+    : d.action === 'refund_failed_delivery'
+      ? await uc.refundFailedDelivery({ ...ctx, reason: d.reason ?? 'Delivery failed; the customer wants the money back' })
+      : await uc.cancel({ ...ctx, reason: d.reason ?? 'The customer asked to cancel' });
+  return ok(c, out);
+});
+
 routes.post('/csat', async (c) => {
   const parsed = z.object({ conversationKey: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/), score: z.number().int().min(1).max(5), comment: z.string().max(500).nullable().optional() }).safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return bad(c, 'INVALID_BODY', 'Send a score from 1 to 5.');

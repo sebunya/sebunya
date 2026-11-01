@@ -25,8 +25,6 @@ function files(dir: string, acc: string[] = []): string[] {
 describe('Goldie settings reach the api container', () => {
   const names = new Set<string>();
   for (const f of files(API)) for (const m of readFileSync(f, 'utf8').matchAll(/\benv\.((?:GOLDIE|CARE)_[A-Z_]+|WEB_INTERNAL_ORIGIN)/g)) names.add(m[1]!);
-  // Read by code that is written but not wired (GoldieOrderActionsUseCases); passed through when it is.
-  names.delete('GOLDIE_REFUND_CAP_UGX');
 
   it('finds the settings the api reads', () => {
     expect([...names]).toEqual(expect.arrayContaining(['GOLDIE_WHATSAPP_ENABLED', 'GOLDIE_WHATSAPP_TOKEN', 'CARE_ALERTS_PER_HOUR', 'WEB_INTERNAL_ORIGIN']));

@@ -57,6 +57,17 @@ function toRedemption(row: typeof loyaltyRedemptions.$inferSelect): LoyaltyRedem
   };
 }
 
+/**
+ * An order placed signed out belongs to the account whose VERIFIED phone is its phone, however it was typed
+ * (0772…, +256 772…, 256772…). The same owner findLoyaltyEarnSource vests it to on delivery, so it shows as
+ * pending first instead of appearing only once delivered.
+ */
+const SIGNED_OUT_ORDER_OF_VERIFIED_PHONE = (userId: string) => sql`exists (
+  select 1 from users u
+  where u.id = ${userId} and u.phone_verified_at is not null and u.phone is not null
+    and regexp_replace(orders.customer_phone, '[\\s().-]', '', 'g') ~ '^(\\+?256|0)?[0-9]{9}$'
+    and u.phone = '+256' || right(regexp_replace(orders.customer_phone, '\\D', '', 'g'), 9))`;
+
 export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRepository {
   async getProgrammeConfig(): Promise<LoyaltyProgrammeConfig> {
     const row = await db.query.loyaltyConfig.findFirst();
@@ -395,7 +406,7 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
     const rows = (await db.execute(sql`
       select id, total_amount
       from orders
-      where user_id = ${userId}
+      where (user_id = ${userId} or (user_id is null and ${SIGNED_OUT_ORDER_OF_VERIFIED_PHONE(userId)}))
         and ${LOYALTY_PAYMENT_QUALIFIES_SQL}
         and status in ('received', 'processing', 'dispatched', 'delivery_failed')`)) as unknown as Array<{ id: string; total_amount: string | number }>;
     return rows.map((r) => ({ orderId: r.id, totalUgx: Number(r.total_amount) }));

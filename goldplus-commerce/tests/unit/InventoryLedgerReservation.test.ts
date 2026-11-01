@@ -139,6 +139,7 @@ class InMemoryInventoryRepo implements IInventoryRepository {
   async getAvailability(productIds: string[]): Promise<AvailabilityRow[]> {
     return productIds.filter((id) => this.products.has(id)).map((id) => this.row(id));
   }
+  async listRunningOut(): Promise<AvailabilityRow[]> { return []; }
   async listLowStock(limit: number): Promise<AvailabilityRow[]> {
     return [...this.products.keys()].map((id) => this.row(id)).filter((r) => r.lowStock).slice(0, limit);
   }

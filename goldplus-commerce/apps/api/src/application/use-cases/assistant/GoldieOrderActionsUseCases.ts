@@ -4,10 +4,10 @@ import type { OpenTaskInput } from './CareDeskUseCases';
  * Goldie acting on an order herself (owner, 2026-10-13: no person in the loop
  * for order changes and money; Goldie may still escalate).
  *
- * NOT WIRED YET: connecting this to the live order state machine and the
- * Pesapal refund ledger is the owner's switch (docs/assistant/README.md,
- * "Goldie order actions"). Until then request_order_change files a Care Desk
- * task. Every action, once wired:
+ * WIRED 2026-10-31 on the owner's go-ahead (POST /internal/assistant/order-action,
+ * Registry.goldieOrderActionsUseCases): the order state machine, the Pesapal
+ * refund ledger and the audit log, with Goldie as the actor. GOLDIE_ORDER_ACTIONS=off
+ * puts every request back on the Care Desk. Every action:
  *  - proves the customer first (reference + checkout phone or email through the
  *    same verified lookup and 5-tries lockout as Track my order, or the
  *    Meta-verified WhatsApp number),
@@ -74,7 +74,13 @@ export class GoldieOrderActionsUseCases {
       return { ok: false, code: 'TOO_LATE', told: `Order ${o.orderNumber} ${where}, so it can't be cancelled from here. ${status === 'dispatched' ? 'You can decline it at the door, or I can get the team to call the rider now.' : 'If something is wrong with it, tell me and I will sort it out.'}` };
     }
     const reason = `Cancelled by the customer through Goldie (${input.channel}): ${input.reason}`.slice(0, 500);
-    await this.deps.cancel(o.id, reason, `goldie-cancel:${o.id}`);
+    try {
+      await this.deps.cancel(o.id, reason, `goldie-cancel:${o.id}`);
+    } catch (error) {
+      // The state machine refused (the order moved on meanwhile) or the database failed: a person finishes it.
+      await this.deps.openTask({ kind: 'urgent', title: `Cancel order ${o.orderNumber}: Goldie could not (${String((error as Error)?.message ?? error).slice(0, 80)})`, detail: reason, customerName: o.customerName, customerPhone: o.customerPhone, orderNumber: o.orderNumber, conversationId: input.conversationId, channel: input.channel, urgent: true });
+      return { ok: false, code: 'CANCEL_FAILED', told: `I couldn't cancel order ${o.orderNumber} myself just now, so I've passed it to the team as urgent. They will cancel it and confirm with you shortly.` };
+    }
     if (o.paymentStatus !== 'paid') return { ok: true, done: 'cancelled', told: `Done. Order ${o.orderNumber} is cancelled, and nothing was charged.` };
 
     const refund = await this.refundAll(o, `Order ${o.orderNumber} cancelled by the customer before dispatch (Goldie). ${input.reason}`, input);

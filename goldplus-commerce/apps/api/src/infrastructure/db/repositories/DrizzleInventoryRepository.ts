@@ -359,6 +359,34 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
     return out;
   }
 
+  /**
+   * Live products that need reordering: at or below their reorder point when one is set, or (most products have
+   * none) selling fast enough to run out within `coverDays`, out-of-stock sellers first. Drafts, hidden products and
+   * NON_STOCK_ITEM products never appear.
+   */
+  async listRunningOut(coverDays: number, limit: number): Promise<AvailabilityRow[]> {
+    const rows = (await db.execute(sql`
+      with sold as (
+        select oi.product_id, coalesce(sum(oi.quantity), 0)::int as units
+        from order_items oi join orders o on o.id = oi.order_id
+        where o.payment_status = 'paid' and o.created_at >= now() - (${sql.raw(String(SALES_VELOCITY_WINDOW_DAYS))} * interval '1 day')
+        group by oi.product_id)
+      select p.id, p.sku, p.name, p.stock_quantity as stock, p.reserved_quantity as reserved, p.reorder_point as reorder,
+             p.inventory_policy as policy, coalesce(s.units, 0) as units
+      from products p left join sold s on s.product_id = p.id
+      where p.approval_status = 'approved' and p.active
+        and coalesce(p.inventory_policy, 'STOCK_CONTROLLED') <> 'NON_STOCK_ITEM'
+        and ((p.reorder_point > 0 and p.stock_quantity - p.reserved_quantity <= p.reorder_point)
+          or (coalesce(s.units, 0) > 0
+              and (p.stock_quantity - p.reserved_quantity) * ${SALES_VELOCITY_WINDOW_DAYS} <= coalesce(s.units, 0) * ${coverDays}))
+      order by (p.stock_quantity - p.reserved_quantity) <= 0 desc, coalesce(s.units, 0) desc, p.sku
+      limit ${limit}`)) as unknown as Array<{ id: string; sku: string; name: string; stock: number; reserved: number; reorder: number; policy: string | null; units: number }>;
+    return rows.map((r) => this.toAvailability(
+      { id: r.id, sku: r.sku, name: r.name, stock: Number(r.stock), reserved: Number(r.reserved), reorder: Number(r.reorder), policy: r.policy },
+      Number(r.units),
+    ));
+  }
+
   async listLowStock(limit: number): Promise<AvailabilityRow[]> {
     const rows = await db
       .select({

@@ -34,6 +34,8 @@ export interface CareContext {
   mood?: string | null;
   /** The customer's name if they gave one (WhatsApp profile name). */
   customerName?: string | null;
+  /** The customer's own newest message: an order action needs THEIR yes, never the model's word for it. */
+  lastCustomerMessage?: string | null;
 }
 
 export interface CareAnswer { ok: boolean; text: string; links: Array<{ label: string; url: string }>; facts?: Record<string, unknown> }
@@ -255,7 +257,29 @@ export async function reportOrderProblem(input: { reference: string; contact?: s
   return { ok: true, text: `I've logged this on order ${ref} for the team${t.priority === 'urgent' ? ((t.alerted ?? 0) > 0 ? ' and alerted them now' : ' as urgent') : ''}. They will check it and get back to you; nothing is approved until they have looked at it.`, links: [] };
 }
 
-const CHANGE_LABEL: Record<string, string> = { cancel: 'cancel the order', delivery_address: 'change the delivery address', delivery_time: 'change the delivery time', items: 'change the items', other: 'change the order' };
+const CHANGE_LABEL: Record<string, string> = { cancel: 'cancel the order', refund_failed_delivery: 'refund the failed delivery', delivery_address: 'change the delivery address', delivery_time: 'change the delivery time', items: 'change the items', other: 'change the order' };
+
+/**
+ * The customer's own last message says yes (English, Luganda "yee"/"kale", Swahili "ndiyo"), and does not also say
+ * no. Goldie acts on an order only after asking and reading this from the customer, never on the model's word.
+ */
+export function customerSaidYes(message: string | null | undefined): boolean {
+  const m = String(message ?? '').toLowerCase();
+  if (!m.trim() || /\b(no|not|don'?t|do not|nope|wait|stop|hold on|never ?mind|later)\b/.test(m)) return false;
+  return /\b(yes|yeah|yep|yup|sure|ok(ay)?|go ahead|please do|do it|confirm(ed)?|cancel it|yee|kale|ndiyo|sawa)\b/.test(m);
+}
+
+/** Goldie acts herself (2026-10-31): cancel before dispatch with the refund, refund a failed delivery, rider notes. */
+async function orderAction(action: 'cancel' | 'refund_failed_delivery' | 'delivery_instructions', input: { reference: string; contact: string; details?: string }, ctx: CareContext): Promise<CareAnswer | null> {
+  const r = await api<{ ok: boolean; told: string; done?: string }>('POST', '/internal/assistant/order-action', ctx, {
+    action, reference: input.reference, contact: input.contact,
+    ...(action === 'delivery_instructions' ? { instructions: input.details ?? '' } : { reason: (input.details ?? '').slice(0, 500) || undefined }),
+    channel: ctx.channel ?? 'web', conversationKey: ctx.conversationKey ?? null,
+  });
+  // Switched off or unreachable: the request goes on the desk as before.
+  if (!r.data) return null;
+  return { ok: r.data.ok, text: r.data.told, links: [], facts: { done: r.data.done ?? null } };
+}
 export async function requestOrderChange(input: { reference: string; contact?: string; change: string; details?: string }, ctx: CareContext): Promise<CareAnswer> {
   const v = await verifiedOrder(input.reference, input.contact ?? '', ctx);
   if (!v.ok) return v.answer;
@@ -263,6 +287,16 @@ export async function requestOrderChange(input: { reference: string; contact?: s
   const status = String(v.summary.facts?.status ?? '');
   if (['delivered', 'completed', 'cancelled'].includes(status)) return { ok: true, text: `Order ${ref} is already ${status === 'cancelled' ? 'cancelled' : 'delivered'}, so it can't be changed. If something is wrong with what you received, tell me and I'll log it for the team.`, links: [] };
   const change = CHANGE_LABEL[input.change] ? input.change : 'other';
+  const action = change === 'cancel' ? 'cancel' : change === 'refund_failed_delivery' ? 'refund_failed_delivery' : change === 'delivery_time' ? 'delivery_instructions' : null;
+  if (action) {
+    // Money and cancellations wait for the customer's own yes; a rider note is the customer's own words already.
+    if (action !== 'delivery_instructions' && !customerSaidYes(ctx.lastCustomerMessage)) {
+      return { ok: true, text: `Just to be sure: shall I ${CHANGE_LABEL[change]} ${ref} now?${v.summary.facts?.paymentStatus === 'paid' ? ' What you paid online goes back to the same account.' : ''} Reply yes to confirm.`, links: [] };
+    }
+    const contact = (input.contact || ownPhone(ctx)).trim();
+    const done = await orderAction(action, { reference: ref, contact, details: input.details }, ctx);
+    if (done) return done;
+  }
   const t = await openTask(ctx, {
     kind: 'order_change', title: `${ref}: ${CHANGE_LABEL[change]}`, detail: [input.details ?? '', v.summary.text].filter(Boolean).join('\n'), orderNumber: ref,
     customerPhone: input.contact && PHONE.test(input.contact) ? input.contact : ownPhone(ctx) || null, customerEmail: input.contact && EMAIL.test(input.contact) ? input.contact : null,
@@ -312,7 +346,7 @@ export const CARE_TOOLS = [
   { name: 'request_callback', description: 'Book a call from a person at the shop. Use when the customer asks to be called, or when a call is clearly the best way to settle it and they agree. On WhatsApp their own number is used if they do not give another.', input_schema: { type: 'object', properties: { name: { type: 'string' }, phone: { type: 'string', description: 'Number to call' }, reason: { type: 'string', description: 'What the call is about, in a few words' }, when: { type: 'string', description: 'Best time, if they said' } }, required: ['reason'], additionalProperties: false } },
   { name: 'escalate_to_team', description: 'Pass the matter to a person now, with a one-line summary. Set urgent when the customer is upset or stuck about money, a missing or wrong order, a faulty product, or safety; urgent alerts the on-duty team by SMS, email and WhatsApp. Use when you cannot settle it with the tools, not for things you can answer.', input_schema: { type: 'object', properties: { summary: { type: 'string', description: 'What the customer needs and what you already know' }, urgent: { type: 'boolean' }, name: { type: 'string' }, phone: { type: 'string' }, email: { type: 'string' } }, required: ['summary'], additionalProperties: false } },
   { name: 'report_order_problem', description: 'Log a problem with a specific order (late, wrong item, damaged, missing part, payment not reflecting) for the team, after checking the order with its reference and the checkout phone or email.', input_schema: { type: 'object', properties: { reference: { type: 'string' }, contact: { type: 'string', description: 'Phone or email used at checkout (omit on WhatsApp to use their number)' }, problem: { type: 'string' } }, required: ['reference', 'problem'], additionalProperties: false } },
-  { name: 'request_order_change', description: 'Ask the team to cancel or change an order (delivery address, delivery time, items). Checks the order first; a person confirms the change with the customer. Never tell the customer it is changed: say the team will confirm.', input_schema: { type: 'object', properties: { reference: { type: 'string' }, contact: { type: 'string' }, change: { type: 'string', enum: ['cancel', 'delivery_address', 'delivery_time', 'items', 'other'] }, details: { type: 'string' } }, required: ['reference', 'change'], additionalProperties: false } },
+  { name: 'request_order_change', description: 'Act on a verified order. cancel (before the rider has it; online payments are refunded) and refund_failed_delivery happen at once, but ONLY after the customer has answered yes to your question "shall I cancel it now?": call it after their yes. delivery_time writes the customer\'s time, landmark or other number on the order for the rider (details = their words). delivery_address, items and other go to the team, who confirm. Tell the customer exactly what the tool says happened, nothing more.', input_schema: { type: 'object', properties: { reference: { type: 'string' }, contact: { type: 'string' }, change: { type: 'string', enum: ['cancel', 'refund_failed_delivery', 'delivery_address', 'delivery_time', 'items', 'other'] }, details: { type: 'string' } }, required: ['reference', 'change'], additionalProperties: false } },
   { name: 'bulk_quote', description: 'File a bulk or wholesale request for the sales team. Bulk is bought by the CARTON; flash drives and memory cards by the piece. Use productId values from search_products results and the number of cartons (or pieces for flash drives and memory cards) the customer gave; if they gave pieces of a carton product, ask how many cartons. Confirm the list with the customer before filing. Needs their name and phone (on WhatsApp their number is used).', input_schema: { type: 'object', properties: { name: { type: 'string' }, phone: { type: 'string' }, email: { type: 'string' }, businessName: { type: 'string' }, buyerType: { type: 'string', enum: ['retail', 'wholesale', 'corporate', 'dealer'] }, lines: { type: 'array', items: { type: 'object', properties: { productId: { type: 'string' }, count: { type: 'integer', minimum: 1, description: 'Cartons; pieces for flash drives and memory cards' } }, required: ['productId', 'count'], additionalProperties: false }, maxItems: 50 }, deliveryDistrict: { type: 'string' }, neededBy: { type: 'string', description: 'YYYY-MM-DD' }, notes: { type: 'string' } }, required: ['name', 'lines'], additionalProperties: false } },
 ] as const;
 export type CareToolName = (typeof CARE_TOOLS)[number]['name'];
