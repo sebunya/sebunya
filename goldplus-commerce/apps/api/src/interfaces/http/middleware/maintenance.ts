@@ -25,7 +25,11 @@ export function isMaintenanceExempt(path: string): boolean {
     path === '/auth/login' ||
     path === '/auth/admin/login' ||
     path === '/auth/refresh' ||
-    path === '/auth/mfa/verify'
+    path === '/auth/mfa/verify' ||
+    // An admin who still has to enrol MFA is sent to enrol by step-up; without these the freeze could
+    // only be lifted by editing Redis by hand.
+    path === '/auth/mfa/enrol' ||
+    path === '/auth/mfa/confirm'
   );
 }
 

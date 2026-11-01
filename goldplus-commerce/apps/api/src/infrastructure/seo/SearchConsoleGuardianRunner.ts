@@ -134,7 +134,11 @@ export async function runSearchConsoleGuardian(): Promise<GuardianRunnerOutcome>
         where date > (select maxd from bounds) - 14
         group by page
         having sum(clicks) > 0
-        order by 2 desc nulls last
+        -- Ranked by the busier of the two weeks: ranking by this week's clicks cut first the
+        -- pages that fell to zero, the very drops the guardian exists to catch.
+        order by greatest(coalesce(sum(clicks) filter (where date > (select maxd from bounds) - 7), 0),
+                          coalesce(sum(clicks) filter (where date <= (select maxd from bounds) - 7
+                                                         and date > (select maxd from bounds) - 14), 0)) desc
         limit 500
       `));
       return rows.map((r) => ({
