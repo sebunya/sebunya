@@ -25,6 +25,19 @@ const ISSUE_MESSAGES: Record<string, string> = {
   BAD_ORDER: 'No order has that number. Check it (it starts with GP-), or leave it empty.',
 };
 
+type RefundLoyaltyPort = { execute(input: { orderId: string; refundedShareBps: number; reason: string }): Promise<void> };
+
+/** Store credit live for an order is a refund: take back the order's points by the running refunded share. */
+async function clawBackForCreditRefund(repo: ICreditRepository, refundLoyalty: RefundLoyaltyPort | undefined, orderId: string): Promise<void> {
+  if (!refundLoyalty || !repo.refundedSoFarForOrder) return;
+  // Isolated: the credit exists already; points can be corrected by hand.
+  await repo.refundedSoFarForOrder(orderId)
+    .then(({ refundedUgx, totalUgx }) => totalUgx > 0
+      ? refundLoyalty.execute({ orderId, refundedShareBps: Math.min(10_000, Math.floor((refundedUgx * 10_000) / totalUgx)), reason: 'Refunded as store credit' })
+      : undefined)
+    .catch(() => undefined);
+}
+
 export class IssueCreditUseCase {
   constructor(
     private readonly repo: ICreditRepository,
@@ -63,14 +76,8 @@ export class IssueCreditUseCase {
         if (status === 'active' && phone && this.notifier) {
           await this.notifier.send({ instrumentId: id, phone, kind: input.kind, valueUgx: input.amountUgx, code, recipientName: ((input.recipientName ?? '').trim() || forOrder?.name) ?? null }).then(() => { texted = true; }).catch(() => undefined);
         }
-        if (status === 'active' && forOrder && this.refundLoyalty && this.repo.refundedSoFarForOrder) {
-          // Isolated: the credit exists already; points can be corrected by hand.
-          await this.repo.refundedSoFarForOrder(forOrder.id)
-            .then(({ refundedUgx, totalUgx }) => totalUgx > 0
-              ? this.refundLoyalty!.execute({ orderId: forOrder.id, refundedShareBps: Math.min(10_000, Math.floor((refundedUgx * 10_000) / totalUgx)), reason: 'Refunded as store credit' })
-              : undefined)
-            .catch(() => undefined);
-        }
+        // Store credit over the approval line is not live yet: its points come back when a second person approves it.
+        if (status === 'active' && forOrder) await clawBackForCreditRefund(this.repo, this.refundLoyalty, forOrder.id);
         return { ok: true, id, code, masked: maskCreditCode(code), status, texted };
       } catch (err) {
         if (!/credit_instruments_code_hash_uq|duplicate key/i.test(String((err as Error)?.message ?? err))) throw err;
@@ -94,7 +101,16 @@ export class ManageCreditUseCases {
     return instrument ? { instrument, ledger: await this.repo.ledger(id) } : null;
   }
   /** The second person, never the issuer (enforced in SQL too). */
-  approve(id: string, approverId: string) { return this.repo.approve(id, approverId, new Date()); }
+  async approve(id: string, approverId: string): Promise<boolean> {
+    const ok = await this.repo.approve(id, approverId, new Date());
+    // Store credit for an order that needed a second approval: its points clawback runs now that it is live
+    // (2026-11 review: it never ran, so a refund over UGX 500,000 as credit kept every point).
+    if (ok && this.repo.sourceOrderIdOf) {
+      const orderId = await this.repo.sourceOrderIdOf(id).catch(() => null);
+      if (orderId) await clawBackForCreditRefund(this.repo, this.refundLoyalty, orderId);
+    }
+    return ok;
+  }
   async void(id: string, actorId: string, note: string): Promise<{ ok: boolean; voidedUgx?: number; message?: string }> {
     if (note.trim().length < 5) return { ok: false, message: 'Say why the card is being cancelled.' };
     const left = await this.repo.voidInstrument(id, actorId, note.trim().slice(0, 500), new Date());

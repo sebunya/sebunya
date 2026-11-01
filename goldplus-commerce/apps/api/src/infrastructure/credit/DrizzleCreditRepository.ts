@@ -111,6 +111,11 @@ export class DrizzleCreditRepository implements ICreditRepository {
        order by i.created_at desc limit 50`)).map(view);
   }
 
+  async sourceOrderIdOf(instrumentId: string): Promise<string | null> {
+    const [r] = rowsOf(await db.execute(sql`select source_order_id from credit_instruments where id = ${instrumentId}`));
+    return r?.source_order_id ? String(r.source_order_id) : null;
+  }
+
   async refundedSoFarForOrder(orderId: string): Promise<{ refundedUgx: number; totalUgx: number }> {
     const [back] = rowsOf(await db.execute(refundedSoFarSql(orderId)));
     const [o] = rowsOf(await db.execute(sql`select total_amount from orders where id = ${orderId}`));

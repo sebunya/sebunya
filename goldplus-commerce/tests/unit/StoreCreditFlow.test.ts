@@ -253,4 +253,24 @@ describe('store credit flow (gap #17)', () => {
     await uc.execute({ kind: 'gift_card', amountUgx: 30_000, reason: 'Sold at the counter', actorId: 's' });
     expect(shares).toEqual([2_500]);
   });
+
+  it('store credit over the approval line takes back the points when it is approved, not before (2026-11 review)', async () => {
+    const shares: number[] = [];
+    const repo: any = {
+      orderForCredit: async () => ({ id: 'o1', userId: 'u1', name: 'Amina N', phone: '+256772123456' }),
+      issue: async () => ({ id: 'c1' }),
+      refundedSoFarForOrder: async () => ({ refundedUgx: 600_000, totalUgx: 800_000 }),
+      approve: async (_id: string, approver: string) => approver !== 's',
+      sourceOrderIdOf: async () => 'o1',
+    };
+    const port = { execute: async (i: { refundedShareBps: number }) => { shares.push(i.refundedShareBps); } };
+    const issued = await new IssueCreditUseCase(repo, tools, null, port).execute({ kind: 'store_credit', amountUgx: 600_000, reason: 'Refund for GP-202610-ABCD', orderNumber: 'GP-202610-ABCD', actorId: 's' });
+    expect(issued).toMatchObject({ ok: true, status: 'pending_approval' });
+    expect(shares).toEqual([]);
+    const manage = new ManageCreditUseCases(repo, tools, port);
+    expect(await manage.approve('c1', 's')).toBe(false); // the issuer cannot approve: nothing happens
+    expect(shares).toEqual([]);
+    expect(await manage.approve('c1', 'second')).toBe(true);
+    expect(shares).toEqual([7_500]);
+  });
 });
