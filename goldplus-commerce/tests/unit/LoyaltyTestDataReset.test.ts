@@ -34,4 +34,21 @@ describe('loyalty test-data reset script', () => {
     expect(s).toMatch(/where is_processed = false and event_type like 'LOYALTY\\_%'/);
     expect(s.indexOf("'LOYALTY_TEST_DATA_RESET'")).toBeLessThan(s.indexOf('set points_awarded = 0, tokens_granted = 0'));
   });
+
+  it('keeps dealer flags and resets prize award counters with the results (2026-11 review)', () => {
+    const tx = s.slice(s.indexOf('begin;'), s.indexOf('commit;'));
+    expect(tx.indexOf('create temp table keep_dealers')).toBeLessThan(tx.indexOf('truncate $TLIST;'));
+    expect(tx.indexOf('insert into loyalty_accounts (user_id, is_dealer) select user_id, true from keep_dealers;')).toBeGreaterThan(tx.indexOf('truncate $TLIST;'));
+    expect(tx).toContain('update loyalty_draw_prizes set awards_made = 0;');
+    expect(tx.indexOf("'prizeAwardsMade'")).toBeLessThan(tx.indexOf('set awards_made = 0'));
+  });
+});
+
+describe('ops/loyalty/tier-preview.sql', () => {
+  const q = readFileSync(join(__dirname, '../../ops/loyalty/tier-preview.sql'), 'utf8');
+  it('reads a NULL cut-off as "every reduction counts", like the engine; only a missing column means now()', () => {
+    expect(q).not.toMatch(/coalesce\(\s*\(select \(to_jsonb\(c\) ->> 'lifetime_reductions_from'\)/);
+    expect(q).toContain("? 'lifetime_reductions_from'");
+    expect(q.match(/cfg\.reductions_from is null or/g)?.length).toBe(3);
+  });
 });
