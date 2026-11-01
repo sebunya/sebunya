@@ -52,8 +52,15 @@ export async function trackRecommendationEvent(
 ): Promise<void> {
   try {
     const anonymousId = input.anonymousId ?? getAnonymousId();
-    // Fail early gracefully if no context identifier available.
-    if (!anonymousId && !input.customerId) return;
+    // NO client-side identifier is required to send an event.
+    //
+    // This used to return early unless localStorage yielded an anonymous id,
+    // so a browser with storage blocked (private mode, strict privacy
+    // settings, an embedded webview) silently emitted nothing at all — and the
+    // analytics simply showed less traffic, with nothing saying why. The
+    // canonical identity is the HttpOnly visit token the same-origin relay
+    // attaches server-side; the localStorage id is a convenience that predates
+    // it. Send the event either way and let the server decide who it belongs to.
 
     const browserContext = captureBrowserContext();
 
@@ -64,16 +71,23 @@ export async function trackRecommendationEvent(
       anonymousId: input.anonymousId ?? anonymousId,
     });
 
+    // R2: events go to the SAME-ORIGIN relay, which attaches the HttpOnly
+    // visit token server-side so the API can stamp the server profile and
+    // stitch identity. No cross-origin dependency, no readable token — and a
+    // CORS misconfiguration can no longer silently eat every event.
+    const endpoint = "/api/rec/events";
+
     if (input.eventType === "RECOMMENDATION_CLICKED" && typeof navigator !== "undefined" && navigator.sendBeacon) {
-      navigator.sendBeacon(`${apiBase}/recommendations/events`, payload);
+      navigator.sendBeacon(endpoint, new Blob([payload], { type: "application/json" }));
       return;
     }
 
-    await fetch(`${apiBase}/recommendations/events`, {
+    await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
+      credentials: "same-origin",
       keepalive: true,
       body: payload,
     });
@@ -148,6 +162,21 @@ export async function trackRecommendationClick(input: {
 
 const CLICK_ATTRIBUTION_KEY = "goldplus_last_clicked_recommendation";
 
+/**
+ * In-memory mirror of the click attribution.
+ *
+ * sessionStorage is unavailable in private browsing, embedded webviews and
+ * under strict privacy settings. Relying on it alone meant the placement and
+ * attribution id linking a recommendation click to the cart action that
+ * followed were silently dropped for those visitors — which is how a click
+ * arrives with no placement, and how an add-to-cart arrives with no
+ * recommendation to credit.
+ *
+ * The mirror survives navigation within a single-page transition and is the
+ * fallback when storage refuses. It holds no personal data.
+ */
+let clickAttributionMemory: Record<string, unknown> | null = null;
+
 export function persistClickAttribution(attribution: {
   attributionId: string;
   railRenderId?: string;
@@ -157,6 +186,8 @@ export function persistClickAttribution(attribution: {
   productId: string;
 }): void {
   if (typeof window === "undefined") return;
+  const payload = { ...attribution, timestamp: Date.now() };
+  clickAttributionMemory = payload;
   try {
     window.sessionStorage.setItem(
       CLICK_ATTRIBUTION_KEY,
@@ -172,15 +203,27 @@ export function persistClickAttribution(attribution: {
 
 export function getAndClearClickAttribution(targetProductId?: string): Record<string, any> | null {
   if (typeof window === "undefined") return null;
-  try {
-    const raw = window.sessionStorage.getItem(CLICK_ATTRIBUTION_KEY);
-    if (!raw) return null;
 
-    const parsed = JSON.parse(raw);
+  /** Reads storage, falling back to the memory mirror when storage refuses. */
+  const readRaw = (): Record<string, any> | null => {
+    try {
+      const raw = window.sessionStorage.getItem(CLICK_ATTRIBUTION_KEY);
+      if (raw) {
+        window.sessionStorage.removeItem(CLICK_ATTRIBUTION_KEY);
+        return JSON.parse(raw);
+      }
+    } catch {
+      /* storage blocked — the mirror below is the answer, not a failure */
+    }
+    const mirrored = clickAttributionMemory;
+    clickAttributionMemory = null;
+    return mirrored as Record<string, any> | null;
+  };
+
+  try {
+    const parsed = readRaw();
+    if (!parsed) return null;
     const ageMs = Date.now() - (parsed.timestamp || 0);
-    
-    // Clear it so it's only used once
-    window.sessionStorage.removeItem(CLICK_ATTRIBUTION_KEY);
 
     // 30 minute expiry
     if (ageMs > 30 * 60 * 1000) return null;
@@ -196,6 +239,10 @@ export function getAndClearClickAttribution(targetProductId?: string): Record<st
 
 export async function getRecommendations(
   input: GetRecommendationsInput,
+  options?: {
+    /** The raw HttpOnly visit token from Astro.locals.gpVisit (SSR only) — forwarded as a header so the server profile's continuity ticks on every rendered rail. Never serialized into HTML. */
+    visitToken?: string;
+  },
 ): Promise<RecommendationResponseDto> {
   try {
     const anonymousId = input.anonymousId ?? getAnonymousId() ?? undefined;
@@ -210,8 +257,11 @@ export async function getRecommendations(
       limit: input.limit,
     });
 
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (options?.visitToken) headers["x-gp-visit"] = options.visitToken;
+
     const response = await fetch(`${apiBase}/recommendations?${query}`, {
-      headers: { Accept: "application/json" },
+      headers,
     });
 
     if (!response.ok) {
