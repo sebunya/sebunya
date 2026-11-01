@@ -47,7 +47,15 @@ export interface EnqueueAdminOrderEmailResult {
  * order/fulfilment/notification all remain available even if this row is absent.
  */
 export class EnqueueAdminOrderEmailUseCase {
-  constructor(private readonly outbox: IOutboxRepository) {}
+  constructor(
+    private readonly outbox: IOutboxRepository,
+    /**
+     * Where a rendering failure is reported. Injected rather than logged here:
+     * this layer has no logger, and a money-adjacent fallback must not be
+     * announced with console.* that nobody reads.
+     */
+    private readonly onTemplateFallback?: (orderId: string, error: unknown) => void,
+  ) {}
 
   async execute(input: EnqueueAdminOrderEmailInput): Promise<EnqueueAdminOrderEmailResult> {
     const { order, event, stockConfirmed } = input;
@@ -80,6 +88,45 @@ export class EnqueueAdminOrderEmailUseCase {
       warnings: preparationState === 'ON_HOLD_STOCK' ? ['Stock not confirmed — order is ON_HOLD / backordered.'] : [],
     });
 
+    /**
+     * The reviewed design (apps/api/templates/email), rendered from the same
+     * files submitted to the provider, so what staff receive and what was shown
+     * for review are the same bytes.
+     *
+     * If the mapping ever falls short the renderer throws naming the missing
+     * field, and the pre-rendered body above still goes out: a sale
+     * notification is not worth losing to a copy change.
+     */
+    let designed: { subject: string; html: string; text: string } | null = null;
+    try {
+      const { adminEmailData, renderEmailTemplate } = await import('../../../infrastructure/notifications/email/emailTemplateData');
+      designed = renderEmailTemplate('ADMIN_ORDER_EMAIL', adminEmailData({
+        orderNumber: order.orderNumber,
+        createdAt: order.createdAt,
+        eventLabel: event === 'payment-confirmed' ? 'Payment confirmed' : event === 'cancelled' ? 'Order cancelled' : 'New order',
+        preparationState: preparationState.replace(/_/g, ' ').toLowerCase(),
+        preparationInstruction: preparationState === 'ON_HOLD_STOCK'
+          ? 'Stock is not confirmed. Do not prepare this order until stock is verified.'
+          : preparationState === 'AWAITING_PAYMENT'
+            ? 'Payment is not confirmed yet. Do not dispatch until it is paid.'
+            : 'Pick, pack and prepare this order for delivery.',
+        paymentStatus: order.paymentStatus,
+        stockConfirmed,
+        totalUgx: order.totalUgx,
+        deliveryFeeUgx: order.deliveryFeeUgx,
+        customerName: order.customerName,
+        customerContactMasked: maskContact(order.customerPhone, order.customerEmail),
+        deliveryLocation: order.deliveryLocation?.displayLabel || order.deliveryArea,
+        deliveryAddress: order.deliveryAddress || order.deliveryLocation?.displayLabel || order.deliveryArea,
+        adminUrl: adminOrderLink(order.id),
+        items,
+      }));
+    } catch (error) {
+      // Never silent: the fallback body still sends, but somebody must know the
+      // reviewed design stopped rendering.
+      this.onTemplateFallback?.(order.id, error);
+    }
+
     const idempotencyKey = buildAdminEmailIdempotencyKey(order.id, event);
     // Structured data lives alongside the pre-rendered bodies so the provider can
     // send them verbatim; no secrets or raw PII are included.
@@ -89,9 +136,10 @@ export class EnqueueAdminOrderEmailUseCase {
       orderId: order.id,
       orderNumber: order.orderNumber,
       preparationState,
-      subject: rendered.subject,
-      text: rendered.text,
-      html: rendered.html,
+      subject: designed?.subject ?? rendered.subject,
+      text: designed?.text ?? rendered.text,
+      html: designed?.html ?? rendered.html,
+      renderedFrom: designed ? 'reviewed-template' : 'fallback',
       relatedEntity: 'order',
       relatedEntityId: order.id,
     };

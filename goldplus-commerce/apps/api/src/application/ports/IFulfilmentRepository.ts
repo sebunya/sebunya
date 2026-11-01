@@ -1,4 +1,4 @@
-import { FulfilmentStatus, FulfilmentTask, FulfilmentTaskSnapshot } from '../../domain/fulfilment/FulfilmentTask';
+import { FulfilmentPaymentStatus, FulfilmentStatus, FulfilmentTask, FulfilmentTaskSnapshot } from '../../domain/fulfilment/FulfilmentTask';
 
 export interface FulfilmentQueueQuery {
   status?: FulfilmentStatus | null;
@@ -15,6 +15,12 @@ export interface FulfilmentQueueQuery {
 export interface FulfilmentQueuePage {
   tasks: FulfilmentTaskSnapshot[];
   total: number;
+  /**
+   * The customer's phone per order id, read from the order (the task keeps only a masked copy). The queue is
+   * read under orders.read, which already shows the full number on the order page: the people preparing the
+   * order must be able to call the customer (2026-10-21). Optional so older fakes type.
+   */
+  customerPhones?: Record<string, string>;
 }
 
 export interface IFulfilmentRepository {
@@ -26,7 +32,17 @@ export interface IFulfilmentRepository {
   findByOrderId(orderId: string): Promise<FulfilmentTaskSnapshot | null>;
   findById(id: string): Promise<FulfilmentTaskSnapshot | null>;
   /** Persist an already-mutated task (transition / payment mirror / cancel). */
+  /** Compare-and-set: throws a CONFLICT DomainError when the task changed since it was read. */
   update(task: FulfilmentTask): Promise<void>;
+  /** The payment mirror alone (no status or assignee written). Optional so older fakes type; false = unchanged. */
+  updatePaymentStatus?(taskId: string, paymentStatus: FulfilmentPaymentStatus, at: Date): Promise<boolean>;
+  /**
+   * Write the task ONLY if its stored status is still `expectedStatus`, and
+   * say whether it was. The compare-and-swap for recovery actions: two
+   * operators pressing "reinstate" at the same moment must produce one
+   * reinstatement and one refusal, not two.
+   */
+  updateWhereStatus(task: FulfilmentTask, expectedStatus: FulfilmentStatus): Promise<boolean>;
   listQueue(query: FulfilmentQueueQuery): Promise<FulfilmentQueuePage>;
   /** Badge count: number of unacknowledged NEW tasks. */
   countNew(): Promise<number>;
@@ -34,4 +50,18 @@ export interface IFulfilmentRepository {
   countOverdue(now: Date): Promise<number>;
   /** Active (non-terminal) tasks for SLA evaluation, oldest-due first. */
   findActiveForSla(limit: number): Promise<FulfilmentTaskSnapshot[]>;
+  /**
+   * Orders still in a LIVE status whose fulfilment task is terminal, or which
+   * have no task at all.
+   *
+   * Only OUT_FOR_DELIVERY mirrors a task back onto its order, so cancelling a
+   * task leaves the order exactly where it was. That is the right default —
+   * cancelling a customer's order is a bigger act than clearing a queue entry,
+   * and must never happen as a side effect. But it means the two can drift, and
+   * an order with no active task is one nobody will ever pick: invisible to the
+   * queue, still open to the customer. Reported, never auto-corrected.
+   */
+  findOrdersWithoutActiveTask(limit: number): Promise<Array<{
+    orderId: string; orderNumber: string | null; orderStatus: string; taskStatus: string | null;
+  }>>;
 }
