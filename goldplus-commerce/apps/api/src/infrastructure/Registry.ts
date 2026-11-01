@@ -252,7 +252,8 @@ import {
   AlertOnLedgerMismatchUseCase,
   ExpireStaleReservationsUseCase,
 } from '../application/use-cases/payments/PaymentOpsSweepUseCases';
-import { isPaymentsOpsConfigKey, validatePaymentsOpsValue } from '../domain/payments/PaymentsOpsConfig';
+import { PaymentsOpsConfigUseCase } from '../application/use-cases/payments/PaymentsOpsConfigUseCase';
+import { positiveNumberEnv, couponRedemptionIdentityHash, drawNotifyKey, paidMismatchTitle, runDetached } from './wiringGuards';
 import { CheckPaymentSilenceUseCase, PesapalSyntheticProbeUseCase } from '../application/use-cases/payments/PaymentSilenceUseCases';
 import { PesaPalClient } from './payments/pesapal/PesaPalClient';
 import { IPesaPalClient } from '../application/ports/IPesaPalClient';
@@ -1090,8 +1091,9 @@ export class Registry {
   public readonly abandonmentRepo = new DrizzleAbandonmentRepository();
   public readonly abandonmentUseCase = new AbandonmentUseCase(this.abandonmentRepo, {
     publish: async (record) => {
-      const queue = QueueService.getInstance().getQueue(QUEUES.ABANDONED_CART_EVENTS);
-      if (!queue) return; // queue backend absent (dev without Redis): classification still recorded
+      // getReadyQueue: null while Redis is down (getQueue still returned a queue and add() waited forever).
+      const queue = QueueService.getInstance().getReadyQueue(QUEUES.ABANDONED_CART_EVENTS);
+      if (!queue) return; // queue backend absent or down: classification still recorded
       await queue.add('abandonment-classified', {
         recordId: record.id,
         cartId: record.cartId,
@@ -1347,8 +1349,8 @@ export class Registry {
   public readonly firstOrderEligibilityUseCase = new FirstOrderEligibilityUseCase(this.couponRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
   public readonly pricingGovernanceUseCase = new PricingGovernanceUseCase(this.pricingRepo, this.createAuditLogUseCase, {
     // AC10 — configurable (not hidden constants); each activation audits which threshold applied.
-    percentBpsThreshold: Number(process.env.PROMOTION_APPROVAL_PERCENT_BPS_THRESHOLD ?? 2000),
-    fixedUgxThreshold: Number(process.env.PROMOTION_APPROVAL_FIXED_UGX_THRESHOLD ?? 100_000),
+    percentBpsThreshold: positiveNumberEnv(process.env.PROMOTION_APPROVAL_PERCENT_BPS_THRESHOLD, 2000),
+    fixedUgxThreshold: positiveNumberEnv(process.env.PROMOTION_APPROVAL_FIXED_UGX_THRESHOLD, 100_000),
   });
   public readonly pricingOperationsUseCase = new PricingOperationsUseCase(
     this.pricingGovernanceUseCase,
@@ -1403,11 +1405,10 @@ export class Registry {
           .filter((a) => a.promotionDefinitionId === coupon.promotionDefinitionId)
           .reduce((n, a) => n + a.amountUgx, 0);
         if (discountUgx <= 0) return; // the code did not apply to this basket
-        const { createHash } = await import('node:crypto');
         const result = await Registry.getInstance().redeemCouponUseCase.execute({
           code: normalised,
           orderId,
-          customerIdentityHash: createHash('sha256').update(customerScopeKey).digest('hex'),
+          customerIdentityHash: couponRedemptionIdentityHash(customerScopeKey, process.env.IDENTITY_HASH_PEPPER ?? ''),
           discountAmountUgx: discountUgx,
         });
         if (!result.ok) logger.warn({ orderId, reason: result.reason }, 'COUPON_REDEMPTION_REFUSED_AFTER_ORDER');
@@ -2324,11 +2325,11 @@ export class Registry {
     this.loyaltyDrawRepo,
     this.loyaltyRepo,
     (maxExclusive: number) => nodeRandomInt(maxExclusive),
-    async ({ userId, points, label }) =>
+    async ({ userId, points, label, tokenId }) =>
       this.loyaltyOutboxNotifier.enqueue({
         userId,
         eventType: 'LOYALTY_POINTS_EARNED',
-        idempotencyKey: `draw-notify:${userId}:${label}:${points}`,
+        idempotencyKey: drawNotifyKey({ userId, tokenId, label, points }),
         data: { points, source: 'reward_draw', label },
       }),
   );
@@ -2901,7 +2902,7 @@ export class Registry {
         const gap = order.amountDueUgx - paidUgx;
         logger.error({ orderId, paidUgx, orderTotalUgx: order.totalUgx }, 'PAYMENT_REVIEW_REQUIRED PAID_AMOUNT_DIFFERS_FROM_ORDER_TOTAL');
         await this.openPaymentReviewTask(orderId, (ref) => ({
-          title: `Order ${ref} was paid UGX ${paidUgx.toLocaleString('en-US')} but its total is now UGX ${order.totalUgx.toLocaleString('en-US')}`,
+          title: paidMismatchTitle(ref, paidUgx, order.amountDueUgx, order.totalUgx),
           detail: gap > 0
             ? `The customer paid an older payment page made before the total went up by UGX ${gap.toLocaleString('en-US')} (a delivery fee change). The order is paid and proceeding. Collect the difference or absorb it, and tell the customer.`
             : `The customer paid an older payment page made before the total went down by UGX ${(-gap).toLocaleString('en-US')}. The order is paid and proceeding. Refund the difference from the payments admin and tell the customer.`,
@@ -2990,65 +2991,34 @@ export class Registry {
   );
 
   /** Payments ops config: closed registry, ships empty, audited writes. */
-  public readonly paymentsOpsConfig = {
-    values: async (): Promise<Record<string, string>> => {
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      const rows = (await db.execute(sql`select config_key, config_value from payments_ops_config`)) as unknown as Array<{
-        config_key: string;
-        config_value: string;
-      }>;
-      return Object.fromEntries(rows.map((r) => [r.config_key, r.config_value]));
+  public readonly paymentsOpsConfig = new PaymentsOpsConfigUseCase(
+    {
+      values: async () => {
+        const { db } = await import('./db/client');
+        const { sql } = await import('drizzle-orm');
+        const rows = (await db.execute(sql`select config_key, config_value from payments_ops_config`)) as unknown as Array<{
+          config_key: string;
+          config_value: string;
+        }>;
+        return Object.fromEntries(rows.map((r) => [r.config_key, r.config_value]));
+      },
+      upsert: async (key, value, actorId) => {
+        const { db } = await import('./db/client');
+        const { sql } = await import('drizzle-orm');
+        await db.execute(sql`
+          insert into payments_ops_config (config_key, config_value, updated_by, updated_at)
+          values (${key}, ${value}, ${actorId}, now())
+          on conflict (config_key) do update set config_value = excluded.config_value,
+            updated_by = excluded.updated_by, updated_at = now()`);
+      },
+      remove: async (key) => {
+        const { db } = await import('./db/client');
+        const { sql } = await import('drizzle-orm');
+        await db.execute(sql`delete from payments_ops_config where config_key = ${key}`);
+      },
     },
-    set: async (input: { key: string; value: string; actorId: string }) => {
-      if (!isPaymentsOpsConfigKey(input.key)) {
-        return { ok: false as const, message: `"${input.key}" is not a payments operational setting.` };
-      }
-      const check = validatePaymentsOpsValue(input.key, input.value);
-      if (!check.ok) return { ok: false as const, message: check.message };
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      const before = await this.paymentsOpsConfig.values();
-      await db.execute(sql`
-        insert into payments_ops_config (config_key, config_value, updated_by, updated_at)
-        values (${input.key}, ${String(check.value)}, ${input.actorId}, now())
-        on conflict (config_key) do update set config_value = excluded.config_value,
-          updated_by = excluded.updated_by, updated_at = now()`);
-      await this.createAuditLogUseCase.execute({
-        actorId: input.actorId,
-        action: 'PAYMENTS_OPS_CONFIG_SET',
-        entity: 'payments_ops_config',
-        entityId: input.key,
-        previousState: { value: before[input.key] ?? null },
-        newState: { value: String(check.value) },
-      });
-      return { ok: true as const };
-    },
-    /**
-     * Unset — the documented way each mechanism is switched OFF. There was no
-     * way to do it from the admin: a blank value fails validation (it reads as
-     * 0, below the minimum), so once the synthetic probe or abandonment was on
-     * it could only be turned off in SQL.
-     */
-    unset: async (input: { key: string; actorId: string }) => {
-      if (!isPaymentsOpsConfigKey(input.key)) {
-        return { ok: false as const, message: `"${input.key}" is not a payments operational setting.` };
-      }
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      const before = await this.paymentsOpsConfig.values();
-      await db.execute(sql`delete from payments_ops_config where config_key = ${input.key}`);
-      await this.createAuditLogUseCase.execute({
-        actorId: input.actorId,
-        action: 'PAYMENTS_OPS_CONFIG_UNSET',
-        entity: 'payments_ops_config',
-        entityId: input.key,
-        previousState: { value: before[input.key] ?? null },
-        newState: { value: null },
-      });
-      return { ok: true as const, wasSet: before[input.key] !== undefined };
-    },
-  };
+    this.createAuditLogUseCase,
+  );
 
   /** Stale-order reads for the sweep. The pending-attempt exclusion is the rule. */
   private readonly staleOrderReader = {
@@ -3426,7 +3396,13 @@ export class Registry {
   private readonly goldieListensToWhatsApp = (() => {
     // Each customer message is handled on its own, after Meta has been answered.
     this.advertisingOps.whatsappAds.onInboundText((messages) => {
-      for (const m of messages) void this.goldieChannelUseCases.handleWhatsApp(m).then((outcome) => goldieMetrics.whatsappMessages.inc({ outcome }));
+      for (const m of messages) {
+        // .catch: server.ts shuts the API down on an unhandled rejection.
+        runDetached(
+          this.goldieChannelUseCases.handleWhatsApp(m).then((outcome) => goldieMetrics.whatsappMessages.inc({ outcome })),
+          (err) => logger.error({ err }, 'GOLDIE_WHATSAPP_HANDLER_FAILED'),
+        );
+      }
     });
     // A customer message Meta accepted but could not deliver (not on WhatsApp, blocked, expired) is recorded as
     // FAILED on its notification attempt, so the log never shows it as sent.

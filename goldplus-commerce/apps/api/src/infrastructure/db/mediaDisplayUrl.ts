@@ -49,6 +49,17 @@ export function pickDisplayUrl(original: string, renditionUrl: string | null | u
   return renditionUrl && renditionUrl.length > 0 ? renditionUrl : original;
 }
 
+/** The widest rendition per asset, the same choice displayImageUrlSql makes (ORDER BY width DESC, NULLs first). */
+export function widestRenditionByAsset(rows: Array<{ assetId: string; url: string; width: number | null }>): Map<string, string> {
+  const best = new Map<string, { url: string; width: number }>();
+  for (const r of rows) {
+    const w = r.width ?? Number.POSITIVE_INFINITY; // Postgres DESC sorts NULLs first
+    const cur = best.get(r.assetId);
+    if (!cur || w > cur.width) best.set(r.assetId, { url: r.url, width: w });
+  }
+  return new Map([...best].map(([k, v]) => [k, v.url]));
+}
+
 /** For readers that load product_images rows: original url → display url, one query per batch. */
 export async function displayUrlMap(images: Array<{ url: string; assetId: string | null }>): Promise<Map<string, string>> {
   const out = new Map<string, string>();
@@ -59,7 +70,7 @@ export async function displayUrlMap(images: Array<{ url: string; assetId: string
       .select({ assetId: mediaAssetVariants.assetId, url: mediaAssetVariants.url, width: mediaAssetVariants.width })
       .from(mediaAssetVariants)
       .where(and(inArray(mediaAssetVariants.assetId, assetIds), eq(mediaAssetVariants.purpose, DISPLAY_RENDITION.purpose), eq(mediaAssetVariants.format, DISPLAY_RENDITION.format)));
-    for (const r of rows) if (!byAsset.has(r.assetId)) byAsset.set(r.assetId, r.url);
+    for (const [k, v] of widestRenditionByAsset(rows)) byAsset.set(k, v);
   }
   for (const i of images) out.set(i.url, pickDisplayUrl(i.url, i.assetId ? byAsset.get(i.assetId) : null));
   return out;
