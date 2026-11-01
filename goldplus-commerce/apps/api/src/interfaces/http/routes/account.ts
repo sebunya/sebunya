@@ -1,10 +1,23 @@
 import { Hono } from 'hono';
+import { fpClientIdFromCookieHeader } from '@goldplus/shared';
 import { customerSessionMiddleware } from '../middleware/customerSession';
+import { normaliseReferralCode, referralRefusalWords, referralStage, REFERRAL_STAGE_WORDS, type ReferralStatus } from '../../../domain/loyalty/Referral';
 import { Registry } from '../../../infrastructure/Registry';
 import { ListMyOrdersUseCase, GetMyOrderUseCase } from '../../../application/use-cases/orders/CustomerOrderUseCases';
-import { ListMyAddressesUseCase, AddAddressUseCase } from '../../../application/use-cases/addresses/AddressUseCases';
+import {
+  ListMyAddressesUseCase,
+  AddAddressUseCase,
+  UpdateAddressUseCase,
+  SetDefaultAddressUseCase,
+  DeleteAddressUseCase,
+} from '../../../application/use-cases/addresses/AddressUseCases';
 import { ApiResponse, MeDto, OrderSummaryDto, OrderDetailDto, AddressDto } from '@goldplus/shared';
 import { clientIp } from '../clientAddress';
+import { computeLifetimePoints, soonestUnspentExpiry, tierStanding } from '../../../domain/loyalty/LoyaltyLedger';
+import { stitchInBackground } from '../../../infrastructure/first-party/stitchInBackground';
+import { ListSignInMethodsUseCase, RemoveSignInMethodUseCase } from '../../../application/use-cases/identity/SignInMethodsUseCases';
+import { OIDC_PROVIDERS, isProviderConfigured } from '../../../infrastructure/identity/OidcProviders';
+import { isSocialProvider } from '../../../domain/identity/SocialProvider';
 
 const routes = new Hono<{ Variables: { userId: string; userEmail: string } }>();
 routes.use('*', customerSessionMiddleware);
@@ -13,8 +26,80 @@ routes.use('*', customerSessionMiddleware);
 // operator-approved activation; entries exist only from real orders/adjustments.
 routes.get('/loyalty', async (c) => {
   const userId = c.get('userId') as string;
-  const data = await Registry.getInstance().getLoyaltyHistoryUseCase.execute({ userId });
-  return c.json({ success: true, data });
+  const registry = Registry.getInstance();
+  const [data, pendingOrders, config, tiers, reductionsFrom] = await Promise.all([
+    registry.getLoyaltyHistoryUseCase.execute({ userId }),
+    registry.loyaltyCompletionRepo.pendingEarnOrders(userId),
+    registry.loyaltyRepo.getConfig(),
+    registry.loyaltyTierRepo.activeTiers().catch(() => []),
+    registry.loyaltyRepo.lifetimeReductionsFrom().catch(() => null),
+  ]);
+  // PART F: pending vs available shown separately. Pending is a projection
+  // over paid-but-undelivered orders — the ledger records only vested facts.
+  const pendingPoints = pendingOrders.reduce(
+    (sum, o) => sum + Math.floor(o.totalUgx / 1000) * config.earnRatePer1000Ugx,
+    0,
+  );
+  // Tier standing by the nightly rule, and the soonest expiry of points still held (Goldie and the account page).
+  const tier = tiers.length ? tierStanding(computeLifetimePoints(data.entries, reductionsFrom), tiers) : null;
+  const soonest = soonestUnspentExpiry(data.entries, new Date());
+  return c.json({ success: true, data: { ...data, pendingPoints, pendingOrders: pendingOrders.length, tier, soonestExpiry: soonest ? soonest.toISOString() : null } });
+});
+
+// The account hub's single read: everything the landing page shows, one call.
+// Composed from the same use cases the dedicated endpoints use, so the hub can
+// never drift from what the detail pages report.
+routes.get('/overview', async (c) => {
+  const userId = c.get('userId') as string;
+  const registry = Registry.getInstance();
+  const [user, loyalty, rewards, orderList, addressList] = await Promise.all([
+    registry.userRepo.findById(userId),
+    registry.getLoyaltyHistoryUseCase.execute({ userId }),
+    registry.gamificationRepo.customerSnapshot(userId),
+    new ListMyOrdersUseCase(registry.orderRepo).execute(userId),
+    new ListMyAddressesUseCase(registry.addressRepo).execute(userId),
+  ]);
+  if (!user) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } };
+    return c.json(res, 404);
+  }
+  // Only points the customer still holds: an earn already spent does not
+  // "expire soon" (that was urgency about points that no longer existed).
+  const soonest = soonestUnspentExpiry(loyalty.entries, new Date());
+  const soonestExpiry = soonest ? soonest.getTime() : undefined;
+  return c.json({
+    success: true,
+    data: {
+      profile: { id: user.id, email: user.email, phone: user.phone, createdAt: user.createdAt.toISOString() },
+      loyalty: {
+        programmeActive: loyalty.programmeActive,
+        balance: loyalty.balance,
+        entryCount: loyalty.entries.length,
+        soonestExpiry: soonestExpiry ? new Date(soonestExpiry).toISOString() : null,
+      },
+      rewards: {
+        badgeCount: rewards.badges.length,
+        missionCount: rewards.missions.length,
+        missionsCompleted: rewards.missions.filter((m) => m.completed).length,
+      },
+      recentOrders: orderList.slice(0, 3),
+      orderCount: orderList.length,
+      defaultAddress: addressList.find((a) => a.isDefault) ?? null,
+      addressCount: addressList.length,
+    },
+  });
+});
+
+// Missions and badges as THIS customer sees them: earned badges plus honest
+// per-mission progress (only where the data attributes to their account).
+routes.get('/gamification', async (c) => {
+  const userId = c.get('userId') as string;
+  const registry = Registry.getInstance();
+  const [snapshot, programmeActive] = await Promise.all([
+    registry.gamificationRepo.customerSnapshot(userId),
+    registry.gamificationRepo.loyaltyEnabled(),
+  ]);
+  return c.json({ success: true, data: { programmeActive, ...snapshot } });
 });
 
 routes.get('/me', async (c) => {
@@ -30,8 +115,67 @@ routes.get('/me', async (c) => {
     phone: user.phone,
     createdAt: user.createdAt.toISOString(),
   };
-  const res: ApiResponse<MeDto> = { success: true, data: me };
+  // 0087: the two profile facts the earn sources depend on, so the account
+  // surface can show "verify your phone / add your birthday" only when true.
+  const identity = await Registry.getInstance().loyaltyIdentityRepo.identityFacts(userId).catch(() => null);
+  const res: ApiResponse<MeDto & { phoneVerified?: boolean; dateOfBirthSet?: boolean }> = {
+    success: true,
+    data: { ...me, phoneVerified: Boolean(identity?.phoneVerifiedAt), dateOfBirthSet: Boolean(identity?.dateOfBirth) },
+  };
   return c.json(res);
+});
+
+// ── Gift cards and store credit (0196) ───────────────────────────────────
+// Cards linked to the account or texted to its verified phone. Never the code (only a hash is kept), and never the
+// staff reason, the issuer or the approver.
+routes.get('/credit', async (c) => {
+  const cards = await Registry.getInstance().manageCreditUseCases.forCustomer(c.get('userId') as string);
+  const now = Date.now();
+  const data = cards.map((i) => ({
+    kind: i.kind, last4: i.last4, balanceUgx: i.balanceUgx, heldUgx: i.heldUgx ?? 0, initialValueUgx: i.initialValueUgx,
+    status: i.status === 'active' && i.expiresAt && i.expiresAt.getTime() <= now ? 'expired' : i.status,
+    expiresAt: i.expiresAt ? i.expiresAt.toISOString() : null, issuedAt: i.createdAt.toISOString(),
+  }));
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
+/** 0199: gift cards this customer bought online for others (signed in when buying). Never the code. */
+routes.get('/gift-cards/sent', async (c) => {
+  const rows = await Registry.getInstance().giftCardPurchaseUseCases.forBuyer(c.get('userId') as string);
+  const data = rows.map((p) => ({
+    reference: p.reference, amountUgx: p.amountUgx, recipientName: p.recipientName, sendTo: p.sendTo, status: p.status,
+    deliverOn: p.deliverOn, paidAt: p.paidAt ? p.paidAt.toISOString() : null, issuedAt: p.issuedAt ? p.issuedAt.toISOString() : null,
+    cardLast4: p.cardLast4,
+  }));
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
+// ── Save for later (gap analysis #6) ─────────────────────────────────────
+routes.get('/saved', async (c) => {
+  const data = await Registry.getInstance().savedProductsUseCases.list(c.get('userId') as string);
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
+routes.get('/saved/:productId', async (c) => {
+  const saved = await Registry.getInstance().savedProductsUseCases.isSaved(c.get('userId') as string, c.req.param('productId'));
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({ success: true, data: { saved } });
+});
+
+routes.post('/saved', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().savedProductsUseCases.save(c.get('userId') as string, String(body?.productId ?? ''));
+  if (result === 'invalid') return c.json({ success: false, error: { code: 'INVALID_PRODUCT', message: 'That product cannot be saved.' } } satisfies ApiResponse<never>, 400);
+  if (result === 'full') return c.json({ success: false, error: { code: 'LIST_FULL', message: 'Your saved list is full. Remove something first.' } } satisfies ApiResponse<never>, 409);
+  return c.json({ success: true, data: { saved: true } });
+});
+
+routes.delete('/saved/:productId', async (c) => {
+  await Registry.getInstance().savedProductsUseCases.remove(c.get('userId') as string, c.req.param('productId'));
+  return c.json({ success: true, data: { saved: false } });
 });
 
 routes.get('/orders', async (c) => {
@@ -71,7 +215,8 @@ routes.post('/addresses', async (c) => {
     const res: ApiResponse<never> = { success: false, error: { code: 'BAD_JSON', message: 'Request body must be JSON.' } };
     return c.json(res, 400);
   }
-  const uc = new AddAddressUseCase(Registry.getInstance().addressRepo);
+  const registry = Registry.getInstance();
+  const uc = new AddAddressUseCase(registry.addressRepo, registry.addressAuditRepo);
   const result = await uc.execute({
     userId,
     label: String(body.label ?? ''),
@@ -80,13 +225,305 @@ routes.post('/addresses', async (c) => {
     district: String(body.district ?? ''),
     areaDetails: String(body.areaDetails ?? ''),
     makeDefault: Boolean(body.makeDefault),
+    // Location-module structured fields (all optional; brief PART G)
+    areaSlug: body.areaSlug ? String(body.areaSlug) : undefined,
+    landmarkText: body.landmarkText !== undefined ? String(body.landmarkText ?? '') : undefined,
+    additionalDirections: body.additionalDirections ? String(body.additionalDirections) : undefined,
+    phoneSecondary: body.phoneSecondary ? String(body.phoneSecondary) : undefined,
+    gpsLat: typeof body.gpsLat === 'number' ? body.gpsLat : undefined,
+    gpsLng: typeof body.gpsLng === 'number' ? body.gpsLng : undefined,
+    gpsAccuracyM: typeof body.gpsAccuracyM === 'number' ? body.gpsAccuracyM : undefined,
+    gpsSource: body.gpsSource === 'device' || body.gpsSource === 'pasted_link' || body.gpsSource === 'map_place' ? body.gpsSource : undefined,
+    rawAddressText: body.rawAddressText ? String(body.rawAddressText) : undefined,
+    deliveryMethod: body.deliveryMethod === 'pickup_point' ? 'pickup_point' : undefined,
+    pickupPointId: body.pickupPointId ? String(body.pickupPointId) : undefined,
+    snapshotAreaLabel: body.snapshotAreaLabel ? String(body.snapshotAreaLabel) : undefined,
+    snapshotDistrict: body.snapshotDistrict ? String(body.snapshotDistrict) : undefined,
+    snapshotPostcode: body.snapshotPostcode ? String(body.snapshotPostcode) : undefined,
+    snapshotDataVersion: typeof body.snapshotDataVersion === 'number' ? body.snapshotDataVersion : undefined,
   });
   if (!result.ok) {
     const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
     return c.json(res, 400);
   }
-  const res: ApiResponse<AddressDto> = { success: true, data: result.address };
+  const res: ApiResponse<AddressDto> = { success: true, data: result.address, meta: result.phoneWarning ? { phoneWarning: result.phoneWarning } : undefined };
   return c.json(res, 201);
+});
+
+// Location module stage 4 (authorised scope): post-placement address edits are
+// exactly what generates disputes — full before/after audit in the use case.
+routes.put('/addresses/:id', async (c) => {
+  const userId = c.get('userId') as string;
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    const res: ApiResponse<never> = { success: false, error: { code: 'BAD_JSON', message: 'Request body must be JSON.' } };
+    return c.json(res, 400);
+  }
+  const registry = Registry.getInstance();
+  const uc = new UpdateAddressUseCase(registry.addressRepo, registry.addressAuditRepo);
+  const patch: Record<string, unknown> = {};
+  for (const k of ['label','recipientName','phone','district','areaDetails','areaSlug','landmarkText','additionalDirections','phoneSecondary','rawAddressText','pickupPointId','snapshotAreaLabel','snapshotDistrict','snapshotPostcode'] as const) {
+    if (body[k] !== undefined) patch[k] = body[k] === null ? null : String(body[k]);
+  }
+  for (const k of ['gpsLat','gpsLng','gpsAccuracyM','snapshotDataVersion'] as const) {
+    if (typeof body[k] === 'number') patch[k] = body[k];
+  }
+  if (body.gpsSource === 'device' || body.gpsSource === 'pasted_link' || body.gpsSource === 'map_place') patch.gpsSource = body.gpsSource;
+  if (body.deliveryMethod === 'door' || body.deliveryMethod === 'pickup_point') patch.deliveryMethod = body.deliveryMethod;
+  const result = await uc.execute(userId, c.req.param('id'), patch);
+  if (!result.ok) {
+    const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
+    return c.json(res, result.code === 'NOT_FOUND' ? 404 : 400);
+  }
+  const res: ApiResponse<AddressDto> = { success: true, data: result.address, meta: result.phoneWarning ? { phoneWarning: result.phoneWarning } : undefined };
+  return c.json(res);
+});
+
+routes.post('/addresses/:id/default', async (c) => {
+  const userId = c.get('userId') as string;
+  const registry = Registry.getInstance();
+  const uc = new SetDefaultAddressUseCase(registry.addressRepo, registry.addressAuditRepo);
+  const address = await uc.execute(userId, c.req.param('id'));
+  if (!address) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'NOT_FOUND', message: 'Address not found.' } };
+    return c.json(res, 404);
+  }
+  const res: ApiResponse<AddressDto> = { success: true, data: address };
+  return c.json(res);
+});
+
+/** 0190: forget the location pin on a saved address (the address itself stays). The customer's call, one tap. */
+routes.post('/addresses/:id/remove-pin', async (c) => {
+  const userId = c.get('userId') as string;
+  const result = await Registry.getInstance().addressRepo.updateForUser(userId, String(c.req.param('id') ?? ''), {
+    gpsLat: null,
+    gpsLng: null,
+    gpsAccuracyM: null,
+    gpsSource: null,
+  });
+  if (!result) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'That address was not found.' } }, 404);
+  return c.json({ success: true, data: { id: result.after.id } });
+});
+
+routes.delete('/addresses/:id', async (c) => {
+  const userId = c.get('userId') as string;
+  const registry = Registry.getInstance();
+  const uc = new DeleteAddressUseCase(registry.addressRepo, registry.addressAuditRepo);
+  const removed = await uc.execute(userId, c.req.param('id'));
+  if (!removed) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'NOT_FOUND', message: 'Address not found.' } };
+    return c.json(res, 404);
+  }
+  return c.json({ success: true, data: { deleted: true } });
+});
+
+// ── Phone verification (loyalty brief PART I: the identity spine) ─────────
+// Change the password while signed in. The rules (current password required,
+// lockout, sign-out everywhere) are ChangePasswordUseCase's.
+const PASSWORD_CHANGE_STATUS = { BAD_INPUT: 400, WEAK_PASSWORD: 400, SAME_PASSWORD: 400, WRONG_PASSWORD: 403, NO_PASSWORD_SET: 409, LOCKED: 429, ACCOUNT_UNAVAILABLE: 403 } as const;
+
+routes.post('/password', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const result = await registry.changePasswordUseCase.execute({
+    userId: c.get('userId'),
+    currentPassword: body?.currentPassword,
+    newPassword: body?.newPassword,
+  });
+  if (!result.ok) {
+    if (result.retryAfterSeconds) c.header('Retry-After', String(result.retryAfterSeconds));
+    const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
+    return c.json(res, PASSWORD_CHANGE_STATUS[result.code]);
+  }
+  // As the reset flow does: the repository stamped the session cutoff in its
+  // transaction, and this revokes the durable refresh families too.
+  await registry.sessionService.logoutAll(result.userId, 'password_change').catch(() => undefined);
+  await registry.createAuditLogUseCase
+    .execute({ actorId: result.userId, action: 'PASSWORD_CHANGED', entity: 'user', entityId: result.userId, previousState: null, newState: { sessionsRevoked: true } })
+    .catch(() => undefined);
+  const res: ApiResponse<{ message: string }> = { success: true, data: { message: 'Your password was changed. Sign in again with the new one.' } };
+  return c.json(res);
+});
+
+routes.post('/phone/request-verification', async (c) => {
+  const userId = c.get('userId') as string;
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().requestPhoneVerificationUseCase.execute({
+    userId,
+    phone: String(body?.phone ?? ''),
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } as const, 400);
+  }
+  return c.json({ success: true, data: { sent: true } });
+});
+
+/**
+ * Is a verification in progress?
+ *
+ * Exists so the Rewards page can render "enter the code we sent you" from
+ * DURABLE state instead of from the request that sent it. Before this the only
+ * thing that ever said a code was outstanding was the POST response, so a
+ * customer who navigated away lost the thread entirely.
+ *
+ * Returns presentation-safe facts only — masked destination, expiry, resend
+ * timing. Never the code or its hash. Authenticated, and scoped to the caller's
+ * own user id, so it discloses nothing about anyone else.
+ */
+routes.get('/phone/verification-state', async (c) => {
+  const userId = c.get('userId') as string;
+  const state = await Registry.getInstance().getPhoneVerificationStateUseCase.execute({ userId });
+  return c.json({ success: true, data: state });
+});
+
+routes.post('/phone/verify', async (c) => {
+  const userId = c.get('userId') as string;
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const result = await registry.verifyPhoneUseCase.execute({
+    userId,
+    code: String(body?.code ?? ''),
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } as const, 400);
+  }
+  // Gamification (0087): a verified phone earns once (rule-gated) and awards
+  // the Verified Buyer badge. Never fails the verification itself.
+  const phoneEarn = await registry.earnForPhoneVerificationUseCase.execute({ userId }).catch(() => null);
+  // First-party identity (0157): a freshly verified phone is the proof that
+  // links this account to guest orders placed with the same number. Never blocks.
+  stitchInBackground({ moment: 'PHONE_VERIFIED', accountUserId: userId, fpClientId: fpClientIdFromCookieHeader(c.req.header('cookie')) ?? undefined });
+  return c.json({
+    success: true,
+    data: {
+      verified: true,
+      backfilledPoints: result.backfilledPoints,
+      loyaltyPoints: phoneEarn && 'points' in phoneEarn ? phoneEarn.points : 0,
+    },
+  });
+});
+
+// ── Reward draw (0088): the customer's cards and the published odds ─────────
+// Playing is free and requires a card that was granted for an already
+// delivered order, so there is no purchase-to-play path to rate limit; the
+// card itself is the quota, and it is single-use at the database.
+routes.get('/draw', async (c) => {
+  const userId = c.get('userId') as string;
+  const state = await Registry.getInstance().getDrawStateUseCase.execute({ userId });
+  return c.json({ success: true, data: state });
+});
+
+routes.post('/draw/play', async (c) => {
+  const userId = c.get('userId') as string;
+  const body = await c.req.json().catch(() => null);
+  const tokenId = String(body?.tokenId ?? '');
+  if (!/^[0-9a-f-]{36}$/i.test(tokenId)) {
+    return c.json({ success: false, error: { code: 'BAD_TOKEN', message: 'A valid card id is required.' } } as const, 400);
+  }
+  const result = await Registry.getInstance().playDrawTokenUseCase.execute({ userId, tokenId });
+  if (!result.ok) {
+    const status = result.code === 'TOKEN_NOT_FOUND' ? 404 : 400;
+    return c.json({ success: false, error: { code: result.code, message: result.message } } as const, status);
+  }
+  return c.json({ success: true, data: { label: result.label, points: result.points, replay: result.replay } });
+});
+
+// 0090 self-exclusion: a customer can permanently opt out of chance mechanics
+// while keeping every other part of the loyalty programme. Opting back IN is
+// deliberately not self-service — it goes through support, which is the
+// standard shape for a responsible-play control.
+routes.post('/draw/self-exclude', async (c) => {
+  const userId = c.get('userId') as string;
+  const registry = Registry.getInstance();
+  await registry.loyaltyDrawRepo.setSelfExclusion(userId, true);
+  const { CreateAuditLogUseCase } = await import('../../../application/use-cases/audit/CreateAuditLogUseCase');
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: userId,
+    action: 'LOYALTY_DRAW_SELF_EXCLUDED',
+    entity: 'user',
+    entityId: userId,
+    newState: { selfExcluded: true },
+  });
+  return c.json({ success: true, data: { selfExcluded: true } });
+});
+
+// ── Gamification (0087): referral code + share stats ────────────────────────
+routes.get('/referral', async (c) => {
+  const userId = c.get('userId') as string;
+  const registry = Registry.getInstance();
+  const config = await registry.loyaltyCompletionRepo.getProgrammeConfig();
+  // The kill switch too: a card shown while the programme is halted handed out codes that then failed (2026-10-22).
+  if (!config.enabled || config.killSwitch || config.referralReferrerPoints === null) {
+    return c.json({ success: true, data: { active: false } });
+  }
+  const [code, referrals, mine] = await Promise.all([
+    registry.loyaltyReferralRepo.getOrCreateCode(userId),
+    registry.loyaltyReferralRepo.listForReferrer(userId),
+    registry.loyaltyReferralRepo.referralOf(userId),
+  ]);
+  const invites = referrals.map((r) => {
+    const stage = referralStage({ status: r.status as ReferralStatus, friendHasOrdered: r.friendHasOrdered === true });
+    return { name: r.friendName ?? 'A friend', stage, words: REFERRAL_STAGE_WORDS[stage], since: r.createdAt.toISOString() };
+  });
+  const count = (stage: string) => invites.filter((i) => i.stage === stage).length;
+  return c.json({
+    success: true,
+    data: {
+      active: true,
+      code,
+      referrerPoints: config.referralReferrerPoints,
+      refereePoints: config.referralRefereePoints,
+      // Every number below adds up to `invited` (the old "signed up" count included refused ones on top).
+      invited: invites.length,
+      joined: count('joined'),
+      ordered: count('ordered'),
+      awarded: count('rewarded'),
+      checking: count('checking'),
+      notCounted: count('not_counted'),
+      invites: invites.slice(0, 50),
+      // Whether THIS customer can still add a friend's code (no code yet, nothing delivered yet).
+      canAddFriendCode: !mine && (await registry.loyaltyReferralRepo.countDeliveredRetailOrders(userId)) === 0,
+      // Back-compat for older pages: referred / pending.
+      referred: invites.length,
+      pending: count('joined') + count('ordered'),
+    },
+  });
+});
+
+// A friend's code added after sign-up: another device, Google or Facebook sign-up, or they forgot (2026-10-22).
+routes.post('/referral/code', async (c) => {
+  const userId = c.get('userId') as string;
+  const body = await c.req.json().catch(() => null);
+  const code = normaliseReferralCode(body?.code);
+  const source = body?.source === 'social' ? 'social' : body?.source === 'link' ? 'link' : 'account';
+  if (!code) return c.json({ success: false, error: { code: 'CODE_NOT_FOUND', message: referralRefusalWords('CODE_NOT_FOUND') } }, 400);
+  const out = await Registry.getInstance().recordReferralUseCase.execute({ refereeUserId: userId, code, source });
+  if (!out.ok) return c.json({ success: false, error: { code: out.code, message: referralRefusalWords(out.code) } }, 409);
+  return c.json({ success: true, data: { applied: true } });
+});
+
+// ── Gamification (0087): birthday opt-in. Set-once (correction goes through
+// support so the earn source cannot be gamed by cycling dates). ─────────────
+routes.put('/date-of-birth', async (c) => {
+  const userId = c.get('userId') as string;
+  const body = await c.req.json().catch(() => null);
+  const raw = String(body?.dateOfBirth ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return c.json({ success: false, error: { code: 'BAD_DATE', message: 'dateOfBirth must be YYYY-MM-DD.' } } as const, 400);
+  }
+  const dob = new Date(raw + 'T00:00:00Z');
+  const age = (Date.now() - dob.getTime()) / (365.25 * 86_400_000);
+  if (Number.isNaN(dob.getTime()) || age < 13 || age > 120) {
+    return c.json({ success: false, error: { code: 'BAD_DATE', message: 'That date of birth is not plausible.' } } as const, 400);
+  }
+  const registry = Registry.getInstance();
+  const result = await registry.loyaltyIdentityRepo.setDateOfBirthOnce(userId, raw);
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: 'ALREADY_SET', message: 'Date of birth is already set — contact support to correct it.' } } as const, 409);
+  }
+  return c.json({ success: true, data: { dateOfBirth: raw } });
 });
 
 routes.get('/preferences', async (c) => {
@@ -108,9 +545,12 @@ routes.put('/preferences', async (c) => {
   }
   
   const uc = Registry.getInstance().updateCustomerPreferenceCentreUseCase;
+  // The body is spread FIRST so it can never override the identity that
+  // follows it. Spread last, a request carrying {"userId": "<someone else>"}
+  // read and rewrote that customer's preference centre.
   const data = await uc.execute({
-    userId,
     ...body,
+    userId,
     ipAddress: clientIp(c),
     userAgent: c.req.header('user-agent') || 'unknown'
   });
@@ -124,6 +564,34 @@ routes.get('/preferences/audit', async (c) => {
   const data = await uc.execute(userId);
   const res: ApiResponse<any> = { success: true, data };
   return c.json(res);
+});
+
+/** Account → Sign-in methods: the password and every provider, connected or not. */
+routes.get('/sign-in-methods', async (c) => {
+  const registry = Registry.getInstance();
+  const providers = await Promise.all(
+    Object.values(OIDC_PROVIDERS).map(async (p) => ({ provider: p.provider, displayName: p.displayName, configured: await isProviderConfigured(p.provider) })),
+  );
+  const data = await new ListSignInMethodsUseCase(registry.userRepo, registry.socialIdentityRepo).execute({ userId: c.get('userId'), providers });
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
+/** Remove a connected provider; refused when it is the last way into the account. */
+routes.post('/sign-in-methods/:provider/remove', async (c) => {
+  const provider = String(c.req.param('provider'));
+  if (!isSocialProvider(provider)) {
+    return c.json({ success: false, error: { code: 'UNKNOWN_PROVIDER', message: 'Unknown sign-in provider.' } } satisfies ApiResponse<never>, 404);
+  }
+  const userId = c.get('userId');
+  const registry = Registry.getInstance();
+  const result = await new RemoveSignInMethodUseCase(registry.socialIdentityRepo).execute({ userId, provider, providerName: OIDC_PROVIDERS[provider].displayName });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, result.code === 'NOT_CONNECTED' ? 404 : 409);
+  }
+  await registry.createAuditLogUseCase
+    .execute({ actorId: userId, action: 'SOCIAL_IDENTITY_UNLINKED', entity: 'user', entityId: userId, previousState: { provider }, newState: null })
+    .catch(() => undefined);
+  return c.json({ success: true, data: { removed: provider } } satisfies ApiResponse<{ removed: string }>);
 });
 
 export default routes;

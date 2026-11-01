@@ -4,7 +4,7 @@ import FormField from '../../../../components/FormField.astro';
 import FormFeedback from '../../../../components/FormFeedback.astro';
 import Notice from '../../../../components/Notice.astro';
 import { apiBase } from '../../../../lib/api';
-import { readSessionToken, clearSessionCookie } from '../../../../lib/session';
+import { readSessionToken, SESSION_COOKIE_NAME } from '../../../../lib/session';
 import type { ProductPublicDto } from '@goldplus/shared';
 
 const { id } = Astro.params;
@@ -29,23 +29,9 @@ if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('_action') ?? '');
 
-  if (action === 'add_image') {
-    const url = String(form.get('url') ?? '').trim();
-    const altText = String(form.get('altText') ?? '').trim() || null;
-    const makePrimary = form.get('makePrimary') === 'on';
-    const res = await authedJson(`/admin/products/${encodeURIComponent(id ?? '')}/images`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, altText, makePrimary }),
-    });
-    if (res.status >= 200 && res.status < 300) {
-      status = 'success';
-      message = 'Image URL linked.';
-    } else {
-      status = 'error';
-      message = res.error ?? `Could not add image (HTTP ${res.status}).`;
-    }
-  } else if (action === 'upload_images') {
+  // Focus 4: "add image by URL" was retired (the API answers 410); the gallery editor
+  // at /admin/products/:id/media owns cover, slots, reorder and choose-existing.
+  if (action === 'upload_images') {
     const apiFormData = new FormData();
     const allFiles = form.getAll('files');
     
@@ -71,9 +57,11 @@ if (Astro.request.method === 'POST') {
       });
       const json = await res.json().catch(() => ({ error: { message: 'Network error.' } }));
 
-      if (res.ok) {
+      // The API reports per-file outcomes; only ASSIGNED/COVER rows were stored.
+      const stored = Array.isArray(json?.data) ? json.data.filter((o: any) => o?.outcome === 'ASSIGNED' || o?.outcome === 'COVER').length : 0;
+      if (res.ok && json?.success !== false && stored > 0) {
         status = 'success';
-        message = 'Images uploaded successfully.';
+        message = stored === validFiles ? `${stored} image${stored === 1 ? '' : 's'} stored.` : `${stored} of ${validFiles} images stored. ${json?.message ?? ''}`.trim();
       } else {
         status = 'error';
         message = json.error?.message ?? 'Failed to upload images.';
@@ -98,9 +86,13 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const productRes = await authedJson<ProductPublicDto>(`/products/${encodeURIComponent(id ?? '')}`);
-if (productRes.status === 401 || productRes.status === 403) {
-  Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+// Admin view by id: the public product shape WITHOUT the approved/active gate.
+// The public /products/:slug route hid every draft and inactive product, so
+// this page refused exactly the products that still need assets.
+const productRes = await authedJson<ProductPublicDto>(`/admin/products/${encodeURIComponent(id ?? '')}/view`);
+if (productRes.status === 401) {
+  // Only an expired session signs out; a 403 is a permission gap, shown below.
+  Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' }); // a header set on Astro.response is dropped by a returned redirect
   return Astro.redirect(`/admin/login?returnTo=/admin/products/${encodeURIComponent(id ?? '')}/edit`, 303);
 }
 const product = productRes.data;
@@ -119,22 +111,22 @@ const product = productRes.data;
         </h2>
         <p class="text-sm text-gray-500 mt-1">Mutate structural specifications and syndication media assets.</p>
       </div>
-      <a href="/admin/products" class="text-xs font-bold text-gray-400 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
+      <a href="/admin/products" class="text-xs font-bold text-gray-500 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
         &larr; Product List
       </a>
     </div>
 
     {!product ? (
-      <Notice kind="not-configured" title="Asset Unavailable" message="The requested product listing was not fetched from the core relational datastore." />
+      <Notice kind="not-configured" title={productRes.status === 404 ? 'Product not found' : productRes.status === 403 ? 'Not permitted' : 'Product could not be loaded'} message={productRes.status === 404 ? 'No product exists with this id.' : productRes.status === 403 ? 'Your role cannot read products (products.read required).' : 'The products API did not answer. Reload to retry.'} />
     ) : (
       <div class="space-y-8">
         <FormFeedback status={status} message={message} />
 
         <section class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-          <h2 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">Syndication Images ({product.images.length})</h2>
+          <h2 class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-6">Syndication Images ({product.images.length})</h2>
 
           {product.images.length === 0 ? (
-            <p class="text-xs text-gray-400 italic mb-6 font-medium">No binary media attached. Establish primary links below.</p>
+            <p class="text-xs text-gray-500 italic mb-6 font-medium">No binary media attached. Establish primary links below.</p>
           ) : (
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8 border-b border-gray-100 pb-8">
               {product.images.map((img, idx) => (
@@ -142,7 +134,7 @@ const product = productRes.data;
                   <div class="aspect-square bg-white flex items-center justify-center p-3">
                     <img src={img.url} alt={img.alt ?? ''} class="max-w-full max-h-full object-contain mix-blend-multiply" />
                   </div>
-                  <div class="p-3 text-[8px] font-mono text-gray-400 break-all border-t border-gray-100 bg-white flex-grow">
+                  <div class="p-3 text-[8px] font-mono text-gray-500 break-all border-t border-gray-100 bg-white flex-grow">
                     {idx === 0 && <span class="inline-block px-1.5 py-0.5 mr-1.5 rounded bg-brand-green text-brand-dark font-black text-[7px] uppercase tracking-wide">Primary</span>}
                     {img.url.length > 50 ? img.url.slice(0, 50) + '…' : img.url}
                   </div>
@@ -167,15 +159,15 @@ const product = productRes.data;
                     required
                   />
                   <div class="pointer-events-none">
-                    <div class="text-xs font-black text-gray-400 mb-3 uppercase tracking-widest">Upload Area</div>
+                    <div class="text-xs font-black text-gray-500 mb-3 uppercase tracking-widest">Upload Area</div>
                     <p class="text-xs font-black text-brand-dark">Click or Drag File Binaries</p>
-                    <p class="text-[9px] text-gray-400 mt-1 leading-relaxed">JPG, PNG, or WebP. Maximum batch count 8.</p>
+                    <p class="text-[9px] text-gray-500 mt-1 leading-relaxed">JPG, PNG, or WebP. Up to 4 files (a gallery holds four images).</p>
                   </div>
                 </div>
 
                 <FormField id="upAltText" name="altText" label="Context Accessibility Alt Text" placeholder="Description of visual frame..." />
                 <label class="flex items-center gap-3 cursor-pointer">
-                  <input type="checkbox" name="makePrimary" class="w-4 h-4 rounded-lg border-gray-300 text-brand-green focus:ring-brand-green" />
+                  <input type="checkbox" name="makePrimary" class="w-4 h-4 rounded-lg border-gray-300 text-brand-green focus:ring-brand-primaryInk" />
                   <span class="text-xs font-bold text-brand-dark">Designate leading batch item as primary</span>
                 </label>
                 
@@ -187,34 +179,30 @@ const product = productRes.data;
 
             <div class="border-t md:border-t-0 md:border-l border-gray-100 pt-8 md:pt-0 md:pl-8 flex flex-col justify-between">
               <div>
-                <h3 class="text-xs font-black text-brand-dark uppercase tracking-wider mb-4">Synthesize External URL</h3>
-                <form method="POST" action={Astro.url.pathname} class="space-y-4">
-                  <input type="hidden" name="_action" value="add_image" />
-                  <FormField id="url" name="url" label="Fully Qualified Resource Link (HTTPS)" type="url" required placeholder="https://static.brand.cdn/img.jpg" />
-                  <FormField id="altText" name="altText" label="Context Accessibility Text" />
-                  <label class="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" name="makePrimary" class="w-4 h-4 rounded-lg border-gray-300 text-brand-green focus:ring-brand-green" />
-                    <span class="text-xs font-bold text-brand-dark">Override current leading image</span>
-                  </label>
-                  <button type="submit" class="w-full bg-white border border-gray-200 text-brand-dark py-3 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-gray-50 transition-colors shadow-sm mt-2">
-                    Register URL Reference
-                  </button>
-                </form>
+                <h3 class="text-xs font-black text-brand-dark uppercase tracking-wider mb-4">Gallery: cover and slots</h3>
+                <p class="text-xs text-gray-600 leading-relaxed mb-4">
+                  Uploads here land in the product's next free gallery slot (the first becomes the cover when the gallery is empty).
+                  To set the cover, reorder, replace or remove images, or pick an image already in the library, use the gallery editor.
+                  Linking an external image by URL is no longer supported: such an image would have no renditions and could not enter a slot.
+                </p>
+                <a href={`/admin/products/${encodeURIComponent(id ?? '')}/media`} class="inline-block w-full text-center bg-white border border-gray-200 text-brand-dark py-3 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-gray-50 transition-colors shadow-sm">
+                  Open the gallery editor
+                </a>
               </div>
             </div>
           </div>
         </section>
 
         <section class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-          <h2 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">Attribute Specification Logs ({product.attributeValues.length})</h2>
+          <h2 class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-6">Attribute Specification Logs ({product.attributeValues.length})</h2>
 
           {product.attributeValues.length === 0 ? (
-            <p class="text-xs text-gray-400 italic mb-6 font-medium">No specific metadata rows bound.</p>
+            <p class="text-xs text-gray-500 italic mb-6 font-medium">No specific metadata rows bound.</p>
           ) : (
             <div class="border border-gray-100 rounded-2xl overflow-hidden mb-6 text-xs">
               <table class="w-full border-collapse text-left">
                 <thead>
-                  <tr class="bg-gray-50 text-[9px] uppercase font-black text-gray-400 border-b border-gray-100">
+                  <tr class="bg-gray-50 text-[9px] uppercase font-black text-gray-500 border-b border-gray-100">
                     <th class="p-4">Label</th>
                     <th class="p-4">Registered Specification</th>
                     <th class="p-4 text-right">Origin Status</th>
@@ -252,7 +240,7 @@ const product = productRes.data;
             <FormField id="value" name="value" label="Mutation Value" placeholder="e.g. 20V / Carbon" required />
             <div class="sm:col-span-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-t border-gray-100 pt-4 mt-2">
               <label class="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" name="isVerified" class="w-4 h-4 rounded-lg border-gray-300 text-brand-green focus:ring-brand-green" />
+                <input type="checkbox" name="isVerified" class="w-4 h-4 rounded-lg border-gray-300 text-brand-green focus:ring-brand-primaryInk" />
                 <span class="text-xs font-bold text-brand-dark">Enforce formal verification signature</span>
               </label>
               <button type="submit" class="bg-brand-dark text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-black transition-colors shadow-sm">

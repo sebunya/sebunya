@@ -1,0 +1,182 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AccountNav from '../../components/AccountNav.astro';
+import { apiBase } from '../../lib/api';
+import { readSessionToken } from '../../lib/session';
+
+/**
+ * Your data (0157, docs/first-party/README.md): download everything GoldPlus
+ * holds about the account, ask for past orders to be anonymised, or ask for
+ * the account to be deleted. Erasure is carried out by a person, never
+ * instantly, and never while an order is still on its way.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/login?returnTo=/account/privacy', 303);
+}
+const auth = { Authorization: `Bearer ${token}` };
+
+let notice: { kind: 'ok' | 'error'; text: string } | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData().catch(() => null);
+  const action = String(form?.get('action') ?? '');
+  try {
+    if (action === 'export') {
+      const res = await fetch(`${apiBase}/account/privacy/export`, { headers: auth });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success && json.data?.data) {
+        const ref = String(json.data.reference ?? 'export').replace(/[^A-Z0-9-]/gi, '');
+        return new Response(JSON.stringify(json.data.data, null, 2), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Content-Disposition': `attachment; filename="goldplus-my-data-${ref}.json"`,
+            'Cache-Control': 'private, no-store',
+          },
+        });
+      }
+      notice = { kind: 'error', text: typeof json?.error?.message === 'string' && json.error.message.length < 200 ? json.error.message : 'Your data could not be prepared just now. Please try again, or contact support.' };
+    } else if (action === 'ANONYMISE_HISTORY' || action === 'DELETE_ACCOUNT') {
+      if (form?.get('confirm') !== 'yes') {
+        notice = { kind: 'error', text: 'Tick the box to confirm, then send the request.' };
+      } else {
+        const res = await fetch(`${apiBase}/account/privacy/requests`, {
+          method: 'POST',
+          headers: { ...auth, 'Content-Type': 'application/json', 'Idempotency-Key': String(form?.get('idem') ?? crypto.randomUUID()).slice(0, 80) },
+          body: JSON.stringify({ kind: action, note: String(form?.get('note') ?? '').slice(0, 1000) }),
+        });
+        const json = await res.json().catch(() => null);
+        if (res.ok && json?.success) {
+          notice = { kind: 'ok', text: json.data.alreadyOpen
+            ? `You already have this request open (${json.data.request.reference}). We will contact you about it.`
+            : `Request ${json.data.request.reference} received. A member of our team will check it and carry it out; we will let you know when it is done.` };
+        } else {
+          notice = { kind: 'error', text: 'Your request was not sent. Please try again, or contact support.' };
+        }
+      }
+    } else if (action === 'withdraw') {
+      const id = String(form?.get('id') ?? '');
+      const res = await fetch(`${apiBase}/account/privacy/requests/${encodeURIComponent(id)}/withdraw`, { method: 'POST', headers: auth });
+      notice = res.ok ? { kind: 'ok', text: 'Request withdrawn. Nothing was changed.' } : { kind: 'error', text: 'That request could not be withdrawn. It may already be closed.' };
+    }
+  } catch {
+    notice = { kind: 'error', text: 'We could not reach our servers. Nothing was changed. Please try again.' };
+  }
+}
+
+interface MyRequest { id: string; reference: string; kind: string; status: string; requestedAt: string; completedAt: string | null; decisionReason: string | null; }
+let requests: MyRequest[] | null = null;
+try {
+  const res = await fetch(`${apiBase}/account/privacy/requests`, { headers: auth });
+  const json = await res.json().catch(() => null);
+  if (res.ok && json?.success) requests = json.data.requests as MyRequest[];
+} catch {
+  requests = null;
+}
+const erasures = (requests ?? []).filter((r) => r.kind !== 'EXPORT');
+const open = (kind: string) => erasures.some((r) => r.kind === kind && r.status === 'RECEIVED');
+const KIND: Record<string, string> = { ANONYMISE_HISTORY: 'Remove my details from past orders', DELETE_ACCOUNT: 'Delete my account', EXPORT: 'Download my data' };
+const STATUS: Record<string, string> = { RECEIVED: 'Received, waiting for our team', COMPLETED: 'Done', DECLINED: 'Declined', WITHDRAWN: 'Withdrawn by you' };
+const when = (iso: string) => new Date(iso).toLocaleDateString('en-UG', { timeZone: 'Africa/Kampala', day: 'numeric', month: 'short', year: 'numeric' });
+const idem = crypto.randomUUID();
+---
+
+<BaseLayout robotsMeta="noindex,nofollow" title="Your data">
+  <div class="container mx-auto px-4 lg:px-8 py-10 lg:py-14 max-w-3xl">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-8 pb-6 border-b border-brand-borderGrey">
+      <div>
+        <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal tracking-tight">Your data</h1>
+        <p class="text-brand-mutedGrey mt-2">See what we hold about you, or ask us to remove it.</p>
+      </div>
+      <a href="/account" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal">&larr; Back to Account</a>
+    </div>
+
+    <AccountNav active="privacy" />
+
+    {notice && (
+      <div role="status" class={`rounded-xl p-4 mb-8 font-bold border ${notice.kind === 'ok' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>{notice.text}</div>
+    )}
+
+    <section aria-labelledby="download-heading" class="bg-white border border-brand-borderGrey rounded-2xl p-6 mb-6">
+      <h2 id="download-heading" class="text-lg font-black text-brand-charcoal">Download my data</h2>
+      <p class="text-sm text-brand-mutedGrey mt-2">
+        A file with your account details, saved addresses, orders, quote requests, points, support requests, your privacy and message choices,
+        and the messages we sent about your orders. It is prepared now and downloaded straight to this device.
+      </p>
+      <form method="POST" class="mt-4">
+        <input type="hidden" name="action" value="export" />
+        <button class="bg-brand-charcoal text-white text-sm font-bold px-5 py-3 rounded-xl hover:opacity-90">Download my data</button>
+      </form>
+    </section>
+
+    <section aria-labelledby="anon-heading" class="bg-white border border-brand-borderGrey rounded-2xl p-6 mb-6">
+      <h2 id="anon-heading" class="text-lg font-black text-brand-charcoal">Remove my details from past orders</h2>
+      <p class="text-sm text-brand-mutedGrey mt-2">
+        We remove your name, phone, email and address from your past orders, quote requests and support requests, and stop linking your
+        browsing to you. Your account, sign-in and points stay. The order amounts stay, without your details, because sales records must be kept.
+      </p>
+      {open('ANONYMISE_HISTORY') ? (
+        <p class="text-sm font-bold text-brand-charcoal mt-4">You already have this request open. See it below.</p>
+      ) : (
+        <form method="POST" class="mt-4 space-y-3">
+          <input type="hidden" name="action" value="ANONYMISE_HISTORY" />
+          <input type="hidden" name="idem" value={`${idem}-a`} />
+          <label class="block text-sm font-bold text-brand-charcoal" for="anon-note">Anything we should know (optional)</label>
+          <textarea id="anon-note" name="note" rows="2" maxlength="1000" class="w-full border border-brand-borderGrey rounded-xl p-3 text-sm"></textarea>
+          <label class="flex items-start gap-2 text-sm text-brand-charcoal"><input type="checkbox" name="confirm" value="yes" class="mt-1" /> I understand this cannot be undone.</label>
+          <button class="bg-white border border-brand-charcoal text-brand-charcoal text-sm font-bold px-5 py-3 rounded-xl hover:bg-gray-50">Send request</button>
+        </form>
+      )}
+    </section>
+
+    <section aria-labelledby="delete-heading" class="bg-white border border-red-200 rounded-2xl p-6 mb-6">
+      <h2 id="delete-heading" class="text-lg font-black text-brand-charcoal">Delete my account</h2>
+      <p class="text-sm text-brand-mutedGrey mt-2">
+        Everything above, and your account is closed: your email, phone, password, birthday and saved addresses are removed and you are signed
+        out everywhere. Points you have not used are lost. Order amounts stay, without your details, because sales records must be kept.
+        If an order is still on its way, we finish delivering it first.
+      </p>
+      {open('DELETE_ACCOUNT') ? (
+        <p class="text-sm font-bold text-brand-charcoal mt-4">You already have this request open. See it below.</p>
+      ) : (
+        <form method="POST" class="mt-4 space-y-3">
+          <input type="hidden" name="action" value="DELETE_ACCOUNT" />
+          <input type="hidden" name="idem" value={`${idem}-d`} />
+          <label class="block text-sm font-bold text-brand-charcoal" for="delete-note">Anything we should know (optional)</label>
+          <textarea id="delete-note" name="note" rows="2" maxlength="1000" class="w-full border border-brand-borderGrey rounded-xl p-3 text-sm"></textarea>
+          <label class="flex items-start gap-2 text-sm text-brand-charcoal"><input type="checkbox" name="confirm" value="yes" class="mt-1" /> I understand my account and points cannot be restored.</label>
+          <button class="bg-red-700 text-white text-sm font-bold px-5 py-3 rounded-xl hover:bg-red-800">Ask to delete my account</button>
+        </form>
+      )}
+    </section>
+
+    <section aria-labelledby="requests-heading" class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+      <h2 id="requests-heading" class="text-lg font-black text-brand-charcoal">Your requests</h2>
+      {requests === null ? (
+        <p class="text-sm text-brand-mutedGrey mt-2">Your requests could not be loaded just now.</p>
+      ) : erasures.length === 0 ? (
+        <p class="text-sm text-brand-mutedGrey mt-2">You have not asked us to remove anything.</p>
+      ) : (
+        <ul class="mt-3 divide-y divide-brand-borderGrey">
+          {erasures.map((r) => (
+            <li class="py-3 flex flex-wrap items-center justify-between gap-3 text-sm">
+              <div>
+                <p class="font-bold text-brand-charcoal">{KIND[r.kind] ?? r.kind} · {r.reference}</p>
+                <p class="text-brand-mutedGrey">Sent {when(r.requestedAt)} · {STATUS[r.status] ?? r.status}{r.completedAt ? ` on ${when(r.completedAt)}` : ''}</p>
+                {r.decisionReason && <p class="text-brand-mutedGrey mt-1">Reason: {r.decisionReason}</p>}
+              </div>
+              {r.status === 'RECEIVED' && (
+                <form method="POST">
+                  <input type="hidden" name="action" value="withdraw" />
+                  <input type="hidden" name="id" value={r.id} />
+                  <button class="text-sm font-bold text-brand-charcoal underline">Withdraw</button>
+                </form>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  </div>
+</BaseLayout>

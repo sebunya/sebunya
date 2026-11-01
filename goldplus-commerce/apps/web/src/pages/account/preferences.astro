@@ -1,9 +1,13 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import AccountNav from '../../components/AccountNav.astro';
 import PreferenceCentreForm from '../../components/preferences/PreferenceCentreForm.astro';
 import CanonicalConsentForm from '../../components/preferences/CanonicalConsentForm.astro';
+import WhatsAppMarketingConsentForm from '../../components/preferences/WhatsAppMarketingConsentForm.astro';
+import BasketRemindersConsentForm from '../../components/preferences/BasketRemindersConsentForm.astro';
+import { apiHeaders } from '../../lib/forwardClient';
 import { apiBase } from '../../lib/api';
-import { readSessionToken, clearSessionCookie } from '../../lib/session';
+import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -13,8 +17,8 @@ if (!token) {
 let saveSuccess = false;
 let saveError = '';
 const consentOperatingEnabled =
-  import.meta.env.CONSENT_PERSISTENCE_COMMANDS_ENABLED === 'true' &&
-  import.meta.env.CONSENT_PREFERENCE_CENTRE_SAVE_ENABLED === 'true';
+  (process.env.CONSENT_PERSISTENCE_COMMANDS_ENABLED ?? import.meta.env.CONSENT_PERSISTENCE_COMMANDS_ENABLED) === 'true' &&
+  (process.env.CONSENT_PREFERENCE_CENTRE_SAVE_ENABLED ?? import.meta.env.CONSENT_PREFERENCE_CENTRE_SAVE_ENABLED) === 'true';
 
 if (Astro.request.method === 'POST') {
   try {
@@ -23,7 +27,7 @@ if (Astro.request.method === 'POST') {
 
     if (formKind === 'canonical-consent') {
       if (!consentOperatingEnabled) {
-        saveError = 'This purpose-specific preference was not saved because canonical persistence is not live.';
+        saveError = 'That choice was not saved. GoldPlus is not offering optional marketing at the moment, so there is nothing to opt in to.';
       } else {
         const correlationId = crypto.randomUUID();
         const res = await fetch(`${apiBase}/account/consent-operating/preferences`, {
@@ -46,8 +50,63 @@ if (Astro.request.method === 'POST') {
         if (res.ok && result?.success === true && result?.data?.saved === true) {
           saveSuccess = true;
         } else {
-          saveError = 'Your purpose-specific choice was not saved. No communication setting changed.';
+          saveError = 'Your choice was not saved, so nothing about how GoldPlus contacts you has changed. Please try again, or contact support.';
         }
+      }
+    } else if (formKind === 'basket-reminders') {
+      // Basket reminders (0210): its own purpose, same evidence as WhatsApp offers.
+      let clientAddress: string | null = null;
+      try { clientAddress = Astro.clientAddress ?? null; } catch { clientAddress = null; }
+      const res = await fetch(`${apiBase}/account/marketing-consent/basket-reminders`, {
+        method: 'POST',
+        headers: apiHeaders({
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-Correlation-Id': crypto.randomUUID(),
+          'Idempotency-Key': crypto.randomUUID(),
+          'X-Shopper-User-Agent': (Astro.request.headers.get('user-agent') ?? '').slice(0, 512),
+        }, clientAddress),
+        body: JSON.stringify({
+          requested: String(data.get('requested') ?? ''),
+          confirmation: data.get('confirmation') === 'yes',
+          copyVersionId: String(data.get('copyVersionId') ?? ''),
+        }),
+      });
+      const result = await res.json().catch(() => null);
+      if (res.ok && result?.success === true) {
+        saveSuccess = true;
+      } else {
+        saveError = typeof result?.error?.message === 'string' && result.error.message.length < 160
+          ? `${result.error.message} Nothing about how GoldPlus contacts you has changed.`
+          : 'Your choice was not saved, so nothing about how GoldPlus contacts you has changed. Please try again, or contact support.';
+      }
+    } else if (formKind === 'whatsapp-marketing') {
+      // WhatsApp offers (0155): its own purpose. The server-side call forwards
+      // the shopper's address and browser for the consent evidence (hashed).
+      let clientAddress: string | null = null;
+      try { clientAddress = Astro.clientAddress ?? null; } catch { clientAddress = null; }
+      const res = await fetch(`${apiBase}/account/marketing-consent/whatsapp`, {
+        method: 'POST',
+        headers: apiHeaders({
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-Correlation-Id': crypto.randomUUID(),
+          'Idempotency-Key': crypto.randomUUID(),
+          'X-Shopper-User-Agent': (Astro.request.headers.get('user-agent') ?? '').slice(0, 512),
+        }, clientAddress),
+        body: JSON.stringify({
+          requested: String(data.get('requested') ?? ''),
+          confirmation: data.get('confirmation') === 'yes',
+          copyVersionId: String(data.get('copyVersionId') ?? ''),
+        }),
+      });
+      const result = await res.json().catch(() => null);
+      if (res.ok && result?.success === true) {
+        saveSuccess = true;
+      } else {
+        saveError = typeof result?.error?.message === 'string' && result.error.message.length < 160
+          ? `${result.error.message} Nothing about how GoldPlus contacts you has changed.`
+          : 'Your choice was not saved, so nothing about how GoldPlus contacts you has changed. Please try again, or contact support.';
       }
     } else {
       // Existing broad preferences remain a legacy compatibility surface, not canonical messaging consent.
@@ -100,7 +159,7 @@ try {
     headers: { Authorization: `Bearer ${token}` }
   });
   if (res.status === 401) {
-    Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+    Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' });
     return Astro.redirect('/login?returnTo=/account/preferences', 303);
   }
   if (res.ok) {
@@ -112,22 +171,65 @@ try {
 } catch (err) {
   // Graceful fallback
 }
+// WhatsApp offers (0155). null = could not be read: the section then shows no switch.
+let whatsappMarketing: any = null;
+try {
+  const res = await fetch(`${apiBase}/account/marketing-consent/whatsapp`, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.ok) {
+    const json = await res.json().catch(() => null);
+    if (json?.success) whatsappMarketing = json.data;
+  }
+} catch {
+  whatsappMarketing = null;
+}
+// Basket reminders (0210). null = could not be read: the section then shows no switch.
+let basketReminders: any = null;
+try {
+  const res = await fetch(`${apiBase}/account/marketing-consent/basket-reminders`, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.ok) {
+    const json = await res.json().catch(() => null);
+    if (json?.success) basketReminders = json.data;
+  }
+} catch {
+  basketReminders = null;
+}
+// Mirror the analytics choice into a cookie the page's tag reads BEFORE it
+// loads (BaseLayout consent defaults): a refusal saved here must stop the
+// browser tag too, not only the server-side record. Read back from the API,
+// so it reflects what was actually stored, after a save or on any visit.
+{
+  // Only a choice the customer actually MADE: the API falls back to the owner
+  // default when nothing is stored, and mirroring that wrote a refusal nobody
+  // gave into every signed-in visitor who merely opened this page.
+  const c = (preferences as { consent?: { analytics?: boolean; advertising?: boolean; explicit?: boolean } }).consent;
+  const analytics = c?.explicit === true ? c.analytics : undefined;
+  if (typeof analytics === 'boolean') {
+    Astro.cookies.set('gp_consent', analytics ? 'a1' : 'a0', { path: '/', maxAge: 60 * 60 * 24 * 395, sameSite: 'lax', secure: true, httpOnly: false });
+  }
+  // The advertising choice too (2026-10-17): with gp_ads=0 the tag never grants Google ad signals (retargeting).
+  const advertising = c?.explicit === true ? c.advertising : undefined;
+  if (typeof advertising === 'boolean') {
+    Astro.cookies.set('gp_ads', advertising ? '1' : '0', { path: '/', maxAge: 60 * 60 * 24 * 395, sameSite: 'lax', secure: true, httpOnly: false });
+  }
+}
 ---
 
-<BaseLayout title="My Preferences">
+<BaseLayout robotsMeta="noindex,follow" title="My preferences">
   <div class="container mx-auto px-4 lg:px-8 py-10 lg:py-14">
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-8 pb-6 border-b border-brand-borderGrey">
       <div>
-        <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal tracking-tight">Preferences & Privacy</h1>
+        <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal tracking-tight">Preferences and privacy</h1>
         <p class="text-brand-mutedGrey mt-2">Control your data, communications, and shopping experience.</p>
       </div>
       <a href="/account" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal">&larr; Back to Account</a>
     </div>
 
+    <AccountNav active="preferences" />
+
     {saveSuccess && (
       <div class="bg-green-50 border border-green-200 text-green-800 rounded-xl p-4 mb-8 font-bold flex items-center gap-3">
         <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-        Your requested preference was durably saved and audited.
+        Saved. Your choice applies from now on.
       </div>
     )}
 
@@ -138,8 +240,10 @@ try {
     )}
 
     <CanonicalConsentForm enabled={consentOperatingEnabled} />
+    <WhatsAppMarketingConsentForm status={whatsappMarketing} />
+    <BasketRemindersConsentForm status={basketReminders} />
     <div class="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-      The controls below are the existing legacy account settings. They are not canonical purpose consent and cannot authorize marketing sends.
+      The settings below cover your account and shopping experience. They do not switch on marketing messages. Only the offer choices above can do that, and each stays off until you turn it on.
     </div>
     <PreferenceCentreForm preferences={preferences} />
   </div>

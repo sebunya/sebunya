@@ -3,7 +3,9 @@ import AdminLayout from '../../../../layouts/AdminLayout.astro';
 import FormField from '../../../../components/FormField.astro';
 import FormFeedback from '../../../../components/FormFeedback.astro';
 import { apiBase } from '../../../../lib/api';
+import { formatUgx } from '../../../../lib/money';
 import { readSessionToken } from '../../../../lib/session';
+import { canEditProductPrices } from '../../../../lib/adminPricingAccess';
 const { id } = Astro.params;
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -37,8 +39,19 @@ if (!product) {
 // Fetch categories from backend
 const catsRes = await authedJson<any[]>('/admin/products/categories');
 const categories = catsRes.data ?? [];
-const matchingCat = categories.find((c: any) => c.name === product.category) || categories[0];
+// No fallback to categories[0]. When the product's category could not be
+// matched (it was renamed, or the list failed to load), defaulting to the first
+// category meant saving anything on this form silently recategorised the
+// product. An unmatched category now stays empty and has to be chosen.
+const matchingCat = categories.find((c: any) => c.name === product.category);
 const productCategoryId = matchingCat?.id || '';
+
+// Repricing (Price D and the tiers — the floor caps every discount) needs a
+// pricing permission; the API refuses it otherwise. Without one the price
+// fields are shown read-only and resubmitted unchanged.
+const sessionRes = await authedJson<{ permissions?: string[] }>('/auth/admin-session');
+const viewerPermissions = sessionRes.data?.permissions ?? [];
+const canEditPrices = canEditProductPrices(viewerPermissions);
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -47,22 +60,30 @@ if (Astro.request.method === 'POST') {
   const modelNumber = String(form.get('modelNumber') ?? '').trim();
   const slug = String(form.get('slug') ?? '').trim().toLowerCase();
   const categoryId = String(form.get('categoryId') ?? '').trim();
-  const subcategory = String(form.get('subcategory') ?? '').trim() || undefined;
+  // Always sent (empty = clear): the API keeps a stored value only when the key is absent.
+  const subcategory = String(form.get('subcategory') ?? '').trim();
   const shortDescription = String(form.get('shortDescription') ?? '').trim();
   const longDescription = String(form.get('longDescription') ?? '').trim();
   const priceUgx = Number(form.get('priceUgx') ?? 0);
+  const tier = (k: string) => { const v = String(form.get(k) ?? '').trim(); return v ? Number(v) : null; };
+  const floorPriceUgx = tier('floorPriceUgx'); const tierBPriceUgx = tier('tierBPriceUgx'); const tierCPriceUgx = tier('tierCPriceUgx');
   const stockStatus = String(form.get('stockStatus') ?? 'in_stock');
   const stockQuantity = Number(form.get('stockQuantity') ?? 0);
-  const imageUrl = String(form.get('imageUrl') ?? '').trim() || undefined;
+  // The quantity this form was rendered with. The API writes stock only when
+  // the operator changed it, and refuses (409 STALE_STOCK) if stock moved since
+  // — a price or description save never reverts a dispatch or an adjustment.
+  const loadedStockRaw = String(form.get('expectedStockQuantity') ?? '').trim();
+  const expectedStockQuantity = loadedStockRaw === '' ? null : Number(loadedStockRaw);
   const active = form.get('active') === 'on' || form.get('active') === 'true';
+  const isFeedEligible = form.get('isFeedEligible') === 'on' || form.get('isFeedEligible') === 'true';
   const approvalStatus = String(form.get('approvalStatus') ?? 'draft');
 
   const res = await authedJson(`/admin/products/${encodeURIComponent(id ?? '')}`, {
     method: 'PUT',
     body: JSON.stringify({
       name, sku, modelNumber, slug, categoryId, subcategory,
-      shortDescription, longDescription, priceUgx, stockStatus,
-      stockQuantity, imageUrl, active, approvalStatus
+      shortDescription, longDescription, priceUgx, floorPriceUgx, tierBPriceUgx, tierCPriceUgx, stockStatus,
+      stockQuantity, expectedStockQuantity, active, approvalStatus, isFeedEligible
     }),
   });
 
@@ -83,15 +104,15 @@ if (Astro.request.method === 'POST') {
       </a>
       <div>
         <h2 class="text-2xl font-black text-brand-dark tracking-tight">Edit Properties</h2>
-        <p class="text-sm text-gray-500 mt-1">Modify core catalog information and business rules for: <span class="font-bold text-brand-green">{product.name}</span></p>
+        <p class="text-sm text-gray-500 mt-1">Modify core catalog information and business rules for: <span class="font-bold text-brand-primaryInk">{product.name}</span></p>
       </div>
     </div>
 
-    {status && <div class="mb-6"><FormFeedback kind={status} message={message} /></div>}
+    {status && <div class="mb-6"><FormFeedback status={status} message={message} /></div>}
 
     <form method="POST" class="space-y-6">
       <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-6">
-        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400 border-b border-gray-100 pb-3">Core Information</h3>
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-500 border-b border-gray-100 pb-3">Core Information</h3>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <FormField
@@ -109,7 +130,7 @@ if (Astro.request.method === 'POST') {
             defaultValue={product.slug}
             placeholder="e.g. goldplus-heavy-duty-charger"
             required
-            helperText="Auto-generated URL identifier. Hyphens and alphanumeric characters only."
+            helperText="Changing the slug moves the product's URL (the old one redirects). Renaming the product does not change it."
           />
         </div>
 
@@ -142,8 +163,15 @@ if (Astro.request.method === 'POST') {
               id="categoryId"
               name="categoryId"
               required
-              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-colors text-sm font-semibold"
+              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-primaryInk focus:border-brand-primaryInk outline-none transition-colors text-sm font-semibold"
             >
+              {/* Without this, an unmatched category left the browser selecting
+                  the first option on its own, which is the silent
+                  recategorisation this form used to perform. `required` now has
+                  something to fail on. */}
+              {!productCategoryId && (
+                <option value="" selected>{product.category ? `${product.category} (no longer in the list) - choose one` : 'Choose a category'}</option>
+              )}
               {categories.map((cat: any) => (
                 <option value={cat.id} selected={cat.id === productCategoryId}>{cat.name}</option>
               ))}
@@ -160,18 +188,41 @@ if (Astro.request.method === 'POST') {
       </div>
 
       <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-6">
-        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400 border-b border-gray-100 pb-3">Pricing & Inventory</h3>
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-500 border-b border-gray-100 pb-3">Pricing & Inventory</h3>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {canEditPrices ? (<>
           <FormField
             id="priceUgx"
             name="priceUgx"
-            label="Retail Price (UGX)"
+            label="Selling price — Price D (UGX)"
             type="number"
             defaultValue={String(product.priceUgx)}
             placeholder="50000"
             required
           />
+          <FormField
+            id="floorPriceUgx"
+            name="floorPriceUgx"
+            label="Floor — Price A (UGX)"
+            type="number"
+            defaultValue={product.priceTiers?.floorPriceUgx ? String(product.priceTiers.floorPriceUgx) : ''}
+            placeholder="Leave empty = never discounted"
+            helperText="The lowest price any discount may reach. Must not exceed the selling price."
+          />
+          <FormField id="tierBPriceUgx" name="tierBPriceUgx" label="Price B (UGX, optional)" type="number" defaultValue={product.priceTiers?.tierBPriceUgx ? String(product.priceTiers.tierBPriceUgx) : ''} />
+          <FormField id="tierCPriceUgx" name="tierCPriceUgx" label="Price C (UGX, optional)" type="number" defaultValue={product.priceTiers?.tierCPriceUgx ? String(product.priceTiers.tierCPriceUgx) : ''} />
+          </>) : (
+            <div class="md:col-span-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+              <p class="font-black">Prices are read-only for your role</p>
+              <p class="mt-1">Selling price (Price D) {formatUgx(product.priceUgx)} · Floor (Price A) {product.priceTiers?.floorPriceUgx ? formatUgx(product.priceTiers.floorPriceUgx) : 'not set'} · Price B {product.priceTiers?.tierBPriceUgx ? formatUgx(product.priceTiers.tierBPriceUgx) : '—'} · Price C {product.priceTiers?.tierCPriceUgx ? formatUgx(product.priceTiers.tierCPriceUgx) : '—'}</p>
+              <p class="mt-1">Changing a price needs the pricing.manage permission.</p>
+              <input type="hidden" name="priceUgx" value={String(product.priceUgx)} />
+              <input type="hidden" name="floorPriceUgx" value={product.priceTiers?.floorPriceUgx ? String(product.priceTiers.floorPriceUgx) : ''} />
+              <input type="hidden" name="tierBPriceUgx" value={product.priceTiers?.tierBPriceUgx ? String(product.priceTiers.tierBPriceUgx) : ''} />
+              <input type="hidden" name="tierCPriceUgx" value={product.priceTiers?.tierCPriceUgx ? String(product.priceTiers.tierCPriceUgx) : ''} />
+            </div>
+          )}
           <div>
             <label for="stockStatus" class="block text-sm font-bold text-brand-dark mb-2">
               Stock Status
@@ -179,7 +230,7 @@ if (Astro.request.method === 'POST') {
             <select
               id="stockStatus"
               name="stockStatus"
-              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-colors text-sm font-semibold"
+              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-primaryInk focus:border-brand-primaryInk outline-none transition-colors text-sm font-semibold"
             >
               <option value="in_stock" selected={product.stockStatus === 'in_stock'}>In Stock</option>
               <option value="low_stock" selected={product.stockStatus === 'low_stock'}>Low Stock</option>
@@ -195,20 +246,14 @@ if (Astro.request.method === 'POST') {
             defaultValue={String(product.stockQuantity)}
             required
           />
+          <input type="hidden" name="expectedStockQuantity" value={String(product.stockQuantity)} />
         </div>
 
-        <FormField
-          id="imageUrl"
-          name="imageUrl"
-          label="Authoritative Image URL"
-          defaultValue={product.imageUrl}
-          placeholder="https://images.unsplash.com/..."
-          helperText="External CDN or direct product visual asset link."
-        />
+        <p class="text-xs text-gray-500">Photos are managed in the <a class="font-bold underline" href={`/admin/products/${product.id}/media`}>product gallery</a> (renditions, cover and slots). A free-text image URL is no longer accepted.</p>
       </div>
 
       <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-6">
-        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400 border-b border-gray-100 pb-3">Descriptions</h3>
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-500 border-b border-gray-100 pb-3">Descriptions</h3>
 
         <FormField
           id="shortDescription"
@@ -232,7 +277,7 @@ if (Astro.request.method === 'POST') {
       </div>
 
       <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-6">
-        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400 border-b border-gray-100 pb-3">Status & Governance</h3>
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-500 border-b border-gray-100 pb-3">Status & Governance</h3>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
@@ -242,7 +287,7 @@ if (Astro.request.method === 'POST') {
             <select
               id="approvalStatus"
               name="approvalStatus"
-              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-colors text-sm font-semibold"
+              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-primaryInk focus:border-brand-primaryInk outline-none transition-colors text-sm font-semibold"
             >
               <option value="draft" selected={product.approvalStatus === 'draft'}>Draft (Under Review)</option>
               <option value="approved" selected={product.approvalStatus === 'approved'}>Approved (Safe to Publish)</option>
@@ -258,11 +303,27 @@ if (Astro.request.method === 'POST') {
                 name="active"
                 type="checkbox"
                 checked={product.active}
-                class="w-5 h-5 accent-brand-green rounded border-gray-300 focus:ring-brand-green"
+                class="w-5 h-5 accent-brand-green rounded border-gray-300 focus:ring-brand-primaryInk"
               />
               <div>
                 <span class="text-sm font-bold text-brand-dark block">Active & Enabled</span>
                 <span class="text-xs text-gray-500">Makes the item immediately queryable on endpoints.</span>
+              </div>
+            </label>
+          </div>
+
+          <div class="flex flex-col justify-center">
+            <label class="flex items-center gap-3 select-none cursor-pointer">
+              <input
+                id="isFeedEligible"
+                name="isFeedEligible"
+                type="checkbox"
+                checked={product.isFeedEligible !== false}
+                class="w-5 h-5 accent-brand-green rounded border-gray-300 focus:ring-brand-primaryInk"
+              />
+              <div>
+                <span class="text-sm font-bold text-brand-dark block">Listed in the Google Merchant feed</span>
+                <span class="text-xs text-gray-500">Untick to keep this product out of Google Shopping. It is only sent once it is approved, active, priced and has a photo.</span>
               </div>
             </label>
           </div>
@@ -286,20 +347,7 @@ if (Astro.request.method === 'POST') {
     </form>
   </div>
 
-  <script is:inline>
-    // Client-side auto slug generator from name input
-    const nameInput = document.getElementById('name');
-    const slugInput = document.getElementById('slug');
-
-    if (nameInput && slugInput) {
-      nameInput.addEventListener('input', () => {
-        const value = nameInput.value;
-        const slugified = value
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/(^-|-$)/g, '');
-        slugInput.value = slugified;
-      });
-    }
-  </script>
+  {/* No auto-slug here: on an EXISTING product, typing in the name used to
+      rewrite the live slug and move the URL. The generator lives on the
+      create form only; the slug above changes only when edited deliberately. */}
 </AdminLayout>

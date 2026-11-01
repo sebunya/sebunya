@@ -1,7 +1,7 @@
 export interface NavItem {
   label: string;
   href: string;
-  group: 'Dashboard' | 'Commerce' | 'Recommendations' | 'Merchandising' | 'Measurement' | 'System' | 'Other';
+  group: 'Dashboard' | 'Commerce' | 'Storefront' | 'Marketing' | 'Search Growth' | 'Customers' | 'Recommendations' | 'Merchandising' | 'Measurement' | 'System' | 'Other';
   status: 'working' | 'read_only' | 'diagnostic' | 'hidden';
   description: string;
   reason?: string;
@@ -21,6 +21,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Unified administration oversight and system-wide statuses.'
   },
   {
+    label: 'Commerce Analytics',
+    href: '/admin/analytics',
+    group: 'Dashboard',
+    status: 'working',
+    description: 'Decision-grade business metrics, trends, actions and data quality from the canonical metric catalogue.'
+  },
+  {
     label: 'Products',
     href: '/admin/products',
     group: 'Commerce',
@@ -28,11 +35,88 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Manage physical catalogue items, definitions and specs.'
   },
   {
+    label: 'Listing quality',
+    href: '/admin/listing-quality',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Every product ranked by what still holds its Google Shopping listing back; edit title, descriptions, specs and photos in one place.'
+  },
+  {
+    label: 'Gallery queue',
+    href: '/admin/media/gallery-queue',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Which products have 0–4 gallery images, a missing cover, or an unready asset; opens each product\'s gallery editor; reconciliation export.'
+  },
+  {
+    label: 'Image imports',
+    href: '/admin/media/imports',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Stage a folder named SKU__01-main.jpg …, review the plan, second-person approval, apply per product with a ledger.'
+  },
+  {
+    label: 'Product photos',
+    href: '/admin/photos',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Upload a folder of photos named by product code, preview the match, attach into the next free gallery slot (unreviewed; superseded by Image imports for batches).'
+  },
+  {
+    label: 'Platform Modules',
+    href: '/admin/platform-modules',
+    group: 'Commerce',
+    status: 'working',
+    description: 'P0–U6 modules live: coupons/promotions, device catalogue, review moderation, creator platform, flash sales and SEO/redirects.'
+  },
+  {
     label: 'PIM Imports',
     href: '/admin/pim-imports',
     group: 'Commerce',
     status: 'working',
     description: 'Stage, validate, approve, apply and safely roll back catalogue imports.'
+  },
+  {
+    label: 'Shop assistant',
+    href: '/admin/assistant',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Site chat: this month\'s model spend against the cap, the first-four fairness policy, abuse ceilings, model and the two switches.',
+  },
+  {
+    label: 'Care Desk',
+    href: '/admin/care',
+    group: 'Commerce',
+    status: 'working',
+    description: 'For shop attendants and the care team: everything a customer is waiting on (urgent first), with Call, WhatsApp and Done buttons, today\'s numbers, and who gets alerts.',
+  },
+  {
+    label: 'Teach Goldie',
+    href: '/admin/assistant/answers',
+    group: 'Commerce',
+    status: 'working',
+    description: 'How Goldie answers (fixed, remembered, model), the model spend and what her memory saved, and the answers she remembers: pin, edit or retire them.',
+  },
+  {
+    label: 'Goldie quality review',
+    href: '/admin/assistant/quality',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Each week a dozen of Goldie\'s chats (half drawn from those most worth a look) scored by a person: 1-5, facts right, tone right, with the trend.',
+  },
+  {
+    label: 'Goldie conversations',
+    href: '/admin/assistant/conversations',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Every chat with Goldie on the website and WhatsApp: the meeting summary (topics, moods, outcomes, who needs a person), each thread, team takeover and replies, CSV.',
+  },
+  {
+    label: 'Batteries',
+    href: '/admin/batteries',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Battery catalogue, phones, verified compatibility, stock movements, imports and customer demand.'
   },
   {
     label: 'Carts',
@@ -78,7 +162,7 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Manage product recommendations shown across the store.'
   },
   {
-    label: 'Analytics',
+    label: 'Recommendation Analytics',
     href: '/admin/recommendations/analytics',
     group: 'Recommendations',
     status: 'working',
@@ -120,6 +204,34 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Canonical customer profiles, lifecycle and next-best action.'
   },
   {
+    label: 'Customer segments',
+    href: '/admin/segments',
+    group: 'Merchandising',
+    status: 'working',
+    description: 'Rule-based customer groups, recalculated nightly; consent applied by whoever uses them.'
+  },
+  {
+    label: 'Customer value',
+    href: '/admin/customer-value',
+    group: 'Merchandising',
+    status: 'read_only',
+    description: 'Lifetime value, repeat purchase, time to second order and cohort retention.'
+  },
+  {
+    label: 'Identity conflicts',
+    href: '/admin/identity-conflicts',
+    group: 'Merchandising',
+    status: 'working',
+    description: 'Phones, emails or browsers two customer profiles both claim, for a person to resolve.'
+  },
+  {
+    label: 'Privacy requests',
+    href: '/admin/privacy-requests',
+    group: 'Merchandising',
+    status: 'working',
+    description: 'Customers\' requests to remove their details from past orders or delete their account, carried out or declined by a person.'
+  },
+  {
     label: 'Decision Intelligence',
     href: '/admin/decision-intelligence',
     group: 'Merchandising',
@@ -148,6 +260,76 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     group: 'Measurement',
     status: 'working',
     description: 'Measurement Control Tower — consent governance, sGTM routing, attribution intelligence.'
+  },
+  {
+    label: 'Measurement deliveries',
+    href: '/admin/measurement/deliveries',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Durable delivery of sales, cancellations and refunds to GA4 and ad platforms: queue, unknown outcomes, failures, replay and the kill switch.'
+  },
+  {
+    label: 'Attribution models',
+    href: '/admin/measurement/attribution-models',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Where confirmed sales came from: rule-based, Markov and Shapley side by side, computed nightly, with plain "not enough data" states.',
+  },
+  {
+    label: 'Channel report',
+    href: '/admin/measurement/channel-report',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Weekly sales, revenue, spend, ROAS and cost per order by channel (ads, creators, promo codes, WhatsApp, what customers said), with a model switcher and CSV.',
+  },
+  {
+    label: 'Marketing mix and incrementality',
+    href: '/admin/measurement/mmm',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Is a marketing mix model worth fitting yet (and the dataset to fit it off-server), what our own messages cause (holdouts), whether GA4 agrees with the shop, and the measurement settings.',
+  },
+  {
+    label: 'Advertising platforms',
+    href: '/admin/advertising',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Connection checklist per platform, server-side conversions (Test or Live), optimisation events, catalogue feed URLs, write-only tokens.'
+  },
+  {
+    label: 'Ad activity',
+    href: '/admin/advertising/activity',
+    group: 'Measurement',
+    status: 'working',
+    description: 'What was sent to each ad platform, what was not and why: arrivals from its ads, events raised, day by day, and the latest deliveries.'
+  },
+  {
+    label: 'Ad audiences',
+    href: '/admin/advertising/audiences',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Past buyers, recent buyers (exclusion) and a high-value seed for Google, Meta and TikTok: consent-gated, hashed, dry-run counts.'
+  },
+  {
+    label: 'Ad spend',
+    href: '/admin/advertising/spend',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Daily spend, clicks and impressions per campaign from the Google Ads, Meta and TikTok APIs, or a CSV upload.'
+  },
+  {
+    label: 'Offline sales for ads',
+    href: '/admin/advertising/offline',
+    group: 'Measurement',
+    status: 'working',
+    description: 'COD deliveries and phone/WhatsApp sales sent as offline conversions, deduplicated against online purchases.'
+  },
+  {
+    label: 'Spotify ad rotation',
+    href: '/admin/advertising/spotify',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Which products the Spotify ad rotation would advertise today, what each ad would say, and why. Preview only: nothing sent, nothing spent.'
   },
   {
     label: 'Consent Audit',
@@ -200,10 +382,17 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
   },
   // Hidden Modules
   {
-    label: 'Categories',
+    label: 'Articles',
+    href: '/admin/blog',
+    group: 'Storefront',
+    status: 'working',
+    description: 'Guides and advice that answer what customers ask before they know what to buy.'
+  },
+  {
+    label: 'Categories & taxonomy',
     href: '/admin/categories',
-    group: 'Commerce',
-    status: 'hidden',
+    group: 'Storefront',
+    status: 'working',
     description: 'Organize inventory into customer-facing groupings.'
   },
   {
@@ -221,30 +410,30 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Control Ugandan Shilling rates, currencies and wholesale levels.'
   },
   {
-    label: 'Authenticity Check',
+    label: 'Verification checks',
     href: '/admin/verification',
-    group: 'Other',
-    status: 'hidden',
+    group: 'Customers',
+    status: 'working',
     description: 'Lookup holographic sequence status and scans.'
   },
   {
-    label: 'Dealer Requests',
+    label: 'Dealer requests',
     href: '/admin/dealers',
-    group: 'Other',
-    status: 'hidden',
+    group: 'Customers',
+    status: 'working',
     description: 'Assess retail applications for wholesale credentials.'
   },
   {
-    label: 'Price Quotes',
+    label: 'Quote requests',
     href: '/admin/quotes',
-    group: 'Other',
-    status: 'hidden',
+    group: 'Customers',
+    status: 'working',
     description: 'Formulate responses to corporate procurement enquiries.'
   },
   {
-    label: 'Support Tickets',
+    label: 'Support tickets',
     href: '/admin/support',
-    group: 'Other',
+    group: 'Customers',
     status: 'working',
     description: 'Assist users with technical difficulties and support cases.'
   },
@@ -261,7 +450,73 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     group: 'System',
     status: 'working',
     description: 'Governed activation approvals for approval-gated modules.'
-  }
+  },
+  // ── Completed IA (2026-08-10): every operator module reachable from the nav.
+  { label: 'Reports', href: '/admin/reports', group: 'Dashboard', status: 'working', description: 'Operational and commercial reports.' },
+  { label: 'Product costs', href: '/admin/product-costs', group: 'Commerce', status: 'working', description: 'Enter or import effective-dated supplier costs; coverage activates profit.' },
+  { label: 'Payments', href: '/admin/payments', group: 'Commerce', status: 'working', description: 'Payment attempts, reconciliation thresholds and the retry queue.' },
+  { label: 'Gift cards and store credit', href: '/admin/credit', group: 'Commerce', status: 'working', description: 'Issue, approve and cancel gift cards and store credit; every movement on each card.' },
+  { label: 'Delivery zones', href: '/admin/pricing/delivery-zones', group: 'Commerce', status: 'working', description: 'Confirmed delivery fees per district; adopt estimates into zones.' },
+  { label: 'Delivery Control Centre', href: '/admin/delivery', group: 'Commerce', status: 'working', description: 'Delivery quoting model, calibration and launch controls.' },
+  { label: 'Locations', href: '/admin/locations', group: 'Commerce', status: 'working', description: 'The verified Uganda location dataset behind addresses and delivery.' },
+  { label: 'Compatibility', href: '/admin/compatibility', group: 'Commerce', status: 'working', description: 'Declared product compatibility used by Complete-your-setup.' },
+  { label: 'Homepage hero', href: '/admin/hero', group: 'Storefront', status: 'working', description: 'The hero slide library and rotation — live with no deploy.' },
+  { label: 'Header & navigation', href: '/admin/nav', group: 'Storefront', status: 'working', description: 'The header rail, featured cards, flash sale and offer figures.' },
+  { label: 'Homepage content', href: '/admin/homepage', group: 'Storefront', status: 'working', description: 'The trust strip and business-pathway cards below the hero.' },
+  { label: 'Ambassadors & models', href: '/admin/homepage/ambassadors', group: 'Storefront', status: 'working', description: 'Portraits of real people with GoldPlus products above the homepage footer; each needs a signed photo release.' },
+  { label: 'Storefront copy', href: '/admin/storefront-copy', group: 'Storefront', status: 'working', description: 'Support-page intro and checkout payment-method wording.' },
+  { label: 'Business info', href: '/admin/business-info', group: 'Storefront', status: 'working', description: 'Address, hours, phone, WhatsApp, socials and the same-day cutoff.' },
+  { label: 'Legal pages', href: '/admin/legal', group: 'Storefront', status: 'working', description: 'Privacy, terms, returns, warranty and cookies content.' },
+  { label: 'Media library', href: '/admin/media', group: 'Storefront', status: 'working', description: 'Upload and manage images used across the storefront.' },
+  { label: 'Copy quality', href: '/admin/copy-quality', group: 'Storefront', status: 'working', description: 'Storefront copy review against the brand voice rules.' },
+  { label: 'Campaigns', href: '/admin/campaigns', group: 'Marketing', status: 'working', description: 'Marketing campaigns and their scheduling.' },
+  { label: 'Media costs', href: '/admin/media-costs', group: 'Marketing', status: 'working', description: 'Import advertising spend — dry run, commit, correct; activates ROAS.' },
+  { label: 'UTM builder', href: '/admin/utm-builder', group: 'Marketing', status: 'working', description: 'Build consistent campaign links for attribution.' },
+  { label: 'Experiments', href: '/admin/experiments', group: 'Marketing', status: 'working', description: 'Governed A/B experiments and variants.' },
+  { label: 'Product feeds', href: '/admin/feeds', group: 'Marketing', status: 'working', description: 'Catalogue feeds for external channels.' },
+  { label: 'Demand signals', href: '/admin/demand', group: 'Marketing', status: 'working', description: 'Search and browse demand the catalogue does not yet serve.' },
+  { label: 'Surveys', href: '/admin/surveys', group: 'Marketing', status: 'working', description: 'Customer surveys and their responses.' },
+  { label: 'Notifications', href: '/admin/notifications', group: 'Marketing', status: 'working', description: 'Notification templates and wording overrides.' },
+  { label: 'WhatsApp templates', href: '/admin/notifications/whatsapp-templates', group: 'Marketing', status: 'working', description: 'Meta approval for every WhatsApp message (order updates, phone code, staff alerts), and one button to submit the missing ones.' },
+  { label: 'Loyalty & rewards', href: '/admin/loyalty', group: 'Marketing', status: 'working', description: 'Points programme, tiers, quests and gamification.' },
+  { label: 'Loyalty tiers', href: '/admin/loyalty/tiers', group: 'Marketing', status: 'working', description: 'Tier names, lifetime-point thresholds and activation.' },
+  { label: 'Points liability', href: '/admin/loyalty/liability', group: 'Marketing', status: 'working', description: 'Outstanding points, UGX value, daily snapshots and the finance CSV.' },
+  { label: 'Loyalty referrals', href: '/admin/loyalty/referrals', group: 'Marketing', status: 'working', description: 'Referral codes, statuses and rejection reasons.' },
+  { label: 'Reward draws', href: '/admin/loyalty/draws', group: 'Marketing', status: 'working', description: 'Draw campaigns, published odds, budget and compliance basis.' },
+  { label: 'Loyalty fraud signals', href: '/admin/loyalty/fraud', group: 'Marketing', status: 'working', description: 'Recent fraud signals raised by the loyalty engine.' },
+  { label: 'Points adjustments', href: '/admin/loyalty/adjustments', group: 'Marketing', status: 'working', description: 'Look up a member balance and post an audited manual adjustment.' },
+  { label: 'Lifecycle', href: '/admin/lifecycle', group: 'Marketing', status: 'working', description: 'Customer lifecycle stages and automations.' },
+  { label: 'Behavioural interventions', href: '/admin/behavioural-interventions', group: 'Marketing', status: 'working', description: 'Governed nudges shown to customers, with guardrails.' },
+  { label: 'Staff accounts', href: '/admin/users', group: 'System', status: 'working', description: 'People who can sign in to the back office, and their roles. Customers are not listed here.' },
+  { label: 'Roles & permissions', href: '/admin/roles', group: 'System', status: 'working', description: 'Role definitions and their permission grants.' },
+  { label: 'Audit log', href: '/admin/audit', group: 'System', status: 'working', description: 'Every governed mutation, actor and before/after.' },
+  { label: 'Two-step verification', href: '/admin/security/mfa', group: 'System', status: 'working', description: 'Set up and verify your authenticator — refunds, pricing approval and user or role changes ask for it.' },
+  { label: 'Release readiness', href: '/admin/release-readiness', group: 'System', status: 'diagnostic', description: 'Release gates and evidence.' },
+  // ── Organic Growth OS (Search Growth) — every figure measured, none invented.
+  { label: 'SEO Overview', href: '/admin/seo', group: 'Search Growth', status: 'working', description: 'Organic market share, open opportunities, alerts and integration status.' },
+  { label: 'Competitors', href: '/admin/seo/competitors', group: 'Search Growth', status: 'working', description: 'Competitor registry with a human-decided candidate review queue.' },
+  { label: 'Queries', href: '/admin/seo/queries', group: 'Search Growth', status: 'working', description: 'The tracked search-query universe: add queries or import a CSV.' },
+  { label: 'SERP Intelligence', href: '/admin/seo/serp', group: 'Search Growth', status: 'working', description: 'Real SERP observations per query, including manual operator capture.' },
+  { label: 'Market Share', href: '/admin/seo/market-share', group: 'Search Growth', status: 'working', description: 'Top-N share and outrank rates computed from observations only.' },
+  { label: 'Opportunities', href: '/admin/seo/opportunities', group: 'Search Growth', status: 'working', description: 'Generated opportunities with value, confidence, readiness, effort and risk shown separately.' },
+  { label: 'Technical SEO', href: '/admin/seo/technical', group: 'Search Growth', status: 'working', description: 'Crawl runs, per-page issues and technical alerts.' },
+  { label: 'Integrations', href: '/admin/seo/integrations', group: 'Search Growth', status: 'working', description: 'The integration marketplace: connect providers, manage vault credentials and run staged tests from the admin UI.' },
+  { label: 'Sync Operations', href: '/admin/seo/integrations/sync', group: 'Search Growth', status: 'working', description: 'Data freshness per connection and every sync job, with NO DATA kept distinct from STALE.' },
+  { label: 'Content & Experiments', href: '/admin/seo/content', group: 'Search Growth', status: 'working', description: 'Content gaps, the SEO change ledger and controlled experiments.' },
+  { label: 'AI Search', href: '/admin/ai-search', group: 'Search Growth', status: 'working', description: 'Where ChatGPT, Claude, Gemini and Perplexity name and cite the brand; citation gaps, competitors, evidence and approved actions.' },
+  { label: 'AEO manual log', href: '/admin/seo/aeo', group: 'Search Growth', status: 'working', description: 'Hand-recorded answer-engine observations (superseded by AI Search for measured runs).' },
+  { label: 'Battery Compatibility', href: '/admin/seo/battery-compatibility', group: 'Search Growth', status: 'working', description: 'Evidenced phone-to-battery fits behind the public finder; VERIFIED requires a source and a note.' },
+  { label: 'Storage Testing', href: '/admin/seo/storage-tests', group: 'Search Growth', status: 'working', description: 'Measured capacity and speed per storage product; untested stock is shown as NOT TESTED.' },
+  { label: 'Product Lifecycle SEO', href: '/admin/seo/product-lifecycle', group: 'Search Growth', status: 'working', description: 'Per-product URL dispositions for discontinued and out-of-stock products; no blanket redirects.' },
+  { label: 'Category × Competitor', href: '/admin/seo/category-matrix', group: 'Search Growth', status: 'working', description: 'Where competitors actually appear per category, keeping NOT TESTED distinct from absence.' },
+  { label: 'Work Queue', href: '/admin/seo/work-queue', group: 'Search Growth', status: 'working', description: 'Observation to measured outcome; an item cannot be DONE without a recorded result.' },
+  { label: 'Raw vs Rendered', href: '/admin/seo/render-diff', group: 'Search Growth', status: 'working', description: 'What a non-JavaScript crawler sees versus the rendered page; unrendered pages report UNKNOWN, never "no difference".' },
+  { label: 'Crawler Logs', href: '/admin/seo/crawler-logs', group: 'Search Growth', status: 'working', description: 'Crawl budget from ingested server access logs, with the verified-versus-claimed crawler split.' },
+  { label: 'robots.txt', href: '/admin/seo/robots', group: 'Search Growth', status: 'working', description: 'Versioned robots.txt with a line diff, two-person approval and rollback; exactly one version is live.' },
+  { label: 'Core Web Vitals', href: '/admin/seo/web-vitals', group: 'Search Growth', status: 'working', description: 'Measured lab (PageSpeed) and field (CrUX) vitals kept strictly separate; unmeasured URLs show as NOT MEASURED.' },
+  { label: 'Organic Intelligence', href: '/admin/seo/opportunities-intel', group: 'Search Growth', status: 'working', description: 'The persisted opportunity portfolio with the evidence behind every decision; absent providers read WAITING FOR PROVIDER, never zero.' },
+  { label: 'Intelligence Domains', href: '/admin/seo/intelligence', group: 'Search Growth', status: 'working', description: 'Query clusters and their page ownership, cannibalisation findings, content intelligence, content gaps, and the actions the system would propose but is not authorised to take.' },
+  { label: 'Performance Audit', href: '/admin/seo/performance-audit', group: 'Search Growth', status: 'working', description: 'The rolling ten-day, fourteen-provider audit of the live storefront: scheduler health, every measured cell, provider statuses, and a one-click request for an ad-hoc run on the host.' }
 ];
 
 // Group helper to replicate traditional display grouping without duplicate data
@@ -273,6 +528,22 @@ export const ADMIN_NAVIGATION: NavGroup[] = [
   {
     title: 'Commerce',
     items: ADMIN_NAVIGATION_ITEMS.filter(item => item.group === 'Commerce' && item.status !== 'hidden')
+  },
+  {
+    title: 'Storefront',
+    items: ADMIN_NAVIGATION_ITEMS.filter(item => item.group === 'Storefront' && item.status !== 'hidden')
+  },
+  {
+    title: 'Marketing',
+    items: ADMIN_NAVIGATION_ITEMS.filter(item => item.group === 'Marketing' && item.status !== 'hidden')
+  },
+  {
+    title: 'Search Growth',
+    items: ADMIN_NAVIGATION_ITEMS.filter(item => item.group === 'Search Growth' && item.status !== 'hidden')
+  },
+  {
+    title: 'Customers',
+    items: ADMIN_NAVIGATION_ITEMS.filter(item => item.group === 'Customers' && item.status !== 'hidden')
   },
   {
     title: 'Recommendations',

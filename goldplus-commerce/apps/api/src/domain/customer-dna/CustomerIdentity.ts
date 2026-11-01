@@ -16,7 +16,13 @@ export type IdentitySignalType =
   | 'VERIFIED_PHONE'
   | 'ORDER_CUSTOMER_RELATIONSHIP'
   | 'EXPLICIT_MERGE'
-  | 'STABLE_ANONYMOUS_ID';
+  | 'STABLE_ANONYMOUS_ID'
+  /**
+   * 0155: a deterministic contact key the customer TYPED (account email, a
+   * checkout email or phone) but that nobody verified. Links, never merges.
+   */
+  | 'CONTACT_EMAIL'
+  | 'CONTACT_PHONE';
 
 export const APPROVED_IDENTITY_SIGNALS: readonly IdentitySignalType[] = [
   'AUTHENTICATED_CUSTOMER_ID',
@@ -25,6 +31,8 @@ export const APPROVED_IDENTITY_SIGNALS: readonly IdentitySignalType[] = [
   'ORDER_CUSTOMER_RELATIONSHIP',
   'EXPLICIT_MERGE',
   'STABLE_ANONYMOUS_ID',
+  'CONTACT_EMAIL',
+  'CONTACT_PHONE',
 ];
 
 export type IdentityLinkStatus = 'ACTIVE' | 'CONFLICT' | 'MERGED' | 'SPLIT';
@@ -51,6 +59,8 @@ export function signalConfidence(signal: IdentitySignalType): IdentityConfidence
     case 'VERIFIED_PHONE':
       return 'HIGH';
     case 'ORDER_CUSTOMER_RELATIONSHIP':
+    case 'CONTACT_EMAIL':
+    case 'CONTACT_PHONE':
       return 'MEDIUM';
     case 'STABLE_ANONYMOUS_ID':
       return 'LOW';

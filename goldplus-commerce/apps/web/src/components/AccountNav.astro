@@ -1,0 +1,36 @@
+---
+interface Props {
+  active: 'overview' | 'orders' | 'saved' | 'credit' | 'loyalty' | 'rewards' | 'addresses' | 'preferences' | 'password' | 'sign-in' | 'privacy';
+}
+const { active } = Astro.props;
+
+const items = [
+  { key: 'overview', href: '/account', label: 'Overview' },
+  { key: 'orders', href: '/account/orders', label: 'Orders' },
+  { key: 'saved', href: '/account/saved', label: 'Saved' },
+  { key: 'credit', href: '/account/credit', label: 'Gift cards' },
+  { key: 'loyalty', href: '/account/loyalty', label: 'Points' },
+  { key: 'rewards', href: '/account/rewards', label: 'Rewards' },
+  { key: 'addresses', href: '/account/addresses', label: 'Addresses' },
+  { key: 'preferences', href: '/account/preferences', label: 'Preferences' },
+  { key: 'password', href: '/account/password', label: 'Password' },
+  { key: 'sign-in', href: '/account/sign-in', label: 'Sign-in methods' },
+  { key: 'privacy', href: '/account/privacy', label: 'Your data' },
+] as const;
+---
+
+<nav aria-label="Account sections" class="flex flex-wrap gap-2 mb-8">
+  {items.map((item) => (
+    <a
+      href={item.href}
+      aria-current={item.key === active ? 'page' : undefined}
+      class={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${
+        item.key === active
+          ? 'bg-brand-charcoal text-white'
+          : 'bg-white border border-brand-borderGrey text-brand-mutedGrey hover:text-brand-charcoal hover:border-brand-charcoal'
+      }`}
+    >
+      {item.label}
+    </a>
+  ))}
+</nav>

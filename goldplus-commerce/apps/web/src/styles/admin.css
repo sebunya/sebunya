@@ -1,0 +1,80 @@
+/* Admin stylesheet: the FULL Tailwind config (every admin page scanned). The storefront uses global.css with the storefront config. */
+@config "../../tailwind.config.mjs";
+/* Plus Jakarta Sans, self-hosted (2026-09-13). The Google Fonts stylesheet was
+   the single largest render-blocking request on the homepage (~950 ms on a
+   slow 4G phone, plus the fonts.gstatic hop it chained). The latin subsets live
+   in /public/fonts; `font-display: swap` never blocks text, and the metric-
+   matched fallback below keeps the swap from moving the layout. Weights match
+   the old request exactly: 400, 500, 600, 700, 800. */
+@font-face { font-family: 'Plus Jakarta Sans'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/plus-jakarta-sans-400-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Plus Jakarta Sans'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/plus-jakarta-sans-500-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Plus Jakarta Sans'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/plus-jakarta-sans-600-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Plus Jakarta Sans'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/plus-jakarta-sans-700-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Plus Jakarta Sans'; font-style: normal; font-weight: 800; font-display: swap; src: url('/fonts/plus-jakarta-sans-800-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+/* Metric-matched fallback so text set in Arial before the swap occupies the
+   same lines as Plus Jakarta Sans after it (no layout shift on font load). */
+/* Metric-matched stand-ins for Plus Jakarta Sans, one per weight (2026-10-08).
+   size-adjust is the width ratio of the site's own text (home, FAQ, battery
+   finder) set in each weight against Arial's metrics (Arimo); regular and
+   medium need ~104-105%, the bold weights ~99-101%, so one shared 101% rule
+   re-wrapped body text when the web font arrived (battery finder CLS 0.15).
+   Ascent/descent are the font's own 1.038/0.222 em over that size-adjust. */
+@font-face { font-family: 'Plus Jakarta Sans Fallback'; font-style: normal; font-weight: 400; src: local('Arial'), local('ArialMT'), local('Liberation Sans'), local('LiberationSans'), local('Arimo'), local('Helvetica'); size-adjust: 104.01%; ascent-override: 99.80%; descent-override: 21.34%; line-gap-override: 0%; }
+@font-face { font-family: 'Plus Jakarta Sans Fallback'; font-style: normal; font-weight: 500; src: local('Arial'), local('ArialMT'), local('Liberation Sans'), local('LiberationSans'), local('Arimo'), local('Helvetica'); size-adjust: 105.08%; ascent-override: 98.78%; descent-override: 21.13%; line-gap-override: 0%; }
+@font-face { font-family: 'Plus Jakarta Sans Fallback'; font-style: normal; font-weight: 600; src: local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'), local('LiberationSans-Bold'), local('Arimo Bold'), local('Helvetica Bold'); size-adjust: 99.36%; ascent-override: 104.47%; descent-override: 22.34%; line-gap-override: 0%; }
+@font-face { font-family: 'Plus Jakarta Sans Fallback'; font-style: normal; font-weight: 700; src: local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'), local('LiberationSans-Bold'), local('Arimo Bold'), local('Helvetica Bold'); size-adjust: 100.32%; ascent-override: 103.47%; descent-override: 22.13%; line-gap-override: 0%; }
+@font-face { font-family: 'Plus Jakarta Sans Fallback'; font-style: normal; font-weight: 800; src: local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'), local('LiberationSans-Bold'), local('Arimo Bold'), local('Helvetica Bold'); size-adjust: 101.24%; ascent-override: 102.53%; descent-override: 21.93%; line-gap-override: 0%; }
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+@layer base {
+  body {
+    @apply font-sans bg-brand-softGrey text-brand-charcoal antialiased selection:bg-brand-primary selection:text-brand-charcoal;
+  }
+
+  /* Premium focused states */
+  /* Focused fields: a solid ink ring (5.46:1 on white). The old 10% lime ring
+     measured 1.16:1 — a keyboard user could not see which field had focus. */
+    input:focus, select:focus, textarea:focus {
+    @apply outline-none ring-2 ring-brand-primaryInk border-brand-primaryInk transition-all duration-300;
+  }
+
+  /* Custom hide scrollbar utility */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+}
+
+
+/* Slice 13: respect reduced-motion preferences site-wide. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Keyboard focus that is always visible (WCAG 2.4.7 / 2.4.11, 2026-09-23).
+   Measured by tabbing the storefront: 48 of 270 focus stops showed an indicator
+   under 3:1 or none — lime rings at 10–40% on white. Fields get a solid ink ring;
+   anything without its own focus RING or OUTLINE utility gets a two-tone ring
+   (white inner, ink outer), visible on light AND dark surfaces. */
+:where(a[href], button, summary, [role="button"], [tabindex]:not([tabindex="-1"])):focus-visible:not([class*="focus:ring"]):not([class*="focus-visible:ring"]):not([class*="focus:outline"]):not([class*="focus-visible:outline"]),
+/* A visually hidden radio/checkbox inside a card label: the CARD shows the focus
+   (quote request, checkout, admin pickers) — before, nothing visible changed. */
+label:has(input.sr-only:focus-visible) {
+  outline: 2px solid #0A0A0A;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #FFFFFF;
+}

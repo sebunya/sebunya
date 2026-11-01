@@ -1,13 +1,103 @@
-import { pgTable, uuid, varchar, timestamp, boolean, primaryKey, integer, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, boolean, primaryKey, integer, index, uniqueIndex, date } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
   email: varchar('email', { length: 255 }).unique().notNull(),
   phone: varchar('phone', { length: 20 }).unique(),
-  passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+  // NULLABLE since 0106: a customer who signs up with Google has no password,
+  // and inventing one would be a credential nobody chose. Password login fails
+  // CLOSED on null — never treat it as an empty password that matches.
+  passwordHash: varchar('password_hash', { length: 255 }),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  /** 0085: verified phone is the loyalty identity spine (loyalty brief PART I). */
+  phoneVerifiedAt: timestamp('phone_verified_at', { withTimezone: true }),
+  /** 0087: shareable referral code, generated lazily on first request. */
+  referralCode: varchar('referral_code', { length: 12 }),
+  /** 0087: customer-supplied; powers birthday points and the 0090 age gate. */
+  dateOfBirth: date('date_of_birth'),
+  /** 0090: opted out of chance mechanics; the rest of loyalty is unaffected. */
+  chanceSelfExcludedAt: timestamp('chance_self_excluded_at', { withTimezone: true }),
+  // Slice 3B: immediate hard-revocation cutoff. Any access token issued at or
+  // before this instant is rejected. Set on password change, disable or an
+  // admin "log out everywhere". Null means no forced invalidation.
+  sessionsInvalidatedAfter: timestamp('sessions_invalidated_after', { withTimezone: true }),
 });
+
+/**
+ * Slice 3B — durable, revocable sessions. Each row is one refresh credential in
+ * a family (the durable session). Rotation marks a row consumed (rotatedAt) and
+ * inserts a new row in the same familyId; a presented credential whose row is
+ * already consumed is reuse, and the whole family is revoked. The refresh token
+ * is stored only as a SHA-256 hash.
+ */
+export const authSessions = pgTable(
+  'auth_sessions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    familyId: uuid('family_id').notNull(),
+    refreshHash: varchar('refresh_hash', { length: 64 }).notNull(),
+    jti: uuid('jti').notNull(),
+    keyVersion: integer('key_version').notNull().default(1),
+    permissionVersion: integer('permission_version').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }).defaultNow().notNull(),
+    accessExpiresAt: timestamp('access_expires_at', { withTimezone: true }).notNull(),
+    refreshExpiresAt: timestamp('refresh_expires_at', { withTimezone: true }).notNull(),
+    rotatedAt: timestamp('rotated_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedReason: varchar('revoked_reason', { length: 48 }),
+    userAgentHash: varchar('user_agent_hash', { length: 64 }),
+    ipHash: varchar('ip_hash', { length: 64 }),
+  },
+  (table) => ({
+    refreshHashUq: uniqueIndex('auth_sessions_refresh_hash_uq').on(table.refreshHash),
+    familyIdx: index('auth_sessions_family_idx').on(table.familyId),
+    refreshExpiryIdx: index('auth_sessions_refresh_expiry_idx').on(table.refreshExpiresAt),
+  }),
+);
+
+/** Slice 3C — privileged MFA. The TOTP secret is stored encrypted. */
+export const userMfa = pgTable('user_mfa', {
+  userId: uuid('user_id')
+    .references(() => users.id, { onDelete: 'cascade' })
+    .primaryKey(),
+  secretCiphertext: varchar('secret_ciphertext', { length: 512 }).notNull(),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  lastVerifiedAt: timestamp('last_verified_at', { withTimezone: true }),
+  failedAttempts: integer('failed_attempts').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** 0187: when a sign-in session (refresh-token family) last passed two-step verification. */
+export const authSessionStepUps = pgTable('auth_session_step_ups', {
+  familyId: uuid('family_id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }).notNull(),
+});
+
+/** Slice 3C — single-use break-glass codes, stored only as SHA-256 hashes. */
+export const userMfaRecoveryCodes = pgTable(
+  'user_mfa_recovery_codes',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    codeHash: varchar('code_hash', { length: 64 }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    codeHashUq: uniqueIndex('user_mfa_recovery_code_hash_uq').on(table.codeHash),
+    userIdx: index('user_mfa_recovery_codes_user_idx').on(table.userId),
+  }),
+);
 
 export const roles = pgTable('roles', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -50,6 +140,9 @@ export const identityLinks = pgTable(
     cartId: uuid("cart_id"),
     leadId: uuid("lead_id"),
     customerId: uuid("customer_id"),
+    // 0100 (R2): the server-side experience profile this observation belongs
+    // to — the column that finally gave this table a writer.
+    profileId: uuid("profile_id"),
     emailHash: varchar("email_hash", { length: 64 }),
     phoneHash: varchar("phone_hash", { length: 64 }),
     linkType: varchar("link_type", { length: 50 }).notNull(),
@@ -67,7 +160,53 @@ export const identityLinks = pgTable(
     cartIdx: index("identity_links_cart_idx").on(table.cartId),
     leadIdx: index("identity_links_lead_idx").on(table.leadId),
     customerIdx: index("identity_links_customer_idx").on(table.customerId),
+    profileIdx: index("identity_links_profile_idx").on(table.profileId),
+    profileAnonUq: uniqueIndex("identity_links_profile_anon_uq")
+      .on(table.profileId, table.anonymousId)
+      .where(sql`${table.linkType} = 'PROFILE_OBSERVED'`),
+    profileCustomerUq: uniqueIndex("identity_links_profile_customer_uq")
+      .on(table.profileId, table.customerId)
+      .where(sql`${table.linkType} = 'CUSTOMER_LOGIN'`),
     emailHashIdx: index("identity_links_email_hash_idx").on(table.emailHash),
     phoneHashIdx: index("identity_links_phone_hash_idx").on(table.phoneHash),
   })
 );
+
+/**
+ * Account recovery (0106). The raw token is NEVER stored — only its SHA-256 —
+ * so a database read cannot be replayed into a takeover. Single-use, short
+ * lived, and bound to one user.
+ */
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  requestedIp: varchar('requested_ip', { length: 64 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  hashUq: uniqueIndex('password_reset_tokens_hash_uq').on(table.tokenHash),
+  userIdx: index('password_reset_tokens_user_idx').on(table.userId, table.createdAt),
+  expiryIdx: index('password_reset_tokens_expiry_idx').on(table.expiresAt),
+}));
+
+/**
+ * Social identity (0106). Keyed on the provider's STABLE subject, never the
+ * email — users change emails and not every provider verifies them.
+ * `emailVerified` decides whether this identity may be auto-linked to an
+ * existing password account; linking on an unverified email is a takeover.
+ */
+export const userIdentities = pgTable('user_identities', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  provider: varchar('provider', { length: 20 }).notNull(),
+  subject: varchar('subject', { length: 255 }).notNull(),
+  email: varchar('email', { length: 255 }),
+  emailVerified: boolean('email_verified').default(false).notNull(),
+  linkedAt: timestamp('linked_at', { withTimezone: true }).defaultNow().notNull(),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+}, (table) => ({
+  providerSubjectUq: uniqueIndex('user_identities_provider_subject_uq').on(table.provider, table.subject),
+  userIdx: index('user_identities_user_idx').on(table.userId),
+}));

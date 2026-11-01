@@ -91,7 +91,7 @@ export const ADMIN_TRUST_MODULES: readonly AdminTrustModule[] = [
   {
     id: "legal",
     title: "Legal and policy",
-    description: "Review the public interim terms and privacy guidance currently available to customers.",
+    description: "Review the published terms and privacy policy currently in force for customers.",
     status: "Live",
     actionLabel: "Review public terms",
     href: "/terms",

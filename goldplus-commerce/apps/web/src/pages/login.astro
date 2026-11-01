@@ -1,15 +1,46 @@
 ---
+import { jsonApiHeaders } from '../lib/forwardClient';
+import { safeReturnTo } from '../lib/safeReturnTo';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import FormField from '../components/FormField.astro';
 import FormFeedback from '../components/FormFeedback.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
-import { sessionCookieValue } from '../lib/session';
+import SocialSignIn from '../components/auth/SocialSignIn.astro';
+import { SESSION_COOKIE_NAME, setSignInCookies } from '../lib/session';
+import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
+import { socialSignInMessage } from '../lib/socialSignInMessages';
+
+/**
+ * The visitor's address, forwarded so abuse control counts THEM and not this
+ * container. Reading it can throw in a prerendered context, so it degrades to
+ * the shared bucket rather than breaking the page.
+ */
+let clientAddress: string | null = null;
+try {
+  clientAddress = Astro.clientAddress ?? null;
+} catch {
+  clientAddress = null;
+}
+
 
 let status: 'success' | 'error' | null = null;
 let message: string | undefined;
 let values: { email?: string } = {};
 let notConfigured = false;
+
+// Arriving from /account/password: that change signed this device out too.
+if (Astro.request.method === 'GET' && Astro.url.searchParams.get('passwordChanged') === '1') {
+  status = 'success';
+  message = 'Your password was changed and you were signed out everywhere. Sign in with the new password.';
+}
+
+// Back from Google, Apple or Facebook without a session: say why (the callback passes the API's code).
+const socialError = Astro.request.method === 'GET' ? socialSignInMessage(Astro.url.searchParams.get('social_error')) : null;
+if (socialError) {
+  status = 'error';
+  message = socialError;
+}
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -17,22 +48,58 @@ if (Astro.request.method === 'POST') {
   const password = String(form.get('password') ?? '');
   values = { email };
 
-  if (!email || !password) {
+  // Login CSRF: the credentials ride in the form body, so SameSite does not
+  // stop a cross-site page from auto-submitting its OWN account here and
+  // signing this browser into it. Refused before the API is ever called.
+  const origin = checkRequestOrigin(Astro.request, import.meta.env as unknown as Record<string, string | undefined>);
+  if (!origin.allowed) {
+    status = 'error';
+    message = CROSS_SITE_MESSAGE;
+  } else if (!email || !password) {
     status = 'error';
     message = 'Email and password are required.';
   } else {
     try {
       const res = await fetch(`${apiBase}/auth/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8000),
+        headers: jsonApiHeaders(clientAddress),
         body: JSON.stringify({ email, password }),
       });
       const json: any = await res.json().catch(() => null);
 
       if (res.ok && json?.success && json.data?.token) {
-        Astro.response.headers.set('Set-Cookie', sessionCookieValue(json.data.token));
+        // Via Astro.cookies, NOT a raw Set-Cookie header: Astro drops headers set
+        // on Astro.response when the frontmatter returns Astro.redirect(), so the
+        // raw-header version signed nobody in — the customer bounced straight
+        // back to this page. Admin login always used Astro.cookies and worked,
+        // which is why the breakage hid on the customer side only.
+        setSignInCookies(Astro.cookies, json.data); // short token + refresh credential (renewed by the middleware)
+
+
+        // R9 (M8, fixation): the visit token is ROTATED at the authentication
+        // boundary — a pre-planted cookie must never become the token that
+        // gets linked to the freshly signed-in customer. The NEW token is
+        // linked; the old one keeps only its anonymous history.
+        const { mintSignedVisitToken } = await import('../lib/visitToken');
+        const { VISIT_COOKIE_NAME, visitCookieOptions } = await import('../middleware');
+        const rotatedToken = mintSignedVisitToken();
+        if (rotatedToken) {
+          Astro.cookies.set(VISIT_COOKIE_NAME, rotatedToken, visitCookieOptions());
+          try {
+            await fetch(`${apiBase}/recommendations/profile/link`, {
+              method: 'POST',
+              // 0155: the analytics visitor id this server set, so the API can
+              // link it to the customer (within their personalisation choice).
+              headers: { Authorization: `Bearer ${json.data.token}`, 'x-gp-visit': rotatedToken, ...((() => { const fp = Astro.cookies.get('_fp_cid')?.value; return fp && /^fp\.\d+\.[0-9a-f-]{36}$/.test(fp) ? { 'x-gp-fpcid': fp } : {}; })()) },
+              signal: AbortSignal.timeout(3000),
+            });
+          } catch {
+            // Continuity, not correctness.
+          }
+        }
         const returnTo = Astro.url.searchParams.get('returnTo');
-        const safe = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/account';
+        const safe = safeReturnTo(returnTo);
         return Astro.redirect(safe, 303);
       }
 
@@ -41,7 +108,15 @@ if (Astro.request.method === 'POST') {
         message = json.error.message;
       } else {
         status = 'error';
-        message = json?.error?.message ?? `Login failed (HTTP ${res.status}).`;
+        // Never the API's own text, and never an HTTP number: neither is
+        // something a customer can act on. A wrong password and an unknown
+        // email get the same sentence on purpose (no account enumeration).
+        message =
+          res.status === 401 ? 'That email and password do not match. Check them and try again, or reset your password.'
+          : res.status === 400 ? 'Check the email and password fields and try again.'
+          : res.status === 429 ? 'Too many attempts. Please wait a few minutes and try again.'
+          : res.status === 403 ? 'This account cannot be used right now. Please contact us and we will help.'
+          : 'We could not sign you in right now. Please try again in a moment.';
       }
     } catch {
       status = 'error';
@@ -51,30 +126,36 @@ if (Astro.request.method === 'POST') {
 }
 ---
 
-<BaseLayout title="Sign in" description="Sign in to your GoldPlus account.">
+<BaseLayout robotsMeta="noindex,follow" title="Sign in" description="Sign in to your GoldPlus account.">
   <div class="container mx-auto px-4 lg:px-8 py-12 md:py-20">
     <div class="max-w-md mx-auto">
       <h1 class="text-2xl md:text-3xl font-black text-gray-900 mb-2 tracking-tight">Sign in</h1>
-      <p class="text-slate-500 mb-6 text-sm leading-relaxed">Access your orders, addresses and account.</p>
+      <p class="text-slate-600 mb-6 text-sm leading-relaxed">Sign in with the email address and password you registered with to see your orders, addresses and points.</p>
 
       {notConfigured && (
         <div class="mb-6">
-          <Notice kind="not-configured" title="Sign-in not configured" message={message} />
+          <Notice kind="warning" title="Sign-in is temporarily unavailable" message="Please try again shortly. If you need an order urgently, look it up on the track-order page with its reference, or contact us." />
         </div>
       )}
       {!notConfigured && <FormFeedback status={status} message={message} />}
 
-      <form method="POST" action="/login" novalidate class="bg-white p-8 rounded-2xl border border-slate-200/80 shadow-xs space-y-5">
+      <SocialSignIn returnTo={Astro.url.searchParams.get('returnTo') ?? '/account'} intent="signin" />
+
+      <form method="POST" action="/login" novalidate class="bg-white p-8 rounded-2xl border border-slate-200/80 space-y-5">
         <FormField id="email" name="email" label="Email" type="email" required autocomplete="email" defaultValue={values.email} />
         <FormField id="password" name="password" label="Password" type="password" required autocomplete="current-password" />
         <button
           type="submit"
-          class="w-full bg-brand-primary text-gray-955 py-2.5 rounded-full font-bold text-xs tracking-wider uppercase hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none cursor-pointer hover:scale-[1.005] active:scale-[0.985]"
+          class="w-full min-h-12 bg-brand-primary text-gray-950 py-3 rounded-full font-bold text-sm hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none cursor-pointer hover:scale-[1.005] active:scale-[0.985]"
         >
           Sign in
         </button>
-        <p class="text-xs text-slate-400 text-center leading-relaxed">
-          Don't have an account? Customer registration is being rolled out — please contact support to get set up.
+        <p class="text-xs text-slate-500 text-center leading-relaxed">
+          <a href="/forgot-password" class="font-bold text-slate-600 underline hover:text-gray-900">Forgot your password?</a>
+        </p>
+        <p class="text-xs text-slate-500 text-center leading-relaxed">
+          New to GoldPlus?
+          <a href={`/register${Astro.url.searchParams.get('returnTo') ? `?returnTo=${encodeURIComponent(Astro.url.searchParams.get('returnTo') ?? '')}` : ''}`} class="font-bold text-slate-600 underline hover:text-gray-900">Create your account</a>
         </p>
       </form>
     </div>

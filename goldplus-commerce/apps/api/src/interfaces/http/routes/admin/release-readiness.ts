@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { Registry } from '../../../../infrastructure/Registry';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { PERMISSIONS } from '@goldplus/shared';
+import { z } from 'zod';
 
 type Variables = {
   adminUserId: string;
@@ -11,7 +13,21 @@ type Variables = {
 export const releaseReadinessAdminRouter = new Hono<{ Variables: Variables }>();
 
 releaseReadinessAdminRouter.use('*', authMiddleware);
-releaseReadinessAdminRouter.use('*', requirePermissions(['RELEASE_READINESS_VIEW']));
+// Floor gate on the REAL vocabulary. The original guard required the phantom
+// string 'RELEASE_READINESS_VIEW', which exists in no permission table — the
+// whole module was structurally forbidden to every account including Owner.
+// reports.read is the read floor; the access policy holds the per-action bar.
+releaseReadinessAdminRouter.use('*', requirePermissions([PERMISSIONS.REPORTS_READ]));
+// Handlers read adminUserId/adminPermissions; authMiddleware sets `user`.
+// Without this mapping every handler saw undefined and denied or 500'd.
+releaseReadinessAdminRouter.use('*', async (c, next) => {
+  const user = c.get('user' as never) as unknown as { id: string; permissions: string[] } | undefined;
+  if (user) {
+    c.set('adminUserId', user.id);
+    c.set('adminPermissions', user.permissions);
+  }
+  await next();
+});
 
 releaseReadinessAdminRouter.get('/summary', async (c) => {
   const adminUserId = c.get('adminUserId');
@@ -82,16 +98,30 @@ releaseReadinessAdminRouter.get('/runs/:runId', async (c) => {
     if (error.message === 'Run not found') {
       return c.json({ error: 'Run not found' }, 404);
     }
-    console.error(`Error fetching run ${runId}:`, error);
+    console.error('Error fetching run %s:', runId, error);
     return c.json({ error: 'Internal Server Error' }, 500);
   }
+});
+
+// A malformed body, or a status outside the decision vocabulary, is the
+// caller's mistake: 400, not the 500 an unguarded c.req.json() produced.
+const RELEASE_DECISION_STATUSES = ['DRAFT', 'READY_FOR_REVIEW', 'APPROVED_FOR_CONTROLLED_ACTIVATION', 'BLOCKED', 'NEEDS_FIXES', 'NOT_READY'] as const;
+const ReleaseDecisionBody = z.object({
+  runId: z.string().min(1).max(128),
+  status: z.enum(RELEASE_DECISION_STATUSES),
+  notes: z.string().max(5000).optional(),
+});
+const GateAcknowledgeBody = z.object({
+  runId: z.string().min(1).max(128),
+  reason: z.string().min(1).max(5000),
 });
 
 releaseReadinessAdminRouter.post('/decisions', async (c) => {
   const adminUserId = c.get('adminUserId');
   const adminPermissions = c.get('adminPermissions') || [];
-  const body = await c.req.json();
-  const { runId, status, notes } = body;
+  const parsed = ReleaseDecisionBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Invalid decision: runId and a known status are required.' }, 400);
+  const { runId, status, notes } = parsed.data;
   
   const registry = Registry.getInstance();
   try {
@@ -116,8 +146,9 @@ releaseReadinessAdminRouter.post('/gates/:gateId/acknowledge', async (c) => {
   const adminUserId = c.get('adminUserId');
   const adminPermissions = c.get('adminPermissions') || [];
   const gateId = c.req.param('gateId');
-  const body = await c.req.json();
-  const { runId, reason } = body;
+  const parsed = GateAcknowledgeBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Invalid acknowledgement: runId and a reason are required.' }, 400);
+  const { runId, reason } = parsed.data;
   
   const registry = Registry.getInstance();
   try {
@@ -130,7 +161,7 @@ releaseReadinessAdminRouter.post('/gates/:gateId/acknowledge', async (c) => {
     if (error.message === 'Gate result not found') {
       return c.json({ error: 'Gate not found' }, 404);
     }
-    console.error(`Error acknowledging gate ${gateId}:`, error);
+    console.error('Error acknowledging gate %s:', gateId, error);
     return c.json({ error: 'Internal Server Error' }, 500);
   }
 });

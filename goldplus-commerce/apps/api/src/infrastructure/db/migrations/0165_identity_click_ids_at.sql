@@ -1,0 +1,12 @@
+-- 0165 — When a visitor's ad click id last changed (2026-10-01).
+--
+-- first_party_identities.updated_at moves on every stitch: a sign-in, a page
+-- with no ad click, a second tab. It cannot say how old the click id on the
+-- row is, and the ad platforms only attribute within their own windows. This
+-- records the moment a click id on the row was first set or replaced.
+--
+-- Rows written before this migration keep NULL; readers fall back to
+-- updated_at for them (the behaviour until now).
+--
+-- Additive, nullable, idempotent. Rollback: drop the column.
+ALTER TABLE first_party_identities ADD COLUMN IF NOT EXISTS click_ids_at timestamp with time zone;

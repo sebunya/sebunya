@@ -36,7 +36,7 @@ export interface RecommendationRule {
 export interface RecommendationRuleAuditLog {
   id: string;
   ruleId: string;
-  action: 'CREATED' | 'UPDATED' | 'STATUS_CHANGED' | 'ARCHIVED' | 'PREVIEWED';
+  action: 'CREATED' | 'UPDATED' | 'STATUS_CHANGED' | 'ARCHIVED' | 'PREVIEWED' | 'ROLLED_BACK';
   before?: any;
   after?: any;
   performedBy?: string;
@@ -52,6 +52,13 @@ export interface PreviewResultPayload {
   suppressedProductIds: string[];
   pinnedProductIds: string[];
   warnings: string[];
+  guardrails?: {
+    emptyAfterRules: boolean;
+    itemsRemoved: Array<{ productId: string; name: string }>;
+    itemsAdded: Array<{ productId: string; name: string }>;
+    rankMoves: Array<{ productId: string; name: string; from: number; to: number }>;
+    lowStockPinned: Array<{ productId: string; name: string; stockQuantity: number }>;
+  };
 }
 
 export type ApiResponseWrapper<T> = 
@@ -153,6 +160,118 @@ export async function archiveRecommendationRule(token: string, id: string) {
 
 export async function getRecommendationRuleAuditLog(token: string, id: string) {
   return fetchAuthed<{ items: RecommendationRuleAuditLog[] }>(`/admin/recommendations/rules/${encodeURIComponent(id)}/audit-log`, token);
+}
+
+export interface ServingHealthPayload {
+  windowDays: number;
+  placements: Array<{ placement: string; responses: number; empty: number; fallbackServed: number; lastResponseAt: string | null }>;
+  totalResponses: number;
+}
+
+export interface LineageReportPayload {
+  windowDays: number;
+  total: number;
+  historicPreContract: number;
+  contractV2: number;
+  identityUnavailable: number;
+  railEventsMissingPlacement: number;
+  orphanClicks: number;
+  attributedAtcWithoutExposure: number;
+  profileStamped: number;
+}
+
+export interface SearchIntelligencePayload {
+  topQueries: Array<{ query: string; searchCount: number; lastResultCount: number }>;
+  zeroResultQueries: Array<{ query: string; searchCount: number; zeroResultCount: number }>;
+  clickedNeverConverted: Array<{ query: string; clickCount: number; productId: string }>;
+}
+
+export interface ModelReadinessPayload {
+  stage: string;
+  policyVersion: string;
+  gates: Array<{ gate: string; required: number; actual: number; met: boolean }>;
+  blockedBy: string[];
+  recommendationExperiments: Array<{ key: string; status: string; srm: { total: number; chiSquare: number | null; srmSuspected: boolean; note: string } | null }>;
+  /** Present from 2026-09-24: rec_ experiments do not change serving yet. */
+  experimentsNote?: string;
+  statement: string;
+}
+
+export interface CommercialMetric<T = number> {
+  state: "OK" | "NOT_ENOUGH_DATA" | "PARTIAL" | "UNAVAILABLE";
+  value?: T;
+  reason?: string;
+  numerator?: number;
+  denominator?: number;
+  minSample?: number;
+  missingComponents?: string[];
+}
+
+export interface CommercialReportPayload {
+  windowDays: number;
+  attributionModel: { name: string; clickWindowDays: number; atcWindowDays: number; viewThroughWindowDays: number };
+  totals: {
+    paidOrders: number;
+    paidOrdersWithProfile: number;
+    paidOrdersUnattributable: number;
+    reversedOrdersExcluded: number;
+    attributedOrders: number;
+    attributedOrderItems: number;
+    attributedUnits: number;
+    directAttributedNetUgx: number;
+    assistedNetUgx: number;
+    organicPaidNetUgx: number;
+  };
+  revenue: {
+    directAttributedGrossUgx: CommercialMetric;
+    directAttributedNetUgx: CommercialMetric;
+    assistedNetUgx: CommercialMetric;
+    organicPaidNetUgx: CommercialMetric;
+    incrementalRevenue: CommercialMetric;
+  };
+  funnel: {
+    raw: { impressions: number; clicks: number; addToCarts: number; profilesWithTouch: number; paidOrdersFromTouchedProfiles: number; fulfilledOrdersFromTouchedProfiles: number; completedOrdersFromTouchedProfiles: number };
+    impressionToPaidOrderRate: CommercialMetric;
+    clickToPaidOrderRate: CommercialMetric;
+    atcToPaidOrderRate: CommercialMetric;
+    paidToCompletedRate: CommercialMetric;
+  };
+  profit: { attributedGrossMarginUgx: CommercialMetric; contributionProfit: CommercialMetric };
+  customers: {
+    cohorts: CommercialMetric<Array<{ cohort: string; customers: number; netRevenue30dUgx: number; netRevenue60dUgx: number; netRevenue90dUgx: number; repeatPurchasers: number }>>;
+    predictedClv: CommercialMetric;
+  };
+  roas: { reportedRoas: CommercialMetric; contributionRoas: CommercialMetric; mediaSpendMinor: number };
+  dataQuality: { paidOrdersWithoutProfile: number; paidOrdersWithoutLines: number; atcWithoutPriorClickOrImpression: number; linesMissingCogsSnapshot: number; mediaSpendRows: number };
+  attributedLines: Array<{ orderNumber: string; productName: string; quantity: number; netRevenueUgx: number; mechanism: string; placement: string | null }>;
+}
+
+export async function getCommercialReport(token: string, windowDays = 30) {
+  return fetchAuthed<CommercialReportPayload>(`/admin/recommendations/analytics/commercial?windowDays=${windowDays}`, token);
+}
+
+export async function getModelReadiness(token: string) {
+  return fetchAuthed<ModelReadinessPayload>(`/admin/recommendations/model/readiness`, token);
+}
+
+export async function getServingHealth(token: string, windowDays = 7) {
+  return fetchAuthed<ServingHealthPayload>(`/admin/recommendations/analytics/serving?windowDays=${windowDays}`, token);
+}
+
+export async function getLineageReport(token: string, windowDays = 30) {
+  return fetchAuthed<LineageReportPayload>(`/admin/recommendations/analytics/lineage?windowDays=${windowDays}`, token);
+}
+
+export async function getSearchIntelligence(token: string, limit = 10) {
+  return fetchAuthed<SearchIntelligencePayload>(`/admin/recommendations/analytics/search-intelligence?limit=${limit}`, token);
+}
+
+export async function rollbackRecommendationRule(token: string, ruleId: string, auditLogId: string) {
+  return fetchAuthed<RecommendationRule>(
+    `/admin/recommendations/rules/${encodeURIComponent(ruleId)}/rollback/${encodeURIComponent(auditLogId)}`,
+    token,
+    { method: 'POST' },
+  );
 }
 
 export async function previewRecommendationRules(token: string, payload: {

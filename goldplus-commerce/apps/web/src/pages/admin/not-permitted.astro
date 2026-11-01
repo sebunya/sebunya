@@ -1,0 +1,29 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../lib/session";
+import { safeReturnTo } from "../../lib/safeReturnTo";
+
+/**
+ * Where an admin page sends a signed-in user whose role lacks the permission
+ * it needs (API 403). Pages used to clear the session and bounce to /admin/login
+ * with returnTo pointing back at themselves — sign in, land on the same page,
+ * be signed out again: a loop that looked like a broken admin. A 403 is a
+ * permission gap, not an expired session.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login", 303);
+const from = safeReturnTo(Astro.url.searchParams.get("from"), "/admin");
+const need = (Astro.url.searchParams.get("need") ?? "").replace(/[^a-z0-9._]/gi, "").slice(0, 60);
+---
+<AdminLayout title="Not permitted" description="Your role cannot open this page.">
+  <div class="container mx-auto max-w-2xl px-6 py-10">
+    <div role="alert" class="rounded-2xl border border-amber-200 bg-amber-50 p-6">
+      <h1 class="text-lg font-black text-amber-950">Your role cannot open this page</h1>
+      <p class="mt-2 text-sm text-amber-900">
+        You are signed in, but your role does not carry the permission <span class="font-mono">{from}</span> needs{need ? <> (<span class="font-mono">{need}</span>)</> : ""}.
+        Ask an administrator to grant it on the Users or Roles screen.
+      </p>
+      <a href="/admin" class="mt-4 inline-block rounded-lg bg-brand-dark px-4 py-2 text-xs font-black text-white">Back to the admin home</a>
+    </div>
+  </div>
+</AdminLayout>

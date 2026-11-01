@@ -6,10 +6,20 @@ import { Registry } from '../../../../infrastructure/Registry.js';
 const registry = Registry.getInstance();
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
+import { activationRefusal } from '../../activationErrors';
 
 export const controlledActivationRoutes = new Hono<{ Variables: { user?: { id: string; email: string; permissions: string[] } } }>();
 
 controlledActivationRoutes.use('*', authMiddleware);
+
+// Known use-case refusals (not found, forbidden, separation of duties, missing
+// prerequisites) answer with their status and reason; anything else still goes
+// to the global handler as a generic 500.
+controlledActivationRoutes.onError((err, c) => {
+  const refusal = activationRefusal(err);
+  if (!refusal) throw err;
+  return c.json({ success: false, error: { code: refusal.code, message: refusal.message } }, refusal.status);
+});
 
 controlledActivationRoutes.get('/summary', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   const user = c.get('user');

@@ -27,10 +27,14 @@ export interface LifecycleSegmentsReport {
  * order/consent data. Read-only; contains no names, contacts, or scores.
  */
 export class GetLifecycleSegmentsUseCase {
-  constructor(private readonly reads: ILifecycleReadRepository) {}
+  /** `now` is injectable so stage boundaries (90/180 days) can be tested against a fixed date. */
+  constructor(
+    private readonly reads: ILifecycleReadRepository,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
 
   async execute(): Promise<LifecycleSegmentsReport> {
-    const now = new Date();
+    const now = this.now();
     const stats = await this.reads.listCustomerOrderStats();
     const consent = await this.reads.getPersonalisationConsent(stats.map((s) => s.userId));
 
