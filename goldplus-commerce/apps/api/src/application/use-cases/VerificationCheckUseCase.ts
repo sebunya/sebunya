@@ -6,7 +6,7 @@ import * as nodeCrypto from 'node:crypto';
 export class VerificationCheckUseCase {
   constructor(private readonly verificationRepo: DrizzleVerificationRepository) {}
 
-  public async execute(code: string, ipAddress?: string, userAgent?: string): Promise<{ success: boolean; productId?: string }> {
+  public async execute(code: string, ipAddress?: string, userAgent?: string, userId?: string | null): Promise<{ success: boolean; productId?: string }> {
     const codeInfo = await this.verificationRepo.findCode(code);
     
     const isSuccessful = !!codeInfo && !codeInfo.isUsed;
@@ -19,7 +19,8 @@ export class VerificationCheckUseCase {
       productId,
       isSuccessful,
       ipAddress || null,
-      userAgent || null
+      userAgent || null,
+      userId ?? null,
     );
 
     await this.verificationRepo.saveAttempt(attempt);

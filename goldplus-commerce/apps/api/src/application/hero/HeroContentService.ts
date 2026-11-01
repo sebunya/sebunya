@@ -1,0 +1,391 @@
+import type { IHeroRepository, StoredHeroSlide } from '../ports/IHeroRepository';
+import {
+  HERO_FALLBACK_KEY,
+  HERO_SETTINGS_DEFAULT,
+  HERO_SLIDE_LIBRARY,
+  HERO_SELECTION_TUNING,
+  selectHeroSlides,
+  type HeroSettingsSeed,
+  type HeroSelectionContext,
+} from '../../domain/hero/HeroSlideLibrary';
+import { flashSaleHasEnded, validateHeroSlide, type HeroSlideFieldErrors } from '../../domain/hero/HeroSlideValidation';
+import { DEFAULT_TAXONOMY, kampalaCutoff } from '@goldplus/shared';
+
+/**
+ * Hero content, composed for the two audiences that read it.
+ *
+ * The STOREFRONT gets `getPublicPayload`: enabled slides in authored order,
+ * the settings, and the engine config derived from the slides' own campaign
+ * data. Guard rails apply here, not in the template — never fewer than one
+ * slide (fall back to the evergreen authentic slide), and a dead CTA URL is
+ * blanked so the template hides the button rather than shipping a dead link.
+ *
+ * The EDITOR gets `getAdminPayload`: every slide, each with its validation
+ * errors and a past-sale flag, so a marketer sees what is wrong before it
+ * ships.
+ */
+
+export interface HeroPublicSlide {
+  slideKey: string;
+  theme: string;
+  tint: string;
+  media: string;
+  kicker: string;
+  headline: string;
+  subcopy: string;
+  ctaLabel: string;
+  ctaUrl: string;
+  finePrint: string;
+  imageUrl: string;
+  imageAlt: string;
+  priority: number;
+  extras: Record<string, unknown>;
+}
+
+export interface HeroEngineConfig {
+  show: number;
+  dwell: number;
+  autoplay: boolean;
+  /**
+   * From the live promotion, never from the slide row. A hand-typed
+   * `extras.saleEndsIso` once expired while a real sale ran unadvertised.
+   */
+  flashSaleEnds: string | null;
+  /** The live promotion's percentage, so the slide can say a true number. */
+  flashPercent: number | null;
+  cutoffHour: number;
+  prizes: Array<{ pct: number; code: string; w: number }>;
+}
+
+export interface HeroPublicPayload {
+  slides: HeroPublicSlide[];
+  config: HeroEngineConfig;
+}
+
+/**
+ * The per-visitor signals the personalised payload consumes. Declared here as a
+ * plain structural shape so the application layer never imports the
+ * infrastructure signals service — the thin route fetches the signals and passes
+ * them in. The infrastructure `HeroSignals` satisfies this shape.
+ */
+export interface HeroPersonalisationSignals {
+  visits: number;
+  hasOrdered: boolean;
+  categoryAffinity: Array<{ categorySlug: string; score: number }>;
+  preferredProduct: { imageUrl: string; alt: string; categorySlug: string } | null;
+  loyalty: { points: number; tierLabel: string; goalRemaining: number; progress?: number | null } | null;
+  stockBySlug: Record<string, boolean>;
+  /** First-party identity for a signed-in customer (null when anonymous). */
+  customer?: { firstName: string | null; area: string | null } | null;
+  /** 0193: the area the visitor told us ("Deliver to"), never guessed; null when unknown. */
+  zone?: { label: string; district: string; sameDay: boolean } | null;
+}
+
+/** Presentation inputs the server cannot get from the profile: the cart, the URL and the clock. */
+export interface HeroPersonalisationInput {
+  cartItems: number;
+  referred: boolean;
+  now: Date;
+  /** QA override (?gp=new|returning|regular|expired|aftercutoff), else null. */
+  force?: string | null;
+}
+
+export interface HeroPersonalisedPayload extends HeroPublicPayload {
+  /** slideKey of the lead (first, active) slide the storefront must render active. */
+  lead: string;
+  /** Product to show in the arch on product-agnostic slides, or null. */
+  preferredArch: { imageUrl: string; alt: string } | null;
+}
+
+export interface HeroAdminSlide extends StoredHeroSlide {
+  errors: HeroSlideFieldErrors[];
+  saleEnded: boolean;
+}
+
+const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+
+/**
+ * The loyalty meter, from the operator's ACTIVE tiers and the customer's
+ * lifetime earned points (the rule tiers are assigned by). Pure, so the bar
+ * can never again be a fixed fill: `progress` is how far along the current
+ * step to the next tier the customer really is, 1 at the top tier, and null
+ * when no tier is configured (no goal is shown at all).
+ */
+export function heroTierMeter(
+  lifetimePoints: number,
+  tiers: ReadonlyArray<{ name: string; threshold: number }>,
+): { tierLabel: string; goalRemaining: number; progress: number | null } {
+  const lifetime = Math.max(0, Number.isFinite(lifetimePoints) ? lifetimePoints : 0);
+  const sorted = tiers.filter((t) => Number.isFinite(t.threshold) && t.name).slice().sort((a, b) => a.threshold - b.threshold);
+  if (sorted.length === 0) return { tierLabel: '', goalRemaining: 0, progress: null };
+  const current = sorted.filter((t) => lifetime >= t.threshold).pop() ?? null;
+  const next = sorted.find((t) => t.threshold > lifetime) ?? null;
+  if (!next) return { tierLabel: current!.name, goalRemaining: 0, progress: 1 };
+  const floor = current ? current.threshold : 0;
+  const span = next.threshold - floor;
+  const progress = span > 0 ? Math.min(1, Math.max(0, (lifetime - floor) / span)) : 0;
+  return { tierLabel: next.name, goalRemaining: next.threshold - lifetime, progress: Math.round(progress * 100) / 100 };
+}
+
+/** The shop's own same-day cutoff and closed days (business_info, the one authority). */
+export type HeroShopHoursSource = () => Promise<{ cutoffHour: number; closedDays: number[] }>;
+/** Whether the points slides can keep their promises. */
+export type HeroProgrammeSource = () => Promise<{ loyaltyActive: boolean; referralEarns: boolean }>;
+
+/** Shape of the live storefront discount the sale slide is driven by. */
+export type HeroDiscountSource = () => Promise<
+  { active: false } | { active: true; percent: number; endsIso: string }
+>;
+
+export class HeroContentService {
+  constructor(
+    private readonly repo: IHeroRepository,
+    /** Optional so tests and tools without pricing still get a hero. */
+    private readonly discount: HeroDiscountSource = async () => ({ active: false }),
+    /**
+     * business_info's cutoff and closed days. The slide row's extras.cutoffHour
+     * used to be a second authority that always won, so the pill counted down
+     * to 5pm while the headline (and the nav) said the operator's hour.
+     */
+    private readonly shopHours?: HeroShopHoursSource,
+    /** The loyalty programme state; the points slides are withheld when it is off. */
+    private readonly programme?: HeroProgrammeSource,
+  ) {}
+
+  private async readShopHours(): Promise<{ cutoffHour: number; closedDays: number[] } | null> {
+    if (!this.shopHours) return null;
+    try {
+      const h = await this.shopHours();
+      return Number.isFinite(h?.cutoffHour) && Array.isArray(h?.closedDays) ? h : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Unknown (no source, or a failed read) = undefined, which keeps the rail as it was. */
+  private async readProgramme(): Promise<{ loyaltyActive?: boolean; referralEarns?: boolean }> {
+    if (!this.programme) return {};
+    try {
+      return await this.programme();
+    } catch {
+      return {};
+    }
+  }
+
+  /** The sale, or nothing — an outage must never invent one. */
+  private async liveDiscount(): Promise<{ active: false } | { active: true; percent: number; endsIso: string }> {
+    try {
+      return await this.discount();
+    } catch {
+      return { active: false };
+    }
+  }
+
+  private toPublic(s: StoredHeroSlide): HeroPublicSlide {
+    // Blank a dead CTA so the template hides the button (§2.5) rather than
+    // shipping href="#".
+    const url = (s.ctaUrl ?? '').trim();
+    const safeUrl = url && url !== '#' && (url.startsWith('/') || /^https?:\/\//i.test(url)) ? url : '';
+    return {
+      slideKey: s.slideKey, theme: s.theme, tint: s.tint, media: s.media,
+      kicker: s.kicker, headline: s.headline, subcopy: s.subcopy,
+      ctaLabel: safeUrl ? s.ctaLabel : '', ctaUrl: safeUrl,
+      finePrint: s.finePrint, imageUrl: s.imageUrl, imageAlt: s.imageAlt,
+      priority: s.priority, extras: s.extras,
+    };
+  }
+
+  private async deriveConfig(
+    slides: StoredHeroSlide[],
+    settings: HeroSettingsSeed,
+    shop?: { cutoffHour: number } | null,
+  ): Promise<HeroEngineConfig> {
+    const sameday = slides.find((s) => s.slideKey === 'sameday');
+    const scratch = slides.find((s) => s.slideKey === 'scratch');
+    const prizes = Array.isArray(scratch?.extras?.prizes) ? (scratch!.extras.prizes as HeroEngineConfig['prizes']) : [];
+    const sale = await this.liveDiscount();
+    return {
+      show: settings.slidesShown,
+      dwell: settings.dwellMs,
+      autoplay: settings.autoplay,
+      flashSaleEnds: sale.active ? sale.endsIso : null,
+      flashPercent: sale.active ? sale.percent : null,
+      // business_info first; the slide's own value only if that read failed.
+      cutoffHour: shop ? shop.cutoffHour : num(sameday?.extras?.cutoffHour, 17),
+      prizes,
+    };
+  }
+
+  /** What the storefront renders. Never returns zero slides. */
+  async getPublicPayload(): Promise<HeroPublicPayload> {
+    let slides: StoredHeroSlide[];
+    let settings: HeroSettingsSeed;
+    try {
+      [slides, settings] = await Promise.all([this.repo.listEnabled(), this.repo.getSettings()]);
+    } catch {
+      // The hero must never be a database outage. Fall back to the library.
+      return this.libraryFallback();
+    }
+    const shop = await this.readShopHours();
+
+    if (slides.length === 0) {
+      // Everything disabled → the evergreen slide, never an empty box (§2.5).
+      const authentic = HERO_SLIDE_LIBRARY.find((s) => s.slideKey === HERO_FALLBACK_KEY)!;
+      return {
+        slides: [this.toPublic({ ...authentic, id: 'fallback', updatedAt: new Date() })],
+        config: await this.deriveConfig([], settings, shop),
+      };
+    }
+
+    return { slides: slides.map((s) => this.toPublic(s)), config: await this.deriveConfig(slides, settings, shop) };
+  }
+
+  /** Enabled slides + settings, falling back to the library if the DB is unreachable. */
+  private async loadStored(): Promise<{ slides: StoredHeroSlide[]; settings: HeroSettingsSeed }> {
+    try {
+      const [slides, settings] = await Promise.all([this.repo.listEnabled(), this.repo.getSettings()]);
+      if (slides.length > 0) return { slides, settings };
+      // Everything disabled → the evergreen slide, never an empty box (§2.5).
+      const authentic = HERO_SLIDE_LIBRARY.find((s) => s.slideKey === HERO_FALLBACK_KEY)!;
+      return { slides: [{ ...authentic, id: 'fallback', updatedAt: new Date() }], settings };
+    } catch {
+      const slides = HERO_SLIDE_LIBRARY.filter((s) => s.enabled).map((s) => ({ ...s, id: s.slideKey, updatedAt: new Date() }));
+      return { slides, settings: HERO_SETTINGS_DEFAULT };
+    }
+  }
+
+  /**
+   * What the storefront renders for THIS visitor — selection and enrichment done
+   * on the server (2026-08-07). The browser no longer selects, fetches signals or
+   * gates on consent: personalisation is a first-party feature that runs for
+   * everyone. The result is per-visitor and MUST NOT be shared-cached.
+   *
+   * Signals come from the profile (structural param, so no infra import); the
+   * cart, the referral flag and the clock come from the request. Uganda is a
+   * fixed UTC+3 with no DST, so the same-day cutoff and the flash countdown are
+   * evaluated in Kampala time from the server clock.
+   */
+  async buildPersonalisedPayload(
+    signals: HeroPersonalisationSignals,
+    input: HeroPersonalisationInput,
+  ): Promise<HeroPersonalisedPayload> {
+    const { slides: stored, settings } = await this.loadStored();
+    const [shop, programme] = await Promise.all([this.readShopHours(), this.readProgramme()]);
+    const config = await this.deriveConfig(stored, settings, shop);
+
+    // Visitor tier mirrors the old client counter; hasOrdered stays a separate
+    // flag (the rules use both). Regular does NOT fold in hasOrdered, to avoid
+    // double-counting a customer who is also a frequent visitor.
+    const visits = Math.max(1, signals.visits || 1);
+    // The operator's closed days, not a hardcoded Sunday. A failed read keeps
+    // the old Sunday default.
+    const cutoff = kampalaCutoff(input.now, { cutoffHour: config.cutoffHour, closedDays: shop ? shop.closedDays : [0] });
+    const saleLive = config.flashSaleEnds ? input.now.getTime() < new Date(config.flashSaleEnds).getTime() : false;
+
+    const ctx: HeroSelectionContext = {
+      isNew: visits <= 1,
+      isReturning: visits > 1,
+      isRegular: visits >= 4,
+      hasOrdered: signals.hasOrdered,
+      saleLive,
+      beforeCutoff: cutoff.beforeCutoff,
+      cartItems: Math.max(0, input.cartItems || 0),
+      // Scratch state lives in the browser; the client still shows an already
+      // revealed prize. Server-side the slide stays eligible.
+      scratched: false,
+      referred: input.referred,
+      serverCats: signals.categoryAffinity.map((a) => a.categorySlug).filter(Boolean),
+      loyaltyActive: programme.loyaltyActive,
+      referralEarns: programme.referralEarns,
+      outsideSameDayArea: signals.zone ? !signals.zone.sameDay : false,
+    };
+
+    // QA overrides (?gp=…) — the same set the client used, now applied server-side.
+    switch (input.force) {
+      case 'new': ctx.isNew = true; ctx.isReturning = false; ctx.isRegular = false; break;
+      case 'returning': ctx.isNew = false; ctx.isReturning = true; ctx.isRegular = false; break;
+      case 'regular': ctx.isNew = false; ctx.isReturning = true; ctx.isRegular = true; break;
+      case 'expired': ctx.saleLive = false; break;
+      case 'aftercutoff': ctx.beforeCutoff = false; break;
+      default: break;
+    }
+
+    const chosen = selectHeroSlides(stored, ctx, { ...HERO_SELECTION_TUNING, show: config.show });
+    const safe = chosen.length > 0 ? chosen : stored.slice(0, 1);
+
+    // Enrich the chosen slides in place: real loyalty balance, category deep-link,
+    // and — for a signed-in customer — first-party PII (greet by name, name their
+    // delivery area). Rendered as escaped text per-visitor; never shared-cached.
+    const affinityCat = ctx.serverCats[0] ?? null;
+    const firstName = (signals.customer?.firstName || '').trim().slice(0, 40) || null;
+    // The area the visitor told us ("Deliver to") names the same-day slide for guests too; a signed-in customer's
+    // saved-address district is the fallback.
+    const area = ((signals.zone?.sameDay ? signals.zone.label.split(',')[0] : '') || signals.customer?.area || '').trim().slice(0, 60) || null;
+    const enriched = safe.map((s) => {
+      const extras = { ...(s.extras ?? {}) };
+      let ctaUrl = s.ctaUrl;
+      let ctaLabel = s.ctaLabel;
+      let kicker = s.kicker;
+      if (s.slideKey === 'loyalty' && signals.loyalty) {
+        extras.points = signals.loyalty.points;
+        extras.goalLabel =
+          signals.loyalty.goalRemaining > 0
+            ? `${signals.loyalty.goalRemaining} to ${signals.loyalty.tierLabel}`
+            : signals.loyalty.tierLabel;
+        // The bar's fill is the customer's real progress, or no bar at all.
+        if (typeof signals.loyalty.progress === 'number') extras.progress = signals.loyalty.progress;
+      }
+      if ((s.slideKey === 'range' || s.slideKey === 'newarrivals') && affinityCat && ctaUrl.startsWith('/shop')) {
+        ctaUrl = `/shop?category=${encodeURIComponent(affinityCat)}`;
+        // The slide's copy promises the whole range; the button now lands in
+        // ONE category, so the button says which ("See what's new in Sound").
+        // A slug the taxonomy does not know keeps the authored label.
+        const catName = categoryShortName(affinityCat);
+        if (catName && !/\bin\b/i.test(ctaLabel)) ctaLabel = `${ctaLabel} in ${catName}`;
+      }
+      // PII personalisation: greet a returning customer by name; name their area.
+      if (firstName && (s.slideKey === 'referral' || s.slideKey === 'loyalty')) {
+        kicker = `Welcome back, ${firstName}`;
+      }
+      if (area && s.slideKey === 'sameday') {
+        kicker = `${s.kicker} · ${area}`;
+      }
+      return this.toPublic({ ...s, ctaUrl, ctaLabel, extras, kicker });
+    });
+
+    return {
+      slides: enriched,
+      config,
+      lead: safe[0].slideKey,
+      preferredArch: signals.preferredProduct
+        ? { imageUrl: signals.preferredProduct.imageUrl, alt: signals.preferredProduct.alt }
+        : null,
+    };
+  }
+
+  private async libraryFallback(): Promise<HeroPublicPayload> {
+    const slides = HERO_SLIDE_LIBRARY.filter((s) => s.enabled).map((s) => this.toPublic({ ...s, id: s.slideKey, updatedAt: new Date() }));
+    const asStored = HERO_SLIDE_LIBRARY.map((s) => ({ ...s, id: s.slideKey, updatedAt: new Date() }));
+    return { slides, config: await this.deriveConfig(asStored, HERO_SETTINGS_DEFAULT) };
+  }
+
+  /** Every slide with its validation state, for the editor. */
+  async getAdminPayload(): Promise<{ slides: HeroAdminSlide[]; settings: HeroSettingsSeed }> {
+    const [slides, settings] = await Promise.all([this.repo.listAll(), this.repo.getSettings()]);
+    return {
+      slides: slides.map((s) => ({
+        ...s,
+        errors: validateHeroSlide(s),
+        saleEnded: s.slideKey === 'flash' && s.enabled && flashSaleHasEnded(s.extras),
+      })),
+      settings,
+    };
+  }
+}
+
+/** "Sound Devices" → "Sound": the word a shopper uses, not the taxonomy's. */
+export function categoryShortName(slug: string): string | null {
+  const cat = DEFAULT_TAXONOMY.find((c) => c.slug === slug);
+  if (!cat) return null;
+  return cat.name.replace(/\s+(devices|accessories)$/i, '').trim() || cat.name;
+}

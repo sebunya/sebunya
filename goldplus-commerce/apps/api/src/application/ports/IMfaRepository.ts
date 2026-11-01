@@ -1,0 +1,37 @@
+export interface MfaRecord {
+  userId: string;
+  secretCiphertext: string;
+  confirmedAt: Date | null;
+  lastVerifiedAt: Date | null;
+  /** Consecutive failed step-up codes since the last success. */
+  failedAttempts: number;
+  /** When the record last changed; bounds the failure window. */
+  updatedAt: Date;
+}
+
+/**
+ * Persistence for privileged MFA. The TOTP secret arrives already encrypted and
+ * recovery codes already hashed — this port never sees a plaintext secret or
+ * code.
+ */
+export interface IMfaRepository {
+  get(userId: string): Promise<MfaRecord | null>;
+  /** Create or replace an (unconfirmed) enrolment with a new encrypted secret. */
+  upsertEnrolment(userId: string, secretCiphertext: string): Promise<void>;
+  /** Mark the enrolment confirmed and stamp the first verification. */
+  confirm(userId: string, at: Date): Promise<void>;
+  /** Stamp a successful step-up verification. */
+  recordVerification(userId: string, at: Date): Promise<void>;
+  /** Count a failed step-up code. Returns the new consecutive-failure count. */
+  recordFailure(userId: string, at: Date): Promise<number>;
+  /** Replace all recovery codes with a fresh set of hashes. */
+  replaceRecoveryCodes(userId: string, codeHashes: string[]): Promise<void>;
+  /** Atomically consume an unused recovery code; false if already used/unknown. */
+  consumeRecoveryCode(userId: string, codeHash: string, at: Date): Promise<boolean>;
+  /** Remove MFA and all recovery codes (audited reset / disable). */
+  disable(userId: string): Promise<void>;
+  /** 0187: a verification made in this sign-in session (refresh-token family). Optional so older fakes type. */
+  recordSessionStepUp?(familyId: string, userId: string, at: Date): Promise<void>;
+  /** When this user's sign-in session last passed two-step verification; null when never. */
+  sessionStepUpAt?(familyId: string, userId: string): Promise<Date | null>;
+}

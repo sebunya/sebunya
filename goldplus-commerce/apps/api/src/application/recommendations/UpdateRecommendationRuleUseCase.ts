@@ -47,6 +47,29 @@ export class UpdateRecommendationRuleUseCase {
       updatedBy: performedBy,
     } as any;
 
+    // R5: the transition matrix and the two-person suppression gate live in
+    // ChangeRecommendationRuleStatusUseCase — a PUT must not smuggle a status
+    // change around them.
+    if (updates.status !== undefined && updates.status !== existing.status) {
+      return {
+        ok: false,
+        code: "VALIDATION_FAILED",
+        errors: ["Rule status is changed through the status action, not through an edit."],
+      };
+    }
+
+    // R9 hostile-review fix (proven bypass): the two-person gate keys on TYPE,
+    // so editing a live BOOST into a SUPPRESS was one-admin suppression with a
+    // routine UPDATED audit entry. A type change into SUPPRESS is only legal
+    // on a DRAFT — where activation still needs the second admin.
+    if (updates.type === "SUPPRESS" && existing.type !== "SUPPRESS" && existing.status !== "DRAFT") {
+      return {
+        ok: false,
+        code: "VALIDATION_FAILED",
+        errors: ["A live rule cannot be edited into a suppression. Change the type on a draft, then have a different admin activate it."],
+      };
+    }
+
     const errors = this.validator.validate(merged);
     if (errors.length > 0) {
       return { ok: false, code: "VALIDATION_FAILED", errors };

@@ -8,7 +8,14 @@ export interface AvailabilityRow {
   reserved: number;
   available: number;
   reorderPoint: number;
+  /** Derived: tracked stock with reorder_point > 0 and available <= reorder_point. */
   lowStock: boolean;
+  /** False for NON_STOCK_ITEM products (quantities are not tracked). */
+  tracked?: boolean;
+  /** Units on paid orders created in the last 30 days. */
+  unitsSold30d?: number;
+  /** available / (unitsSold30d / 30); null when there is no sales history. */
+  daysOfCover?: number | null;
 }
 
 export interface ReservationStatusSummary {
@@ -35,11 +42,16 @@ export interface IInventoryRepository {
    * invariant blocked the write, and `null` when the product does not exist.
    * The caller must not pre-read and decide for itself: a reservation committed
    * between that read and the write would slip straight through.
+   *
+   * `expectedStock` (optional) makes the write a compare-and-set: it applies
+   * only while on-hand stock still equals it, and otherwise returns
+   * `applied: false, stale: true` with the current figures.
    */
   setStockQuantity(
     productId: string,
     newStock: number,
-  ): Promise<{ applied: boolean; reserved: number; stock: number } | null>;
+    expectedStock?: number | null,
+  ): Promise<{ applied: boolean; reserved: number; stock: number; stale?: boolean } | null>;
   /** Release an order's active reservations back to available stock. Idempotent. */
   releaseForOrder(orderId: string): Promise<{ released: boolean }>;
   /** Deduct reserved stock from on-hand at dispatch and mark consumed. Idempotent. */
@@ -48,6 +60,8 @@ export interface IInventoryRepository {
   summariseReservations(orderId: string): Promise<ReservationStatusSummary>;
   /** Current availability for specific products (admin view). */
   getAvailability(productIds: string[]): Promise<AvailabilityRow[]>;
+  /** Live products at their reorder point, or selling fast enough to run out within coverDays (the daily staff alert). */
+  listRunningOut(coverDays: number, limit: number): Promise<AvailabilityRow[]>;
   /** Products at or below their reorder point (admin low-stock alert). */
   listLowStock(limit: number): Promise<AvailabilityRow[]>;
 }

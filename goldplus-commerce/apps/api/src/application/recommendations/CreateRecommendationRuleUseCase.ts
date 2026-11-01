@@ -47,6 +47,17 @@ export class CreateRecommendationRuleUseCase {
       updatedBy: performedBy,
     } as RecommendationRule;
 
+    // R5: a SUPPRESS rule is always born DRAFT — activation goes through the
+    // status use case, where a DIFFERENT admin must approve it (two-person
+    // integrity). Creating it directly ACTIVE would bypass that gate.
+    if (pendingRule.type === "SUPPRESS" && pendingRule.status === "ACTIVE") {
+      return {
+        ok: false,
+        code: "VALIDATION_FAILED",
+        errors: ["A suppression rule is created as a draft and must be activated by a different admin (two-person integrity)."],
+      };
+    }
+
     // 2. Conflict Detection (blocking errors only)
     if (pendingRule.status === "ACTIVE") {
       const existingActiveRules = await this.ruleRepo.findActiveRulesForPlacement({

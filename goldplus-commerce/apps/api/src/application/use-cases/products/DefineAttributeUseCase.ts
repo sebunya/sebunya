@@ -34,6 +34,7 @@ export class DefineAttributeUseCase {
     if (!name) return { ok: false, code: 'BAD_INPUT', message: 'name is required.' };
     if (!slug) return { ok: false, code: 'BAD_INPUT', message: 'A valid slug could not be derived.' };
     if (name.length > 100) return { ok: false, code: 'BAD_INPUT', message: 'name is too long (max 100).' };
+    if (unit && unit.length > 20) return { ok: false, code: 'BAD_INPUT', message: 'unit is too long (max 20).' };
 
     const existing = await this.attributes.findBySlugInCategory(categoryId, slug);
     if (existing) {

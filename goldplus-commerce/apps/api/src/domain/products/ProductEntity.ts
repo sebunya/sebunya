@@ -24,8 +24,19 @@ export class ProductEntity {
     public readonly hasRetailPrice: boolean,
     public readonly hasImage: boolean,
     public readonly stockQuantity: number,
-    public readonly specifications: Record<string, string | number> = {}
+    public readonly specifications: Record<string, string | number> = {},
+    /**
+     * Units already committed to orders. `stock_quantity - reserved_quantity`
+     * is what a customer can actually buy; the raw stock figure is on-hand,
+     * which is why the storefront could offer units that were already sold.
+     */
+    public readonly reservedQuantity: number = 0
   ) {}
+
+  /** What is genuinely available to a new order. Never negative. */
+  public availableQuantity(): number {
+    return Math.max(0, this.stockQuantity - this.reservedQuantity);
+  }
 
   public canBePublished(): boolean {
     if (this.approvalStatus !== 'approved') return false;

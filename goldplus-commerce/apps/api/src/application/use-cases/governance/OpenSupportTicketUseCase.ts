@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { ISupportRepository } from '../../ports/ISupportRepository';
 import { SupportTicket } from '../../../domain/support/SupportTicket';
-import { isNonEmpty, isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone } from '../../services/validationHelpers';
+import { isNonEmpty, isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone, text,
+} from '../../services/validationHelpers';
 
 export interface OpenSupportTicketInput {
   subject: string;
@@ -21,11 +22,11 @@ export class OpenSupportTicketUseCase {
   constructor(private readonly support: ISupportRepository) {}
 
   async execute(input: OpenSupportTicketInput): Promise<OpenSupportTicketResult> {
-    const subject = (input.subject ?? '').trim();
-    const description = (input.description ?? '').trim();
+    const subject = text(input.subject);
+    const description = text(input.description);
     const email = normalizeEmail(input.email);
     const phone = normalizePhone(input.phone);
-    const productModel = (input.productModel ?? '').trim() || null;
+    const productModel = text(input.productModel) || null;
 
     if (!subject) return { ok: false, code: 'BAD_INPUT', message: 'Subject is required.' };
     if (!description) return { ok: false, code: 'BAD_INPUT', message: 'Description is required.' };
@@ -37,11 +38,14 @@ export class OpenSupportTicketUseCase {
     const finalEmail = email || (input.contact && isValidEmail(input.contact) ? normalizeEmail(input.contact) : '');
     const finalPhone = phone || (input.contact && isValidUgandanPhone(input.contact) ? normalizePhone(input.contact) : '');
 
-    if (!isValidEmail(finalEmail)) {
-      return { ok: false, code: 'BAD_INPUT', message: 'A valid email address is required.' };
-    }
+    // The phone number is the reply channel and is required. Email is
+    // optional: it used to be mandatory, which forced customers to give us a
+    // channel we do not reply on, and rejected the ticket if they left it out.
     if (!isValidUgandanPhone(finalPhone)) {
       return { ok: false, code: 'BAD_INPUT', message: 'A valid Ugandan phone number is required.' };
+    }
+    if (finalEmail && !isValidEmail(finalEmail)) {
+      return { ok: false, code: 'BAD_INPUT', message: 'That email address does not look right. Check it, or leave it blank.' };
     }
 
     const id = randomUUID();

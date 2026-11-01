@@ -17,7 +17,8 @@ export class GetRecentlyViewedUseCase {
     customerId?: string;
     limit?: number;
   }): Promise<RecommendationResponseDto> {
-    const limit = input.limit ?? 6;
+    // Bounded: this is a public endpoint and the value came straight from the query string.
+    const limit = Math.max(1, Math.min(Number.isInteger(input.limit) ? (input.limit as number) : 6, 24));
 
     if (!input.anonymousId && !input.customerId) {
       return this.empty();
@@ -32,7 +33,10 @@ export class GetRecentlyViewedUseCase {
     if (viewed.length === 0) return this.empty();
 
     const productIds = viewed.map((item) => item.productId);
-    const products = await this.products.findProductsByIds(productIds);
+    // PUBLIC products only (approved, active, available, not retired). A view
+    // of a draft product's id, recorded by anyone, used to come back here with
+    // the unreleased product's name, price and image.
+    const products = await this.products.findPublicProducts({ productIds, limit: productIds.length });
 
     const productOrder = new Map(productIds.map((id, index) => [id, index]));
 

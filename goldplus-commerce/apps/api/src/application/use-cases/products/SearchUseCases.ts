@@ -2,6 +2,7 @@ import { IProductRepository } from '../../ports/IProductRepository';
 import { ISearchDemandRepository } from '../../ports/ISearchDemandRepository';
 import {
   normalizeSearchQuery,
+  searchTerms,
   isMeaningfulQuery,
   rankSuggestions,
   isValidDemandStatus,
@@ -10,6 +11,14 @@ import {
   MAX_SEARCH_RESULT_PRODUCTS,
   isSearchInteractionType,
 } from '../../../domain/products/ProductSearchService';
+import type { IPricingRepository } from '../../ports/IPricingRepository';
+import { resolveStorefrontDiscount, INACTIVE_DISCOUNT } from '../../pricing/StorefrontDiscountQuery';
+import { salePriceUgx, effectiveFloorUgx, resolveGallery, includesSearchTerm, inferSubcategory, expandSearchQuery, relaxSearchQuery, DEFAULT_TAXONOMY, type Taxonomy } from '@goldplus/shared';
+
+/** The image the card and the product page lead with, or none — the ONE cover resolver (Focus 4). */
+function primaryImageUrl(images: Array<{ url: string; displayOrder: number; isPrimary: boolean; slot?: number | null }>): string | null {
+  return resolveGallery(images.map((i) => ({ ...i, slot: i.slot ?? null }))).cover?.url ?? null;
+}
 
 export interface ProductSuggestionDto {
   id: string;
@@ -17,34 +26,106 @@ export interface ProductSuggestionDto {
   slug: string;
   priceUgx: number | null;
   categoryName: string | null;
+  /** Primary image, so the dropdown shows the product rather than a grey box. */
+  imageUrl: string | null;
 }
 
-/** Slice 4: public autocomplete — public catalogue data only, retail price only. */
+/** Slice 4: public autocomplete — public catalogue data only, campaign-priced. */
 export class SuggestProductsUseCase {
-  constructor(private readonly products: IProductRepository) {}
+  constructor(
+    private readonly products: IProductRepository,
+    /** Optional: without it the suggestions fall back to the catalogue price. */
+    private readonly pricing?: Pick<IPricingRepository, 'listActiveVersions'>,
+    /**
+     * Optional: the storefront taxonomy. /shop matches the subcategory it INFERS
+     * from the product name ("Memory Cards"), and products.subcategory is empty
+     * for every imported product, so without this "memory cards" found nothing
+     * here while /shop listed every card.
+     */
+    private readonly taxonomy?: () => Promise<Taxonomy>,
+  ) {}
+
+  private async loadTaxonomy(): Promise<Taxonomy | null> {
+    if (!this.taxonomy) return null;
+    try {
+      return await this.taxonomy();
+    } catch {
+      return DEFAULT_TAXONOMY;
+    }
+  }
 
   async execute(input: { query: string; limit?: number }): Promise<ProductSuggestionDto[]> {
     const q = normalizeSearchQuery(input.query ?? '');
     if (!isMeaningfulQuery(q)) return [];
     const limit = Math.max(1, Math.min(input.limit ?? 8, 12));
 
-    const rows = await this.products.findPublicViewList({ search: q, limit: 24 });
+    // Synonyms, plurals, joined words and typos, the same expansion /shop applies; when nothing matches every
+    // word and some words are unknown to the catalogue, the rest of the query still suggests products.
+    const vocab = (await this.products.searchVocabulary?.().catch(() => null)) ?? new Map<string, number>();
+    const expanded = expandSearchQuery(searchTerms(q), vocab);
+    const [strict, taxonomy] = await Promise.all([
+      this.products.findPublicViewList({ search: q, searchGroups: expanded.groups, limit: 24 }),
+      this.loadTaxonomy(),
+    ]);
+    let used = expanded;
+    let first = strict;
+    const relaxed = strict.length === 0 && vocab.size > 0 ? relaxSearchQuery(expanded) : null;
+    if (relaxed) {
+      first = await this.products.findPublicViewList({ search: relaxed.display, searchGroups: relaxed.groups, limit: 24 });
+      used = relaxed;
+    }
+    let rows = first;
+    if (taxonomy && rows.length < limit) {
+      // A query word that names a subcategory ("cards", "chargers") also looks
+      // for that subcategory's inference keywords, the same keywords /shop uses
+      // to file the product. The ranking below still requires EVERY query word
+      // to appear, so this only widens the candidates, never what matches.
+      // The expanded words too, so "earpods" reaches the Earbuds subcategory as /shop does.
+      const terms = [...new Set([...searchTerms(q), ...used.groups.flat()])].filter((t) => t.length >= 3);
+      const keywords = [...new Set(
+        taxonomy
+          .flatMap((c) => c.subcategories)
+          .filter((sub) => terms.some((t) => includesSearchTerm(sub.name.toLowerCase(), t)))
+          .flatMap((sub) => sub.keywords ?? []),
+      )].slice(0, 6);
+      if (keywords.length > 0) {
+        const extra = await Promise.all(keywords.map((k) => this.products.findPublicViewList({ search: k, limit: 24 })));
+        const seen = new Set(rows.map((r) => r.entity.id));
+        rows = [...rows, ...extra.flat().filter((r) => !seen.has(r.entity.id) && seen.add(r.entity.id))];
+      }
+    }
     const ranked = rankSuggestions(
-      q,
+      used.display,
       rows.map((r) => ({
         id: r.entity.id,
         name: r.entity.name,
         sku: r.entity.sku,
         modelNumber: r.entity.modelNumber,
+        categoryName: r.categoryName,
+        // The stored subcategory AND the one /shop infers, so both engines
+        // answer a subcategory word the same way.
+        subcategory: [r.entity.subcategory, taxonomy ? inferSubcategory({ name: r.entity.name, categoryName: r.categoryName }, taxonomy)?.name : null]
+          .filter((v): v is string => !!v)
+          .join(' ') || null,
         row: r,
-      }))
+      })),
+      used.groups,
     );
+    // The same campaign price the card and the product page show. Quoting the
+    // catalogue price here meant the search dropdown contradicted every other
+    // surface while a campaign ran. Uses the one shared formula, floor included.
+    const campaign = this.pricing ? await resolveStorefrontDiscount(this.pricing) : INACTIVE_DISCOUNT;
+    const priced = (retail: number | null, floor: number | null | undefined): number | null => {
+      if (retail === null || !campaign.active || campaign.percentBps <= 0) return retail;
+      return salePriceUgx(retail, campaign.percentBps, effectiveFloorUgx(campaign.priceFloorUgx, floor, retail));
+    };
     return ranked.slice(0, limit).map((c) => ({
       id: c.row.entity.id,
       name: c.row.entity.name,
       slug: c.row.entity.slug,
-      priceUgx: c.row.retailPriceUgx,
+      priceUgx: priced(c.row.retailPriceUgx, c.row.floorPriceUgx),
       categoryName: c.row.categoryName,
+      imageUrl: primaryImageUrl(c.row.images),
     }));
   }
 }

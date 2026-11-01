@@ -22,5 +22,7 @@ export interface ApplyRecommendationRulesResult {
   appliedRuleIds: string[];
   suppressedProductIds: string[];
   pinnedProductIds: string[];
+  /** Pin positions to re-apply as the FINAL ordering step (R9). */
+  pins: Array<{ productId: string; position: number }>;
   warnings: RuleConflict[];
 }

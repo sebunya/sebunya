@@ -65,6 +65,8 @@ export interface RecommendationCandidate {
   name: string;
   imageUrl?: string;
   price?: number;
+  /** 0127 — the product's own floor (Price A); null/absent = not discountable. */
+  floorPriceUgx?: number | null;
   currency?: string;
   categoryId?: string;
   categorySlug?: string;
@@ -81,6 +83,12 @@ export interface RecommendationCandidate {
   // Pass 13A: Attribution support
   ruleId?: string;
   appliedRuleIds?: string[];
+  /** R3: which named source introduced this candidate to the pool. */
+  candidateSource?: import("@goldplus/shared").RecommendationCandidateSource;
+  /** R3: ladder depth of that source for the serving placement (0 = primary). */
+  fallbackLevel?: number;
+  /** R4: position within the introducing source's own ordering (0 = its best) — sources rank internally (affinity by conversions, bestsellers by units) and that order must survive rescoring. */
+  sourceOrdinal?: number;
 }
 
 export interface RecommendationContext {
@@ -92,3 +100,10 @@ export interface RecommendationContext {
   anonymousId?: string;
   limit: number;
 }
+
+/**
+ * The deterministic policy version (R3, 2026-08-06). Stamped on every
+ * response, response event and cache row so a ranking change is always
+ * attributable to a version, never a mystery.
+ */
+export const RECOMMENDATION_POLICY_VERSION = "det-v3" as const;

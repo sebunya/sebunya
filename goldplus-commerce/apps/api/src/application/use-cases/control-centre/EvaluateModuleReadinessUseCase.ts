@@ -69,6 +69,11 @@ export interface ControlCentreReadinessSummary {
   readonly traceId: string;
 }
 
+/** Answers whether a named capability is achieving its purpose, not merely up. */
+export interface HealthProbe {
+  check(name: string): Promise<{ healthy: boolean; detail?: string }>;
+}
+
 export class EvaluateModuleReadinessUseCase {
   constructor(
     private readonly dependencies: DependencyProbe,
@@ -77,6 +82,11 @@ export class EvaluateModuleReadinessUseCase {
     private readonly approvals: ApprovalProbe,
     private readonly now: () => Date = () => new Date(),
     private readonly registry: readonly ControlCentreModule[] = CONTROL_CENTRE_MODULES,
+    /**
+     * Outcome checks. Optional, so every existing construction keeps working
+     * and a module without healthChecks is evaluated exactly as before.
+     */
+    private readonly health?: HealthProbe,
   ) {}
 
   async execute(input: EvaluateModuleReadinessInput): Promise<ControlCentreReadinessSummary> {
@@ -140,6 +150,26 @@ export class EvaluateModuleReadinessUseCase {
       }),
     );
 
+    // Reachable and switched on is not the same as working. A module may name
+    // checks on what it is actually achieving; a failing one degrades it and
+    // says why, so "all green" cannot outlive the capability.
+    let anyHealthCheckFailed = false;
+    for (const check of module.healthChecks ?? []) {
+      if (!this.health) break;
+      try {
+        const result = await this.health.check(check);
+        if (!result.healthy) {
+          anyHealthCheckFailed = true;
+          degradedReasons.push(result.detail ? `${check}: ${result.detail}` : `health check ${check} is failing`);
+        }
+      } catch (error) {
+        anyHealthCheckFailed = true;
+        degradedReasons.push(
+          `health check ${check} could not run: ${error instanceof Error ? error.message : 'unknown error'}`,
+        );
+      }
+    }
+
     const anyDependencyDown = dependencies.some((d) => d.status === 'DOWN');
 
     let serviceStatus: ModuleServiceStatus;
@@ -147,7 +177,7 @@ export class EvaluateModuleReadinessUseCase {
       // The capability genuinely cannot be reached: this is the only honest
       // UNAVAILABLE, and it is a deployment defect rather than a policy state.
       serviceStatus = 'UNAVAILABLE';
-    } else if (anyDependencyDown) {
+    } else if (anyDependencyDown || anyHealthCheckFailed) {
       serviceStatus = 'DEGRADED';
     } else {
       serviceStatus = 'LIVE';
