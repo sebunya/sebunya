@@ -12,8 +12,9 @@ routes.use('*', authMiddleware);
 // GET /admin/measurement/payments
 routes.get('/', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   try {
-    const offset = parseInt(c.req.query('offset') || '0', 10);
-    const limit = parseInt(c.req.query('limit') || '50', 10);
+    // Bounded here too (1..100, offset >= 0): the query string is not trusted.
+    const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10) || 0);
+    const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '50', 10) || 50));
 
     const result = await registry.listPaymentMeasurementReconciliationsUseCase.execute({ offset, limit });
     
@@ -23,7 +24,7 @@ routes.get('/', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
     };
     return c.json(res);
   } catch (err: any) {
-    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } }, 500);
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.' } }, 500);
   }
 });
 
@@ -43,7 +44,7 @@ routes.get('/:orderId', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c
     };
     return c.json(res);
   } catch (err: any) {
-    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } }, 500);
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.' } }, 500);
   }
 });
 
@@ -73,7 +74,7 @@ routes.post('/:orderId/retry', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), 
     return c.json(res);
   } catch (err: any) {
     const status = err.message.includes('NOT_FOUND') ? 404 : 400;
-    return c.json({ success: false, error: { code: 'RETRY_FAILED', message: err.message } }, status);
+    return c.json({ success: false, error: { code: 'RETRY_FAILED', message: 'An unexpected error occurred.' } }, status);
   }
 });
 

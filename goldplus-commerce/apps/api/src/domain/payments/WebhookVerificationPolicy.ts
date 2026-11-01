@@ -78,3 +78,28 @@ export function graceEnabledFor(provider: string, env: NodeJS.ProcessEnv): boole
   const perProvider = env[`PAYMENT_WEBHOOK_UNVERIFIED_GRACE_${provider.toUpperCase()}`];
   return perProvider === 'true' || (perProvider === undefined && global === 'true');
 }
+
+/**
+ * P0-1 §1 — signed-timestamp replay window. When a provider signs
+ * `${timestamp}.${rawBody}` and sends the timestamp in `x-goldplus-timestamp`,
+ * a captured webhook cannot be replayed outside a narrow window. Pure domain so
+ * the stale/future bounds are deterministically testable with an injected clock.
+ *
+ * Bounds: reject if the timestamp is more than `maxAgeMs` old (default 300s) or
+ * more than `maxFutureMs` in the future (default 60s clock skew).
+ */
+export const WEBHOOK_TS_MAX_AGE_MS = 300_000;
+export const WEBHOOK_TS_MAX_FUTURE_MS = 60_000;
+
+export function isWebhookTimestampFresh(
+  timestampSeconds: number,
+  nowMs: number,
+  opts: { maxAgeMs?: number; maxFutureMs?: number } = {},
+): boolean {
+  if (!Number.isFinite(timestampSeconds)) return false;
+  const maxAge = opts.maxAgeMs ?? WEBHOOK_TS_MAX_AGE_MS;
+  const maxFuture = opts.maxFutureMs ?? WEBHOOK_TS_MAX_FUTURE_MS;
+  const deltaMs = nowMs - timestampSeconds * 1000;
+  // deltaMs > maxAge  => too old;  deltaMs < -maxFuture => too far in the future.
+  return deltaMs <= maxAge && deltaMs >= -maxFuture;
+}

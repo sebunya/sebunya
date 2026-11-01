@@ -19,6 +19,11 @@ export class MarkFulfilmentPaymentConfirmedUseCase {
     const changed = task.applyPaymentStatus(paymentStatus);
     if (!changed) return { updated: false };
 
+    // Only the payment column: a settlement landing while staff acknowledge or claim the task must not put the
+    // status and assignee it read back over theirs.
+    if (this.repo.updatePaymentStatus) {
+      return { updated: await this.repo.updatePaymentStatus(task.id, paymentStatus, task.toSnapshot().updatedAt) };
+    }
     await this.repo.update(task);
     return { updated: true };
   }

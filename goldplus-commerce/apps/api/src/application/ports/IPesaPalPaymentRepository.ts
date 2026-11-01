@@ -1,3 +1,4 @@
+import type { AttemptNumbering, FailureReasonRecord } from '../../domain/payments/PaymentFailureReason';
 export interface RecordedPaymentAttempt {
   id: string;
   orderId: string;
@@ -10,6 +11,10 @@ export interface RecordedPaymentAttempt {
   provider: string;
   ipnReceivedAt: Date | null;
   callbackReceivedAt: Date | null;
+  /** Provider's answer for a non-paid terminal attempt (0162). Optional so older fakes still type. */
+  providerStatusCode?: number | null;
+  providerStatusDescription?: string | null;
+  failedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,23 +34,65 @@ export interface IPesaPalPaymentRepository {
 
   findByTrackingId(orderTrackingId: string): Promise<RecordedPaymentAttempt | null>;
 
+  /**
+   * Records the provider transaction on an attempt only if none is recorded yet; null when another request got there
+   * first (a double tap on Pay submits twice). Optional so test doubles construct unchanged.
+   */
+  recordFirstSubmission?(id: string, submission: { orderTrackingId: string; redirectUrl: string }): Promise<{ orderTrackingId: string; redirectUrl: string } | null>;
   updatePaymentAttemptStatus(id: string, update: {
-    status: string;
+    /** Omitted: only the timestamps are stamped and the current status stands. */
+    status?: string;
     orderTrackingId?: string | null;
     redirectUrl?: string | null;
     ipnReceivedAt?: Date | null;
     callbackReceivedAt?: Date | null;
+    /**
+     * True only when this status IS the provider's own answer about the money
+     * (IPN, return leg or the poller reading GetTransactionStatus). It is what
+     * lets a declined attempt still record the collection that followed it on
+     * the same tracking id; our own bookkeeping may never set it.
+     */
+    providerConfirmed?: boolean;
   }): Promise<RecordedPaymentAttempt>;
 
+  /**
+   * Record ONLY the payment status of an order. This deliberately cannot write
+   * the lifecycle `status`: every order-status transition must go through the
+   * canonical OrderTransitionService (P0-2), which records an order_event. A
+   * failed/invalid payment is a payment-status fact with no legal lifecycle move.
+   *
+   * Resolves false when the order's payment state machine REFUSED the write (a
+   * later fact about the money already stands, e.g. the order is already paid),
+   * true when it was written.
+   */
   updateOrderPaymentStatusSafely(
     orderId: string,
-    status: 'paid' | 'failed' | 'reversed' | 'unpaid',
-    orderStatus?: 'processing' | 'received' | 'pending_payment' | 'cancelled'
-  ): Promise<void>;
+    status: 'paid' | 'failed' | 'reversed' | 'unpaid'
+  ): Promise<boolean>;
 
   findAttemptsByOrderId(orderId: string): Promise<RecordedPaymentAttempt[]>;
 
+  /** Non-terminal attempts with a provider transaction, for the poller. */
+  listAttemptsForReconciliation(olderThan: Date, limit: number): Promise<RecordedPaymentAttempt[]>;
+  /**
+   * Completed attempts with a refund still 'requested'. The completed->reversed
+   * edge and the refund's settlement otherwise depended entirely on the provider
+   * pushing an IPN or an operator pressing re-verify.
+   */
+  listCompletedAttemptsAwaitingRefund(limit: number): Promise<RecordedPaymentAttempt[]>;
+  /** not_started attempts with no tracking id — nothing to ask, no money possible. */
+  listStartFailuresForAbandonment(olderThan: Date, limit: number): Promise<RecordedPaymentAttempt[]>;
+
   /** Most recent attempts across all orders (Slice 3C reconciliation). */
   listRecent(limit: number): Promise<RecordedPaymentAttempt[]>;
+
+  /**
+   * Record why an attempt failed. Must never write a completed attempt.
+   * Optional: hermetic fakes without it simply record nothing.
+   */
+  recordFailureReason?(id: string, reason: FailureReasonRecord): Promise<void>;
+
+  /** Per-order attempt number (1 = first, by created_at) and count, for these attempts. */
+  numberAttempts?(attemptIds: string[]): Promise<AttemptNumbering[]>;
 }
 

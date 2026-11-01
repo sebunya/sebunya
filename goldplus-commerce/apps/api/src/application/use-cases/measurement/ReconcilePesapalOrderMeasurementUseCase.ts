@@ -40,7 +40,7 @@ export class ReconcilePesapalOrderMeasurementUseCase {
     // Deduplication checks
     const existing = await this.paymentRepo.findReconciliationByOrderId(input.orderId);
     if (existing) {
-      if (['VERIFIED_PURCHASE_CAPTURED', 'PURCHASE_EVENT_QUEUED', 'BLOCKED_BY_CONSENT'].includes(existing.status)) {
+      if (['VERIFIED_PURCHASE_CAPTURED', 'PURCHASE_EVENT_QUEUED', 'BLOCKED_BY_CONSENT', 'NOT_CONFIGURED'].includes(existing.status)) {
         await this.paymentRepo.markDuplicateIgnored(existing.id);
         this.logger.info({ orderId: input.orderId }, '[ReconcileMeasurement] Duplicate ignored safely.');
         return { ok: true, status: 'DUPLICATE_PURCHASE_IGNORED', message: 'Already processed' };
@@ -82,7 +82,15 @@ export class ReconcilePesapalOrderMeasurementUseCase {
       return { ok: true, status: 'BLOCKED_BY_CONSENT', message: 'Consent policy blocked delivery.' };
     }
 
-    // 5. Queue Dry-Run-Safe Purchase Routing
+    // 5. Queue Dry-Run-Safe Purchase Routing — only where a queue exists. This
+    // legacy queue has no producer wiring in production (the real GA4 purchase
+    // goes through the measurement delivery service), so it says "Not
+    // configured" rather than recording a send that never happens.
+    const queueStatus = await Promise.resolve().then(() => this.measurementQueue.getQueueStatus()).catch(() => null);
+    if (queueStatus && !queueStatus.isConfigured) {
+      await this.paymentRepo.updateReconciliationStatus(reconciliation.id, 'NOT_CONFIGURED');
+      return { ok: true, status: 'NOT_CONFIGURED', message: 'Not configured: no purchase-measurement queue. GA4 purchases are delivered by the measurement delivery service.' };
+    }
     const enqueued = await this.measurementQueue.enqueuePurchaseMeasurement({
       orderId: purchaseEvent.orderId,
       paymentReference: purchaseEvent.paymentReference,

@@ -2,11 +2,10 @@ import { Hono } from 'hono';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Registry } from '../../../infrastructure/Registry';
 import { RecordPaymentWebhookUseCase } from '../../../application/use-cases/payments/RecordPaymentWebhookUseCase';
-import { enqueuePurchaseEvent } from '../../../application/use-cases/telemetry/EnqueuePurchaseEventUseCase';
 import { ApiResponse } from '@goldplus/shared';
 import { logger } from '../../../infrastructure/logging/logger';
 import { clientIp } from '../clientAddress';
-import { graceEnabledFor } from '../../../domain/payments/WebhookVerificationPolicy';
+import { graceEnabledFor, isWebhookTimestampFresh } from '../../../domain/payments/WebhookVerificationPolicy';
 
 const routes = new Hono();
 
@@ -18,11 +17,11 @@ function envSecretFor(provider: string): string | undefined {
   return undefined;
 }
 
-function verifySignature(rawBody: string, header: string | undefined, secret: string | undefined): boolean {
+function verifySignature(signedInput: string, header: string | undefined, secret: string | undefined): boolean {
   if (!secret) return false;
   if (!header) return false;
   try {
-    const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
+    const expected = createHmac('sha256', secret).update(signedInput).digest('hex');
     const a = Buffer.from(expected, 'utf8');
     const b = Buffer.from(header.trim().toLowerCase(), 'utf8');
     return a.length === b.length && timingSafeEqual(a, b);
@@ -30,6 +29,45 @@ function verifySignature(rawBody: string, header: string | undefined, secret: st
     return false;
   }
 }
+
+/**
+ * WhatsApp Business Platform webhook (Click-to-WhatsApp advert referrals).
+ * Thin: the use case decides. GET is Meta's subscription check; POST is a
+ * delivery, accepted only when Meta's signature over the raw body holds. The
+ * body is never logged: it carries customers' messages.
+ */
+routes.get('/whatsapp', async (c) => {
+  const challenge = await Registry.getInstance().advertisingOps.whatsappAds.verifySubscription({
+    mode: c.req.query('hub.mode'), token: c.req.query('hub.verify_token'), challenge: c.req.query('hub.challenge'),
+  });
+  return challenge ? c.text(challenge, 200) : c.text('Forbidden', 403);
+});
+routes.post('/whatsapp', async (c) => {
+  const rawBody = await c.req.text();
+  const r = await Registry.getInstance().advertisingOps.whatsappAds.receive(rawBody, c.req.header('x-hub-signature-256'));
+  const last = Registry.getInstance().advertisingOps.whatsappAds.recentDeliveries()[0];
+  if (r.status !== 200) logger.warn({ status: r.status, ip: clientIp(c), note: last?.note }, '[WhatsApp] webhook delivery not accepted');
+  else logger.info({ entryIds: last?.entryIds, fields: last?.fields, messages: last?.messages, receipts: last?.receipts, events: last?.events, note: last?.note }, '[WhatsApp] webhook delivery');
+  if (r.stored > 0 || r.withoutClickId > 0) logger.info({ stored: r.stored, duplicates: r.duplicates, withoutClickId: r.withoutClickId }, '[WhatsApp] advert referrals received');
+  return c.body(null, r.status);
+});
+
+/**
+ * Goldie on Facebook Messenger and Instagram Direct: one callback for both (subscribe the Page and the Instagram
+ * account to "messages" in the same Meta app as WhatsApp). 404 until switched on; signature checked on the raw
+ * body; the body is never logged.
+ */
+routes.get('/meta-messaging', async (c) => {
+  const challenge = await Registry.getInstance().goldieSocialUseCases.verifySubscription({
+    mode: c.req.query('hub.mode'), token: c.req.query('hub.verify_token'), challenge: c.req.query('hub.challenge'),
+  });
+  return challenge ? c.text(challenge, 200) : c.text('Forbidden', 403);
+});
+routes.post('/meta-messaging', async (c) => {
+  const r = await Registry.getInstance().goldieSocialUseCases.receive(await c.req.text(), c.req.header('x-hub-signature-256'));
+  if (r.status !== 200 && r.status !== 404) logger.warn({ status: r.status, ip: clientIp(c) }, '[Goldie] Messenger/Instagram delivery not accepted');
+  return c.body(null, r.status);
+});
 
 routes.post('/payment/:provider', async (c) => {
   const provider = c.req.param('provider').toLowerCase();
@@ -55,8 +93,28 @@ routes.post('/payment/:provider', async (c) => {
 
   const signatureHeader = c.req.header('x-goldplus-signature');
   const secret = envSecretFor(provider);
-  const signatureVerified = verifySignature(rawBody, signatureHeader, secret);
   const secretConfigured = !!secret;
+
+  // P0-1 §1 — signed-timestamp replay window. When the provider sends
+  // x-goldplus-timestamp, the signature must cover `${timestamp}.${rawBody}` and
+  // the timestamp must be within the freshness window, so a captured webhook
+  // cannot be replayed later. Absent a timestamp, the legacy raw-body signature
+  // is honoured for backward compatibility (replay is then bounded by
+  // idempotency); operators enforce timestamps provider-side once adopted.
+  const timestampHeader = c.req.header('x-goldplus-timestamp');
+  let signedInput = rawBody;
+  if (timestampHeader !== undefined) {
+    if (!isWebhookTimestampFresh(Number(timestampHeader), Date.now())) {
+      logger.warn({ provider, reason: 'STALE_TIMESTAMP' }, 'PAYMENT_WEBHOOK_SIGNATURE_REJECTED');
+      const res: ApiResponse<never> = {
+        success: false,
+        error: { code: 'STALE_TIMESTAMP', message: 'Webhook timestamp is outside the accepted window.' },
+      };
+      return c.json(res, 401);
+    }
+    signedInput = `${timestampHeader}.${rawBody}`;
+  }
+  const signatureVerified = verifySignature(signedInput, signatureHeader, secret);
 
   // Verify the provider-reported amount against the order total. The signature
   // proves who sent the payload, not that the figure in it is correct.
@@ -77,7 +135,11 @@ routes.post('/payment/:provider', async (c) => {
       providerReference: parsed.providerReference ? String(parsed.providerReference) : null,
       amount: Number(parsed.amount),
       outcome: String(parsed.outcome ?? '').toUpperCase() as 'SUCCESS' | 'FAILED',
-      idempotencyKey: c.req.header('idempotency-key') ?? (parsed.idempotencyKey as string | undefined) ?? null,
+      // The dedupe key comes from SIGNED content only (the body's own
+      // idempotencyKey, else provider:providerReference). The Idempotency-Key
+      // HEADER is outside the signature: preferring it let a captured signed
+      // webhook be replayed under a fresh header as a "new" payment.
+      idempotencyKey: typeof parsed.idempotencyKey === 'string' ? parsed.idempotencyKey : null,
       signatureVerified,
       secretConfigured,
       graceEnabled: graceEnabledFor(provider, process.env),
@@ -140,31 +202,12 @@ routes.post('/payment/:provider', async (c) => {
       res.meta = { ...res.meta, requiresReview: true };
     }
 
-    // ─── Enqueue server-side purchase event on first confirmed SUCCESS ────────
-    // "Confirmed" excludes a payment held for review: it has not been
-    // authenticated, so treating it as a purchase would report revenue that
-    // nobody has established happened.
-    if (result.payment.status === 'SUCCESS' && !result.replay && !result.requiresReview) {
-      enqueuePurchaseEvent({
-        orderId: result.payment.orderId,
-        transactionId: result.payment.providerReference || result.payment.id,
-        value: Number(parsed.amount) || 0,
-        currency: 'UGX',
-        // Attempt to extract client context forwarded by the provider webhook
-        ipAddress: clientIp(c),
-        traceId: c.req.header('x-request-id'),
-      }).then(async (outboxId) => {
-        if (outboxId) {
-          const { QueueService, QUEUES } = await import('../../../infrastructure/queues/QueueService');
-          await QueueService.getInstance().enqueue(
-            QUEUES.TELEMETRY_DISPATCH,
-            `purchase-dispatch:${result.payment.orderId}`,
-            { outboxId },
-            outboxId
-          );
-        }
-      }).catch(err => logger.error({ err, orderId: result.payment.orderId }, '[Webhook] Failed to enqueue purchase telemetry event'));
-    }
+    // The GA4 purchase comes from the authoritative commerce event: the paid
+    // transition (and COD placement) appends measurement.business_event
+    // 'order_confirmed' in the same transaction, and DeliveryService
+    // (infrastructure/measurement) routes it to GA4 and the ad platforms. This route used to
+    // enqueue one too, keyed differently and without a visitor, which wrote
+    // misleading `sent` rows and would have double-counted once given one.
 
     return c.json(res, 200);
 
