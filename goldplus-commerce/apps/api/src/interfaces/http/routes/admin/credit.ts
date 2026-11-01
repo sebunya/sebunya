@@ -4,6 +4,7 @@ import { Registry } from '../../../../infrastructure/Registry';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { requireStepUp } from '../../middleware/requireStepUp';
+import { parseCreditExpiry } from '../../../../domain/credit/CreditInstrument';
 
 /**
  * Store credit and gift cards (0196, gap analysis #17). Reading needs payments.read. Every action that creates,
@@ -124,15 +125,12 @@ routes.post('/', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), requireStepU
   const body = await c.req.json().catch(() => null);
   const kind = body?.kind === 'gift_card' ? 'gift_card' : body?.kind === 'store_credit' ? 'store_credit' : null;
   if (!kind) return c.json({ success: false, error: { code: 'BAD_KIND', message: 'Choose gift card or store credit.' } } satisfies ApiResponse<never>, 400);
-  // A date from the form means "valid through that day" in Kampala, not midnight UTC (03:00 EAT that morning).
-  const rawExpiry = typeof body?.expiresAt === 'string' ? body.expiresAt.trim() : '';
-  const expires = rawExpiry ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(rawExpiry) ? `${rawExpiry}T23:59:59+03:00` : rawExpiry) : null;
-  if (expires && !Number.isNaN(expires.getTime()) && expires.getTime() <= Date.now()) {
-    return c.json({ success: false, error: { code: 'BAD_EXPIRY', message: 'The expiry date is in the past.' } } satisfies ApiResponse<never>, 400);
-  }
+  // A date from the form means "valid through that day" in Kampala; one that is not a real date is refused.
+  const expiry = parseCreditExpiry(body?.expiresAt, new Date());
+  if (!expiry.ok) return c.json({ success: false, error: { code: expiry.code, message: expiry.message } } satisfies ApiResponse<never>, 400);
   const result = await Registry.getInstance().issueCreditUseCase.execute({
     kind, amountUgx: Number(body?.amountUgx), reason: String(body?.reason ?? ''), recipientName: body?.recipientName ?? null,
-    recipientPhone: body?.recipientPhone ?? null, actorId: actor(c), expiresAt: expires && !Number.isNaN(expires.getTime()) ? expires : null,
+    recipientPhone: body?.recipientPhone ?? null, actorId: actor(c), expiresAt: expiry.expiresAt,
     orderNumber: typeof body?.orderNumber === 'string' ? body.orderNumber : null,
   });
   if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);

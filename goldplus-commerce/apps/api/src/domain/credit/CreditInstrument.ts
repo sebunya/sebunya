@@ -104,3 +104,25 @@ export function checkIssue(input: { amountUgx: number; reason: string }): IssueC
   if (input.reason.trim().length < 5) return { ok: false, code: 'NEEDS_REASON' };
   return { ok: true, needsSecondApproval: input.amountUgx > SECOND_APPROVAL_ABOVE_UGX };
 }
+
+/**
+ * The expiry an admin typed when issuing credit. Empty means no expiry. A YYYY-MM-DD date means "valid through that
+ * day" in Kampala. Anything that is not a real date (2026-13-40, 31/12/2026, 2026-02-30) is refused: it used to
+ * become "never expires" without a word (2026-11 review).
+ */
+export function parseCreditExpiry(raw: unknown, now: Date):
+  | { ok: true; expiresAt: Date | null }
+  | { ok: false; code: 'BAD_EXPIRY'; message: string } {
+  const text = typeof raw === 'string' ? raw.trim() : '';
+  if (!text) return { ok: true, expiresAt: null };
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  const at = new Date(day ? `${text}T23:59:59+03:00` : text);
+  const realDay = day
+    ? (() => { const d = new Date(Date.UTC(+day[1]!, +day[2]! - 1, +day[3]!)); return d.getUTCFullYear() === +day[1]! && d.getUTCMonth() === +day[2]! - 1 && d.getUTCDate() === +day[3]!; })()
+    : true;
+  if (Number.isNaN(at.getTime()) || !realDay) {
+    return { ok: false, code: 'BAD_EXPIRY', message: 'The expiry date is not a real date. Use the date picker, or leave it empty for no expiry.' };
+  }
+  if (at.getTime() <= now.getTime()) return { ok: false, code: 'BAD_EXPIRY', message: 'The expiry date is in the past.' };
+  return { ok: true, expiresAt: at };
+}
