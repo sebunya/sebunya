@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 
 const CATALOGUE_MONITOR_LIMIT = 5;
 const PUBLIC_CATALOGUE_PREDICATE_VERSION =
-  'public-catalogue-v1:approval_status=approved;limit=5;price=retail_price_when_has_retail_price';
+  'public-catalogue-v2:approval_status=approved;active=true;order=created_at desc,id asc;limit=5;price=retail_price_when_has_retail_price';
 
 export type CatalogueParityReasonCode =
   | 'CATALOGUE_PARITY_OK'
@@ -260,6 +260,7 @@ export async function loadIndependentCatalogueTruth(
     select count(*)::int as count
     from products p
     where p.approval_status = 'approved'
+      and p.active = true
   `);
   const totalEligible = Number(resultRows<{ count: number | string }>(countResult)[0]?.count ?? 0);
 
@@ -281,6 +282,14 @@ export async function loadIndependentCatalogueTruth(
       end as "canonicalPriceUgx"
     from products p
     where p.approval_status = 'approved'
+      and p.active = true
+    -- The SAME total order the public route uses. Both sides used to take a
+    -- LIMIT with no ORDER BY, so each got whatever physical order Postgres
+    -- happened to return: they agreed by luck, and any row update could have
+    -- made them disagree. With more eligible products than the page size, an
+    -- unordered limit compares two DIFFERENT subsets and the hashes cannot
+    -- match. Ordering both makes this check mean what it says.
+    order by p.created_at desc, p.id asc
     limit ${limit}
   `);
   const page = resultRows<Record<string, unknown>>(pageResult).map((row) => ({
@@ -385,14 +394,37 @@ export class SyntheticMonitor {
   }> {
     const start = Date.now();
     const stages: string[] = [];
-    const baseUrl = env.publicApiBaseUrl || 'http://localhost:3000';
+    // THE monitor's own blind spot, fixed 2026-08-29.
+    //
+    // This probed env.publicApiBaseUrl — our PUBLIC hostname — from inside the
+    // API container. Cloudflare answers a Node fetch to that host with a 403
+    // challenge page, so every stage below failed on every run: the monitor
+    // logged CRITICAL every five minutes on both replicas and told us nothing
+    // about the shop, while a real outage would have looked identical.
+    //
+    // Same rule as the storefront stage just above, which already dials
+    // http://web:4321: server-side traffic uses the internal address. The
+    // monitor runs in the API process, so that is this process's own port.
+    // SYNTHETIC_MONITOR_BASE_URL can override it for a one-off investigation.
+    const baseUrl =
+      process.env.SYNTHETIC_MONITOR_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
     let isDegraded = false;
+
+    // The mutating stages below place a REAL order, inject a REAL payment webhook and
+    // generate REAL notification outbox rows. Against production that means a synthetic
+    // paid order (and its emails/SMS) on every run, so they are OFF unless a dedicated
+    // synthetic-safe environment explicitly opts in. When off, the read-only journey
+    // (storefront, catalogue parity, PDP, recommendations) still runs and is the health
+    // signal. This also stops the pre-credential cart-add call from emitting a false
+    // CRITICAL every run.
+    const writeStagesEnabled = process.env.SYNTHETIC_MONITOR_WRITE_STAGES_ENABLED === 'true';
 
     try {
       // Stage 0: Storefront Uptime & HTML Structure Check
       stages.push('storefront_html_check');
       const storefrontUrl = 'http://web:4321'; // Resolve web container internally inside Docker Compose network
       try {
+        // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request -- container-to-container on the private Docker network; TLS ends at Caddy
         const storefrontRes = await fetch(storefrontUrl, {
           signal: AbortSignal.timeout(5000),
         });
@@ -400,8 +432,17 @@ export class SyntheticMonitor {
           logger.warn({ status: storefrontRes.status }, '[SyntheticMonitor] Storefront internal page check failed');
         } else {
           const storefrontHtml = await storefrontRes.text();
-          if (!storefrontHtml.includes('googletagmanager.com') && !storefrontHtml.includes('gtm')) {
-            logger.warn('[SyntheticMonitor] Storefront loaded, but Google Tag Manager container was missing in HTML');
+          // Only a CONFIGURED container can go missing. Analytics is optional
+          // and deliberately unprovisioned here, and warning every run about a
+          // feature nobody has turned on is how a log stops being read — the
+          // real warnings get buried in it. When an id is set, its absence
+          // from the HTML is a genuine regression and still warns.
+          const gtmConfigured = Boolean(process.env.PUBLIC_GTM_ID?.trim());
+          if (gtmConfigured && !storefrontHtml.includes('googletagmanager.com') && !storefrontHtml.includes('gtm')) {
+            logger.warn(
+              { gtmId: 'configured' },
+              '[SyntheticMonitor] Storefront loaded, but the configured Google Tag Manager container was missing in HTML',
+            );
           }
         }
       } catch (e) {
@@ -467,6 +508,21 @@ export class SyntheticMonitor {
       if (pdpDuration > 1500) {
         isDegraded = true;
         logger.warn({ pdpDuration }, '[SyntheticMonitor] PDP load exceeded P95 response window (1.5s)');
+      }
+
+      // Read-only journey complete. The mutating stages that follow are gated: in any
+      // environment that has not explicitly opted in, return success on the read path
+      // rather than driving a synthetic purchase through production.
+      if (!writeStagesEnabled) {
+        const durationMs = Date.now() - start;
+        syntheticDuration.observe(durationMs / 1000);
+        syntheticUptimeGauge.set(1);
+        syntheticDegradedGauge.set(isDegraded ? 1 : 0);
+        logger.info(
+          { durationMs, stages, isDegraded, writeStagesSkipped: true },
+          '[SyntheticMonitor] Read-only commerce journey completed; mutating stages disabled in this environment',
+        );
+        return { success: true, durationMs, stages };
       }
 
       // Stage 2b: Add Item to Cart Simulation
@@ -593,20 +649,28 @@ export class SyntheticMonitor {
           .where(eq(orders.id, orderId))
           .limit(1);
 
-        const telemetryRecord = await db
-          .select()
-          .from(outboxEvents)
-          .where(eq(outboxEvents.idempotencyKey, `purchase:${webhookPayload.providerReference}`))
-          .limit(1);
+        // The purchase is measured from the authoritative commerce event
+        // (measurement.business_event 'order_confirmed', written in the same
+        // transaction as the paid transition; DeliveryService routes it to GA4
+        // and the ad platforms). This used to wait for an outbox row keyed
+        // `purchase:<providerReference>`, which only the retired
+        // PurchaseTelemetry path wrote, so the stage could only ever time out.
+        const confirmedEvent = await db.execute(sql`
+          select 1 from measurement.business_event
+          where aggregate_type = 'order' and aggregate_id = ${String(orderId)} and event_name = 'order_confirmed'
+          limit 1`);
+        const confirmedRows = Array.isArray(confirmedEvent)
+          ? confirmedEvent
+          : ((confirmedEvent as { rows?: unknown[] }).rows ?? []);
 
-        if (orderRecord?.status === 'paid' && telemetryRecord.length > 0) {
+        if (orderRecord?.status === 'paid' && confirmedRows.length > 0) {
           verified = true;
           break;
         }
       }
 
       if (!verified) {
-        throw new Error('Synthetic purchase verification timed out: order status or telemetry outbox missing');
+        throw new Error('Synthetic purchase verification timed out: order not paid or order_confirmed business event missing');
       }
 
       // Stage 5b: Verify Notification Outbox Generation

@@ -2,8 +2,11 @@ import { Job } from 'bullmq';
 import { QueueService, QUEUES } from './QueueService';
 import { db } from '../db/client';
 import { outboxEvents } from '../db/schema/system';
-import { eq } from 'drizzle-orm';
-import { telemetryDispatcher } from '../telemetry/TelemetryDispatchService';
+import { and, eq, lte } from 'drizzle-orm';
+import { telemetryDispatcher, CLAIM_LEASE_MS } from '../telemetry/TelemetryDispatchService';
+
+/** Hand a failed event back to the batch sweep, which owns backoff and the DLQ. */
+const TELEMETRY_RETRY_DELAY_MS = 30_000;
 import { logger } from '../logging/logger';
 import { RecordPaymentWebhookUseCase } from '../../application/use-cases/payments/RecordPaymentWebhookUseCase';
 import { Registry } from '../Registry';
@@ -16,6 +19,13 @@ export function registerAllWorkers(): void {
   if (process.env.NODE_ENV === 'test') {
     return;
   }
+
+  // AI visibility (0131): a run left RUNNING by a crashed or restarted worker
+  // would block new runs forever. Dead = 20 minutes without a heartbeat
+  // (one provider call takes at most ~5 minutes; every call beats).
+  void Registry.getInstance().aiVisibility.repo.failStaleRuns(20)
+    .then((ids) => { if (ids.length) logger.warn({ runIds: ids }, '[QueueWorker] marked stale AI visibility runs FAILED'); })
+    .catch(() => undefined);
 
   // Helper to extract trace context from job payload or create a new one
   const getContext = (job: Job) => {
@@ -34,21 +44,27 @@ export function registerAllWorkers(): void {
       const { outboxId } = job.data as { outboxId: string };
       logger.info({ outboxId }, '[QueueWorker] Telemetry dispatch job started');
 
+      // The SAME claim the batch sweep takes. This row is reachable by both,
+      // and a SELECT ... FOR UPDATE outside a transaction releases its lock as
+      // soon as the statement ends, so both used to dispatch the same event and
+      // every conversion was counted twice. Exactly one writer can match this
+      // predicate; the loser exits without sending.
+      const claimNow = new Date();
       const rows = await db
-        .select()
-        .from(outboxEvents)
-        .where(eq(outboxEvents.id, outboxId))
-        .limit(1)
-        .for('update', { skipLocked: true });
+        .update(outboxEvents)
+        .set({ status: 'processing', nextAttemptAt: new Date(claimNow.getTime() + CLAIM_LEASE_MS) })
+        .where(
+          and(
+            eq(outboxEvents.id, outboxId),
+            eq(outboxEvents.isProcessed, false),
+            lte(outboxEvents.nextAttemptAt, claimNow),
+          ),
+        )
+        .returning();
 
       const eventRecord = rows[0];
       if (!eventRecord) {
-        logger.info({ outboxId }, '[QueueWorker] Event locked, skipped, or not found');
-        return;
-      }
-
-      if (eventRecord.isProcessed) {
-        logger.info({ outboxId }, '[QueueWorker] Event already processed');
+        logger.info({ outboxId }, '[QueueWorker] Event already claimed, processed, or not found');
         return;
       }
 
@@ -65,12 +81,17 @@ export function registerAllWorkers(): void {
         const errMsg = err.message || String(err);
         logger.error({ outboxId, err }, '[QueueWorker] Telemetry dispatch failed');
 
+        // Release the claim onto the batch sweep's schedule instead of holding
+        // it for the whole lease. That sweep owns the backoff curve and the
+        // dead-letter cutoff; this worker only ever bumped the counter, so a
+        // permanently failing event retried forever and never dead-lettered.
         await db
           .update(outboxEvents)
           .set({
             attemptCount: eventRecord.attemptCount + 1,
             lastError: errMsg,
             status: 'retrying',
+            nextAttemptAt: new Date(Date.now() + TELEMETRY_RETRY_DELAY_MS),
           })
           .where(eq(outboxEvents.id, outboxId));
 
@@ -158,6 +179,35 @@ export function registerAllWorkers(): void {
   });
 
   // 5. Analytics Fanout & Synthetic Monitor Worker
+  // AI Search runs (0131) on their own queue: a run takes minutes and must
+  // never occupy the analytics-fanout slots. The use case claims only a QUEUED
+  // run, so a duplicate or re-delivered job is a no-op.
+  // Measurement deliveries (0140, dossier GP-DLV). The job is only a pointer:
+  // deliverOne claims the durable intent by generation + lease, so a stale,
+  // duplicate or redelivered job sends nothing.
+  queueService.registerWorker(QUEUES.MEASUREMENT_DELIVERY, async (job: Job) => {
+    const { deliveryId, enqueueGeneration } = job.data as { deliveryId: string; enqueueGeneration: number };
+    const { deliverOne } = await import('../measurement/DeliveryService');
+    const outcome = await deliverOne(deliveryId, Number(enqueueGeneration));
+    logger.info({ deliveryId, enqueueGeneration, outcome }, '[QueueWorker] measurement delivery');
+  });
+
+  queueService.registerWorker(QUEUES.AI_VISIBILITY, async (job: Job) => {
+    const ctx = getContext(job);
+    return traceLocalStorage.run(ctx, async () => {
+      if (job.name === 'aiv-reclassify') {
+        const { projectId } = job.data as { projectId: string };
+        const r = await Registry.getInstance().aiVisibility.setup.reclassify({ id: null, kind: 'SYSTEM' }, projectId);
+        logger.info({ projectId, ok: r.ok, answers: r.ok ? r.value.answers : 0 }, '[QueueWorker] AI visibility re-classification');
+        return;
+      }
+      if (job.name !== 'aiv-run') return;
+      const { runId } = job.data as { runId: string };
+      const outcome = await Registry.getInstance().aiVisibility.runs.execute(runId);
+      logger.info({ runId, ...outcome }, '[QueueWorker] AI visibility run finished');
+    });
+  });
+
   queueService.registerWorker(QUEUES.ANALYTICS_FANOUT, async (job: Job) => {
     const ctx = getContext(job);
     return traceLocalStorage.run(ctx, async () => {
@@ -168,6 +218,84 @@ export function registerAllWorkers(): void {
         if (!result.success) {
           throw new Error('Recommendation materialization failed');
         }
+      } else if (job.name === 'aiv-schedule-tick') {
+        // AI Search schedules (0132): starts due MONITOR runs. A schedule is
+        // OFF until a person turns it on; budget and approval rules still apply.
+        // First free the projects: a run left RUNNING by a dead worker, one
+        // nobody approved within a day, or one the queue lost would otherwise
+        // block every new run (including this tick's).
+        const stale = await registry.aiVisibility.repo.failStaleRuns(20);
+        if (stale.length) logger.warn({ runIds: stale }, '[QueueWorker] marked stale AI visibility runs FAILED');
+        const expired = await registry.aiVisibility.runs.expireUnattended();
+        if (expired) logger.warn({ expired }, '[QueueWorker] closed unattended AI visibility runs');
+        const outcome = await registry.aiVisibility.runs.runSchedules();
+        if (outcome.started || outcome.refused) logger.info(outcome, '[QueueWorker] AI visibility schedule tick');
+      } else if (job.name === 'seo-crawl') {
+        // Organic Growth OS: first-party technical crawl. The use case enforces
+        // the SSRF host allowlist, page/depth/time limits and cancellation
+        // (run status flips to CANCELLED between pages).
+        const { runId, maxPages, startUrl } = job.data as { runId: string; maxPages?: number; startUrl?: string };
+        const { CrawlSiteUseCase } = await import('../../application/use-cases/seo-growth/CrawlSiteUseCase');
+        const { FetchSeoPageFetcher } = await import('../seo/FetchSeoPageFetcher');
+        const uc = new CrawlSiteUseCase(registry.seoGrowthRepo, new FetchSeoPageFetcher());
+        const outcome = await uc.execute(runId, { maxPages, startUrl });
+        logger.info({ runId, ...outcome }, '[QueueWorker] SEO crawl finished');
+      } else if (job.name === 'seo-gsc-sync') {
+        // Organic Growth OS: incremental GSC search-analytics sync. When
+        // credentials are absent the use case is an honest no-op
+        // (READY_FOR_CREDENTIALS) — nothing fake is written.
+        const { SyncGscPerformanceUseCase } = await import('../../application/use-cases/seo-growth/SyncGscPerformanceUseCase');
+        // 0118: credentials resolve vault-first (integration control plane),
+        // env-second (bootstrap/emergency).
+        const { resolveGscClientVaultFirst } = await import('../seo/SeoIntegrationSyncRunner');
+        const uc = new SyncGscPerformanceUseCase({
+          client: await resolveGscClientVaultFirst(),
+          store: registry.seoGrowthRepo,
+        });
+        const outcome = await uc.execute();
+        logger.info({ ...outcome }, '[QueueWorker] GSC sync finished');
+        if (outcome.status === 'FAILED') throw new Error(outcome.error);
+      } else if (job.name === 'search-console-guardian-cron') {
+        // Organic Growth OS: the six-hourly Search Console Guardian.
+        // It gates itself on provider readiness, so an invocation with no
+        // credential costs one cheap row and raises nothing. Failures are
+        // isolated here — the Guardian must never break commerce fan-out.
+        const { runSearchConsoleGuardian } = await import('../seo/SearchConsoleGuardianRunner');
+        const outcome = await runSearchConsoleGuardian();
+        logger.info({ ...outcome }, '[QueueWorker] Search Console Guardian finished');
+
+        // Organic Intelligence materialises on the SAME six-hourly tick — one
+        // schedule, not two. It runs whether or not Search Console is
+        // connected: commerce and technical truth already support useful
+        // partial-evidence intelligence, and provider absence is reported as
+        // UNKNOWN rather than blocking the run. Failures are isolated so the
+        // Guardian's own result still stands.
+        try {
+          const { runOrganicIntelligence } = await import('../seo/OrganicIntelligenceRunner');
+          const intel = await runOrganicIntelligence('INCREMENTAL');
+          logger.info({ mode: intel.mode, counts: intel.counts, summary: intel.summary }, '[QueueWorker] Organic Intelligence finished');
+        } catch (err) {
+          logger.error({ err: String((err as Error)?.message ?? err) }, '[QueueWorker] Organic Intelligence failed; Guardian result unaffected');
+        }
+      } else if (job.name === 'seo-integration-schedule-reconcile') {
+        // Decides which connections are due for collection from their stored
+        // cadence and last success. Runs hourly, so a connection created,
+        // disabled or re-cadenced at runtime becomes correct on its own — no
+        // operator re-save, no redeploy — and a cadence longer than the tick
+        // simply is not due yet.
+        const { reconcileIntegrationSchedules } = await import('../seo/IntegrationScheduleRunner');
+        const outcome = await reconcileIntegrationSchedules();
+        logger.info(outcome, '[QueueWorker] Integration schedules reconciled');
+      } else if (job.name === 'seo-integration-sync') {
+        // 0118 Integrations Control Plane: per-connection sync jobs, isolated
+        // per connection; failures land on the job row, never in commerce paths.
+        const { runSeoIntegrationSyncJob } = await import('../seo/SeoIntegrationSyncRunner');
+        await runSeoIntegrationSyncJob(job.data as { jobId: string; connectionId: string; providerId: string });
+      } else if (job.name === 'abandonment-scan-cron') {
+        // Wave 2E-1: the hourly evaluator is the ONLY writer of abandonment
+        // classifications; each new one is announced on ABANDONED_CART_EVENTS.
+        const result = await registry.abandonmentUseCase.scan();
+        logger.info({ ...result }, '[QueueWorker] Abandonment scan completed');
       } else {
         logger.info('[QueueWorker] Analytics fanout / Synthetic monitor task started');
         const result = await registry.syntheticMonitor.execute();
@@ -175,6 +303,21 @@ export function registerAllWorkers(): void {
           throw new Error('Synthetic commerce check failed');
         }
       }
+    });
+  });
+
+  // 6. Abandoned-cart events (Wave 2E-1). This queue existed with neither producer
+  // nor worker; it now carries each NEW abandonment classification. The v1 consumer
+  // acknowledges and logs — campaign eligibility (consent/suppression/frequency
+  // gated) attaches here in the campaign wave without touching the producer.
+  queueService.registerWorker(QUEUES.ABANDONED_CART_EVENTS, async (job: Job) => {
+    const ctx = getContext(job);
+    return traceLocalStorage.run(ctx, async () => {
+      const { recordId, cartId, itemCount, subtotalUgx } = job.data ?? {};
+      logger.info(
+        { recordId, cartId, itemCount, subtotalUgx },
+        '[QueueWorker] Abandonment classification received',
+      );
     });
   });
 
@@ -186,6 +329,11 @@ export function registerAllWorkers(): void {
       'synthetic-cron',
       {},
       {
+        // A cron that fails every run must not grow Redis without bound: QueueService's
+        // default is removeOnFail:false, and production held 4,511 retained failures
+        // (2026-09-12) under a noeviction Redis with no maxmemory. Keep the last few
+        // hundred for diagnosis; drop the rest.
+        removeOnFail: { count: 200 },
         repeat: {
           pattern: '*/5 * * * *',
         },
@@ -193,11 +341,86 @@ export function registerAllWorkers(): void {
       }
     ).catch(err => logger.error({ err }, '[QueueWorkers] Failed to schedule synthetic cron job'));
 
+    // Hourly abandonment scan (Wave 2E-1)
+    syntheticQueue.add(
+      'abandonment-scan-cron',
+      {},
+      {
+        // A cron that fails every run must not grow Redis without bound: QueueService's
+        // default is removeOnFail:false, and production held 4,511 retained failures
+        // (2026-09-12) under a noeviction Redis with no maxmemory. Keep the last few
+        // hundred for diagnosis; drop the rest.
+        removeOnFail: { count: 200 },
+        repeat: {
+          pattern: '30 * * * *',
+        },
+        jobId: 'abandonment-scan-job',
+      }
+    ).catch(err => logger.error({ err }, '[QueueWorkers] Failed to schedule abandonment scan cron'));
+
+    // AI Search schedule tick (0132), hourly at :17. Starts only projects whose
+    // DAILY/WEEKLY schedule a person switched on; jobId keeps one schedule.
+    syntheticQueue.add(
+      'aiv-schedule-tick',
+      {},
+      {
+        removeOnFail: { count: 200 },
+        removeOnComplete: { count: 50 },
+        repeat: { pattern: '17 * * * *' },
+        jobId: 'aiv-schedule-tick-job',
+      }
+    ).catch(err => logger.error({ err }, '[QueueWorkers] Failed to schedule AI visibility tick'));
+
+    // Six-hourly Search Console Guardian. NOT hourly: Search Console settles
+    // its data over ~3 days, so a faster cadence would only re-read the same
+    // numbers and invent movement. jobId keeps this to ONE logical schedule
+    // however many API replicas boot.
+    syntheticQueue.add(
+      'search-console-guardian-cron',
+      {},
+      {
+        // A cron that fails every run must not grow Redis without bound: QueueService's
+        // default is removeOnFail:false, and production held 4,511 retained failures
+        // (2026-09-12) under a noeviction Redis with no maxmemory. Keep the last few
+        // hundred for diagnosis; drop the rest.
+        removeOnFail: { count: 200 },
+        repeat: {
+          pattern: '0 */6 * * *',
+        },
+        jobId: 'search-console-guardian-job',
+      }
+    ).catch(err => logger.error({ err }, '[QueueWorkers] Failed to schedule Search Console Guardian cron job'));
+
+    // Integration schedule reconciliation. This does NOT sync anything; it
+    // makes each connection's stored cadence real. Hourly so a cadence change
+    // or a newly connected provider starts running without a redeploy, and
+    // jobId keeps it to one logical schedule across replicas.
+    syntheticQueue.add(
+      'seo-integration-schedule-reconcile',
+      {},
+      {
+        // A cron that fails every run must not grow Redis without bound: QueueService's
+        // default is removeOnFail:false, and production held 4,511 retained failures
+        // (2026-09-12) under a noeviction Redis with no maxmemory. Keep the last few
+        // hundred for diagnosis; drop the rest.
+        removeOnFail: { count: 200 },
+        repeat: {
+          pattern: '10 * * * *',
+        },
+        jobId: 'seo-integration-schedule-reconcile-job',
+      }
+    ).catch(err => logger.error({ err }, '[QueueWorkers] Failed to schedule integration schedule reconciliation'));
+
     // Hourly recommendation materialization
     syntheticQueue.add(
       'recommendation-materialize-cron',
       {},
       {
+        // A cron that fails every run must not grow Redis without bound: QueueService's
+        // default is removeOnFail:false, and production held 4,511 retained failures
+        // (2026-09-12) under a noeviction Redis with no maxmemory. Keep the last few
+        // hundred for diagnosis; drop the rest.
+        removeOnFail: { count: 200 },
         repeat: {
           pattern: '0 * * * *',
         },
