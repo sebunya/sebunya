@@ -106,12 +106,22 @@ export class RedisAbuseControlStore {
     identity: string;
     limit: ControlLimit;
     now?: number;
+    /**
+     * What the local fallback does when Redis is unreachable. STRICT (default)
+     * divides the budget — right for human forms and reads, where a bounded
+     * per-replica overshoot is the correct trade. GENEROUS keeps the full budget
+     * locally — right for HMAC-authenticated, low-volume, high-value provider
+     * webhooks, where dropping a real payment confirmation during a Redis blip is
+     * worse than allowing the configured rate on each replica.
+     */
+    outagePolicy?: 'STRICT' | 'GENEROUS';
   }): Promise<ControlDecision> {
     const now = args.now ?? Date.now();
     const { windowMs } = args.limit;
     const windowIndex = Math.floor(now / windowMs);
     const elapsed = now - windowIndex * windowMs;
     const resetAtMs = (windowIndex + 1) * windowMs;
+    const outagePolicy = args.outagePolicy ?? 'STRICT';
 
     const base = controlKey({
       control: args.control,
@@ -121,11 +131,11 @@ export class RedisAbuseControlStore {
     });
 
     if (now < this.unavailableUntil) {
-      return this.decideLocally(base, args.limit, now, resetAtMs, windowMs);
+      return this.decideLocally(base, args.limit, now, resetAtMs, windowMs, outagePolicy);
     }
 
     const client = this.connect();
-    if (!client) return this.decideLocally(base, args.limit, now, resetAtMs, windowMs);
+    if (!client) return this.decideLocally(base, args.limit, now, resetAtMs, windowMs, outagePolicy);
 
     try {
       const raw = (await client.eval(
@@ -149,14 +159,15 @@ export class RedisAbuseControlStore {
       // request while it is down.
       this.unavailableUntil = now + 5_000;
       logger.warn({ err: String(err), control: args.control }, 'ABUSE_CONTROL_DEGRADED');
-      return this.decideLocally(base, args.limit, now, resetAtMs, windowMs);
+      return this.decideLocally(base, args.limit, now, resetAtMs, windowMs, outagePolicy);
     }
   }
 
   /**
    * Emergency fallback. Explicitly NOT the production control: it is per-replica
-   * and therefore multiplies with instance count, so it runs on a stricter
-   * budget to bound the overshoot.
+   * and therefore multiplies with instance count. STRICT families run on a
+   * divided budget to bound the overshoot; GENEROUS families (provider webhooks)
+   * keep the full budget so a Redis blip cannot drop a legitimate callback.
    */
   private decideLocally(
     base: string,
@@ -164,18 +175,19 @@ export class RedisAbuseControlStore {
     now: number,
     resetAtMs: number,
     windowMs: number,
+    outagePolicy: 'STRICT' | 'GENEROUS' = 'STRICT',
   ): ControlDecision {
-    const strict = degradedLimit(limit);
+    const effective = outagePolicy === 'GENEROUS' ? limit : degradedLimit(limit);
     const entry = this.fallback.get(base);
     if (!entry || now >= entry.resetAtMs) {
       this.fallback.set(base, { count: 1, resetAtMs: now + windowMs });
-      return { allowed: true, count: 1, limit: strict.limit, resetAtMs, degraded: true };
+      return { allowed: true, count: 1, limit: effective.limit, resetAtMs, degraded: true };
     }
     entry.count += 1;
     return {
-      allowed: !exceeds(entry.count, strict.limit),
+      allowed: !exceeds(entry.count, effective.limit),
       count: entry.count,
-      limit: strict.limit,
+      limit: effective.limit,
       resetAtMs: entry.resetAtMs,
       degraded: true,
     };

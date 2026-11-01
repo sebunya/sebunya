@@ -121,6 +121,32 @@ export class RedisLoginAttemptStore implements ILoginAttemptStore {
     }
   }
 
+  private rememberKey(key: string): string {
+    return `login:known:${createHash('sha256').update(key).digest('hex').slice(0, 32)}`;
+  }
+
+  async remember(key: string, ttlSeconds: number): Promise<void> {
+    const client = this.available();
+    await this.fallback.remember?.(key, ttlSeconds);
+    if (!client) return;
+    try {
+      await client.set(this.rememberKey(key), '1', 'EX', Math.max(1, Math.floor(ttlSeconds)));
+    } catch (err) {
+      this.degrade(err);
+    }
+  }
+
+  async isRemembered(key: string): Promise<boolean> {
+    const client = this.available();
+    if (!client) return (await this.fallback.isRemembered?.(key)) ?? false;
+    try {
+      return (await client.exists(this.rememberKey(key))) === 1;
+    } catch (err) {
+      this.degrade(err);
+      return (await this.fallback.isRemembered?.(key)) ?? false;
+    }
+  }
+
   async probe(): Promise<{ available: boolean }> {
     const client = this.connect();
     if (!client) return { available: false };

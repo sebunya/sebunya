@@ -202,6 +202,10 @@ export const channelSuppressions = pgTable('channel_suppressions', {
   effectiveAt: timestamp('effective_at', { withTimezone: true }).notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   supersededBy: uuid('superseded_by'),
+  /** 0164: set together with suppression_active = false when an admin lifts it. */
+  liftedAt: timestamp('lifted_at', { withTimezone: true }),
+  liftedBy: varchar('lifted_by', { length: 255 }),
+  liftReason: text('lift_reason'),
 }, (table) => ({
   activeSuppressionLookup: index('channel_suppressions_active_idx').on(
     table.endpointRef,
