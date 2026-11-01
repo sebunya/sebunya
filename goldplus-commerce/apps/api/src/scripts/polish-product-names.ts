@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { Registry } from '../infrastructure/Registry';
 import { db, endDbConnection } from '../infrastructure/db/client';
 import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
+import { rowsOf } from './lib/scriptHelpers';
 
 /**
  * Names were built as "GoldPlus <Category> <price-list code>". The price
@@ -15,7 +16,6 @@ import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAudi
  *
  *   ACTOR_USER_ID=<uuid> npx tsx src/scripts/polish-product-names.ts
  */
-const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 function polish(name: string): string {
   let n = name;
   n = n.replace(/^(GoldPlus Power Bank .*?)\s+PB$/, '$1').replace(/^(GoldPlus Memory Card .*?)\s+MC$/, '$1').replace(/^(GoldPlus Flash Drive .*?)\s+F$/, '$1')

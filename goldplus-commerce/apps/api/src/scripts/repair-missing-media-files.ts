@@ -8,6 +8,7 @@ import { db, endDbConnection } from '../infrastructure/db/client';
 import { LocalProductImageStorage } from '../infrastructure/storage/LocalProductImageStorage';
 import { SharpVariantGenerator } from '../infrastructure/media/SharpVariantGenerator';
 import { requireMediaVolume } from './requireMediaVolume';
+import { rowsOf } from './lib/scriptHelpers';
 
 /**
  * Puts back media files the database knows about but the shared volume has
@@ -20,7 +21,6 @@ import { requireMediaVolume } from './requireMediaVolume';
  *
  *   DRY_RUN=1 SOURCE_DIR=/import-images npx tsx src/scripts/repair-missing-media-files.ts
  */
-const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 
 async function main(): Promise<void> {
   const root = requireMediaVolume();

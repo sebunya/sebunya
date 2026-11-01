@@ -5,6 +5,7 @@ import { Registry } from '../infrastructure/Registry';
 import { db, endDbConnection } from '../infrastructure/db/client';
 import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
 import { MAX_ONLY_SKUS, parseOnly } from './skuSelection';
+import { rowsOf } from './lib/scriptHelpers';
 
 /**
  * Put NAMED draft products back on sale, e.g. the ones a photo batch just covered.
@@ -14,7 +15,6 @@ import { MAX_ONLY_SKUS, parseOnly } from './skuSelection';
  * photo (none, or only "Sample " frames) is never approved: the owner's rule (2026-10-12) is no live product without one.
  * Dry run by default.   ONLY=SKU1,SKU2 [APPLY=1] ACTOR_USER_ID=<uuid> npx tsx src/scripts/approve-skus.ts
  */
-const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 async function main(): Promise<void> {
   const only = parseOnly(process.env.ONLY);
   if (only.size === 0 || only.size > MAX_ONLY_SKUS) throw new Error(`ONLY must list between 1 and ${MAX_ONLY_SKUS} SKUs.`);

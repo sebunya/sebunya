@@ -6,6 +6,7 @@ import { Registry } from '../infrastructure/Registry';
 import { db, endDbConnection } from '../infrastructure/db/client';
 import { parseGuideFile, internalLinks, guideChanged } from '../domain/blog/GuideFile';
 import { slugifyTitle, canPublish } from '../domain/blog/BlogPost';
+import { rowsOf } from './lib/scriptHelpers';
 
 /**
  * Publishes the guide drafts under docs/content/guides through the SAME use
@@ -19,7 +20,6 @@ import { slugifyTitle, canPublish } from '../domain/blog/BlogPost';
  *   ACTOR_USER_ID=<uuid> DRY_RUN=1 GUIDES_DIR=/guides npx tsx src/scripts/publish-guides.ts
  *   (the builder image carries no docs/: bind-mount docs/content/guides from the host checkout at /guides)
  */
-const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 
 async function main(): Promise<void> {
   const actorId = String(process.env.ACTOR_USER_ID ?? '').trim();

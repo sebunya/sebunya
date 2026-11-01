@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { Registry } from '../infrastructure/Registry';
 import { db, endDbConnection } from '../infrastructure/db/client';
+import { rowsOf } from './lib/scriptHelpers';
 
 /**
  * The battery importer carries the selling price (Price D) but not the tiers,
@@ -13,7 +14,6 @@ import { db, endDbConnection } from '../infrastructure/db/client';
  *
  *   ROWS_FILE=/import/battery-tiers.json npx tsx src/scripts/set-battery-price-tiers.ts
  */
-const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 
 async function main(): Promise<void> {
   const rows = JSON.parse(readFileSync(String(process.env.ROWS_FILE ?? '/import/battery-tiers.json'), 'utf8')) as Array<{ name: string; floor_A: number; tier_B: number; tier_C: number; retail_D: number }>;

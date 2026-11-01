@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { Registry } from '../infrastructure/Registry';
 import { db, endDbConnection } from '../infrastructure/db/client';
 import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
+import { rowsOf } from './lib/scriptHelpers';
 
 /**
  * Owner's statement (2026-08-31): "we have 200 items for every product in
@@ -14,7 +15,6 @@ import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAudi
  *
  *   ACTOR_USER_ID=<uuid> QUANTITY=200 npx tsx src/scripts/set-stock-all.ts
  */
-const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 
 async function main(): Promise<void> {
   const actorId = String(process.env.ACTOR_USER_ID ?? '').trim();

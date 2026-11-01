@@ -5,6 +5,7 @@ import { Registry } from '../infrastructure/Registry';
 import { db, endDbConnection } from '../infrastructure/db/client';
 import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
 import { UNCONDITIONAL_FIT_PROMISE, rewordFitPromise } from '../domain/batteries/BatteryFitWording';
+import { rowsOf } from './lib/scriptHelpers';
 
 /**
  * Rewords the battery listings' unconditional "Fit confirmed before you pay." (2026-10-29 review of the guides). The
@@ -20,7 +21,6 @@ import { UNCONDITIONAL_FIT_PROMISE, rewordFitPromise } from '../domain/batteries
  *
  *   ACTOR_USER_ID=<uuid> [APPLY=1] npx tsx src/scripts/reword-battery-fit-promise.ts
  */
-const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 
 
 async function main(): Promise<void> {

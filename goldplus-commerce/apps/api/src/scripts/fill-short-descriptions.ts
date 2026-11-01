@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { Registry } from '../infrastructure/Registry';
 import { db, endDbConnection } from '../infrastructure/db/client';
 import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
+import { rowsOf } from './lib/scriptHelpers';
 
 /**
  * A factual one-line description for every product that has none: what it
@@ -14,7 +15,6 @@ import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAudi
  *
  *   ACTOR_USER_ID=<uuid> npx tsx src/scripts/fill-short-descriptions.ts
  */
-const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 const KIND: Array<[RegExp, string]> = [
   [/battery/i, 'replacement battery'], [/power bank/i, 'power bank'], [/car charger/i, 'car charger'], [/charger/i, 'charger'], [/cable/i, 'cable'],
   [/earphone/i, 'earphones'], [/bluetooth/i, 'Bluetooth audio device'], [/memory card/i, 'memory card'], [/flash drive/i, 'flash drive'],

@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { Registry } from '../infrastructure/Registry';
 import { db, endDbConnection } from '../infrastructure/db/client';
 import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
+import { rowsOf } from './lib/scriptHelpers';
 
 /**
  * Removes the "tested before sale" promise from every product's short and
@@ -19,7 +20,6 @@ import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAudi
  *
  *   ACTOR_USER_ID=<uuid> [APPLY=1] npx tsx src/scripts/strip-tested-claim.ts
  */
-const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 
 /** Ordered: longer phrasings first so the short catch-alls only see what is left. */
 const RULES: Array<[RegExp, string]> = [

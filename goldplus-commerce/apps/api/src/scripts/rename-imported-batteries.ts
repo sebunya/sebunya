@@ -2,6 +2,7 @@ import '../config/env';
 import { sql } from 'drizzle-orm';
 import { Registry } from '../infrastructure/Registry';
 import { db, endDbConnection } from '../infrastructure/db/client';
+import { rowsOf } from './lib/scriptHelpers';
 
 /**
  * The battery importer names a battery "<Brand> battery <code>" and the price
@@ -13,7 +14,6 @@ import { db, endDbConnection } from '../infrastructure/db/client';
  *
  *   ACTOR_USER_ID=<uuid> npx tsx src/scripts/rename-imported-batteries.ts
  */
-const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 
 async function main(): Promise<void> {
   const actorId = String(process.env.ACTOR_USER_ID ?? '').trim();
