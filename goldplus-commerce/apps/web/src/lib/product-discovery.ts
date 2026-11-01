@@ -264,9 +264,12 @@ export function sortDiscoveryProducts(products: ProductPublicDto[], sort: Discov
   const subRank = new Map<string, number>();
   taxonomy.forEach((c) => c.subcategories.forEach((sc, i) => subRank.set(sc.slug, i)));
   const rank = (p: ProductPublicDto) => [categoryRank.get(p.categoryName) ?? taxonomy.length, subRank.get(getProductSubcategory(p, taxonomy)) ?? 999] as const;
+  // Within a subcategory, sold-out products follow the ones a shopper can buy
+  // (owner 2026-11-01): they stay listed, they just stop leading the shelf.
+  const soldOut = (p: ProductPublicDto) => (p.availability?.kind === 'out_of_stock' ? 1 : 0);
   return list.sort((a, b) => {
     const [ca, sa] = rank(a); const [cb, sb] = rank(b);
-    return ca - cb || sa - sb || a.name.localeCompare(b.name);
+    return ca - cb || sa - sb || soldOut(a) - soldOut(b) || a.name.localeCompare(b.name);
   });
 }
 

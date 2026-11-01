@@ -28,3 +28,23 @@ describe('sold-out overlay on product cards', () => {
     expect(src).toContain('{!inStock && !soldOut && (');
   });
 });
+
+import { sortDiscoveryProducts } from '../../apps/web/src/lib/product-discovery';
+
+describe('sold-out products and the shop order', () => {
+  it('default order puts sold-out after buyable products in the same subcategory', () => {
+    const p = (name: string, kind: string) => ({ id: name, slug: name, name, categoryName: 'Chargers', availability: { kind }, attributeValues: [] }) as any;
+    const out = sortDiscoveryProducts([p('A charger', 'out_of_stock'), p('B charger', 'in_stock'), p('C charger', 'pre_order')], 'default');
+    expect(out.map((x) => x.name)).toEqual(['B charger', 'C charger', 'A charger']);
+  });
+
+  it('a price sort stays a strict price sort', () => {
+    const p = (name: string, kind: string, price: number) => ({ id: name, slug: name, name, categoryName: 'Chargers', retailPriceUgx: price, availability: { kind }, attributeValues: [] }) as any;
+    const out = sortDiscoveryProducts([p('B', 'in_stock', 9000), p('A', 'out_of_stock', 5000)], 'price-low-high');
+    expect(out.map((x) => x.name)).toEqual(['A', 'B']);
+  });
+
+  it('no "Limited time" urgency line on a sold-out card', () => {
+    expect(read('ProductCard.astro')).toContain('discount.endsIso && !soldOut');
+  });
+});

@@ -91,7 +91,7 @@ const productType = lowerName.includes("charger") ? "Charger"
         </div>
       )}
       {item.availability?.kind === "out_of_stock" && (
-        <span class="absolute inset-0 flex items-center justify-center bg-slate-900/45 pointer-events-none" aria-hidden="true" data-sold-out-overlay>
+        <span class="absolute inset-0 flex items-center justify-center bg-slate-900/55 pointer-events-none" aria-hidden="true" data-sold-out-overlay>
           <span class="text-white text-lg sm:text-xl font-black tracking-tight drop-shadow-md">Sold out</span>
         </span>
       )}
@@ -121,7 +121,7 @@ const productType = lowerName.includes("charger") ? "Charger"
               <span class="text-[11px] font-semibold text-slate-600 line-through tabular-nums">{formatUgx(item.price)}</span>
               <span class="text-[11px] font-black uppercase tracking-wider rounded-full px-1.5 py-0.5" style="background:#93D500;color:#0A0A0A">{discount.percent}% discount</span>
             </span>
-            {variant !== "cart-compact" && discount.endsIso && (
+            {variant !== "cart-compact" && discount.endsIso && item.availability?.kind !== "out_of_stock" && (
               <span class="mt-0.5 text-[11px] font-bold text-amber-700 tabular-nums" data-card-sale-ends={discount.endsIso}>Discounted price. Limited time</span>
             )}
           </span>

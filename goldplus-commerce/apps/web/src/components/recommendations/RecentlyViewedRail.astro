@@ -210,7 +210,7 @@ const railDiscount = await getStorefrontDiscount();
                  <span class="text-[11px] font-semibold text-slate-600 line-through tabular-nums">UGX ${item.price.toLocaleString("en-US")}</span>
                  <span class="text-[11px] font-black uppercase tracking-wider rounded-full px-1.5 py-0.5" style="background:#93D500;color:#0A0A0A">${salePercent}% discount</span>
                </span>
-               ${saleEndsIso ? `<span class="mt-0.5 text-[11px] font-bold text-amber-700 tabular-nums" data-card-sale-ends="${escapeHtml(saleEndsIso)}">Discounted price. Limited time</span>` : ""}
+               ${saleEndsIso && item.availability?.kind !== "out_of_stock" ? `<span class="mt-0.5 text-[11px] font-bold text-amber-700 tabular-nums" data-card-sale-ends="${escapeHtml(saleEndsIso)}">Discounted price. Limited time</span>` : ""}
              </span>`
           : `<span class="font-black tracking-tight ${hasPrice ? 'text-lg text-brand-charcoal' : 'text-xs text-brand-mutedGrey font-bold'}">${priceLabel}</span>`;
 
@@ -247,7 +247,7 @@ const railDiscount = await getStorefrontDiscount();
                  data-reason-code="${source === 'fallback' ? 'RECENTLY_VIEWED_FALLBACK' : 'RECENTLY_VIEWED'}"
                  class="block aspect-square bg-slate-50 rounded-xl overflow-hidden mb-4 relative border border-slate-100 outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk">
                  ${img}
-                 ${item.availability?.kind === "out_of_stock" ? `<span class="absolute inset-0 flex items-center justify-center bg-slate-900/45 pointer-events-none" aria-hidden="true" data-sold-out-overlay><span class="text-white text-xl font-black tracking-tight drop-shadow-md">Sold out</span></span>` : ""}
+                 ${item.availability?.kind === "out_of_stock" ? `<span class="absolute inset-0 flex items-center justify-center bg-slate-900/55 pointer-events-none" aria-hidden="true" data-sold-out-overlay><span class="text-white text-xl font-black tracking-tight drop-shadow-md">Sold out</span></span>` : ""}
               </a>
               <div class="flex flex-col flex-grow">
                 <h3 class="text-[15px] font-bold text-gray-900 leading-snug mb-2 group-hover:text-brand-primaryInk transition-colors line-clamp-2 min-h-[2.5rem]"><a href="/products/${escapedSlug}" class="outline-none focus-visible:underline">${escapedName}</a></h3>
