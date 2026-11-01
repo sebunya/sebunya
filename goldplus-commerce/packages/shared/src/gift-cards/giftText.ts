@@ -21,7 +21,11 @@ export const GIFT_CARD_FROM_MAX = 40;
  */
 export function unsafeGiftText(value: string): boolean {
   if (/https?:|www\.|\.(com|ug|net|org|co|me|ly|io|link|xyz|info)\b/i.test(value)) return true;
-  if (/\d[\d\s.-]{5,}\d/.test(value)) return true; // 7+ digits, spaced or not: a phone or account number
+  // A phone or account number: 9+ digits in one run, spaced or not (a Ugandan mobile is 9 digits after the 0 or 256).
+  // Dates (2026-12-25, 25.12.2026) and amounts (UGX 1000000) have at most 8 and pass (2026-11 review: any 7 did not).
+  for (const run of value.match(/\d[\d\s.-]*\d/g) ?? []) {
+    if (run.replace(/\D/g, '').length >= 9) return true;
+  }
   if (/[<>{}\\]/.test(value)) return true;
   return false;
 }

@@ -33,6 +33,9 @@ describe('gift card purchase rules (0199)', () => {
       expect(checkGiftCardPurchase(form({ message: bad }), NOW).ok).toBe(false);
     }
     for (const fine of ['Happy 30th birthday!', 'Congrats on the new job, 2026 is yours', 'Merry Christmas from all of us']) expect(unsafeGiftText(fine)).toBe(false);
+    // 2026-11 review: dates and amounts are not phone numbers.
+    for (const fine of ['See you on 2026-12-25!', 'Wedding day 25.12.2026', 'Here is UGX 1000000 of love', 'From 12-11-2026']) expect(unsafeGiftText(fine)).toBe(false);
+    for (const bad of ['256772123456', '+256 772 123 456', '772.123.456']) expect(unsafeGiftText(bad)).toBe(true);
     expect(checkGiftCardPurchase(form({ fromName: 'Call 0772123456' }), NOW).ok).toBe(false);
     // 160 characters: the same limit in the form, here and in the column; one more is refused, never cut.
     expect(checkGiftCardPurchase(form({ message: 'x'.repeat(160) }), NOW).ok).toBe(true);
