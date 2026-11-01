@@ -32,6 +32,7 @@ describe('Order State Transitions Unit Tests', () => {
   beforeEach(() => {
     mockOrderRepo = {
       findById: vi.fn(),
+      findPaymentMethod: vi.fn().mockResolvedValue(null),
       save: vi.fn().mockResolvedValue(undefined)
     };
 
@@ -83,6 +84,23 @@ describe('Order State Transitions Unit Tests', () => {
     });
 
     expect(res.status).toBe(403);
+  });
+
+  it('refuses to process an unpaid ONLINE order before the service is called (review 211)', async () => {
+    const order = new Order(
+      'order-1', 'GP-1001', 'Alice', '0788', undefined, 'Kla', 'Add',
+      'retail', [], 100000, 0, 100000, 'unpaid', 'received', new Date(), new Date()
+    );
+    mockOrderRepo.findById.mockResolvedValue(order);
+    mockOrderRepo.findPaymentMethod.mockResolvedValue('pesapal');
+    const res = await app.request('/governance/admin/orders/order-1/fulfillment', {
+      method: 'PATCH',
+      headers: { Authorization: 'Bearer token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'processing' })
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe('TRANSITION_BLOCKED');
+    expect(mockTransition.transition).not.toHaveBeenCalled();
   });
 
   it('should allow valid transition from received to processing', async () => {

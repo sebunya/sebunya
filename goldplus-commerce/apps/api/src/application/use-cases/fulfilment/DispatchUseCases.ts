@@ -33,6 +33,30 @@ async function audit(auditRepo: IAuditRepository, actorId: string, action: strin
   await new CreateAuditLogUseCase(auditRepo).execute({ actorId, action, entity: 'fulfilment_dispatch', entityId, previousState, newState });
 }
 
+/** The state machine said no (ORDER_TRANSITION_*), as opposed to a technical failure. */
+export function isTransitionRefusal(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && code.startsWith('ORDER_TRANSITION_');
+}
+
+/**
+ * Whether a delivery catch-up may confirm an UNPAID order as cash on delivery.
+ * Only when a person chose it: the customer picked pay on delivery (the order
+ * is not an online one), or an operator confirmed cash on delivery when
+ * dispatching (the dispatch record's payment policy). An unpaid online order
+ * with neither is not switched to pay on delivery behind anyone's back.
+ */
+export async function cashOnDeliveryConfirmed(
+  task: { id: string; paymentStatus: string; paymentMethod: string | null },
+  dispatches?: { getByTask(taskId: string): Promise<{ paymentPolicy: string } | null> },
+): Promise<boolean> {
+  if (task.paymentStatus === 'paid') return false;
+  if (task.paymentMethod !== 'pesapal') return true;
+  if (!dispatches) return false;
+  const dispatch = await dispatches.getByTask(task.id).catch(() => null);
+  return dispatch?.paymentPolicy === 'CASH_ON_DELIVERY';
+}
+
 /**
  * Mirror a dispatch onto the order: `dispatched`, reached the legal way.
  *
@@ -65,7 +89,11 @@ export async function mirrorOrderDispatched(
   try {
     await orderTransitions.transition(orderId, 'dispatched', { ...base, reasonCode: 'dispatch_recorded', note: ctx.note });
     return 'dispatched';
-  } catch {
+  } catch (error) {
+    // Only a real status refusal means "confirm it first". A deadlock, timeout
+    // or dropped connection says nothing about the order's status, and must
+    // never take the path that can switch its payment method.
+    if (!isTransitionRefusal(error)) return 'skipped';
     // Not dispatchable as it stands: confirm it first, but only with payment cleared (paid, or COD confirmed).
     if (!ctx.cashOnDelivery && !ctx.paid) return 'skipped';
   }

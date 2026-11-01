@@ -23,6 +23,18 @@ export class DrizzleBulkPriceAccessRepository implements IBulkPriceAccessReposit
     await db.insert(bulkPriceAccess).values({ phone, codeHash: 'first-visit', expiresAt: at, verifiedAt: at, method: 'first_visit', createdAt: at });
   }
 
+  async claimFirstVisit(phone: string, at: Date): Promise<boolean> {
+    // One transaction-scoped lock per phone, so the count and the insert are one
+    // step: two parallel first requests cannot both see zero uses.
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`bulk-price-access:${phone}`}))`);
+      const [row] = await tx.select({ n: sql<number>`count(*)::int` }).from(bulkPriceAccess).where(eq(bulkPriceAccess.phone, phone));
+      if (Number(row?.n ?? 0) > 0) return false;
+      await tx.insert(bulkPriceAccess).values({ phone, codeHash: 'first-visit', expiresAt: at, verifiedAt: at, method: 'first_visit', createdAt: at });
+      return true;
+    });
+  }
+
   async create(input: { phone: string; codeHash: string; expiresAt: Date }): Promise<void> {
     await db.insert(bulkPriceAccess).values(input);
   }

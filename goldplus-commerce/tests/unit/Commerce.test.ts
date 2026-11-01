@@ -57,4 +57,23 @@ describe('Order Domain Entity', () => {
     // received -> completed skips the machine and must be rejected.
     expect(() => order.transitionStatus('completed')).toThrow(/not allowed/i);
   });
+
+  test('transitionStatus keeps store credit and applies the UNPAID_ONLINE rule (review 211)', () => {
+    const base = Order.create('o4', { name: 'J', phone: '1', deliveryArea: 'Kla', deliveryAddress: 'Adr' }, 'retail', [
+      { productId: 'p1', sku: 'SKU1', name: 'Item 1', price: 80000, quantity: 1 },
+    ], 0);
+    const withCredit = new Order(
+      base.id, base.orderNumber, base.customerName, base.customerPhone, base.customerEmail, base.deliveryArea, base.deliveryAddress,
+      base.buyerType, base.items, base.subtotalUgx, base.deliveryFeeUgx, base.totalUgx, base.paymentStatus, base.orderStatus,
+      base.createdAt, base.updatedAt, base.deliveryLocation, base.deliveryFeeConfirmed, base.pricingSnapshot, base.userId,
+      base.loyaltyDiscountUgx, base.loyaltyRedemptionId, 50000,
+    );
+    const moved = withCredit.transitionStatus('cancelled');
+    expect(moved.storeCreditAppliedUgx).toBe(50000);
+    expect(moved.amountDueUgx).toBe(withCredit.totalUgx - 50000);
+
+    expect(() => withCredit.transitionStatus('processing', { paymentMethod: 'pesapal' })).toThrow(/pay online/i);
+    expect(withCredit.transitionStatus('processing', { paymentMethod: 'pesapal', payOnDeliveryConfirmed: true }).orderStatus).toBe('processing');
+    expect(withCredit.transitionStatus('processing', { paymentMethod: 'offline' }).orderStatus).toBe('processing');
+  });
 });

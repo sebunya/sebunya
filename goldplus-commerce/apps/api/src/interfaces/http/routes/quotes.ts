@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { Registry } from '../../../infrastructure/Registry';
 import { logger } from '../../../infrastructure/logging/logger';
+import { clientKey } from '../clientAddress';
 
 /**
  * Public bulk requests (docs/bulk-buying/DESIGN.md).
@@ -90,7 +91,7 @@ routes.post('/bulk-terms', async (c) => {
 routes.post('/price-access/start', async (c) => {
   const body = await readJson(c.req.raw);
   if (!body) return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Request body must be JSON.' } }, 400);
-  const result = await registry.startBulkPriceAccessUseCase.execute({ phone: body.phone });
+  const result = await registry.startBulkPriceAccessUseCase.execute({ phone: body.phone, clientKey: clientKey(c) });
   c.header('Cache-Control', 'no-store');
   if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } }, result.code === 'TOO_MANY_CODES' ? 429 : 400);
   if (result.method === 'first_visit') {

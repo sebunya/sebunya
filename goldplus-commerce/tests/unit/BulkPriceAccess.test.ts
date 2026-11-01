@@ -15,6 +15,9 @@ import {
 import {
   GetBulkTermsUseCase,
   StartBulkPriceAccessUseCase,
+  FIRST_VISITS_PER_CLIENT_PER_DAY,
+  STARTS_PER_PHONE_PER_HOUR,
+  type PriceAccessLimiter,
   VerifyBulkPriceAccessUseCase,
   type PriceAccessCrypto,
 } from '../../apps/api/src/application/use-cases/quotes/BulkPriceAccessUseCases';
@@ -68,6 +71,12 @@ function fakeAccess(): IBulkPriceAccessRepository & { rows: Array<AccessChalleng
     countSince: async (phone, since) => rows.filter((r) => r.phone === phone && r.method === 'code' && r.createdAt >= since).length,
     countUses: async (phone) => rows.filter((r) => r.phone === phone).length,
     recordFirstVisit: async (phone, at) => { rows.push({ id: `c${++n}`, phone, codeHash: 'first-visit', expiresAt: at, attempts: 0, verifiedAt: at, createdAt: at, method: 'first_visit' }); },
+    // Synchronous check-and-insert, as the advisory-locked SQL is.
+    claimFirstVisit: async (phone, at) => {
+      if (rows.some((r) => r.phone === phone)) return false;
+      rows.push({ id: `c${++n}`, phone, codeHash: 'first-visit', expiresAt: at, attempts: 0, verifiedAt: at, createdAt: at, method: 'first_visit' });
+      return true;
+    },
     create: async ({ phone, codeHash, expiresAt }) => { rows.push({ id: `c${++n}`, phone, codeHash, expiresAt, attempts: 0, verifiedAt: null, createdAt: NOW, method: 'code' }); },
     latestOpen: async (phone) => [...rows].reverse().find((r) => r.phone === phone && !r.verifiedAt && r.method === 'code') ?? null,
     recordAttempt: async (id) => { const r = rows.find((x) => x.id === id)!; r.attempts += 1; return r.attempts; },
@@ -136,6 +145,45 @@ describe('start and verify', () => {
   });
 });
 
+describe('typed first use: atomic and rate limited (review 211)', () => {
+  function counter(): PriceAccessLimiter {
+    const seen = new Map<string, number>();
+    return { allow: async (scope, key, limit) => { const k = `${scope}:${key}`; const n = (seen.get(k) ?? 0) + 1; seen.set(k, n); return n <= limit.limit; } };
+  }
+
+  it('parallel first requests for one number get one token; the rest are sent a code', async () => {
+    const access = fakeAccess();
+    const sent: string[] = [];
+    const start = new StartBulkPriceAccessUseCase(access, { send: async (p) => { sent.push(p); } }, crypto, () => NOW);
+    const results = await Promise.all([1, 2, 3].map(() => start.execute({ phone: '0772123456' })));
+    expect(results.filter((r) => r.ok && r.method === 'first_visit')).toHaveLength(1);
+    expect(results.filter((r) => r.ok && r.method === 'code')).toHaveLength(2);
+    expect(access.rows.filter((r) => r.method === 'first_visit')).toHaveLength(1);
+  });
+
+  it('one client typing fresh numbers gets typed access only up to its daily budget, then must prove by SMS', async () => {
+    const access = fakeAccess();
+    const sent: string[] = [];
+    const start = new StartBulkPriceAccessUseCase(access, { send: async (p) => { sent.push(p); } }, crypto, () => NOW, counter());
+    const methods: string[] = [];
+    for (let i = 0; i < FIRST_VISITS_PER_CLIENT_PER_DAY + 2; i++) {
+      const r = await start.execute({ phone: `07721234${String(10 + i)}`, clientKey: 'ip:1.2.3.4' });
+      methods.push(r.ok ? r.method : r.code);
+    }
+    expect(methods.slice(0, FIRST_VISITS_PER_CLIENT_PER_DAY).every((m) => m === 'first_visit')).toBe(true);
+    expect(methods.slice(FIRST_VISITS_PER_CLIENT_PER_DAY)).toEqual(['code', 'code']);
+    expect(sent).toHaveLength(2);
+    // Another client is unaffected.
+    expect(await start.execute({ phone: '0772999111', clientKey: 'ip:5.6.7.8' })).toMatchObject({ ok: true, method: 'first_visit' });
+  });
+
+  it('caps start requests per number per hour', async () => {
+    const start = new StartBulkPriceAccessUseCase(fakeAccess(), { send: async () => undefined }, { ...crypto }, () => NOW, counter());
+    for (let i = 0; i < STARTS_PER_PHONE_PER_HOUR; i++) await start.execute({ phone: '0772123456', clientKey: `ip:${i}` });
+    expect(await start.execute({ phone: '0772123456', clientKey: 'ip:x' })).toMatchObject({ ok: false, code: 'TOO_MANY_CODES' });
+  });
+});
+
 describe('bulk terms read: the one public read of the dealer price', () => {
   const rows: BulkTerms[] = [
     { productId: 'a', bulkUnit: 'carton', unitsPerCarton: 50, dealerPriceUgx: 21_000 },
@@ -172,5 +220,16 @@ describe('rate families', () => {
     expect(classifyPublicEndpoint('POST', '/quotes/price-access/start')).toBe('auth-recovery');
     expect(classifyPublicEndpoint('POST', '/quotes/price-access/verify')).toBe('auth-recovery');
     expect(classifyPublicEndpoint('POST', '/quotes/bulk-terms')).toBe('order-lookup');
+  });
+});
+
+describe('token key in production (review 211)', () => {
+  it('refuses to fall back to the public test key in production', async () => {
+    const { bulkPriceTokenSecret } = await import('../../apps/api/src/infrastructure/quotes/BulkPriceAccessCrypto');
+    expect(() => bulkPriceTokenSecret({ NODE_ENV: 'production' })).toThrow(/BULK_PRICE_TOKEN_KEY or JWT_SECRET/);
+    expect(() => bulkPriceTokenSecret({ NODE_ENV: 'production', JWT_SECRET: '   ' })).toThrow();
+    expect(bulkPriceTokenSecret({ NODE_ENV: 'production', JWT_SECRET: 'jwt-secret' })).toBe('jwt-secret');
+    expect(bulkPriceTokenSecret({ NODE_ENV: 'production', BULK_PRICE_TOKEN_KEY: 'k', JWT_SECRET: 'j' })).toBe('k');
+    expect(bulkPriceTokenSecret({ NODE_ENV: 'test' })).toMatch(/^local-test-only/);
   });
 });

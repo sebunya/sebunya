@@ -109,6 +109,27 @@ describe('ReinstateFulfilmentTaskUseCase', () => {
     expect(entries[0]).toMatchObject({ action: 'FULFILMENT_TASK_REINSTATED', entity: 'fulfilment_task' });
   });
 
+  it('holds the released stock again, so the reinstated order is not packed on units back on sale (review 212)', async () => {
+    const { repo } = makeRepo(snapshot({ status: 'CANCELLED' }));
+    const { audit, entries } = makeAudit();
+    const calls: string[] = [];
+    const stock = { reacquireReleasedForOrder: async (id: string) => { calls.push(id); return { ok: true as const, lines: 2 }; } };
+    const uc = new ReinstateFulfilmentTaskUseCase(repo, audit, makeOrders('processing'), stock);
+    expect(await uc.execute({ taskId: 'task-1', actorId: 'a' })).toMatchObject({ ok: true, stock: 'held' });
+    expect(calls).toEqual(['order-1']);
+    expect(entries[0].newState).toMatchObject({ stock: 'held' });
+  });
+
+  it('reports a shortfall when released units were sold meanwhile, and still reinstates', async () => {
+    const { repo, state } = makeRepo(snapshot({ status: 'CANCELLED' }));
+    const { audit, entries } = makeAudit();
+    const short = [{ productId: 'p1', wanted: 2, available: 0 }];
+    const uc = new ReinstateFulfilmentTaskUseCase(repo, audit, makeOrders('processing'), { reacquireReleasedForOrder: async () => ({ ok: false as const, short }) });
+    expect(await uc.execute({ taskId: 'task-1', actorId: 'a' })).toMatchObject({ ok: true, stock: 'short' });
+    expect(state.snap!.status).toBe('NEW');
+    expect(entries[0].newState).toMatchObject({ stock: 'short', short });
+  });
+
   it('recovers a processing order too', async () => {
     const { repo, state } = makeRepo(snapshot({ status: 'CANCELLED' }));
     const { audit } = makeAudit();

@@ -1,5 +1,6 @@
 ---
 import { onSitePaymentPath } from '../lib/payOnSite';
+import { orderProgressStage } from '../lib/orderProgress';
 import { readClientAddress } from '../lib/forwardClient';
 import { readGuestMemory, rememberedContact } from '../lib/guestMemory';
 import RememberedDetails from '../components/RememberedDetails.astro';
@@ -32,15 +33,7 @@ const STAGES = [
   { key: 'dispatched', title: 'Dispatched', desc: 'Handed to our rider and on the way to you.' },
   { key: 'delivered', title: 'Delivered', desc: 'Order completed.' },
 ];
-const stageIndexOf = (orderStatus: unknown): number => {
-  const s = String(orderStatus ?? '').toLowerCase();
-  if (['delivered', 'completed'].includes(s)) return 3;
-  if (['dispatched', 'delivery_failed'].includes(s)) return 2;
-  if (s === 'processing') return 1;
-  // pending_owner_review is a wholesale/corporate order our team has NOT yet
-  // confirmed (its own badge says "being checked"): it is still at "placed".
-  return 0; // received, pending_owner_review, pending_payment, failed, cancelled (pre-dispatch)
-};
+const stageIndexOf = orderProgressStage; // shared with /orders/:id (lib/orderProgress)
 
 async function lookupOrder(reference: string, contact: string) {
   return postJson('/commerce/orders/lookup', { reference, contact }, null, readClientAddress(Astro));

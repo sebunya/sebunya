@@ -80,12 +80,18 @@ export class TransitionFulfilmentTaskUseCase {
 
     const from = snapshot.status;
 
+    let orderAlreadyDelivered = false;
     if (this.orders) {
       const order = await this.orders.findById(snapshot.orderId);
+      // The recovery for a RecordDelivery whose order move landed but whose task
+      // move did not: the order is delivered (final), the task is still out for
+      // delivery. Moving the task to DELIVERED is the truth catching up, not new
+      // work on a closed order, so it is allowed (with a recorded delivery, below).
+      orderAlreadyDelivered = to === 'DELIVERED' && order?.orderStatus === 'delivered';
       // Fail closed: a status the state machine does not know is not a live
       // order either, and must not become a 500 on the operator's screen.
       const orderIsClosed = (status: OrderStatus): boolean => { try { return isTerminalOrderStatus(status); } catch { return true; } };
-      if (to !== 'CANCELLED' && order && orderIsClosed(order.orderStatus)) {
+      if (to !== 'CANCELLED' && !orderAlreadyDelivered && order && orderIsClosed(order.orderStatus)) {
         return {
           ok: false,
           code: 'INVALID_TRANSITION',
@@ -138,7 +144,9 @@ export class TransitionFulfilmentTaskUseCase {
     await this.repo.update(task);
 
     let orderMirror: 'dispatched' | 'delivered' | 'skipped' | 'not_wired' = 'not_wired';
-    if (this.orderTransitions && to === 'DELIVERED') {
+    if (orderAlreadyDelivered) {
+      orderMirror = 'delivered';
+    } else if (this.orderTransitions && to === 'DELIVERED') {
       // Reached only with a recorded delivery (guard above): the recovery for a
       // RecordDelivery whose own task move did not land. Best-effort, as there:
       // an order already delivered refuses, and that refusal is not an error.

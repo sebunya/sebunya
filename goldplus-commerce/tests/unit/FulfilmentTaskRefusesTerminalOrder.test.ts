@@ -67,3 +67,29 @@ describe('a fulfilment task cannot be worked once its order is terminal', () => 
     expect((await uc.execute({ taskId: 't1', toStatus: 'ACKNOWLEDGED', actorId: 'admin' })).ok).toBe(true);
   });
 });
+
+describe('the stuck DELIVERED recovery (review 211)', () => {
+  function outForDelivery(orderStatus: string, delivered = true) {
+    let stored: FulfilmentTaskSnapshot = { ...newTask(), status: 'OUT_FOR_DELIVERY' };
+    const repo = { findById: async () => stored, update: async (t: FulfilmentTask) => { stored = t.toSnapshot(); } } as unknown as IFulfilmentRepository;
+    const audit = { save: async () => ({ id: 'a' }) } as unknown as IAuditRepository;
+    const transitions: string[] = [];
+    const port = { transition: async (_id: string, to: string) => { transitions.push(to); throw Object.assign(new Error('already'), { code: 'ORDER_TRANSITION_ILLEGAL_TRANSITION' }); } } as any;
+    const guards = { deliveries: { listByTask: async () => (delivered ? [{ deliveredAt: new Date() }] : []) } } as any;
+    const uc = new TransitionFulfilmentTaskUseCase(repo, audit, port, guards, { findById: async () => ({ orderStatus: orderStatus as any }) });
+    return { uc, status: () => stored.status, transitions };
+  }
+
+  it('lets the task follow an order that is already delivered', async () => {
+    const m = outForDelivery('delivered');
+    expect(await m.uc.execute({ taskId: 't1', toStatus: 'DELIVERED', actorId: 'admin' })).toMatchObject({ ok: true, to: 'DELIVERED' });
+    expect(m.status()).toBe('DELIVERED');
+    expect(m.transitions).toEqual([]);
+  });
+
+  it('still needs a recorded delivery, and still refuses other moves on a delivered order', async () => {
+    expect(await outForDelivery('delivered', false).uc.execute({ taskId: 't1', toStatus: 'DELIVERED', actorId: 'a' })).toMatchObject({ ok: false });
+    expect(await outForDelivery('delivered').uc.execute({ taskId: 't1', toStatus: 'ON_HOLD', actorId: 'a' })).toMatchObject({ ok: false, code: 'INVALID_TRANSITION' });
+    expect(await outForDelivery('completed').uc.execute({ taskId: 't1', toStatus: 'DELIVERED', actorId: 'a' })).toMatchObject({ ok: false, code: 'INVALID_TRANSITION' });
+  });
+});
