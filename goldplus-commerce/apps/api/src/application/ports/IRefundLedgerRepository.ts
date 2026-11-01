@@ -70,6 +70,13 @@ export interface IRefundLedgerRepository {
   getRefundedTotalUgx(paymentAttemptId: string): Promise<number>;
 
   /**
+   * Refunds PROVEN landed on an attempt (status 'settled'): what the order's
+   * consequences may count. Acceptance by the provider is not money back.
+   * Optional so hermetic fakes keep working; absent, getRefundedTotalUgx.
+   */
+  getLandedRefundTotalUgx?(paymentAttemptId: string): Promise<number>;
+
+  /**
    * The share of the ORDER's collected money given back so far, in basis
    * points (0 when nothing was collected or refunded). Same reading as
    * getRefundedTotalUgx, over every attempt that collected money.

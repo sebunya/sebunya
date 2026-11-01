@@ -266,6 +266,17 @@ export class DrizzleRefundLedgerRepository implements IRefundLedgerRepository {
    * (reserveRefund keeps counting every non-rejected row: that is the
    * double-payout guard, and it is deliberately stricter.)
    */
+  async getLandedRefundTotalUgx(paymentAttemptId: string): Promise<number> {
+    const rows: any = await db.execute(sql`
+      select coalesce(sum(amount_ugx), 0)::bigint as refunded
+      from payment_refunds
+      where payment_attempt_id = ${paymentAttemptId}::uuid
+        and status = 'settled'
+    `);
+    const row = Array.isArray(rows) ? rows[0] : rows?.rows?.[0];
+    return Number(row?.refunded ?? 0);
+  }
+
   async getRefundedTotalUgx(paymentAttemptId: string): Promise<number> {
     const rows: any = await db.execute(sql`
       select coalesce(sum(amount_ugx), 0)::bigint as refunded

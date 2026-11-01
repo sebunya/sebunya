@@ -69,7 +69,7 @@ export class ApplyRefundConsequencesUseCase {
       & Partial<Pick<IPesaPalPaymentRepository, 'findAttemptsByOrderId'>>,
     private readonly orderTransition: IOrderTransitionPort,
     /** Optional so hermetic suites need no database: absent, every reversal reads total. */
-    private readonly refundLedger?: Pick<IRefundLedgerRepository, 'getRefundedTotalUgx'>,
+    private readonly refundLedger?: Pick<IRefundLedgerRepository, 'getRefundedTotalUgx' | 'getLandedRefundTotalUgx'>,
     private readonly refundLoyalty?: RefundLoyaltyPort,
     /** Optional so hermetic suites construct unchanged; production wires it. */
     private readonly refundFulfilment?: RefundFulfilmentPort,
@@ -99,16 +99,26 @@ export class ApplyRefundConsequencesUseCase {
    * this attempt, this attempt was a second payment, and money going back on it is not money going back on the
    * order: refunding a customer's double charge used to cancel the order they had legitimately paid for.
    */
-  private async otherAttemptsNetUgx(attemptId: string, orderId: string): Promise<number> {
-    if (!this.paymentRepo.findAttemptsByOrderId) return 0;
+  private async otherAttemptsMoney(attemptId: string, orderId: string): Promise<{ netUgx: number; refundedUgx: number }> {
+    if (!this.paymentRepo.findAttemptsByOrderId) return { netUgx: 0, refundedUgx: 0 };
     const others = (await this.paymentRepo.findAttemptsByOrderId(orderId))
       .filter((a) => a.id !== attemptId && a.status === 'completed' && a.amount > 0);
-    let net = 0;
+    let netUgx = 0;
+    let refundedUgx = 0;
     for (const a of others) {
-      const back = this.refundLedger ? await this.refundLedger.getRefundedTotalUgx(a.id) : 0;
-      net += Math.max(0, a.amount - back);
+      const back = Math.min(a.amount, await this.landedUgx(a.id));
+      netUgx += a.amount - back;
+      refundedUgx += back;
     }
-    return net;
+    return { netUgx, refundedUgx };
+  }
+
+  /** Money proven back on an attempt: settled refunds, never mere acceptance. */
+  private async landedUgx(attemptId: string): Promise<number> {
+    if (!this.refundLedger) return 0;
+    return this.refundLedger.getLandedRefundTotalUgx
+      ? this.refundLedger.getLandedRefundTotalUgx(attemptId)
+      : this.refundLedger.getRefundedTotalUgx(attemptId);
   }
 
   /** Never lets a loyalty failure fail the money path. */
@@ -131,15 +141,29 @@ export class ApplyRefundConsequencesUseCase {
       providerConfirmed: boolean;
     },
   ): Promise<RefundConsequencesResult> {
-    const refundedUgx = this.refundLedger ? await this.refundLedger.getRefundedTotalUgx(attempt.id) : 0;
+    // Counted only once PROVEN landed (settled), never on the provider's mere
+    // acceptance: a second refund accepted while REVERSED still showed from the
+    // first read the whole order as refunded and cancelled it before any money
+    // moved (review 2026-11). Accepted-but-unproven rows with nothing landed
+    // yet are ambiguous: read as partial, so nothing cancels until a person or
+    // the poll proves one.
+    const refundedUgx = await this.landedUgx(attempt.id);
+    const acceptedUgx = this.refundLedger ? await this.refundLedger.getRefundedTotalUgx(attempt.id) : 0;
+    const unproven = refundedUgx === 0 && acceptedUgx > 0;
     // A gift card / store credit paid part of this order: the cash attempt is only part of what it cost, so even all
     // of the cash back is a PARTIAL refund of the order. Read against the cash alone it was 'total', which cancelled
     // the order and also returned the card's share (an out-of-stock item refunded = the rest of the order lost, or
     // shipped with the card money given back; 2026-10-22). Cancelling such an order stays a person's decision.
     const credit = this.storeCreditOf ? await this.storeCreditOf(attempt.orderId).catch(() => 0) : 0;
-    const reading: RefundReading = credit > 0 && refundedUgx > 0 ? 'partial' : readRefund(refundedUgx, attempt.amount);
+    const reading: RefundReading = unproven || (credit > 0 && refundedUgx > 0) ? 'partial' : readRefund(refundedUgx, attempt.amount);
 
-    if (attempt.amount > 0 && (await this.otherAttemptsNetUgx(attempt.id, attempt.orderId)) >= attempt.amount) {
+    // Like with like: what the other attempts still hold (net of their own
+    // refunds) against what this attempt was meant to cover, net of those same
+    // refunds. Others' NET against this attempt's FULL amount meant a 10k
+    // partial on payment A, then refunding duplicate B in full, read total and
+    // cancelled the order A still paid 90k for (review 2026-11).
+    const others = attempt.amount > 0 ? await this.otherAttemptsMoney(attempt.id, attempt.orderId) : { netUgx: 0, refundedUgx: 0 };
+    if (attempt.amount > 0 && others.netUgx > 0 && others.netUgx >= attempt.amount - others.refundedUgx) {
       // A second payment going back. The attempt records it; the order stays paid and keeps its stock and points.
       await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, {
         status: reading === 'partial' ? 'completed' : 'reversed',
