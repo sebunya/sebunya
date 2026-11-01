@@ -26,6 +26,12 @@ export type FreshnessState = (typeof FRESHNESS_STATES)[number];
 
 /** GSC finalises a day's data after roughly this long. */
 export const GSC_SETTLE_DAYS = 3;
+/**
+ * The sync stores Search Console data only up to (today - 2): SyncGscPerformanceUseCase holds back the days GSC
+ * has not finalised. Data ending exactly this many days back is therefore the settled, comparable normal; the old
+ * rule (comparable only at lag 0) could never be met, so the Guardian never compared anything.
+ */
+export const GSC_SYNC_LAG_DAYS = 2;
 /** Beyond this with no new data, the feed itself is the problem. */
 export const GSC_STALE_DAYS = 5;
 
@@ -79,14 +85,14 @@ export function assessFreshness(input: FreshnessInput): FreshnessAssessment {
       reason: `Search Console is ${lagDays} days behind its usual ${GSC_SETTLE_DAYS}-day settle; treat gaps as provider latency.`,
     };
   }
-  if (lagDays > 0) {
+  if (lagDays < GSC_SYNC_LAG_DAYS) {
     return {
       state: 'PARTIAL',
       lagDays,
       // The crucial rule: partial data is usable for TRENDS but never for a
       // period-over-period verdict, because the current window is still filling.
       comparisonValid: false,
-      reason: `The most recent ${lagDays} day(s) are still settling; a period-over-period comparison would compare a partial window against a complete one.`,
+      reason: `The stored data reaches ${lagDays} day(s) back, inside the ${GSC_SYNC_LAG_DAYS}-day window Search Console is still filling; a period-over-period comparison would compare a partial window against a complete one.`,
     };
   }
   return { state: 'COMPLETE', lagDays, comparisonValid: true, reason: 'Source data is settled and comparable.' };

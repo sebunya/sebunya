@@ -35,8 +35,8 @@ describe('source freshness cannot manufacture an incident', () => {
   });
 
   it('refuses to compare while the current window is still settling', () => {
-    // 2 days behind: normal GSC latency, NOT a traffic drop.
-    const f = assessFreshness({ latestSourceDate: '2026-08-11', observedAt: at('2026-08-13T00:00:00Z') });
+    // Data newer than the sync's 2-day hold-back: the last day is still filling.
+    const f = assessFreshness({ latestSourceDate: '2026-08-12', observedAt: at('2026-08-13T00:00:00Z') });
     expect(f.state).toBe('PARTIAL');
     expect(f.comparisonValid).toBe(false);
   });
@@ -48,8 +48,18 @@ describe('source freshness cannot manufacture an incident', () => {
 
   it('only allows comparison when the data is settled', () => {
     const f = assessFreshness({ latestSourceDate: '2026-08-13', observedAt: at('2026-08-13T00:00:00Z') });
-    expect(f.state).toBe('COMPLETE');
-    expect(f.comparisonValid).toBe(true);
+    expect(f.state).toBe('PARTIAL');
+    expect(f.comparisonValid).toBe(false);
+  });
+
+  it('data ending at today-2, which is all the sync ever stores, is comparable (any time of day)', () => {
+    for (const t of ['2026-08-13T00:00:00Z', '2026-08-13T23:59:00Z']) {
+      const f = assessFreshness({ latestSourceDate: '2026-08-11', observedAt: at(t) });
+      expect(f.state).toBe('COMPLETE');
+      expect(f.comparisonValid).toBe(true);
+    }
+    // Sync not yet run today: one day more is still within the settle window.
+    expect(assessFreshness({ latestSourceDate: '2026-08-10', observedAt: at('2026-08-13T08:00:00Z') }).comparisonValid).toBe(true);
   });
 });
 
@@ -306,8 +316,8 @@ describe('a clean run is silent', () => {
 
 describe('the chain as a whole refuses to act on latency', () => {
   it('a partial-data "collapse" produces no incident, no action, no email', () => {
-    // GSC is 2 days behind — the classic false alarm.
-    const freshness = assessFreshness({ latestSourceDate: '2026-08-11', observedAt: at('2026-08-13T00:00:00Z') });
+    // Data still filling (newer than the sync hold-back) — the classic false alarm.
+    const freshness = assessFreshness({ latestSourceDate: '2026-08-12', observedAt: at('2026-08-13T00:00:00Z') });
     const materiality = assessMateriality({
       baselineClicks: 5000, currentClicks: 400, comparisonValid: freshness.comparisonValid,
     });
@@ -330,7 +340,7 @@ describe('the chain as a whole refuses to act on latency', () => {
   });
 
   it('a real, persisted, comparable drop does become actionable', () => {
-    const freshness = assessFreshness({ latestSourceDate: '2026-08-13', observedAt: at('2026-08-13T00:00:00Z') });
+    const freshness = assessFreshness({ latestSourceDate: '2026-08-11', observedAt: at('2026-08-13T00:00:00Z') });
     const materiality = assessMateriality({
       baselineClicks: 5000, currentClicks: 3500, comparisonValid: freshness.comparisonValid,
     });
