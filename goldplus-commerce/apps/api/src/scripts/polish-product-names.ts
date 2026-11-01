@@ -4,7 +4,9 @@ import { sql } from 'drizzle-orm';
 import { Registry } from '../infrastructure/Registry';
 import { db, endDbConnection } from '../infrastructure/db/client';
 import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
-import { rowsOf } from './lib/scriptHelpers';
+import { UpdateProductListingUseCase } from '../application/use-cases/products/UpdateProductListingUseCase';
+import { polishProductName } from '../domain/products/ProductNamePolish';
+import { actorUserId, rowsOf } from './lib/scriptHelpers';
 
 /**
  * Names were built as "GoldPlus <Category> <price-list code>". The price
@@ -12,25 +14,31 @@ import { rowsOf } from './lib/scriptHelpers';
  * card, F = flash drive, CH = charger, BT = Bluetooth), so a customer read
  * "GoldPlus Power Bank GP-P07 PB". Drop the suffix the category word already
  * says, and write "TYPE C" the way people do. The model number keeps the
- * price list's exact text; only the display name changes. Audited as a batch.
+ * price list's exact text; only the display name changes, through the listing
+ * use case the admin editor uses. Audited as a batch.
  *
- *   ACTOR_USER_ID=<uuid> npx tsx src/scripts/polish-product-names.ts
+ * Dry run by default (prints what would change). APPLY=1 writes.
+ *
+ *   [ACTOR_USER_ID=<uuid> APPLY=1] npx tsx src/scripts/polish-product-names.ts
  */
-function polish(name: string): string {
-  let n = name;
-  n = n.replace(/^(GoldPlus Power Bank .*?)\s+PB$/, '$1').replace(/^(GoldPlus Memory Card .*?)\s+MC$/, '$1').replace(/^(GoldPlus Flash Drive .*?)\s+F$/, '$1')
-       .replace(/^(GoldPlus Charger .*?)\s+CH$/, '$1').replace(/^(GoldPlus Bluetooth .*?)\s+BT$/, '$1');
-  n = n.replace(/\bTYPE C\b/, 'Type-C').replace(/\bTYPE PIN\b/, 'Pin').replace(/\bUNIVERSAL CH\b/, 'Universal').replace(/\bC TO C\b/, 'Type-C to Type-C').replace(/\bC TO IPHONE\b/, 'Type-C to iPhone');
-  return n.replace(/\s+/g, ' ').trim();
-}
 async function main(): Promise<void> {
-  const actorId = String(process.env.ACTOR_USER_ID ?? '').trim();
-  if (!/^[0-9a-f-]{36}$/i.test(actorId)) throw new Error('ACTOR_USER_ID must be the acting admin uuid.');
+  const apply = process.env.APPLY === '1';
+  const actorId = actorUserId(apply);
   const rows = rowsOf(await db.execute(sql`select id, name from products where name like 'GoldPlus %'`));
   const changes: Array<{ id: string; from: string; to: string }> = [];
-  for (const r of rows) { const to = polish(String(r.name)); if (to !== r.name) changes.push({ id: String(r.id), from: String(r.name), to }); }
-  for (const c of changes) await db.execute(sql`update products set name = ${c.to}, updated_at = now() where id = ${c.id} and name = ${c.from}`);
-  if (changes.length) await new CreateAuditLogUseCase(Registry.getInstance().auditRepo).execute({ actorId, action: 'PRODUCT_NAMES_POLISHED', entity: 'product_bulk_edit', entityId: randomUUID(), newState: { count: changes.length, changes } });
-  console.log(`renamed ${changes.length}`); for (const c of changes.slice(0, 6)) console.log(`  ${c.from} → ${c.to}`);
+  for (const r of rows) { const to = polishProductName(String(r.name)); if (to !== r.name) changes.push({ id: String(r.id), from: String(r.name), to }); }
+  console.log(`${changes.length} names would change${apply ? '' : ' (dry run; set APPLY=1 to write)'}`);
+  for (const c of changes.slice(0, 20)) console.log(`  ${c.from} → ${c.to}`);
+  if (!apply) return;
+  const registry = Registry.getInstance();
+  const listing = new UpdateProductListingUseCase(registry.productRepo, registry.attributeRepo);
+  const done: typeof changes = [];
+  for (const c of changes) {
+    const result = await listing.execute({ productId: c.id, name: c.to });
+    if (!result.ok) { console.log(`  FAILED ${c.from}: ${result.message}`); continue; }
+    done.push(c);
+  }
+  if (done.length) await new CreateAuditLogUseCase(registry.auditRepo).execute({ actorId, action: 'PRODUCT_NAMES_POLISHED', entity: 'product_bulk_edit', entityId: randomUUID(), newState: { count: done.length, changes: done } });
+  console.log(`renamed ${done.length} of ${changes.length}`);
 }
 main().then(() => endDbConnection()).catch(async (e) => { console.error(e); await endDbConnection(); process.exit(1); });
