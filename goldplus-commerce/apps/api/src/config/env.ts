@@ -96,16 +96,18 @@ export interface Config {
 export const configSchema = z.object({
   nodeEnv: z.string().min(1),
   databaseUrl: z.string().min(1),
-  jwtSecret: z.string().min(32),
+  // Secret minimum lengths are a PRODUCTION rule, enforced in validateEnv's
+  // checkRequired; development and staging boot with shorter local secrets.
+  jwtSecret: z.string().min(1),
   publicApiBaseUrl: z.string().url(),
   bootstrapAdminEmail: z.string().optional(),
   bootstrapAdminPassword: z.string().optional(),
   bootstrapAdminPhone: z.string().optional(),
   whatsappSupportNumber: z.string().optional(),
   whatsappSupportLabel: z.string().optional(),
-  mtnWebhookSecret: z.string().min(24),
-  airtelWebhookSecret: z.string().min(24),
-  identityHashPepper: z.string().min(32),
+  mtnWebhookSecret: z.string().min(1),
+  airtelWebhookSecret: z.string().min(1),
+  identityHashPepper: z.string().min(1),
   pesapalEnv: z.string().optional(),
   pesapalBaseUrl: z.string().optional(),
   pesapalConsumerKey: z.string().optional(),
@@ -204,6 +206,25 @@ function isObviousLocalSecret(value: string): boolean {
   return obviousLocalPatterns.some(pattern => normalized.includes(pattern));
 }
 
+/**
+ * PUBLIC_API_BASE_URL may be held without a scheme ("api.goldplus.ug"). It is
+ * a public HTTPS origin, so a bare host is read as https://host. Returns null
+ * when the value still is not a valid http(s) URL, so the boot names it.
+ */
+export function normalisePublicBaseUrl(raw: string): string | null {
+  const v = raw.trim();
+  if (!v) return null;
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? v : `https://${v.replace(/^\/+/, '')}`;
+  try {
+    const u = new URL(withScheme);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    if (!u.hostname) return null;
+    return withScheme;
+  } catch {
+    return null;
+  }
+}
+
 export function validateEnv(): Config {
   const nodeEnv = process.env.NODE_ENV || 'development';
 
@@ -269,7 +290,11 @@ export function validateEnv(): Config {
   const identityHashPepper = checkRequired('IDENTITY_HASH_PEPPER', 32);
   const mtnWebhookSecret = checkRequired('MTN_WEBHOOK_SECRET', 24);
   const airtelWebhookSecret = checkRequired('AIRTEL_WEBHOOK_SECRET', 24);
-  const publicApiBaseUrl = checkRequired('PUBLIC_API_BASE_URL');
+  const publicApiBaseUrlRaw = checkRequired('PUBLIC_API_BASE_URL');
+  const publicApiBaseUrl = publicApiBaseUrlRaw ? normalisePublicBaseUrl(publicApiBaseUrlRaw) ?? '' : '';
+  if (publicApiBaseUrlRaw && !publicApiBaseUrl) {
+    errors.push('Environment variable PUBLIC_API_BASE_URL is not a valid http(s) URL (expected e.g. https://api.example.com)');
+  }
 
   const bootstrapAdminEmail = process.env.BOOTSTRAP_ADMIN_EMAIL;
   const bootstrapAdminPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;
