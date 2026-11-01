@@ -310,8 +310,13 @@ export class QualifyReferralOnDeliveryUseCase {
     const refereeEntryId = await append(refereeAccount.id, refereePoints, 'referee');
     const won = await this.referrals.markAwarded(referral.id, referrerEntryId ?? '', refereeEntryId ?? '', input.orderId, decidedBy, fromStatus);
     if (won === false) {
-      // Someone else decided it between our read and this write (2026-11 review). Take back only what THIS call
-      // wrote; a replay returns the payout an earlier release made, and that one stands.
+      // Someone else decided it between our read and this write (2026-11 review). When that decision was an AWARD,
+      // nothing is taken back: both sides' entries are keyed per referral, so the winning award points at the very
+      // entries this call may have written first (two releases at once: this one appended, the other replayed and
+      // won the status write). Reversing them left an 'awarded' referral paying nothing. Otherwise (refused) take
+      // back only what THIS call wrote; every other writer that lost does the same for its own.
+      const decided = this.referrals.findById ? await this.referrals.findById(referral.id).catch(() => null) : null;
+      if (decided?.status === 'awarded') return fail('NOT_HELD', 'This referral was decided by someone else just now.');
       for (const entryId of freshEntries) {
         await this.loyalty.reverseEntry(entryId, 'Referral decided by someone else at the same time');
       }

@@ -37,17 +37,15 @@ function fakeRepo(initial: Partial<MfaRecord> & { secret: string }) {
       rec.pendingSecretCiphertext = null;
       Object.assign(rec, { confirmedAt: at, lastVerifiedAt: at, failedAttempts: 0, updatedAt: at });
     },
-    resetFailures: async () => {
-      rec.failedAttempts = 0;
-    },
     rewrapSecret: async (_u, oldCt, newCt) => {
       log.rewrapped += 1;
       if (rec.secretCiphertext === oldCt) rec.secretCiphertext = newCt;
     },
     confirm: async (_u, at) => Object.assign(rec, { confirmedAt: at, lastVerifiedAt: at, failedAttempts: 0, updatedAt: at }) && undefined,
     recordVerification: async (_u, at) => Object.assign(rec, { lastVerifiedAt: at, failedAttempts: 0, updatedAt: at }) && undefined,
-    recordFailure: async (_u, at) => {
-      rec.failedAttempts += 1;
+    recordFailure: async (_u, at, decayAfterMs) => {
+      const spent = decayAfterMs && at.getTime() - rec.updatedAt.getTime() >= decayAfterMs;
+      rec.failedAttempts = spent ? 1 : rec.failedAttempts + 1;
       rec.updatedAt = at;
       return rec.failedAttempts;
     },

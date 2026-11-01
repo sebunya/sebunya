@@ -143,11 +143,8 @@ export class MfaService {
    * Count a wrong code. Failures older than the lock window are spent first: without that, five old typos plus ONE
    * new mistake after the lock had lapsed re-locked the account for another full window.
    */
-  private async countFailure(record: { userId: string; failedAttempts: number; updatedAt: Date }, now: Date): Promise<void> {
-    if (record.failedAttempts > 0 && now.getTime() - record.updatedAt.getTime() >= MfaService.LOCK_WINDOW_MS) {
-      await this.repo.resetFailures(record.userId);
-    }
-    await this.repo.recordFailure(record.userId, now);
+  private async countFailure(record: { userId: string }, now: Date): Promise<void> {
+    await this.repo.recordFailure(record.userId, now, MfaService.LOCK_WINDOW_MS);
   }
 
   /** Decrypt a stored secret; one written under the previous JWT-derived key is re-encrypted under the current one. */

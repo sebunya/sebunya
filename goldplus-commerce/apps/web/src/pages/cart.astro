@@ -82,6 +82,8 @@ let isNewSession = false;
 
 /** Set when a server write was refused, so the customer is told rather than misled. */
 let cartNotice: string | null = null;
+/** A quantity above 99 was saved as 99: a successful change, said so after the redirect (not a refusal). */
+let quantityCapped = false;
 
 // Cross-site refusal comes FIRST, before the credential is resolved, because resolving
 // MINTS one. The credential cookie is SameSite=Lax, so a cross-site POST arrives
@@ -175,7 +177,9 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
         const qty = Math.trunc(Number(formData.get('quantity') || 1)) || 1;
         // 99 per product, the bound checkout enforces (the server refuses more).
         const validatedQty = Math.min(99, qty < 1 ? 1 : qty);
-        if (qty > 99) cartNotice = cartMessageFor('QUANTITY_OUT_OF_BOUNDS');
+        // Not a refusal: the basket takes 99, so the device copy is written and the POST redirected as for any
+        // change (as a notice, it kept the old quantity in the cookie and a refresh re-submitted the form).
+        if (qty > 99) quantityCapped = true;
         
         const existing = localItems.find(i => i.productId === productId);
         if (existing) {
@@ -225,12 +229,15 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
         const removed = readRemovedLine(Astro.cookies.get(REMOVED_COOKIE)?.value);
         if (removed && removed.productId === productId) {
           const existing = localItems.find(i => i.productId === productId);
-          if (existing) existing.quantity += removed.quantity;
-          else localItems.push({ ...removed, categoryName: removed.categoryName });
-          if (cartCredential) {
+          // 99 a product, as add and update cap it: Undo onto a line added again must not pass it.
+          const restoreQty = Math.max(0, Math.min(removed.quantity, 99 - (existing?.quantity ?? 0)));
+          if (existing) existing.quantity += restoreQty;
+          else localItems.push({ ...removed, quantity: Math.min(99, removed.quantity), categoryName: removed.categoryName });
+          if (removed.quantity > restoreQty) quantityCapped = true;
+          if (cartCredential && restoreQty > 0) {
             const result = await cartClient.add(
               cartCredential.token,
-              { productId, quantity: removed.quantity },
+              { productId, quantity: restoreQty },
               Astro.cookies.get('goldplus_session')?.value ?? null,
             );
             if (!result.ok) cartNotice = cartMessageFor(result.code, result.available);
@@ -275,6 +282,7 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
         // back to the same line instead of the top of the page.
         if (action === 'add' && isCartProductId(productId)) return Astro.redirect(`/cart?added=${productId}`, 303);
         if (action === 'remove' && isCartProductId(productId)) return Astro.redirect(`/cart?removed=${productId}`, 303);
+        if (quantityCapped) return Astro.redirect(lineAnchor(productId).replace('/cart', '/cart?capped=1'), 303);
         return Astro.redirect(lineAnchor(productId), 303);
       }
     }
@@ -344,9 +352,10 @@ const cartProductIds = items.map(i => i.productId);
  */
 const selectedDevice = parseDeviceCookie(Astro.cookies.get(DEVICE_COOKIE)?.value);
 let deviceFits: Record<string, { fitState: string | null; fitLabel: string | null; condition: string | null }> = {};
-if (selectedDevice && cartProductIds.length) {
+if (selectedDevice && cartProductIds.some((id) => isCartProductId(id))) {
   const check = await publicBattery<{ device: unknown; fits: typeof deviceFits }>(
-    `/finder/check?device=${encodeURIComponent(selectedDevice.slug)}&productIds=${cartProductIds.join(',')}`,
+    // Ids come from a cookie the browser can write: only real product ids, each encoded, reach the API's query.
+    `/finder/check?device=${encodeURIComponent(selectedDevice.slug)}&productIds=${cartProductIds.filter((id) => isCartProductId(id)).map(encodeURIComponent).join(',')}`,
   );
   if (check.ok) deviceFits = check.data.fits;
 }
@@ -408,6 +417,7 @@ const lineView = (item: CartItem) => {
 const signedOutEmptyHint = cartSession.state === 'GUEST';
 const fromBasketReminder = Astro.url.searchParams.get('ch') === 's.basket';
 const addedParam = Astro.url.searchParams.get('added');
+const cappedNotice = !cartNotice && Astro.url.searchParams.get('capped') === '1' ? cartMessageFor('QUANTITY_OUT_OF_BOUNDS') + ' We set it to 99.' : null;
 const addedLine = isCartProductId(addedParam) ? items.find((i) => i.productId === addedParam) ?? null : null;
 const addedHref = addedLine ? lineView(addedLine).href : null;
 // "Removed X · Undo": only when the id in the URL is the line our cookie holds.
@@ -476,6 +486,12 @@ const cutoffLine = sameDayLineFor(sameDayCutoffCopy(cut, { now: new Date(), clos
           view updates from the local cookie while the server rejected the change.
         */}
         <Notice kind="not-configured" title="Basket not updated" message={cartNotice} />
+      </div>
+    )}
+
+    {cappedNotice && (
+      <div class="mb-6">
+        <Notice kind="info" title="Quantity set to 99" message={cappedNotice} />
       </div>
     )}
 

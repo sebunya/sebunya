@@ -27,8 +27,6 @@ export interface IMfaRepository {
   setPendingSecret(userId: string, secretCiphertext: string): Promise<void>;
   /** Promote the pending secret to the live one, confirmed now; recovery codes are replaced by the caller. */
   promotePendingSecret(userId: string, at: Date): Promise<void>;
-  /** Clear a spent failure count (the lock window has passed). */
-  resetFailures(userId: string): Promise<void>;
   /**
    * Swap a ciphertext read under the previous at-rest key for one under the current key. Conditional on the old value,
    * so it never overwrites a secret that changed in between. Optional so older fakes type.
@@ -39,7 +37,12 @@ export interface IMfaRepository {
   /** Stamp a successful step-up verification. */
   recordVerification(userId: string, at: Date): Promise<void>;
   /** Count a failed step-up code. Returns the new consecutive-failure count. */
-  recordFailure(userId: string, at: Date): Promise<number>;
+  /**
+   * Count one failed code, atomically. With `decayAfterMs`, a count whose last failure is at least that old is spent
+   * and restarts at 1 in the same statement (a separate reset then increment let parallel guesses on two replicas
+   * wipe each other's counts).
+   */
+  recordFailure(userId: string, at: Date, decayAfterMs?: number): Promise<number>;
   /** Replace all recovery codes with a fresh set of hashes. */
   replaceRecoveryCodes(userId: string, codeHashes: string[]): Promise<void>;
   /** Atomically consume an unused recovery code; false if already used/unknown. */

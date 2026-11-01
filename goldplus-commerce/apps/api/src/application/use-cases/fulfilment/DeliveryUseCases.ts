@@ -13,7 +13,7 @@ import { IFulfilmentReportRepository, FulfilmentReport } from '../../ports/IFulf
 import { IAuditRepository } from '../../ports/IAuditRepository';
 import { IOrderTransitionPort } from '../../ports/IOrderTransitionPort';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
-import { mirrorOrderDispatched } from './DispatchUseCases';
+import { cashOnDeliveryConfirmed, mirrorOrderDispatched } from './DispatchUseCases';
 
 /** What the quote capture needs to know about a recorded delivery attempt (0189). */
 export interface IDeliveryCaptureMirror {
@@ -78,7 +78,9 @@ export class RecordDeliveryUseCase {
      * Optional and best-effort: a capture that fails never voids a truthfully
      * recorded delivery.
      */
-    private readonly captureMirror?: IDeliveryCaptureMirror
+    private readonly captureMirror?: IDeliveryCaptureMirror,
+    /** The dispatch record: whether an operator confirmed cash on delivery (its payment policy). */
+    private readonly dispatches?: { getByTask(taskId: string): Promise<{ paymentPolicy: string } | null> },
   ) {}
 
   async execute(input: {
@@ -202,7 +204,7 @@ export class RecordDeliveryUseCase {
           const caughtUp = await mirrorOrderDispatched(this.orderTransitions, snapshot.orderId, {
             actorId: input.actorId,
             note: `Catch-up before recording attempt ${attempt}`,
-            cashOnDelivery: snapshot.paymentStatus !== 'paid',
+            cashOnDelivery: await cashOnDeliveryConfirmed(snapshot, this.dispatches),
             paid: snapshot.paymentStatus === 'paid',
           });
           if (caughtUp === 'dispatched') {
@@ -258,6 +260,7 @@ export class CompleteOrderForDeliveredTaskUseCase {
     private readonly audit: IAuditRepository,
     private readonly orderTransitions: IOrderTransitionPort,
     private readonly orders: { findById(id: string): Promise<{ orderStatus: string } | null> },
+    private readonly dispatches?: { getByTask(taskId: string): Promise<{ paymentPolicy: string } | null> },
   ) {}
 
   async execute(input: { orderId: string; actorId: string }): Promise<
@@ -276,8 +279,20 @@ export class CompleteOrderForDeliveredTaskUseCase {
     const base = { actorId: input.actorId, actorType: 'administrator' as const, source: 'fulfilment' as const, reasonCode: 'delivery_outcome', note: 'Delivered by the rider (recorded on the task); order brought up to date' };
     try {
       if (order.orderStatus !== 'dispatched') {
-        const caught = await mirrorOrderDispatched(this.orderTransitions, input.orderId, { actorId: input.actorId, note: 'Catch-up for a recorded delivery', cashOnDelivery: task.paymentStatus !== 'paid', paid: task.paymentStatus === 'paid' });
-        if (caught !== 'dispatched') throw new Error('not dispatched');
+        const cod = await cashOnDeliveryConfirmed(task, this.dispatches);
+        const caught = await mirrorOrderDispatched(this.orderTransitions, input.orderId, { actorId: input.actorId, note: 'Catch-up for a recorded delivery', cashOnDelivery: cod, paid: task.paymentStatus === 'paid' });
+        if (caught !== 'dispatched') {
+          // An unpaid ONLINE order is never switched to cash on delivery behind anyone's back (#246). Say what clears
+          // it, or the button just fails with no way out.
+          if (!cod && task.paymentStatus !== 'paid') {
+            return {
+              ok: false,
+              code: 'REFUSED',
+              message: 'This order was to be paid online, no payment is recorded, and it was not dispatched as cash on delivery, so it was not marked delivered. Re-check its payment on the Payments page (re-verify with PesaPal), then try again. If the customer paid the rider in cash instead, raise it with the owner: the order cannot be switched to cash on delivery from here.',
+            };
+          }
+          throw new Error('not dispatched');
+        }
       }
       await this.orderTransitions.transition(input.orderId, 'delivered', base);
     } catch (err) {

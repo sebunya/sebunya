@@ -149,6 +149,7 @@ import { DrizzleBulkPriceAccessRepository } from './db/repositories/DrizzleBulkP
 import { StartDealerSignInUseCase, VerifyDealerSignInUseCase, GetDealerAccountUseCase } from '../application/use-cases/dealers/DealerPortalUseCases';
 import { DrizzleDealerPortalReader } from './dealers/DrizzleDealerPortalReader';
 import { bulkPriceAccessCrypto } from './quotes/BulkPriceAccessCrypto';
+import { bulkPriceAccessLimiter } from './quotes/BulkPriceAccessLimiter';
 import {
   GetBulkTermsUseCase,
   ListBulkPriceLeadsUseCase,
@@ -1434,7 +1435,7 @@ export class Registry {
   /** Recovery for a task cancelled against a still-open order (see the use case). */
   public readonly reinstateFulfilmentTaskUseCase = new ReinstateFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo, {
     findById: (id: string) => this.orderRepo.findById(id),
-  });
+  }, { reacquireReleasedForOrder: (orderId: string) => this.inventoryRepo.reacquireReleasedForOrder(orderId) });
   public readonly listFulfilmentQueueUseCase = new ListFulfilmentQueueUseCase(this.fulfilmentRepo);
   public readonly fulfilmentSlaEventRepo = new DrizzleFulfilmentSlaEventRepository();
   public readonly getFulfilmentOverviewUseCase = new GetFulfilmentOverviewUseCase(this.fulfilmentRepo, this.fulfilmentSlaEventRepo);
@@ -1593,6 +1594,7 @@ export class Registry {
   public readonly getDeliveryHistoryUseCase = new GetDeliveryHistoryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo);
   public readonly completeOrderForDeliveredTaskUseCase = new CompleteOrderForDeliveredTaskUseCase(
     this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo, this.orderTransitionService, { findById: (id: string) => this.orderRepo.findById(id) },
+    this.fulfilmentDispatchRepo,
   );
   public readonly recordDeliveryUseCase = new RecordDeliveryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo, this.orderTransitionService, {
     // 0189: the quote capture learns the outcome. actual_minutes is dispatch → handover (one outbound leg + last
@@ -1636,7 +1638,7 @@ export class Registry {
         }
       }
     },
-  });
+  }, this.fulfilmentDispatchRepo);
   public readonly getFulfilmentReportUseCase = new GetFulfilmentReportUseCase(this.fulfilmentReportRepo);
 
   // Customer DNA & NBA: canonical profile projection + next-best action.
@@ -1814,7 +1816,7 @@ export class Registry {
   public readonly bulkTermsRepo = new DrizzleBulkTermsRepository();
   public readonly bulkPriceAccessRepo = new DrizzleBulkPriceAccessRepository();
   public readonly getBulkTermsUseCase = new GetBulkTermsUseCase(this.bulkTermsRepo, bulkPriceAccessCrypto);
-  public readonly startBulkPriceAccessUseCase = new StartBulkPriceAccessUseCase(this.bulkPriceAccessRepo, new OutboxOtpSender(), bulkPriceAccessCrypto);
+  public readonly startBulkPriceAccessUseCase = new StartBulkPriceAccessUseCase(this.bulkPriceAccessRepo, new OutboxOtpSender(), bulkPriceAccessCrypto, undefined, bulkPriceAccessLimiter);
   public readonly verifyBulkPriceAccessUseCase = new VerifyBulkPriceAccessUseCase(this.bulkPriceAccessRepo, bulkPriceAccessCrypto);
   /** Dealer portal (gap analysis #16): always an SMS code; its own token; the phone's own records only. */
   public readonly startDealerSignInUseCase = new StartDealerSignInUseCase(this.bulkPriceAccessRepo, new OutboxOtpSender(), bulkPriceAccessCrypto);

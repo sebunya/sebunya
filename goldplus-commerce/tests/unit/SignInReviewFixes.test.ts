@@ -13,6 +13,7 @@ import { optionalCustomerSessionMiddleware } from '../../apps/api/src/interfaces
 import { classifyPublicEndpoint } from '../../apps/api/src/domain/security/PublicEndpointPolicy';
 import { RedisFailureLockout } from '../../apps/api/src/infrastructure/security/RedisFailureLockout';
 import { sessionCutoffAt, isInvalidatedByCutoff } from '../../apps/api/src/domain/identity/SessionPolicy';
+import { Hs256TokenSigner } from '../../apps/api/src/infrastructure/security/Hs256TokenSigner';
 import { ResetPasswordUseCase } from '../../apps/api/src/application/use-cases/identity/PasswordResetUseCases';
 import { ResetPasswordWithSmsCodeUseCase } from '../../apps/api/src/application/use-cases/identity/SmsPasswordResetUseCases';
 import { InMemoryLoginAttemptStore, MAX_REMEMBERED } from '../../apps/api/src/infrastructure/security/InMemoryLoginAttemptStore';
@@ -112,23 +113,51 @@ describe('Redis failure lockout: the counter and its expiry are one atomic step'
   });
 });
 
-describe('session cut-off: one second-truncation rule on every revocation path', () => {
-  it('a token issued later in the same second as the cut-off survives; an earlier second does not', () => {
+describe('session cut-off: exact instant against a millisecond issue claim', () => {
+  const SECRET = 'x'.repeat(40);
+
+  it('the cut-off is the exact instant, not the start of the second', () => {
     const now = new Date('2026-11-01T12:00:00.400Z');
-    const cutoff = sessionCutoffAt(now);
-    expect(cutoff.toISOString()).toBe('2026-11-01T11:59:59.999Z');
-    expect(isInvalidatedByCutoff(new Date('2026-11-01T12:00:00.000Z'), cutoff)).toBe(false);
-    expect(isInvalidatedByCutoff(new Date('2026-11-01T11:59:59.000Z'), cutoff)).toBe(true);
+    expect(sessionCutoffAt(now).toISOString()).toBe('2026-11-01T12:00:00.400Z');
   });
 
-  it('reset, SMS reset, change-password and logout-all use it', () => {
+  it('a token issued earlier in the SAME second as a reset dies; one issued after it lives', async () => {
+    vi.useFakeTimers();
+    try {
+      const signer = new Hs256TokenSigner(SECRET, '');
+      vi.setSystemTime(new Date('2026-11-01T12:00:00.100Z'));
+      const before = await signer.verify(await signer.sign({ subject: 'u', email: 'e@x', ttlSeconds: 900 }));
+      const cutoff = sessionCutoffAt(new Date('2026-11-01T12:00:00.400Z'));
+      vi.setSystemTime(new Date('2026-11-01T12:00:00.700Z'));
+      const after = await signer.verify(await signer.sign({ subject: 'u', email: 'e@x', ttlSeconds: 900 }));
+      expect(isInvalidatedByCutoff(before!.issuedAt!, cutoff)).toBe(true);
+      expect(isInvalidatedByCutoff(after!.issuedAt!, cutoff)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a legacy token without iat_ms falls back to the start of its second (fails safe on a tie)', async () => {
+    const { createHmac } = await import('node:crypto');
+    const b64 = (b: Buffer) => b.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const iat = Math.floor(Date.now() / 1000);
+    const head = b64(Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
+    const body = b64(Buffer.from(JSON.stringify({ sub: 'u', email: 'e@x', iat, exp: iat + 900 })));
+    const sig = b64(createHmac('sha256', SECRET).update(`${head}.${body}`).digest());
+    const verified = await new Hs256TokenSigner(SECRET, '').verify(`${head}.${body}.${sig}`);
+    expect(verified!.issuedAt!.getTime()).toBe(iat * 1000);
+    expect(isInvalidatedByCutoff(verified!.issuedAt!, sessionCutoffAt(new Date(iat * 1000 + 500)))).toBe(true);
+  });
+
+  it('reset, SMS reset, change-password, social takeover and logout-all stamp the exact instant', () => {
     for (const f of [
       'apps/api/src/infrastructure/db/repositories/DrizzleAccountRecoveryRepository.ts',
       'apps/api/src/infrastructure/db/repositories/DrizzleUserRepository.ts',
+      'apps/api/src/infrastructure/db/repositories/DrizzleSocialIdentityRepository.ts',
     ]) {
       const src = read(f);
-      expect(src, f).not.toMatch(/sessions_invalidated_after = now\(\)/);
-      expect(src, f).toMatch(/sessions_invalidated_after = date_trunc\('second', now\(\)\) - interval '1 millisecond'/);
+      expect(src, f).not.toMatch(/date_trunc\('second', now\(\)\)/);
+      expect(src, f).toMatch(/sessions_invalidated_after = clock_timestamp\(\)/);
     }
     expect(read('apps/api/src/infrastructure/security/SessionService.ts')).toMatch(/invalidateSessionsAfter\(userId, sessionCutoffAt\(now\)\)/);
   });

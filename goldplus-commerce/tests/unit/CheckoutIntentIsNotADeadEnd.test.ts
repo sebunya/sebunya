@@ -158,8 +158,15 @@ describe('the storefront recovers without the customer noticing', () => {
     // basket's fingerprint differs from the order's, so it is a new basket.
     const already = page.slice(page.indexOf("CHECKOUT_ALREADY_ORDERED"), page.indexOf("STOCK_NOT_RESERVED"));
     expect(already).toMatch(/startPayment\(\{\s*orderId: existing\.orderId/);
-    expect(already).not.toMatch(/clearBasketAfterOrder\(\)/);
-    expect(already).not.toMatch(/clearCheckoutIntent/);
+    // A DIFFERENT basket (sameItems === false) is kept, with its intent.
+    const different = page.slice(page.indexOf("existingOrder.sameItems === false"), page.indexOf("} else if (result.code === 'CHECKOUT_ALREADY_ORDERED' && result.existingOrder) {"));
+    expect(different.length).toBeGreaterThan(100);
+    expect(different).not.toMatch(/clearBasketAfterOrder\(\)/);
+    expect(different).not.toMatch(/clearCheckoutIntent/);
+    // The SAME items are that order: the basket is emptied (review 213), and the intent is kept unless it is paid.
+    const same = page.slice(page.indexOf("} else if (result.code === 'CHECKOUT_ALREADY_ORDERED' && result.existingOrder) {"), page.indexOf("STOCK_NOT_RESERVED"));
+    expect(same).toMatch(/clearBasketAfterOrder\(\)/);
+    expect(same).toMatch(/if \(paid\) clearCheckoutIntent\(Astro\.cookies\);/);
     // The already-ordered branch must NOT be a place we re-mint an intent.
     const branch = page.slice(page.indexOf("CHECKOUT_ALREADY_ORDERED"));
     expect(branch.slice(0, 900)).not.toMatch(/issueFreshCheckoutIntent/);

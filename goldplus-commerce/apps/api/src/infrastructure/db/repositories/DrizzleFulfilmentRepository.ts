@@ -184,6 +184,19 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
     return rows.length > 0;
   }
 
+  async countOrdersWithoutActiveTask(): Promise<number> {
+    // The same rule as findOrdersWithoutActiveTask, counted in the database: the badge polls this from every admin page.
+    const rows = (await db.execute(sql`
+      select count(*)::int as n
+      from orders o
+      left join fulfilment_tasks t on t.order_id = o.id
+      where o.status not in ('cancelled', 'completed', 'delivered', 'failed')
+        and (t.id is null or t.status in ('DELIVERED', 'CANCELLED'))
+    `)) as unknown as Array<{ n: number }>;
+    const list = Array.isArray(rows) ? rows : (rows as { rows?: typeof rows }).rows ?? [];
+    return Number(list[0]?.n ?? 0);
+  }
+
   async findOrdersWithoutActiveTask(limit: number): Promise<Array<{
     orderId: string; orderNumber: string | null; orderStatus: string; taskStatus: string | null;
   }>> {

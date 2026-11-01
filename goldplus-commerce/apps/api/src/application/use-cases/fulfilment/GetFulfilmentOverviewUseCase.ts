@@ -24,15 +24,18 @@ export class GetFulfilmentOverviewUseCase {
    * their SLA deadline ("Overdue").
    */
   async badge(now: Date = new Date()): Promise<{ newOrders: number; overdue: number; unworkable: number }> {
-    const [newOrders, overdue, orphans] = await Promise.all([
+    const [newOrders, overdue, unworkable] = await Promise.all([
       this.repo.countNew(),
       this.repo.countOverdue(now),
-      this.repo.findOrdersWithoutActiveTask(200),
+      // A count(*), not 200 fetched rows: the true number, and cheap on every admin page's poll.
+      this.repo.countOrdersWithoutActiveTask
+        ? this.repo.countOrdersWithoutActiveTask()
+        : this.repo.findOrdersWithoutActiveTask(200).then((rows) => rows.length),
     ]);
     // Orders nobody can pick: live, but with a terminal task or none at all.
     // They are absent from the queue and still open to the customer, so without
     // this they are simply never seen again.
-    return { newOrders, overdue, unworkable: orphans.length };
+    return { newOrders, overdue, unworkable };
   }
 
   /** The orders behind that count, so the operator can act on them by name. */

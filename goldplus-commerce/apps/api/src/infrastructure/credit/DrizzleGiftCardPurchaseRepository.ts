@@ -84,10 +84,13 @@ async function enqueueInTx(tx: Tx, m: GiftCardOutboxMessage, relatedEntityId: st
 
 /**
  * A purchase started but not yet paid still counts toward the daily limits (2026-11 review), or ten parallel starts
- * would each see nothing paid and all go through. One whose payment page never opened stops counting after ten
- * minutes, so a Pesapal hiccup does not lock an honest buyer out for the day.
+ * would each see nothing paid and all go through. It counts for thirty minutes from its start, whether or not its
+ * payment page opened: long enough to cover a mobile-money PIN prompt (the parallel-start burst), short enough that an
+ * unpaid start does not hold the limit for the day. An earlier rule held an OPENED page until the poller closed it
+ * (24 hours), so anyone could open pages without paying and pause online gift card sales for the whole shop. A late
+ * payment is still honoured (markPaid takes awaiting_payment at any age); it simply counts as paid from then on.
  */
-const AWAITING_LIVE = sql`(status = 'awaiting_payment' and (order_tracking_id is not null or created_at > now() - interval '10 minutes'))`;
+const AWAITING_LIVE = sql`(status = 'awaiting_payment' and created_at > now() - interval '30 minutes')`;
 
 /** 0199: gift cards bought online. Every status change is a compare-and-set on the current status. */
 export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepository {
