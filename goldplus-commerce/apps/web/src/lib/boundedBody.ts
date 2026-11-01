@@ -11,7 +11,7 @@
  * cap, whatever the headers say. A declared length over the cap is refused
  * before a single byte is read.
  */
-export type BoundedBody = { ok: true; text: string } | { ok: false; reason: 'TOO_LARGE' };
+export type BoundedBody = { ok: true; text: string } | { ok: false; reason: 'TOO_LARGE' | 'READ_ERROR' };
 
 export async function readBodyCapped(request: Request, maxBytes: number): Promise<BoundedBody> {
   const read = await readBytesCapped(request, maxBytes);
@@ -19,7 +19,7 @@ export async function readBodyCapped(request: Request, maxBytes: number): Promis
 }
 
 /** The same cap, for a body that is not text (a photo). */
-export async function readBytesCapped(request: Request, maxBytes: number): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; reason: 'TOO_LARGE' }> {
+export async function readBytesCapped(request: Request, maxBytes: number): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; reason: 'TOO_LARGE' | 'READ_ERROR' }> {
   const declared = Number(request.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > maxBytes) return { ok: false, reason: 'TOO_LARGE' };
   if (!request.body) return { ok: true, bytes: new Uint8Array(0) };
@@ -32,7 +32,9 @@ export async function readBytesCapped(request: Request, maxBytes: number): Promi
     try {
       chunk = await reader.read();
     } catch {
-      break;
+      // A broken or aborted upload is a failure, never a truncated body
+      // handed on as if it were the whole request.
+      return { ok: false, reason: 'READ_ERROR' };
     }
     if (chunk.done || !chunk.value) break;
     size += chunk.value.byteLength;
