@@ -2,6 +2,7 @@
 import AdminLayout from "../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../lib/session";
 import { apiBase } from "../../lib/api";
+import { mediaCostLines, parseCsvLine } from "../../lib/mediaCostCsv";
 
 /**
  * Media costs — the operator surface for the ONE canonical spend fact table
@@ -93,24 +94,17 @@ if (Astro.request.method === "POST") {
     // operator is looking at. `source` applies to every row of the file, the
     // way one export comes from one place.
     //
-    // A line with MORE than ten fields is ambiguous (a campaign name with a
-    // comma in it, most likely) — naive splitting would silently truncate the
-    // campaign to the text before its first comma and store a corrupted fact.
-    // Ambiguity is rejected as a row error, never guessed at.
+    // Real CSV (lib/mediaCostCsv): a name with a comma goes in double quotes.
+    // A line that cannot be read unambiguously, or more than 5,000 rows, is
+    // rejected as an error, never guessed at or silently cut.
     const parseErrors: Array<{ rowNumber: number; errors: string[] }> = [];
-    const rows = submittedRows
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .slice(0, 5_000)
+    const pasted = mediaCostLines(submittedRows);
+    if (!pasted.ok) parseErrors.push({ rowNumber: 0, errors: [pasted.error] });
+    const rows = (pasted.ok ? pasted.lines : [])
       .map((line, index) => {
-        const parts = line.split(",").map((part) => part.trim());
-        if (parts.length > 10) {
-          parseErrors.push({
-            rowNumber: index + 1,
-            errors: [`This line has ${parts.length} comma-separated fields but the format allows at most 10 — a name probably contains a comma. Remove or replace it; nothing is guessed.`],
-          });
-        }
+        const parsed = parseCsvLine(line);
+        if (!parsed.ok) parseErrors.push({ rowNumber: index + 1, errors: [parsed.error] });
+        const parts = parsed.ok ? parsed.fields : [];
         const [date, channel, platform, account, campaign, spend, tax, currency, adSetOrGroup, adOrCreative] = parts;
         return {
           spendDate: date ?? "",
