@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { requireStepUp } from '../../middleware/requireStepUp';
 import { isRedemptionHalted } from '../../../../application/use-cases/loyalty/LoyaltyCompletionUseCases';
 import { Registry } from '../../../../infrastructure/Registry';
 import { CreateAuditLogUseCase } from '../../../../application/use-cases/audit/CreateAuditLogUseCase';
@@ -218,7 +219,8 @@ export default routes;
 // ── Loyalty completion admin (brief PARTs D.4/K/L/N/O, stages 5–14) ────────
 // Every liability mutation stays on a MUTATING permission with audit.
 
-routes.post('/adjust', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+// Points are a cash liability: creating them needs the same fresh second factor as creating store credit (2026-11 review).
+routes.post('/adjust', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), requireStepUp('payment_refund'), async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body?.userId || body?.points === undefined || !body?.reason || !body?.idempotencyKey) {
     return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'userId, points, reason and idempotencyKey are required.' } } satisfies ApiResponse<never>, 400);
