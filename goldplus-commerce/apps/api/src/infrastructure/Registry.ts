@@ -3263,7 +3263,10 @@ export class Registry {
     orders: {
       findById: async (orderId) => {
         const order = await this.orderRepo.findById(orderId);
-        return order ? { id: order.id, paymentStatus: order.paymentStatus, totalUgx: order.totalUgx, orderStatus: order.orderStatus } : null;
+        // storeCreditAppliedUgx is load-bearing: without it a gift-card order's
+        // live attempt (amount = total - credit) never matches and every tap opens
+        // a new payable PesaPal page, and a fully credited order can never settle.
+        return order ? { id: order.id, paymentStatus: order.paymentStatus, totalUgx: order.totalUgx, orderStatus: order.orderStatus, storeCreditAppliedUgx: order.storeCreditAppliedUgx ?? 0 } : null;
       },
     },
     attempts: {
