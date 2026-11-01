@@ -25,7 +25,11 @@ export class DrizzlePricingOperationsRepository implements IPricingOperationsRep
     for (const row of rows) {
       const counts = await db.select({ status: promotionReservations.status, count: sql<number>`count(*)::int` }).from(promotionReservations).where(eq(promotionReservations.promotionVersionId, row.versionId)).groupBy(promotionReservations.status);
       const byStatus = new Map(counts.map((item) => [item.status, item.count]));
-      const reserved = byStatus.get('RESERVED') ?? 0;
+      // Same predicate as reserveQuote: a RESERVED row past its expiry is not
+      // capacity in use, it is a checkout that was abandoned.
+      const [live] = await db.select({ count: sql<number>`count(*)::int` }).from(promotionReservations)
+        .where(and(eq(promotionReservations.promotionVersionId, row.versionId), eq(promotionReservations.status, 'RESERVED'), sql`${promotionReservations.expiresAt} > now()`));
+      const reserved = live?.count ?? 0;
       const redeemed = byStatus.get('REDEEMED') ?? 0;
       result.push({ ...row, reserved, redeemed, remaining: row.globalLimit == null ? null : Math.max(0, row.globalLimit - reserved - redeemed) });
     }

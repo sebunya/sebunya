@@ -11,7 +11,13 @@ export const PIM_TARGET_FIELDS = [
   "retailPriceUgx",
 ] as const;
 export type PimTargetField = (typeof PIM_TARGET_FIELDS)[number];
-export type PimMapping = Record<PimTargetField, string>;
+/**
+ * 0127 — price tiers may be supplied but need not be. A row without a floor
+ * imports as a product that is not discountable.
+ */
+export const PIM_OPTIONAL_FIELDS = ["floorPriceUgx", "tierBPriceUgx", "tierCPriceUgx"] as const;
+export type PimOptionalField = (typeof PIM_OPTIONAL_FIELDS)[number];
+export type PimMapping = Record<PimTargetField, string> & Partial<Record<PimOptionalField, string>>;
 export type PimImportMode = "CREATE_ONLY" | "UPSERT";
 export type PimImportStatus =
   | "UPLOADED"
@@ -35,6 +41,9 @@ export interface NormalizedPimProduct {
   shortDescription: string;
   longDescription: string;
   retailPriceUgx: number;
+  floorPriceUgx: number | null;
+  tierBPriceUgx: number | null;
+  tierCPriceUgx: number | null;
 }
 
 const column = /^[A-Za-z0-9_.-]{1,80}$/;
@@ -43,9 +52,21 @@ export function validatePimMapping(mapping: Partial<PimMapping>): string[] {
   for (const field of PIM_TARGET_FIELDS)
     if (!mapping[field] || !column.test(mapping[field]!))
       errors.push(`${field} requires a bounded source column.`);
-  if (new Set(Object.values(mapping)).size !== PIM_TARGET_FIELDS.length)
+  for (const field of PIM_OPTIONAL_FIELDS)
+    if (mapping[field] && !column.test(mapping[field]!))
+      errors.push(`${field} must name a bounded source column when mapped.`);
+  const mapped = Object.values(mapping).filter(Boolean);
+  if (new Set(mapped).size !== mapped.length)
     errors.push("Each target field must map to a distinct source column.");
   return errors;
+}
+
+function optionalTier(row: Record<string, unknown>, column: string | undefined): number | null {
+  if (!column) return null;
+  const raw = String(row[column] ?? "").trim();
+  if (!raw) return null;
+  const n = Number(raw.replace(/,/g, ""));
+  return Number.isFinite(n) ? n : Number.NaN;
 }
 
 export function normalizePimRow(
@@ -62,7 +83,12 @@ export function normalizePimRow(
     categorySlug: text("categorySlug").toLowerCase(),
     shortDescription: text("shortDescription"),
     longDescription: text("longDescription"),
-    retailPriceUgx: Number(row[mapping.retailPriceUgx]),
+    // Same normalisation as the tiers: the owner's workbook writes grouped
+    // thousands ('185,000'), which Number() alone turned into NaN.
+    retailPriceUgx: Number(String(row[mapping.retailPriceUgx] ?? "").trim().replace(/[,\s]/g, "")),
+    floorPriceUgx: optionalTier(row, mapping.floorPriceUgx),
+    tierBPriceUgx: optionalTier(row, mapping.tierBPriceUgx),
+    tierCPriceUgx: optionalTier(row, mapping.tierCPriceUgx),
   };
   const errors: string[] = [];
   if (!/^[A-Z0-9._-]{1,50}$/.test(value.sku))
@@ -82,6 +108,14 @@ export function normalizePimRow(
     errors.push("Descriptions exceed catalogue limits.");
   if (!Number.isInteger(value.retailPriceUgx) || value.retailPriceUgx <= 0)
     errors.push("Retail price must be a positive integer in UGX.");
+  // The owner's rule: a discount may never take the product below its own
+  // floor (Price A), so the floor can never sit above the selling price.
+  for (const [label, tier] of [["Floor price (Price A)", value.floorPriceUgx], ["Price B", value.tierBPriceUgx], ["Price C", value.tierCPriceUgx]] as const) {
+    if (tier !== null && (!Number.isInteger(tier) || tier <= 0))
+      errors.push(`${label} must be a whole number of shillings greater than zero, or blank.`);
+  }
+  if (value.floorPriceUgx !== null && value.floorPriceUgx > value.retailPriceUgx)
+    errors.push("Floor price (Price A) cannot be above the retail price.");
   return { value: errors.length ? null : value, errors };
 }
 
@@ -94,4 +128,27 @@ export function pimPreviewDigest(
   }>,
 ): string {
   return createHash("sha256").update(JSON.stringify(rows)).digest("hex");
+}
+
+/**
+ * Does applying this row reprice an EXISTING product? Retail (Price D) and the
+ * tiers — the floor above all, which caps every discount — are pricing
+ * decisions; the admin editor needs pricing.manage for them, so an import
+ * must too. A tier the sheet leaves blank (null) is kept, so it changes nothing.
+ */
+export function pimRowChangesPricing(row: {
+  action: string;
+  normalizedData: Pick<NormalizedPimProduct, "retailPriceUgx" | "floorPriceUgx" | "tierBPriceUgx" | "tierCPriceUgx"> | null;
+  beforeSnapshot: Record<string, unknown> | null;
+}): boolean {
+  if (row.action !== "UPDATE" || !row.normalizedData) return false;
+  const before = row.beforeSnapshot ?? {};
+  const num = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number(v));
+  const beforeRetail = num(before.retailPriceUgx) ?? num(before.priceUgx);
+  if (beforeRetail !== row.normalizedData.retailPriceUgx) return true;
+  for (const key of ["floorPriceUgx", "tierBPriceUgx", "tierCPriceUgx"] as const) {
+    const next = row.normalizedData[key];
+    if (next !== null && next !== num(before[key])) return true;
+  }
+  return false;
 }

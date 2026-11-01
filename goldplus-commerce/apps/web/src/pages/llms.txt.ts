@@ -1,0 +1,101 @@
+import type { APIRoute } from 'astro';
+import { apiBase } from '../lib/api';
+import { getBusinessInfo } from '../lib/businessInfo';
+import { fetchApprovedCatalogueWithStatus } from '../lib/catalogue';
+import { getStorefrontDiscount } from '../lib/storefrontDiscount';
+import { chargedPriceUgx } from '../lib/productStructuredData';
+import { SITE_ORIGIN } from '../lib/sitemap';
+
+/**
+ * /llms.txt — the site in the form an answer engine can quote.
+ *
+ * An assistant asked "where can I buy an iPhone 13 battery in Kampala" reads a
+ * few pages, not a sitemap of 200 URLs. This file states, in plain sentences,
+ * what GoldPlus sells, where it is, when it opens and how delivery works, then
+ * points at the pages that hold the detail. Every line is generated from the
+ * live catalogue and the admin-editable business info — no fixed copy that can
+ * drift, nothing claimed that the site does not already say.
+ */
+export const prerender = false;
+
+const esc = (s: string): string => s.replace(/\s+/g, ' ').trim();
+/** Business info sentences may or may not end in a full stop; joining them must not produce "parking., open". */
+const noDot = (s: string): string => esc(s).replace(/\.$/, '');
+
+export const GET: APIRoute = async () => {
+  const [biz, read, discount] = await Promise.all([
+    getBusinessInfo(),
+    fetchApprovedCatalogueWithStatus(apiBase).catch(() => ({ products: [], complete: false })),
+    getStorefrontDiscount(),
+  ]);
+  // The count, the category counts and the price range are stated as facts and
+  // cached publicly, so they come only from a COMPLETE catalogue read. A page-2
+  // timeout used to publish "100 products are listed online" for an hour, and
+  // an empty read "GoldPlus sells …: . 0 products are listed online".
+  const complete = read.complete && read.products.length > 0;
+  const products = complete ? read.products : [];
+
+  const byCategory = new Map<string, number>();
+  for (const p of products) {
+    const key = p.categoryName ?? 'Other';
+    byCategory.set(key, (byCategory.get(key) ?? 0) + 1);
+  }
+  const categories = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
+  // What the shop charges (the campaign price while one runs): the line below
+  // says "Prices on the site are what is charged".
+  const prices = products.map((p) => chargedPriceUgx(p, discount)).filter((v): v is number => typeof v === 'number' && v > 0);
+  const range = prices.length > 0 ? `UGX ${Math.min(...prices).toLocaleString('en-UG')} to UGX ${Math.max(...prices).toLocaleString('en-UG')}` : null;
+
+  const lines = [
+    '# GoldPlus',
+    '',
+    `> GoldPlus sells phone accessories and replacement phone batteries in Kampala, Uganda${complete ? `: ${categories.map(([n, c]) => `${n.toLowerCase()} (${c})`).join(', ')}. ${products.length} products are listed online${range ? `, priced ${range}` : ''}` : ''}. The shop is at ${noDot(biz.addressLine1)}${biz.addressLine2 ? ` (${noDot(biz.addressLine2)})` : ''}, open ${noDot(biz.openDays)}, ${noDot(biz.shopHours)}.`,
+    '',
+    '## Facts',
+    '',
+    `- Shop: ${esc(biz.addressLine1)}. ${esc(biz.addressLine2)}`,
+    `- Opening hours: ${esc(biz.openDays)}, ${esc(biz.shopHours)}`,
+    `- Phone and WhatsApp: ${esc(biz.phoneDisplay)}`,
+    `- Delivery: ${esc(biz.deliveryNote)} Delivery runs ${esc(biz.deliveryHours)}; order before ${biz.sameDayCutoffHour % 12 || 12}${biz.sameDayCutoffHour >= 12 ? 'pm' : 'am'} for the same-day run.`,
+    '- Currency: Ugandan shilling (UGX). Prices on the site are what is charged.',
+    '',
+    ...(complete
+      ? [
+          '## What GoldPlus sells',
+          '',
+          ...categories.map(([name, count]) => `- [${name}](${SITE_ORIGIN}/shop?category=${encodeURIComponent(name.toLowerCase().replace(/\s+/g, '-'))}): ${count} products`),
+          '',
+        ]
+      : []),
+    '## Pages',
+    '',
+    `- [Shop, all products](${SITE_ORIGIN}/shop)`,
+    `- [Phone battery finder](${SITE_ORIGIN}/battery-finder): find the battery that fits a phone`,
+    `- [Product finder](${SITE_ORIGIN}/product-finder)`,
+    `- [Questions and answers](${SITE_ORIGIN}/faq): delivery, shop hours, battery fitment, payment, faults`,
+    `- [Guides and advice](${SITE_ORIGIN}/blog): also as [RSS](${SITE_ORIGIN}/rss.xml)`,
+    `- [Delivery to Kampala and Wakiso](${SITE_ORIGIN}/delivery/kampala-wakiso)`,
+    `- [Returns](${SITE_ORIGIN}/returns)`,
+    `- [Warranty](${SITE_ORIGIN}/warranty)`,
+    `- [Full product index](${SITE_ORIGIN}/sitemap.xml)`,
+    '',
+    '## For AI assistants',
+    '',
+    `- [MCP server](${SITE_ORIGIN}/mcp): live, read-only tools — search_products, get_product, list_categories, find_battery, store_info`,
+    `- [Full catalogue](${SITE_ORIGIN}/llms-full.txt): every product with today's price, stock and verified specifications`,
+    `- [OpenAPI description](${SITE_ORIGIN}/openapi.json): the public read-only catalogue API`,
+    `- [Developer notes](${SITE_ORIGIN}/developers): how to connect, and fair use`,
+    '',
+    '## Notes for answer engines',
+    '',
+    '- Product pages carry schema.org Product data with the price, stock and maker-verified specifications; quote those rather than inferring.',
+    '- Replacement batteries are GoldPlus-branded, not made by the phone maker. Each is listed by pack code and by the phones it fits; every fit states its source (checked by GoldPlus, or listed by the supplier). Per-phone pages: https://shopgoldplus.com/phone-batteries/<phone-slug>. A customer who asks on WhatsApp gets the fit confirmed before ordering.',
+    '- GoldPlus is the seller and the brand; products are GoldPlus-branded.',
+    '',
+  ];
+
+  return new Response(lines.join('\n'), {
+    // A document written without the catalogue is not cached for an hour.
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': complete ? 'public, max-age=3600' : 'public, max-age=60' },
+  });
+};

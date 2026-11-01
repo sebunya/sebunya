@@ -1,4 +1,4 @@
-import { ProductPublicDto, ProductAvailability } from '@goldplus/shared';
+import { ProductPublicDto, ProductAvailability, resolveGallery } from '@goldplus/shared';
 import { ProductWithPrice } from '../ports/IProductRepository';
 
 const MISSING_SENTINELS = new Set([
@@ -23,20 +23,8 @@ function deriveAvailability(input: {
   if (input.isPreOrderEnabled) return { kind: 'pre_order' };
   if (!input.stockTracked) return { kind: 'unknown' };
   if (input.stockQuantity > 0) return { kind: 'in_stock', quantity: input.stockQuantity };
+  // (input.stockQuantity is the AVAILABLE figure; see the call site.)
   return { kind: 'out_of_stock' };
-}
-
-function pickVerifiedSpecs(specs: Record<string, string | number>): Record<string, string | number> {
-  const out: Record<string, string | number> = {};
-  for (const [key, value] of Object.entries(specs ?? {})) {
-    if (typeof value === 'string') {
-      const cleaned = cleanString(value);
-      if (cleaned !== null) out[key] = cleaned;
-    } else if (typeof value === 'number' && Number.isFinite(value)) {
-      out[key] = value;
-    }
-  }
-  return out;
 }
 
 /**
@@ -59,13 +47,15 @@ export function toProductPublicDto(
   source: ProductWithPrice,
   opts: { stockTracked?: boolean } = {},
 ): ProductPublicDto {
-  const { entity, retailPriceUgx, categoryName, images, attributeValues } = source;
+  const { entity, retailPriceUgx, floorPriceUgx, categoryName, images, attributeValues } = source;
   const stockTracked = opts.stockTracked ?? true;
 
-  // Build new fields
-  const sortedImages = [...images].sort((a, b) => (a.isPrimary === b.isPrimary ? a.displayOrder - b.displayOrder : a.isPrimary ? -1 : 1));
-  const dtoImages = sortedImages.map((i) => ({ url: i.url, alt: i.altText }));
-  const primaryImageUrl = dtoImages[0]?.url ?? null;
+  // Focus 4: ONE cover authority. Canonical slot order for a migrated product
+  // (slot 1 = cover, legacy rows hidden); the historical is_primary/display_order
+  // order only for a product the backfill has not reached.
+  const gallery = resolveGallery(images.map((i) => ({ ...i, slot: i.slot ?? null })));
+  const dtoImages = gallery.ordered.map((i) => ({ url: i.url, alt: i.altText }));
+  const primaryImageUrl = gallery.cover?.url ?? null;
 
   const dtoAttrs = attributeValues
     .map((v) => ({
@@ -95,7 +85,11 @@ export function toProductPublicDto(
 
   const availability = deriveAvailability({
     isPreOrderEnabled: entity.isPreOrderEnabled,
-    stockQuantity: entity.stockQuantity,
+    // AVAILABLE, not on-hand. The schema's own rule is
+    // "available = stock_quantity - reserved_quantity", and publishing the raw
+    // stock figure meant a card could promise units already committed to
+    // someone else's order.
+    stockQuantity: entity.availableQuantity(),
     stockTracked,
   });
 
@@ -104,9 +98,15 @@ export function toProductPublicDto(
     slug: entity.slug,
     name: entity.name,
     categoryName: cleanedCategoryName,
+    shortDescription: entity.shortDescription?.trim() ? entity.shortDescription.trim() : null,
+    longDescription: entity.longDescription?.trim() ? entity.longDescription.trim() : null,
     sku,
     modelNumber,
     retailPriceUgx: safeRetailPrice,
+    floorPriceUgx:
+      typeof floorPriceUgx === 'number' && Number.isFinite(floorPriceUgx) && floorPriceUgx > 0
+        ? Math.trunc(floorPriceUgx)
+        : null,
     availability,
     hasImage: dtoImages.length > 0,
     verifiedSpecs: legacyVerifiedSpecs,

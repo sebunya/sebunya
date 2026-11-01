@@ -117,11 +117,21 @@ export class DrizzlePricingRepository implements IPricingRepository {
 
   async transitionVersion(input: { definitionId: string; versionId: string; expectedRevision: number; from: PromotionStatus; to: PromotionStatus; actorId: string; reason: string; now: Date }) {
     return db.transaction(async (tx) => {
+      // The definition mirrors its LIVE version, not whichever version is being
+      // moved. Archiving a superseded v1 while v2 was live rewrote the definition
+      // to ARCHIVED and cleared activeVersionId, taking the live promotion off
+      // the storefront. Only the active version, an activation, or a definition
+      // with no active version may move the definition's status.
+      const [current] = await tx.select({ activeVersionId: promotionDefinitions.activeVersionId }).from(promotionDefinitions).where(eq(promotionDefinitions.id, input.definitionId)).limit(1);
+      const mirrors = input.to === 'ACTIVE' || !current?.activeVersionId || current.activeVersionId === input.versionId;
       const [definition] = await tx.update(promotionDefinitions)
-        .set({
+        .set(mirrors ? {
           status: input.to,
           revision: sql`${promotionDefinitions.revision} + 1`,
           activeVersionId: input.to === 'ACTIVE' ? input.versionId : input.to === 'ARCHIVED' ? null : undefined,
+          updatedAt: input.now,
+        } : {
+          revision: sql`${promotionDefinitions.revision} + 1`,
           updatedAt: input.now,
         })
         .where(and(eq(promotionDefinitions.id, input.definitionId), eq(promotionDefinitions.revision, input.expectedRevision)))

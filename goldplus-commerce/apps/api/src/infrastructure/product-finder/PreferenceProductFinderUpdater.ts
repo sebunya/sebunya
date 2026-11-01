@@ -1,3 +1,4 @@
+import { logger } from '../logging/logger';
 import { ProductFinderPreferenceUpdater } from '../../application/ports/product-finder/ProductFinderPreferenceUpdater';
 import { UpdateCustomerPreferenceCentreUseCase } from '../../application/use-cases/preferences/UpdateCustomerPreferenceCentreUseCase';
 
@@ -17,7 +18,7 @@ export class PreferenceProductFinderUpdater implements ProductFinderPreferenceUp
       });
     } catch (err) {
       // Graceful fallback if preferences fail to save, as zero-party data is best-effort.
-      console.warn(`[ProductFinder] Failed to update interests for ${userId}:`, err);
+      logger.warn({ userId, err }, '[ProductFinder] Failed to update interests');
     }
   }
 
