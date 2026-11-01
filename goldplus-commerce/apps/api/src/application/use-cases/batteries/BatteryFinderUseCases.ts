@@ -251,7 +251,10 @@ export class BatteryFinderUseCases {
       if (product && answerable) {
         const { lifecycleStatus, stockQuantity, floorPriceUgx, productApproved: _a, productActive: _p, ...unpriced } = product;
         const publicProduct = this.priced(unpriced, floorPriceUgx, await this.campaign());
-        const state: PublicFitState = lifecycleStatus !== 'ACTIVE' ? 'AWAITING_VERIFICATION' : stockQuantity > 0 ? 'VERIFIED_IN_STOCK' : 'VERIFIED_OUT_OF_STOCK';
+        // "Verified fit" is a claim about phones: it needs at least one verified public fit
+        // behind it. An ACTIVE battery record with only unchecked (or no) fits is not one.
+        const hasVerifiedFit = publicDevices.some((d) => d.fitState === 'VERIFIED_IN_STOCK' || d.fitState === 'VERIFIED_OUT_OF_STOCK');
+        const state: PublicFitState = lifecycleStatus !== 'ACTIVE' || !hasVerifiedFit ? 'AWAITING_VERIFICATION' : stockQuantity > 0 ? 'VERIFIED_IN_STOCK' : 'VERIFIED_OUT_OF_STOCK';
         void event('RESOLVED', { mode: 'SEARCH_CODE', batteryProductId: productId, resultCount: publicDevices.length, aliasHit: exactBatteries[0].tier === 5 });
         return { kind: 'BATTERY', battery: { ...publicProduct, inStock: stockQuantity > 0, fitState: state, fitLabel: publicFitLabel(state), condition: null }, devices: publicDevices, query, config: cfg };
       }

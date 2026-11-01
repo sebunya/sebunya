@@ -94,7 +94,7 @@ export function transitionClaim(
       // by someone other than the person who entered it. Verification later
       // upgrades it in place; nothing here lets a claim call itself verified.
       if (s === 'REVIEW' && state.evidenceStatus === 'SUPPLIER_LISTED' && detail.allowAwaiting) {
-        if (actorId === state.createdBy) return fail('MAKER_CHECKER', 'The person who entered a claim cannot publish it unverified. A second person must.');
+        if (actorId === state.createdBy || actorId === state.submittedBy) return fail('MAKER_CHECKER', 'The person who entered or submitted a claim cannot publish it unverified. A second person must.');
         if (state.deviceStatus !== 'ACTIVE') return fail('DEVICE_INVALID', 'The device is archived or merged.');
         return { ok: true, next: 'ACTIVE', evidenceStatus: 'SUPPLIER_LISTED' };
       }
