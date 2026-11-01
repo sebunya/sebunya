@@ -15,6 +15,12 @@ import { GP_C08_SKU, rewriteTwelveWatts, rewriteTwelveWattsDeep } from '../domai
  *
  *   ACTOR_USER_ID=<uuid> [APPLY=1] npx tsx src/scripts/correct-gp-c08-wattage.ts
  */
+// A jsonb column the driver once wrote double-encoded reads back as a JSON
+// string ('"[...]"'); decode it so the rewrite sees the real array/object.
+const decoded = (v: unknown): unknown => {
+  if (typeof v !== 'string') return v;
+  try { return JSON.parse(v); } catch { return v; }
+};
 const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 
 async function main(): Promise<void> {
@@ -24,7 +30,7 @@ async function main(): Promise<void> {
   const [row] = rowsOf(await db.execute(sql`
     select id, name, short_description, long_description, features, specifications from products where sku = ${GP_C08_SKU}`));
   if (!row) { console.log(`${GP_C08_SKU} not found; nothing to do`); return; }
-  const before = { name: String(row.name), short: String(row.short_description ?? ''), long: String(row.long_description ?? ''), features: row.features, specs: row.specifications };
+  const before = { name: String(row.name), short: String(row.short_description ?? ''), long: String(row.long_description ?? ''), features: decoded(row.features), specs: decoded(row.specifications) };
   const after = {
     name: rewriteTwelveWatts(before.name), short: rewriteTwelveWatts(before.short), long: rewriteTwelveWatts(before.long),
     features: rewriteTwelveWattsDeep(before.features), specs: rewriteTwelveWattsDeep(before.specs),
@@ -41,7 +47,8 @@ async function main(): Promise<void> {
   if (!apply || !changed.length) return;
   await db.execute(sql`update products set
     name = ${after.name}, short_description = ${after.short}, long_description = ${after.long},
-    features = ${JSON.stringify(after.features)}::jsonb, specifications = ${JSON.stringify(after.specs)}::jsonb,
+    -- ::text first: a parameter typed jsonb is JSON-encoded again by the driver, storing a jsonb STRING.
+    features = ${JSON.stringify(after.features)}::text::jsonb, specifications = ${JSON.stringify(after.specs)}::text::jsonb,
     updated_at = now() where id = ${String(row.id)}`);
   for (const a of attrs) {
     await db.execute(sql`update product_attribute_values set value = '10', updated_at = now()
