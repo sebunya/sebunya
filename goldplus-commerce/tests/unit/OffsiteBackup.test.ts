@@ -59,6 +59,8 @@ describe('ops/backup/offsite-sync.sh', () => {
     const r = sync(dir, remote, '--verify');
     expect(r.code).toBe(2);
     expect(r.out).toContain('goldplus-prod-nightly-20261007-021552Z.dump');
+    // one line per missing file, not one line per word
+    expect(r.out).toMatch(/^  \S*goldplus-prod-nightly-20261007-021552Z\.dump \(3 bytes locally\)$/m);
     expect(existsSync(join(dir, '.offsite-verified-at'))).toBe(false);
     // truncated on the far side
     expect(sync(dir, remote).code).toBe(0);
