@@ -94,7 +94,12 @@ export class UploadProductImagesUseCase {
       } else if (r.code === 'INVALID_SLOT') {
         results.push({ assetId: stored.asset.id, url: stored.asset.url, slot: null, deduplicated: stored.deduplicated, outcome: 'GALLERY_FULL', message: r.message });
       } else {
-        throw new ProductUploadError(r.message);
+        // Before anything is committed, a refusal (unknown product...) fails the request as before. After an
+        // earlier file reached the gallery, throwing would report the whole batch as failed while some photos
+        // are already live, so the file is reported as not stored and the batch answer stays truthful.
+        const committed = results.some((x) => x.outcome === 'ASSIGNED' || x.outcome === 'COVER');
+        if (!committed) throw new ProductUploadError(r.message);
+        results.push({ assetId: stored.asset.id, url: stored.asset.url, slot: null, deduplicated: stored.deduplicated, outcome: 'REJECTED', message: r.message });
       }
     }
     return results;
