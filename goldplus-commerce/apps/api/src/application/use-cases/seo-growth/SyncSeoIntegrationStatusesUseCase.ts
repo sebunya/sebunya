@@ -2,16 +2,19 @@
  * SyncSeoIntegrationStatusesUseCase — computes each SEO integration's live
  * credential presence from the environment and reports it honestly.
  *
- * Contract (CLAUDE.md): no fake integrations. An integration whose expected
- * env vars are all present is a 'CONNECTED' candidate; otherwise it is
- * 'READY_FOR_CREDENTIALS'. Only boolean presence per VAR NAME ever leaves this
+ * Contract (CLAUDE.md): no fake integrations. Credentials being present is
+ * NOT a connection: an integration is CONNECTED only once an operation has
+ * succeeded with them (last_success_at, newer than any failure). Present but
+ * unproven credentials report CREDENTIALS_PRESENT (persisted as
+ * READY_FOR_CREDENTIALS, the nearest stored state); none, READY_FOR_CREDENTIALS. Only boolean presence per VAR NAME ever leaves this
  * use case — never a value, never a prefix, never a length.
  */
 
 export const SEO_INTEGRATION_ENV_VARS: Record<string, string[]> = {
   // Must match what GscClient.fromEnv / SyncGscPerformanceUseCase consume.
   GSC: ['GSC_SERVICE_ACCOUNT_JSON', 'GSC_SITE_URL'],
-  GA4: ['GA4_PROPERTY_ID', 'GA4_CLIENT_EMAIL', 'GA4_PRIVATE_KEY'],
+  // Must match what Ga4DataApi consumes.
+  GA4: ['GA4_PROPERTY_ID', 'GA4_SERVICE_ACCOUNT_JSON'],
   MERCHANT_CENTER: ['MERCHANT_CENTER_ID', 'MERCHANT_CENTER_CLIENT_EMAIL', 'MERCHANT_CENTER_PRIVATE_KEY'],
   GBP: ['GBP_CLIENT_EMAIL', 'GBP_PRIVATE_KEY', 'GBP_LOCATION_ID'],
   KEYWORD_PROVIDER: ['KEYWORD_PROVIDER_API_KEY'],
@@ -36,7 +39,7 @@ export interface SeoIntegrationView {
   provider: string;
   status: string;
   envVars: Array<{ name: string; present: boolean }>;
-  computedStatus: 'CONNECTED' | 'READY_FOR_CREDENTIALS' | null;
+  computedStatus: 'CONNECTED' | 'CREDENTIALS_PRESENT' | 'READY_FOR_CREDENTIALS' | null;
   /** 0118: true when the integrations control plane holds an ACTIVE vault credential for this provider. */
   vaultConfigured: boolean;
   lastSuccessAt: unknown;
@@ -68,13 +71,26 @@ export interface SeoIntegrationStore {
 export function computeEnvPresence(
   expectedVars: string[],
   env: Record<string, string | undefined>,
-): { envVars: Array<{ name: string; present: boolean }>; computedStatus: 'CONNECTED' | 'READY_FOR_CREDENTIALS' | null } {
+): { envVars: Array<{ name: string; present: boolean }>; computedStatus: 'CREDENTIALS_PRESENT' | 'READY_FOR_CREDENTIALS' | null } {
   if (expectedVars.length === 0) return { envVars: [], computedStatus: null };
   const envVars = expectedVars.map((name) => ({
     name,
     present: typeof env[name] === 'string' && env[name]!.trim() !== '',
   }));
-  return { envVars, computedStatus: envVars.every((v) => v.present) ? 'CONNECTED' : 'READY_FOR_CREDENTIALS' };
+  return { envVars, computedStatus: envVars.every((v) => v.present) ? 'CREDENTIALS_PRESENT' : 'READY_FOR_CREDENTIALS' };
+}
+
+const toTime = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const t = new Date(v as string).getTime();
+  return Number.isFinite(t) ? t : null;
+};
+
+/** A real operation succeeded, and nothing has failed since. */
+export function provenBySuccess(row: Pick<SeoIntegrationRow, 'last_success_at' | 'last_failure_at'>): boolean {
+  const ok = toTime(row.last_success_at);
+  const failed = toTime(row.last_failure_at);
+  return ok !== null && (failed === null || ok >= failed);
 }
 
 export class SyncSeoIntegrationStatusesUseCase {
@@ -117,14 +133,17 @@ export class SyncSeoIntegrationStatusesUseCase {
       const vaultConfigured = this.vaultConfiguredProviderIds.includes(
         LEGACY_TO_PLATFORM_PROVIDER[row.provider] ?? row.provider,
       );
-      const computedStatus = vaultConfigured ? 'CONNECTED' : presence.computedStatus;
+      const present = vaultConfigured ? 'CREDENTIALS_PRESENT' : presence.computedStatus;
+      const computedStatus = present === 'CREDENTIALS_PRESENT' && provenBySuccess(row) ? 'CONNECTED' : present;
+      // The stored column has no "present but unproven" state: it stays READY_FOR_CREDENTIALS until a sync succeeds.
+      const persisted = computedStatus === 'CREDENTIALS_PRESENT' ? 'READY_FOR_CREDENTIALS' : computedStatus;
 
       let status = row.status;
       // Report + persist the computed state, but never overwrite a manual
       // DISABLED or a recorded ERROR with a mere env presence check.
-      if (computedStatus && status !== 'DISABLED' && status !== 'ERROR' && status !== computedStatus) {
-        await this.store.upsertIntegrationStatus(row.provider, { status: computedStatus });
-        status = computedStatus;
+      if (persisted && status !== 'DISABLED' && status !== 'ERROR' && status !== persisted) {
+        await this.store.upsertIntegrationStatus(row.provider, { status: persisted });
+        status = persisted;
       }
       views.push({
         provider: row.provider,
