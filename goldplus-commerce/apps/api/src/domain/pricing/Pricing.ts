@@ -37,6 +37,31 @@ export interface PromotionBenefit {
   maximumDiscountUgx?: number | null;
 }
 
+/**
+ * AC10 — approval policy. A promotion whose discount exceeds a configured
+ * threshold must be activated by an approver DISTINCT from its creator. The
+ * thresholds are configuration (not hidden constants) and each activation audits
+ * which threshold applied. Percentage benefits are compared in basis points;
+ * fixed-amount / fixed-price benefits in UGX. Pure domain.
+ */
+export interface PromotionApprovalPolicy {
+  percentBpsThreshold: number;
+  fixedUgxThreshold: number;
+}
+
+export const DEFAULT_PROMOTION_APPROVAL_POLICY: PromotionApprovalPolicy = {
+  percentBpsThreshold: 2000, // 20%
+  fixedUgxThreshold: 100_000,
+};
+
+export function requiresDistinctApprover(benefits: PromotionBenefit[], policy: PromotionApprovalPolicy): boolean {
+  return benefits.some((benefit) => {
+    if (benefit.type === 'PERCENTAGE_OFF') return benefit.value > policy.percentBpsThreshold;
+    if (benefit.type === 'FIXED_AMOUNT_OFF' || benefit.type === 'FIXED_PRICE') return benefit.value > policy.fixedUgxThreshold;
+    return false; // FREE_SHIPPING is not discount-value gated
+  });
+}
+
 export interface PromotionExclusion {
   type: PromotionExclusionType;
   value: string;
@@ -95,6 +120,12 @@ export function validatePromotionVersion(input: PromotionVersionDraft): string[]
   if (input.schedule.startsAt >= input.schedule.endsAt) errors.push('Promotion end time must be after its start time.');
   if (!Number.isInteger(input.priority) || input.priority < 0 || input.priority > 10_000) errors.push('Priority must be an integer from 0 to 10000.');
   if (!Number.isInteger(input.priceFloorUgx) || input.priceFloorUgx < 0) errors.push('Price floor must be a non-negative integer UGX amount.');
+  // The owner's standing rule: no customer price may fall below the storefront
+  // A promotion's floor is an OPTIONAL extra. The floor that matters is each
+  // product's own Price A (product_prices.floor_price, 0127), which the
+  // evaluator applies per line as max(promotion floor, product floor). 0 here
+  // therefore means "the product floors govern", which is the normal case.
+
   if (input.benefits.length === 0) errors.push('At least one benefit is required.');
   if (input.benefits.length > 10) errors.push('At most ten benefits are supported.');
   for (const benefit of input.benefits) {

@@ -3,25 +3,26 @@ interface Props { apiBase: string; compatibleWith?: string | null }
 const { apiBase, compatibleWith = null } = Astro.props;
 ---
 
-<div id="product-finder-shell" data-api-base={apiBase} data-compatible-with={compatibleWith ?? ''} class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-  <div id="pf-status" class="mb-4 text-sm text-gray-600" aria-live="polite">Starting a private finder session…</div>
+<div id="product-finder-shell" data-api-base={apiBase} data-compatible-with={compatibleWith ?? ''} class="bg-white rounded-2xl border border-brand-borderGrey p-5 sm:p-6">
+  <div id="pf-status" class="mb-4 text-sm text-slate-600" aria-live="polite">Getting your questions ready…</div>
   <div id="pf-progress" class="mb-6 hidden">
-    <div class="flex justify-between text-sm text-gray-500 mb-2"><span id="pf-step-text">Step 1 of 4</span></div>
-    <div class="w-full bg-gray-200 rounded-full h-2"><div id="pf-progress-bar" class="bg-[#96cc06] h-2 rounded-full transition-all" style="width:25%"></div></div>
+    <div class="flex justify-between text-sm font-semibold text-slate-600 mb-2"><span id="pf-step-text">Step 1 of 4</span></div>
+    <div class="w-full bg-slate-100 rounded-full h-2"><div id="pf-progress-bar" class="bg-brand-primary h-2 rounded-full transition-all" style="width:25%"></div></div>
   </div>
   <div id="pf-questions"></div>
   <div id="pf-results" class="hidden"></div>
   <div id="pf-actions" class="mt-8 flex justify-between hidden">
-    <button id="pf-back" class="px-4 py-2 text-gray-600 border border-gray-300 rounded hidden">Back</button>
-    <button id="pf-next" class="px-6 py-2 bg-[#96cc06] text-white rounded font-medium ml-auto">Next</button>
-    <button id="pf-submit" class="px-6 py-2 bg-[#96cc06] text-white rounded font-medium ml-auto hidden">See recommendations</button>
+    <button id="pf-back" type="button" class="px-5 min-h-11 rounded-full border-2 border-brand-charcoal text-sm font-bold text-brand-charcoal hover:bg-slate-50 active:scale-[0.98] hidden">Back</button>
+    <button id="pf-next" type="button" class="px-6 min-h-11 rounded-full bg-brand-primary text-sm font-bold text-brand-black hover:shadow-md hover:shadow-brand-primary/25 active:scale-[0.98] ml-auto">Next</button>
+    <button id="pf-submit" type="button" class="px-6 min-h-11 rounded-full bg-brand-primary text-sm font-bold text-brand-black hover:shadow-md hover:shadow-brand-primary/25 active:scale-[0.98] disabled:opacity-50 ml-auto hidden">See recommendations</button>
   </div>
-  <div class="mt-8 pt-4 border-t border-gray-100 text-xs text-gray-500 text-center">
-    <p>Answers are limited to this finder. Advertising consent is never inferred. Interest buttons do not add to cart or send WhatsApp messages.</p>
+  <div class="mt-8 pt-4 border-t border-slate-100 text-xs text-slate-500 text-center">
+    <p>Answering does not sign you up for adverts. The buttons on a suggestion never add to your cart or send a message.</p>
   </div>
 </div>
 
 <script>
+  import { publicApiBase } from '../../lib/api';
   type Question = { id: string; title: string; options: string[] };
   type Recommendation = { productId: string; name: string; category: string; price: number; productUrl: string; imageUrl: string; reasons: string[]; primaryCta: string; secondaryCta: string; availabilityEvidence: string; compatibilityEvidence: string; pricingEvidence: string };
   const questions: Question[] = [
@@ -41,7 +42,10 @@ const { apiBase, compatibleWith = null } = Astro.props;
   const btnSubmit = document.getElementById('pf-submit') as HTMLButtonElement;
   const stepText = document.getElementById('pf-step-text') as HTMLElement;
   const progressBar = document.getElementById('pf-progress-bar') as HTMLElement;
-  const api = shell.dataset.apiBase ?? '';
+  // Browser-side origin resolution: the canonical publicApiBase wins so a
+  // caller accidentally passing the SSR-internal origin (http://api:3000 —
+  // unresolvable from a browser) can never take the assistant down again.
+  const api = (publicApiBase || shell.dataset.apiBase || '').replace(/\/+$/, '');
   let currentStep = 0;
   let sessionId = '';
   let accessToken = '';
@@ -64,26 +68,37 @@ const { apiBase, compatibleWith = null } = Astro.props;
       accessToken = data.accessToken;
       const reference = shell.dataset.compatibleWith;
       if (reference) await saveAnswer('referenceProductId', reference);
-      status.textContent = reference ? 'Private session ready. Only declared compatible, available products can match.' : 'Private session ready.';
+      status.textContent = reference ? `${questions.length} quick questions. Only products listed as compatible and in stock are suggested.` : `${questions.length} quick questions.`;
       progress.classList.remove('hidden');
       actions.classList.remove('hidden');
       renderQuestion();
     } catch {
-      status.textContent = 'Shopping Assistant unavailable. No sample recommendations are shown.';
+      status.textContent = 'The finder is not available right now. Everything is still in the shop.';
     }
   }
 
+  const optionClass = (selected: boolean) => `flex items-center min-h-11 p-4 border rounded-xl cursor-pointer transition-colors hover:border-brand-primary ${selected ? 'border-brand-primaryInk bg-brand-primary/5' : 'border-slate-200'}`;
+
   function renderQuestion() {
     const q = questions[currentStep];
-    qContainer.replaceChildren(text('h2', q.title, 'text-xl font-medium text-gray-900 mb-4'));
+    // A fieldset whose legend is the question, so the radio group has a name.
+    const group = document.createElement('fieldset');
+    group.append(text('legend', q.title, 'text-xl font-black tracking-tight text-gray-900 mb-4'));
     const list = document.createElement('div'); list.className = 'space-y-3';
+    const labels: HTMLLabelElement[] = [];
     for (const option of q.options) {
-      const label = document.createElement('label'); label.className = 'flex items-center p-4 border rounded-lg cursor-pointer';
+      const label = document.createElement('label'); label.className = optionClass(answers[q.id] === option);
       const input = document.createElement('input'); input.type = 'radio'; input.name = q.id; input.value = option; input.checked = answers[q.id] === option;
-      input.addEventListener('change', () => { answers[q.id] = option; renderQuestion(); });
-      label.append(input, text('span', option, 'ml-3 text-gray-700')); list.append(label);
+      // Restyle in place. Re-rendering here destroyed the focused radio, so one
+      // arrow key dropped focus to <body> and the next did nothing.
+      input.addEventListener('change', () => {
+        answers[q.id] = option;
+        labels.forEach((l, i) => { l.className = optionClass(q.options[i] === option); });
+      });
+      label.append(input, text('span', option, 'ml-3 font-medium text-gray-900')); list.append(label); labels.push(label);
     }
-    qContainer.append(list);
+    group.append(list);
+    qContainer.replaceChildren(group);
     stepText.textContent = `Step ${currentStep + 1} of ${questions.length}`;
     progressBar.style.width = `${((currentStep + 1) / questions.length) * 100}%`;
     btnBack.classList.toggle('hidden', currentStep === 0);
@@ -98,42 +113,54 @@ const { apiBase, compatibleWith = null } = Astro.props;
   btnNext.addEventListener('click', async () => {
     const q = questions[currentStep];
     if (!answers[q.id]) return void (status.textContent = 'Select one option to continue.');
-    try { await saveAnswer(q.id, answers[q.id]); currentStep += 1; renderQuestion(); } catch { status.textContent = 'Answer was not saved. Please retry.'; }
+    try { await saveAnswer(q.id, answers[q.id]); currentStep += 1; renderQuestion(); } catch { status.textContent = 'That answer did not save. Please try again.'; }
   });
   btnBack.addEventListener('click', () => { if (currentStep > 0) { currentStep -= 1; renderQuestion(); } });
   btnSubmit.addEventListener('click', async () => {
     const q = questions[currentStep];
     if (!answers[q.id]) return void (status.textContent = 'Select one option to continue.');
-    btnSubmit.disabled = true; status.textContent = 'Checking live catalogue, availability, compatibility and pricing…';
+    btnSubmit.disabled = true; status.textContent = 'Checking stock, fit and prices…';
     try {
       await saveAnswer(q.id, answers[q.id]);
       const data = await request(`/product-finder/sessions/${sessionId}/complete`, { method: 'POST', headers: finderHeaders() });
       renderResults(data.status, data.recommendations ?? []);
-    } catch { status.textContent = 'Recommendations unavailable. No products were invented or substituted.'; btnSubmit.disabled = false; }
+    } catch { status.textContent = 'We could not load suggestions just now. Please try again.'; btnSubmit.disabled = false; }
   });
 
   function renderResults(resultStatus: string, recommendations: Recommendation[]) {
     qContainer.classList.add('hidden'); actions.classList.add('hidden'); progress.classList.add('hidden'); rContainer.classList.remove('hidden'); rContainer.replaceChildren();
     if (resultStatus === 'NO_MATCH' || resultStatus === 'NO_EXACT_MATCH') {
-      rContainer.append(text('h2', 'No exact match found', 'text-2xl font-bold mb-4'), text('p', 'No eligible product satisfied the answers and current safety gates. Browse the catalogue without an invented recommendation.', 'text-gray-600 mb-6'));
-      const link = text('a', 'Browse all products', 'inline-block bg-[#96cc06] text-white px-6 py-3 rounded font-medium') as HTMLAnchorElement; link.href = '/shop'; rContainer.append(link); status.textContent = 'NO_MATCH — no product recommendation was fabricated.'; return;
+      rContainer.append(text('h2', 'No exact match found', 'text-2xl font-black tracking-tight text-gray-900 mb-4'), text('p', 'Nothing we stock matches all of your answers right now, and we will not suggest something that does not.', 'text-slate-600 mb-6'));
+      const link = text('a', 'Browse all products', 'inline-flex items-center min-h-11 px-6 rounded-full bg-brand-primary text-sm font-bold text-brand-black') as HTMLAnchorElement; link.href = '/shop'; rContainer.append(link); status.textContent = 'No match yet. We would rather say so than guess. Browse the shop or ask us.'; return;
     }
-    rContainer.append(text('h2', 'Your GoldPlus matches', 'text-2xl font-bold mb-6'));
+    rContainer.append(text('h2', 'Your GoldPlus matches', 'text-2xl font-black tracking-tight text-gray-900 mb-6'));
     for (const rec of recommendations) {
-      const card = document.createElement('article'); card.className = 'border rounded-lg p-6 mb-5';
-      card.append(text('div', rec.category, 'text-sm text-[#659000] font-medium'), text('h3', rec.name, 'text-xl font-bold'), text('div', `UGX ${rec.price.toLocaleString()}`, 'text-lg my-2'));
-      const evidence = text('ul', '', 'text-sm text-gray-600 my-3 list-disc list-inside');
-      for (const item of [...rec.reasons, rec.availabilityEvidence, rec.compatibilityEvidence, rec.pricingEvidence]) evidence.append(text('li', item));
+      const card = document.createElement('article'); card.className = 'border border-slate-200 rounded-2xl p-5 sm:p-6 mb-5';
+      card.append(text('div', rec.category, 'text-xs font-bold uppercase tracking-widest text-brand-primaryInk'), text('h3', rec.name, 'text-xl font-bold'), text('div', `UGX ${rec.price.toLocaleString()}`, 'text-lg font-black tabular-nums my-2'));
+      const evidence = text('ul', '', 'text-sm text-slate-600 my-3 list-disc list-inside');
+      // Machine evidence codes → honest shopper copy. NOT_REQUESTED is omitted
+      // (compatibility was not part of this session — nothing to claim).
+      const humanEvidence = (value: string): string | null => {
+        if (value === 'NOT_REQUESTED') return null;
+        if (value === 'CANONICAL_CATALOGUE_PRICE') return 'Current price, checked again at checkout';
+        if (value === 'APPROVED_NON_PERSISTENT_PRICING_SIMULATION') return 'Includes an approved promotion. Final price confirmed at checkout';
+        if (value.startsWith('DECLARED_')) return `Compatibility on record: ${value.slice('DECLARED_'.length).toLowerCase().replace(/_/g, ' ')}`;
+        return value;
+      };
+      for (const item of [...rec.reasons, rec.availabilityEvidence, rec.compatibilityEvidence, rec.pricingEvidence]) {
+        const line = humanEvidence(item);
+        if (line) evidence.append(text('li', line));
+      }
       card.append(evidence);
-      const view = text('a', rec.primaryCta, 'inline-block px-5 py-2 bg-gray-900 text-white rounded mr-3') as HTMLAnchorElement; view.href = rec.productUrl; view.addEventListener('click', () => void recordIntent('recommendation_clicked', rec.productId));
-      const interest = text('button', rec.secondaryCta, 'px-5 py-2 border rounded') as HTMLButtonElement; interest.addEventListener('click', () => void recordIntent('add_to_cart_intent', rec.productId));
+      const view = text('a', rec.primaryCta, 'inline-flex items-center min-h-11 px-5 mr-3 rounded-full bg-brand-charcoal text-sm font-bold text-white') as HTMLAnchorElement; view.href = rec.productUrl; view.addEventListener('click', () => void recordIntent('recommendation_clicked', rec.productId));
+      const interest = text('button', rec.secondaryCta, 'min-h-11 px-5 rounded-full border-2 border-brand-charcoal text-sm font-bold text-brand-charcoal') as HTMLButtonElement; interest.addEventListener('click', () => void recordIntent('add_to_cart_intent', rec.productId));
       card.append(view, interest); rContainer.append(card);
     }
-    status.textContent = 'Recommendations use current persisted catalogue evidence. Revalidate price and stock at checkout.';
+    status.textContent = 'Prices and stock are checked again at checkout.';
   }
 
   async function recordIntent(action: string, productId: string) {
-    try { await request(`/product-finder/sessions/${sessionId}/actions`, { method: 'POST', headers: finderHeaders(), body: JSON.stringify({ action, productId }) }); status.textContent = action === 'add_to_cart_intent' ? 'Interest recorded. Your cart was not changed.' : 'Recommendation click recorded.'; } catch { status.textContent = 'Intent was not recorded; no cart or message action occurred.'; }
+    try { await request(`/product-finder/sessions/${sessionId}/actions`, { method: 'POST', headers: finderHeaders(), body: JSON.stringify({ action, productId }) }); status.textContent = action === 'add_to_cart_intent' ? 'Noted. Nothing was added to your cart.' : 'Opening the product…'; } catch { status.textContent = 'We could not save that. Nothing was added to your cart.'; }
   }
 
   void startSession();
