@@ -148,3 +148,15 @@ describe('the same entity is never evaluated twice', () => {
     expect(plan.dependentAffected).not.toContainEqual({ entityType: 'CATEGORY', entityId: 'cat-1' });
   });
 });
+
+describe('a search-demand change is never consumed without being evaluated', () => {
+  it('GSC_QUERY widens the run to the whole universe (one reason, however many queries)', () => {
+    const plan = planAffectedEntities({
+      changes: [change({ source: 'GSC_QUERY', entityId: 'samsung battery' }), change({ source: 'GSC_QUERY', entityId: 'tecno battery' })],
+      resolver: resolver(), universe,
+    });
+    expect(plan.mode).not.toBe('EXACT');
+    expect(plan.evaluate).toEqual(universe);
+    expect(plan.reasons.filter((r) => r.startsWith('Search demand changed'))).toHaveLength(1);
+  });
+});

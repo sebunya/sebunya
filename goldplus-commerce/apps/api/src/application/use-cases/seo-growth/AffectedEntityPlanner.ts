@@ -195,7 +195,15 @@ export function planAffectedEntities(input: {
         break;
       }
       case 'GSC_QUERY': {
+        // The change names a raw query, not a cluster key, and nothing downstream
+        // reads affectedClusters: an EXACT plan evaluated none of the entities the
+        // query's demand feeds, yet the cursor moved past it. Until a query →
+        // cluster → URL dependency exists, a demand change widens the run.
         clusters.add(change.entityId);
+        if (!uncertain || !reasons.some((r) => r.startsWith('Search demand changed'))) {
+          reasons.push('Search demand changed for at least one query; its dependent entities are not mapped, so the evaluated set is widened.');
+        }
+        uncertain = true;
         break;
       }
       default: {
