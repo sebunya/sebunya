@@ -233,6 +233,8 @@ export async function startPaymentByReference(args: { reference: string; contact
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify({ reference: args.reference, contact: args.contact }),
+      // As the other order and payment calls: a hung API ends as NETWORK, not as the edge's error page.
+      signal: AbortSignal.timeout(CHECKOUT_TIMEOUT_MS),
     });
   } catch {
     return { ok: false, status: 0, code: 'NETWORK', message: 'We could not reach the payment service.' };
