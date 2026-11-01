@@ -397,7 +397,11 @@ export class ConsumeRedemptionUseCase {
       new Date(),
       { expireDue: !(await this.redemptionPaused()) },
     );
-    if (!result.ok) return fail(result.code, result.code === 'INSUFFICIENT_BALANCE' ? 'Balance no longer covers the reservation.' : 'Idempotency conflict.');
+    if (!result.ok) {
+      return fail(result.code, result.code === 'INSUFFICIENT_BALANCE' ? 'Balance no longer covers the reservation.'
+        : result.code === 'ACCOUNT_MERGED' ? 'The account these points were reserved on was merged into another one.'
+          : 'Idempotency conflict.');
+    }
     await this.completion.markReservation(reservation.id, 'applied', result.entry.id);
     return { ok: true };
   }
@@ -412,6 +416,32 @@ export class ConsumeRedemptionUseCase {
     const result = await this.execute({ orderId });
     if (result.ok || result.code === 'NOT_FOUND' || result.code === 'NOT_RESERVED') return result;
     const reservation = await this.completion.findReservationByOrder(orderId);
+    if (result.code === 'ACCOUNT_MERGED' && reservation && reservation.status === 'reserved') {
+      // The account was merged after the points were reserved: its points now live on the survivor, so the survivor
+      // pays (carried negative if it must be, as below). It used to be logged as an idempotency conflict and the
+      // reservation released, so the discount was given at the door for nothing (2026-11 review).
+      const survivor = await this.repo.mergedInto(reservation.accountId);
+      if (survivor) {
+        const onSurvivor = { ...reservation, accountId: survivor };
+        const debit = await this.repo.appendDebitIfAvailable(ConsumeRedemptionUseCase.redeemEntry(onSurvivor), new Date(), { expireDue: !(await this.redemptionPaused()) });
+        const entryId = debit.ok ? debit.entry.id : debit.code === 'INSUFFICIENT_BALANCE'
+          ? (await this.repo.append(ConsumeRedemptionUseCase.redeemEntry(onSurvivor))).entry.id
+          : null;
+        if (entryId) {
+          await this.completion.markReservation(reservation.id, 'applied', entryId);
+          appLogger.warn({ orderId, reservationId: reservation.id, survivor }, 'loyalty redemption consumed at delivery from the merged account\'s survivor');
+          await this.completion
+            .recordFraudSignal({
+              accountId: survivor,
+              signalType: 'REDEMPTION_SETTLED_ON_SURVIVOR',
+              severity: debit.ok ? 'low' : 'medium',
+              details: { orderId, mergedAccountId: reservation.accountId, pointsReserved: reservation.pointsReserved, carriedNegative: !debit.ok },
+            })
+            .catch(() => undefined);
+          return { ok: true };
+        }
+      }
+    }
     if (result.code === 'INSUFFICIENT_BALANCE' && reservation && reservation.status === 'reserved') {
       // The discount was given at the door; the points it was given for have gone since (an earlier order's earn
       // clawed back by a refund). The debit is written anyway and the balance goes negative, carried, not
@@ -439,7 +469,8 @@ export class ConsumeRedemptionUseCase {
         details: { orderId, code: result.code, pointsReserved: reservation?.pointsReserved ?? null, valueUgx: reservation?.valueUgx ?? null },
       })
       .catch(() => undefined);
-    if (reservation && reservation.status === 'reserved') await this.completion.markReservation(reservation.id, 'released');
+    // Released only for a failure no person can settle from here; the high signal above is what surfaces it.
+    if (reservation && reservation.status === 'reserved' && result.code !== 'ACCOUNT_MERGED') await this.completion.markReservation(reservation.id, 'released');
     return result;
   }
 }
