@@ -1,3 +1,5 @@
+import { normalizeUgandaDistrict } from '@goldplus/shared';
+
 /**
  * Delivery fee rules (Slice 3B). Pure domain — no Hono, Drizzle, or adapters.
  *
@@ -52,10 +54,15 @@ export function validateDeliveryZoneInput(input: {
   enabled?: unknown;
 }): DeliveryZoneValidation {
   const districtRaw = typeof input.district === 'string' ? input.district : '';
-  const district = normalizeDistrict(districtRaw);
-  if (!district || district.length > 100) {
-    return { ok: false, code: 'INVALID_DISTRICT', message: 'District name is required (max 100 characters).' };
+  // Closed vocabulary: a zone for a district that does not exist is a fee no
+  // order can ever match — refuse it here rather than let it sit dead in the
+  // table. Canonicalises variants (Luweero → LUWERO) before the upper-cased
+  // storage form.
+  const canonical = normalizeUgandaDistrict(districtRaw);
+  if (!canonical) {
+    return { ok: false, code: 'INVALID_DISTRICT', message: `"${districtRaw.trim()}" is not a Uganda district.` };
   }
+  const district = normalizeDistrict(canonical);
   const feeUgx = typeof input.feeUgx === 'number' ? input.feeUgx : Number.NaN;
   if (!Number.isInteger(feeUgx) || feeUgx < 0 || feeUgx > MAX_FEE_UGX) {
     return { ok: false, code: 'INVALID_FEE', message: 'Delivery fee must be a whole UGX amount between 0 and 10,000,000.' };

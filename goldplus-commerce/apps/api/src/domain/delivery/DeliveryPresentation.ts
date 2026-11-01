@@ -1,0 +1,358 @@
+import { REASON_COPY_KEY, SERVED_BY_ANOTHER_MODE, ACTIONABLE_BY_CUSTOMER, DeliveryWindow } from './DeliveryModel';
+import { FulfilmentQuote } from './DeliveryQuoteService';
+import { shipmentSummary } from './DeliveryBusRateCard';
+import { EAT_LABEL, sameDayCutoff, toEatParts } from '@goldplus/shared';
+
+/**
+ * What a customer is SHOWN, derived once so the product page, the cart and
+ * checkout cannot disagree.
+ *
+ * Every string comes from the registry — nothing here hardcodes copy. What this
+ * owns is the DECISION about which string, which tone, and what may be the
+ * default option; the words themselves are Tier 1 and editable with a preview.
+ *
+ * The tone rule matters as much as the words:
+ *   * CARRIER_REQUIRED and NO_RATE_CARD are NOT refusals. The customer IS
+ *     served. Rendering them in the refusal style is a bug;
+ *   * AREA_TOO_COARSE is one step from a price, so it prompts rather than
+ *     apologises;
+ *   * a disproportionate fee is never the pre-selected option, and never
+ *     hidden either.
+ */
+
+export type PresentationTone =
+  /** A price. Nothing to explain. */
+  | 'quoted'
+  /** Served, by another mode. Never reads as a refusal. */
+  | 'served_differently'
+  /** One customer action away from a price. */
+  | 'needs_narrowing'
+  /** We cannot serve this, at any price. Offer pickup. */
+  | 'not_served'
+  /** Our own gap. The order still completes through the manual path. */
+  | 'confirmed_later';
+
+export interface PickupOffer {
+  /** Registry copy, so the landmarks are editable and never hardcoded. */
+  copyKey: 'copy_pickup_offer';
+  /** Shown alongside EVERY quote, per PART 9 #23. */
+  alwaysShown: true;
+}
+
+export interface PresentedQuote {
+  tone: PresentationTone;
+  /** The registry key holding the sentence. Never the sentence itself. */
+  copyKey: string | null;
+  feeUgx: number | null;
+  /** Bus only: the fee is per parcel and the count is part of the promise. */
+  perParcelFeeUgx: number | null;
+  parcelCount: number | null;
+  parcelSentence: string | null;
+  /** Rider only. */
+  window: DeliveryWindow | null;
+  expectedMinutes: number | null;
+  /** Bus only, built from facts rather than adjectives. */
+  shipmentSentence: string | null;
+  /** Always offered, whatever the outcome. */
+  pickup: PickupOffer;
+  /** True when the customer must actively acknowledge before choosing this. */
+  requiresAcknowledgement: boolean;
+  mayBeDefault: boolean;
+  /** Set when the fee is out of proportion to the basket. */
+  proportionality: {
+    feeUgx: number;
+    subtotalUgx: number;
+    proportionateAtUgx: number;
+    addToReachProportionateUgx: number;
+    freeDeliveryAtUgx: number | null;
+    addToReachFreeUgx: number | null;
+  } | null;
+  /** Set when the basket is under the destination's minimum. */
+  belowMinimum: { minimumUgx: number; shortfallUgx: number } | null;
+}
+
+const PICKUP: PickupOffer = { copyKey: 'copy_pickup_offer', alwaysShown: true };
+
+export function presentQuote(quote: FulfilmentQuote): PresentedQuote {
+  const proportional = quote.kind === 'unavailable' ? null : quote.proportionality;
+  const ratio = proportional?.findings.find((f) => f.kind === 'fee_exceeds_value');
+  const minimum = proportional?.findings.find((f) => f.kind === 'below_minimum_order');
+
+  const shared = {
+    pickup: PICKUP,
+    requiresAcknowledgement: proportional?.requiresAcknowledgement ?? false,
+    mayBeDefault: quote.kind !== 'unavailable' && !(proportional?.requiresAcknowledgement ?? false),
+    proportionality:
+      ratio && ratio.kind === 'fee_exceeds_value'
+        ? {
+            feeUgx: ratio.feeUgx,
+            subtotalUgx: ratio.subtotalUgx,
+            proportionateAtUgx: ratio.proportionateAtUgx,
+            addToReachProportionateUgx: ratio.addToReachProportionateUgx,
+            freeDeliveryAtUgx: ratio.freeDeliveryAtUgx,
+            addToReachFreeUgx: ratio.addToReachFreeUgx,
+          }
+        : null,
+    belowMinimum:
+      minimum && minimum.kind === 'below_minimum_order'
+        ? { minimumUgx: minimum.minimumUgx, shortfallUgx: minimum.shortfallUgx }
+        : null,
+  };
+
+  if (quote.kind === 'rider_delivery') {
+    return {
+      ...shared,
+      tone: 'quoted',
+      copyKey: null,
+      feeUgx: quote.feeUgx,
+      perParcelFeeUgx: null,
+      parcelCount: null,
+      parcelSentence: null,
+      window: quote.window,
+      expectedMinutes: quote.expectedMinutes,
+      shipmentSentence: null,
+    };
+  }
+  if (quote.kind === 'bus_shipment') {
+    return {
+      ...shared,
+      tone: 'quoted',
+      copyKey: 'copy_carrier_required',
+      feeUgx: quote.feeUgx,
+      perParcelFeeUgx: quote.perParcelFeeUgx,
+      parcelCount: quote.parcelCount,
+      parcelSentence: quote.parcelSentence,
+      window: null,
+      expectedMinutes: null,
+      shipmentSentence: shipmentSummary(quote.shipment),
+    };
+  }
+
+  const tone: PresentationTone = SERVED_BY_ANOTHER_MODE.includes(quote.reason)
+    ? 'served_differently'
+    : ACTIONABLE_BY_CUSTOMER.includes(quote.reason)
+      ? 'needs_narrowing'
+      : quote.reason === 'AREA_UNSERVICEABLE' || quote.reason === 'WATER_ACCESS'
+        ? 'not_served'
+        : // NO_RATE_CARD, PARCEL_CLASS_UNKNOWN, CONFIG_INCOMPLETE, NO_ACTIVE_ORIGIN
+          // and AREA_UNRESOLVED are all OUR gaps. The order completes and the
+          // team confirms — the customer has done nothing wrong.
+          'confirmed_later';
+
+  return {
+    ...shared,
+    tone,
+    copyKey: REASON_COPY_KEY[quote.reason],
+    feeUgx: null,
+    perParcelFeeUgx: null,
+    parcelCount: null,
+    parcelSentence: null,
+    window: null,
+    expectedMinutes: null,
+    shipmentSentence: null,
+  };
+}
+
+/**
+ * The same-day cutoff countdown, in East Africa Time.
+ *
+ * Returns null when no cutoff is configured — no cutoff means NO SAME-DAY
+ * PROMISE IS MADE AT ALL, which is a weaker and honest position rather than a
+ * default time somebody guessed.
+ */
+export interface CutoffCountdown {
+  cutoffClock: string;
+  zoneLabel: string;
+  beforeCutoff: boolean;
+  minutesRemaining: number;
+  /** Rendered by the surface; kept here so every surface agrees. */
+  sentence: string;
+}
+
+export function cutoffCountdown(input: { now: Date; cutoffClock: string | null }): CutoffCountdown | null {
+  if (!input.cutoffClock) return null;
+  const result = sameDayCutoff(input.now, input.cutoffClock);
+  if (!result) return null;
+  const minutesRemaining = Math.max(0, Math.floor(result.msRemaining / 60_000));
+  const hours = Math.floor(minutesRemaining / 60);
+  const mins = minutesRemaining % 60;
+  const remaining = hours > 0 ? `${hours} hour${hours === 1 ? '' : 's'} ${mins} min` : `${mins} min`;
+  return {
+    cutoffClock: input.cutoffClock,
+    zoneLabel: EAT_LABEL,
+    beforeCutoff: result.beforeCutoff,
+    minutesRemaining,
+    sentence: result.beforeCutoff
+      ? `Order within ${remaining} for dispatch today (before ${input.cutoffClock} ${EAT_LABEL}).`
+      // Two sentences, not a dash: the owner's rule is that no customer-facing
+      // sentence carries an em or en dash.
+      : `Today's ${input.cutoffClock} ${EAT_LABEL} cut-off has passed. This goes out on the next dispatch day.`,
+  };
+}
+
+/**
+ * The quote panel's countdown from BUSINESS INFO — the one authority for the
+ * same-day cutoff hour and the closed days that the header, basket and checkout
+ * already read (contract #7: one place per value).
+ *
+ * It used to read the delivery-config key `same_day_cutoff_eat`, a second
+ * authority: once set, one page could show two different cutoffs, and on a
+ * closed day the panel still said "dispatch today" under a "Closed today" line.
+ * `closedDays` uses getUTCDay numbering in Kampala time (0 = Sunday).
+ */
+export function businessCutoffCountdown(input: {
+  now: Date;
+  cutoffHour: number | null;
+  closedDays: readonly number[];
+}): CutoffCountdown | null {
+  if (input.cutoffHour === null || !Number.isInteger(input.cutoffHour) || input.cutoffHour < 0 || input.cutoffHour > 23) {
+    return null;
+  }
+  const cutoffClock = `${String(input.cutoffHour).padStart(2, '0')}:00`;
+  const kampalaDay = new Date(input.now.getTime() + 3 * 60 * 60 * 1000).getUTCDay();
+  if (input.closedDays.includes(kampalaDay)) {
+    return {
+      cutoffClock,
+      zoneLabel: EAT_LABEL,
+      beforeCutoff: false,
+      minutesRemaining: 0,
+      sentence: 'We do not dispatch today. This goes out on the next dispatch day.',
+    };
+  }
+  return cutoffCountdown({ now: input.now, cutoffClock });
+}
+
+/**
+ * Free-delivery progress: the EXACT remaining amount, never a rounded nudge.
+ *
+ * Null when no threshold is configured, because the mechanic is off rather than
+ * unreachable.
+ */
+export function freeDeliveryProgress(input: {
+  thresholdUgx: number | null;
+  basisUgx: number;
+}): { thresholdUgx: number; basisUgx: number; remainingUgx: number; qualifies: boolean; pct: number } | null {
+  if (input.thresholdUgx === null || !Number.isFinite(input.thresholdUgx) || input.thresholdUgx <= 0) return null;
+  const remaining = Math.max(0, input.thresholdUgx - input.basisUgx);
+  return {
+    thresholdUgx: input.thresholdUgx,
+    basisUgx: input.basisUgx,
+    remainingUgx: remaining,
+    qualifies: remaining === 0,
+    // Guarded above: threshold > 0.
+    pct: Math.min(100, (input.basisUgx / input.thresholdUgx) * 100),
+  };
+}
+
+/**
+ * The window sentence. DAY LEVEL until an hour window is earned.
+ *
+ * Never a point in time, and never widened to look cautious — when there is no
+ * sample and no target we say less rather than inventing a range.
+ */
+export function windowSentence(window: DeliveryWindow | null): string | null {
+  if (!window) return null;
+  if (window.kind === 'day') return 'We will confirm your delivery day when your order is dispatched.';
+  return `Most deliveries to your area arrive within ${windowSpan(window.lowMinutes, window.highMinutes)} of dispatch, measured over ${window.sampleSize} deliveries.`;
+}
+
+/**
+ * The span in words. Below two hours it is minutes (to the nearest 5): rounding
+ * 25–80 minutes to hours read "within 0 to 1 hours", and 50–70 read "1 to 1 hours".
+ * Equal bounds collapse to one figure.
+ */
+function windowSpan(lowMinutes: number, highMinutes: number): string {
+  const part = (m: number) =>
+    m < 120
+      ? { n: Math.max(5, Math.round(m / 5) * 5), unit: 'minute' }
+      : { n: Math.max(1, Math.round(m / 60)), unit: 'hour' };
+  const word = (p: { n: number; unit: string }) => `${p.n} ${p.unit}${p.n === 1 ? '' : 's'}`;
+  const low = part(lowMinutes);
+  const high = part(highMinutes);
+  if (low.unit === high.unit) {
+    if (low.n >= high.n) return `about ${word(high)}`;
+    return `${low.n} to ${word(high)}`;
+  }
+  return `${word(low)} to ${word(high)}`;
+}
+
+// ── The dated promise (gap analysis #4, 2026-10-20) ───────────────────────────
+// "Get it by Tuesday", in the contract's terms: a DISPATCH DATE always (it follows from the cut-off hour and the
+// closed days, both owner-set), and an ARRIVAL WINDOW only where one has been measured (window.kind 'hours'),
+// placed on the clock as [now + fastest, cut-off + slowest]. Both ends come from observed data and the owner's
+// cut-off; nothing is a guess (guarantees 4 and 10). No arrival window is shown when it would run past the end of
+// delivery hours, or for a next-day dispatch (when the next day's first dispatch happens is not recorded).
+
+export interface DeliveryPromise {
+  /** Kampala calendar day the order is dispatched, YYYY-MM-DD. */
+  dispatchDay: string;
+  dispatchToday: boolean;
+  dispatchSentence: string;
+  /** "Arrives today, usually between 3:15pm and 7:30pm." Null unless measured and inside delivery hours. */
+  arrivalSentence: string | null;
+}
+
+const EAT_OFFSET_MS = 3 * 60 * 60 * 1000;
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "8:30am to 8:00pm" -> minutes after midnight of the END (20:00 -> 1200), or null when it cannot be read. */
+export function deliveryHoursEndMinutes(text: string | null | undefined): number | null {
+  const times = [...String(text ?? '').toLowerCase().matchAll(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/g)];
+  const last = times.at(-1);
+  if (!last || times.length < 2) return null;
+  let h = Number(last[1]) % 12;
+  if (last[3] === 'pm') h += 12;
+  const m = Number(last[2] ?? 0);
+  return h >= 0 && h < 24 && m < 60 ? h * 60 + m : null;
+}
+
+function clock12(minutes: number): string {
+  const h24 = Math.floor(minutes / 60) % 24;
+  const m = minutes % 60;
+  const h = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h}:${String(m).padStart(2, '0')}${h24 < 12 ? 'am' : 'pm'}`;
+}
+
+export function deliveryPromise(input: {
+  now: Date;
+  cutoffHour: number | null;
+  closedDays: readonly number[];
+  window: DeliveryWindow | null;
+  deliveryHoursText: string | null;
+}): DeliveryPromise | null {
+  if (input.cutoffHour === null || !Number.isInteger(input.cutoffHour) || input.cutoffHour < 0 || input.cutoffHour > 23) return null;
+  const eat = new Date(input.now.getTime() + EAT_OFFSET_MS);
+  const nowMin = eat.getUTCHours() * 60 + eat.getUTCMinutes();
+  const cutoffMin = input.cutoffHour * 60;
+  const openToday = !input.closedDays.includes(eat.getUTCDay());
+  const today = openToday && nowMin < cutoffMin;
+
+  let day = new Date(Date.UTC(eat.getUTCFullYear(), eat.getUTCMonth(), eat.getUTCDate()));
+  if (!today) {
+    let found = false;
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(day.getTime() + i * 86_400_000);
+      if (!input.closedDays.includes(d.getUTCDay())) { day = d; found = true; break; }
+    }
+    if (!found) return null;
+  }
+  const label = `${WEEKDAYS[day.getUTCDay()]} ${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]}`;
+  const dispatchDay = day.toISOString().slice(0, 10);
+  const tomorrow = !today && day.getTime() - Date.UTC(eat.getUTCFullYear(), eat.getUTCMonth(), eat.getUTCDate()) === 86_400_000;
+  const left = cutoffMin - nowMin;
+  const leftWords = left >= 60 ? `${Math.floor(left / 60)} hour${Math.floor(left / 60) === 1 ? '' : 's'} ${left % 60} min` : `${left} min`;
+  const dispatchSentence = today
+    ? `Order within ${leftWords} and it is dispatched today, ${label}.`
+    : `Order now and it is dispatched ${tomorrow ? 'tomorrow' : 'on'} ${tomorrow ? `(${label})` : label}.`;
+
+  let arrivalSentence: string | null = null;
+  const end = deliveryHoursEndMinutes(input.deliveryHoursText);
+  if (today && input.window?.kind === 'hours' && end !== null) {
+    // Earliest: dispatched now, fastest measured trip. Latest: dispatched at the cut-off, slowest measured trip.
+    const from = Math.floor((nowMin + input.window.lowMinutes) / 15) * 15;
+    const to = Math.ceil((cutoffMin + input.window.highMinutes) / 15) * 15;
+    if (to <= end && from < to) arrivalSentence = `Arrives today, usually between ${clock12(from)} and ${clock12(to)}.`;
+  }
+  return { dispatchDay, dispatchToday: today, dispatchSentence, arrivalSentence };
+}

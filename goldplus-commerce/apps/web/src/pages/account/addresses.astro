@@ -1,0 +1,240 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AccountNav from '../../components/AccountNav.astro';
+import EmptyState from '../../components/EmptyState.astro';
+import Notice from '../../components/Notice.astro';
+import FormField from '../../components/FormField.astro';
+import FormFeedback from '../../components/FormFeedback.astro';
+import UgandaLocationPicker from '../../components/UgandaLocationPicker.astro';
+import { apiBase } from '../../lib/api';
+import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
+import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../../lib/requestOrigin';
+import type { AddressDto } from '@goldplus/shared';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/login?returnTo=/account/addresses', 303);
+}
+const authHeaders = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+let status: 'success' | 'error' | null = null;
+let message: string | undefined;
+
+if (Astro.request.method === 'POST') {
+  const origin = checkRequestOrigin(Astro.request, import.meta.env as unknown as Record<string, string | undefined>);
+  if (!origin.allowed) {
+    status = 'error';
+    message = CROSS_SITE_MESSAGE;
+  } else {
+    try {
+      const form = await Astro.request.formData();
+      const action = String(form.get('action') || '');
+      if (action === 'add') {
+        // The picker guarantees a canonical district; the customer's typed
+        // detail rides in areaDetails, prefixed with the known area when one
+        // was chosen ("Najjera, Buwaate Road" reads exactly how a rider needs it).
+        let district = '';
+        let knownArea = '';
+        let areaSlug = '';
+        let rawAddressText = '';
+        let gps: { gpsLat?: number; gpsLng?: number; gpsAccuracyM?: number; gpsSource?: string } = {};
+        const locationJson = String(form.get('locationJson') || '');
+        if (locationJson.startsWith('{')) {
+          try {
+            const loc = JSON.parse(locationJson);
+            district = String(loc.district || '').trim();
+            knownArea = String(loc.area || '').trim();
+            areaSlug = String(loc.areaSlug || '').trim();
+            if (loc.manual && loc.rawAddressText) rawAddressText = String(loc.rawAddressText).trim();
+            // A building picked from Google Places is saved too; the nightly purge removes its coordinates after 29 days.
+            if (typeof loc.gpsLat === 'number' && typeof loc.gpsLng === 'number') {
+              gps = {
+                gpsLat: loc.gpsLat,
+                gpsLng: loc.gpsLng,
+                ...(typeof loc.gpsAccuracyM === 'number' ? { gpsAccuracyM: loc.gpsAccuracyM } : {}),
+                ...(loc.gpsSource === 'device' || loc.gpsSource === 'pasted_link' || loc.gpsSource === 'map_place' ? { gpsSource: loc.gpsSource } : {}),
+              };
+            }
+          } catch { /* handled below as a missing location */ }
+        }
+        const typedDetails = String(form.get('areaDetails') || '').trim();
+        const areaDetails = [knownArea, typedDetails].filter(Boolean).join(', ') || rawAddressText;
+        const res = await fetch(`${apiBase}/account/addresses`, {
+          method: 'POST',
+          headers: authHeaders,
+          signal: AbortSignal.timeout(6000),
+          body: JSON.stringify({
+            label: String(form.get('label') || ''),
+            recipientName: String(form.get('recipientName') || ''),
+            phone: String(form.get('phone') || ''),
+            // A saved address must carry a real district (it feeds checkout
+            // verbatim) — the manual no-district path exists at CHECKOUT, not
+            // in the address book; the API refuses with a clear message here.
+            district,
+            areaDetails,
+            makeDefault: String(form.get('makeDefault') || '') === 'true',
+            ...(areaSlug ? { areaSlug } : {}),
+            landmarkText: typedDetails || rawAddressText,
+            ...(rawAddressText && !district ? { rawAddressText } : {}),
+            ...(String(form.get('phoneSecondary') || '').trim() ? { phoneSecondary: String(form.get('phoneSecondary')).trim() } : {}),
+            ...gps,
+          }),
+        });
+        const json: any = await res.json().catch(() => null);
+        status = res.ok && json?.success ? 'success' : 'error';
+        message = status === 'success' ? 'Address saved. Checkout will offer it from now on.' : json?.error?.message ?? 'Could not save the address.';
+      } else if (action === 'default') {
+        const id = encodeURIComponent(String(form.get('id') || ''));
+        const res = await fetch(`${apiBase}/account/addresses/${id}/default`, {
+          method: 'POST',
+          headers: authHeaders,
+          signal: AbortSignal.timeout(6000),
+        });
+        const json: any = await res.json().catch(() => null);
+        status = res.ok && json?.success ? 'success' : 'error';
+        message = status === 'success' ? 'Default address updated.' : json?.error?.message ?? 'Could not update the default.';
+      } else if (action === 'remove-pin') {
+        const id = encodeURIComponent(String(form.get('id') || ''));
+        const res = await fetch(`${apiBase}/account/addresses/${id}/remove-pin`, { method: 'POST', headers: authHeaders, signal: AbortSignal.timeout(6000) });
+        const json: any = await res.json().catch(() => null);
+        status = res.ok && json?.success ? 'success' : 'error';
+        message = status === 'success' ? 'Location pin removed. The address stays; the rider will ask for directions next time.' : json?.error?.message ?? 'Could not remove the pin.';
+      } else if (action === 'delete') {
+        const id = encodeURIComponent(String(form.get('id') || ''));
+        const res = await fetch(`${apiBase}/account/addresses/${id}`, {
+          method: 'DELETE',
+          headers: authHeaders,
+          signal: AbortSignal.timeout(6000),
+        });
+        const json: any = await res.json().catch(() => null);
+        status = res.ok && json?.success ? 'success' : 'error';
+        message = status === 'success' ? 'Address removed.' : json?.error?.message ?? 'Could not remove the address.';
+      }
+    } catch {
+      status = 'error';
+      message = 'The account service is unreachable right now.';
+    }
+  }
+  // Post/Redirect/Get: rendering the success in the POST response meant a
+  // refresh (pull-to-refresh on a phone) re-sent the form and saved the same
+  // address twice. Errors still render here, beside what was typed.
+  if (status === 'success') {
+    const done = message?.startsWith('Address saved') ? 'added' : message?.startsWith('Default') ? 'default' : 'removed';
+    return Astro.redirect(`/account/addresses?done=${done}`, 303);
+  }
+} else {
+  const DONE: Record<string, string> = {
+    added: 'Address saved. Checkout will offer it from now on.',
+    default: 'Default address updated.',
+    removed: 'Address removed.',
+  };
+  const done = DONE[Astro.url.searchParams.get('done') ?? ''];
+  if (done) { status = 'success'; message = done; }
+}
+
+let addresses: AddressDto[] = [];
+let loadError = '';
+try {
+  const res = await fetch(`${apiBase}/account/addresses`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(6000),
+  });
+  if (res.status === 401) {
+    Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' });
+    return Astro.redirect('/login?returnTo=/account/addresses', 303);
+  }
+  const json: any = await res.json().catch(() => null);
+  if (json?.success) addresses = json.data ?? [];
+  else loadError = json?.error?.message ?? 'Could not load your addresses.';
+} catch {
+  loadError = 'The account service is unreachable right now.';
+}
+---
+
+<BaseLayout robotsMeta="noindex,follow" title="Delivery addresses">
+  <div class="container mx-auto px-4 lg:px-8 py-10 lg:py-14">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6 pb-6 border-b border-brand-borderGrey">
+      <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal tracking-tight">Delivery addresses</h1>
+      <a href="/logout" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal">Sign out &rarr;</a>
+    </div>
+
+    <AccountNav active="addresses" />
+
+    <FormFeedback status={status} message={message} />
+    {loadError && <Notice kind="not-configured" title="Addresses unavailable" message={loadError} />}
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+      <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+        <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Saved addresses</h2>
+        {addresses.length === 0 ? (
+          <EmptyState title="No addresses saved" message="Save one and checkout opens already filled in. No retyping." />
+        ) : (
+          <ul class="space-y-4">
+            {addresses.map((a) => (
+              <li class="border border-brand-borderGrey rounded-xl p-4">
+                <div class="flex items-center justify-between mb-1">
+                  <p class="font-bold text-brand-charcoal">{a.label}</p>
+                  {a.isDefault && <span class="text-[10px] font-bold uppercase tracking-widest text-brand-primaryInk">Default</span>}
+                </div>
+                <p class="text-sm text-brand-charcoal">{a.recipientName}</p>
+                <p class="text-sm text-brand-mutedGrey">{a.areaDetails}, {a.district}</p>
+                <p class="text-xs text-brand-mutedGrey mt-1">{a.phone}</p>
+                {typeof (a as any).gpsLat === 'number' && (
+                  <p class="text-xs text-brand-mutedGrey mt-1">
+                    Location pin saved{(a as any).gpsCapturedAt ? ` on ${new Date((a as any).gpsCapturedAt).toLocaleDateString('en-UG', { timeZone: 'Africa/Kampala' })}` : ''}. Our rider goes straight to it.
+                  </p>
+                )}
+                <div class="flex items-center gap-2 mt-3">
+                  {typeof (a as any).gpsLat === 'number' && (
+                    <form method="POST">
+                      <input type="hidden" name="action" value="remove-pin" />
+                      <input type="hidden" name="id" value={a.id} />
+                      <button type="submit" class="rounded-full border border-brand-borderGrey px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-brand-mutedGrey hover:text-brand-charcoal">Remove pin</button>
+                    </form>
+                  )}
+                  {!a.isDefault && (
+                    <form method="POST">
+                      <input type="hidden" name="action" value="default" />
+                      <input type="hidden" name="id" value={a.id} />
+                      <button type="submit" class="rounded-full border border-brand-borderGrey px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-brand-mutedGrey hover:text-brand-charcoal hover:border-brand-charcoal cursor-pointer">Make default</button>
+                    </form>
+                  )}
+                  <form method="POST">
+                    <input type="hidden" name="action" value="delete" />
+                    <input type="hidden" name="id" value={a.id} />
+                    <button type="submit" class="rounded-full border border-red-200 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-red-600 hover:bg-red-50 cursor-pointer">Remove</button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+        <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Add an address</h2>
+        <form method="POST" novalidate class="space-y-4">
+          <input type="hidden" name="action" value="add" />
+          <FormField id="label" name="label" label="Label (e.g. Home, Shop)" required />
+          <FormField id="recipientName" name="recipientName" label="Recipient name" required autocomplete="name" />
+          <FormField id="phone" name="phone" label="Phone" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" autocomplete="tel" />
+          <FormField id="phoneSecondary" name="phoneSecondary" label="Alternative phone (optional, a second number the rider can try)" type="tel" inputmode="tel" placeholder="07XX XXX XXX" />
+          <UgandaLocationPicker
+            name="locationJson"
+            label="Location"
+            helperText="Type the area, town or district, for example Najjera, Seeta or Mbarara."
+            required={true}
+            withPin={true}
+            surface="account"
+          />
+          <FormField id="areaDetails" name="areaDetails" label="What is nearby? A shop, stage, church or school the rider will know" required placeholder="e.g. Kigoowa Road, gate after Capital Shoppers" />
+          <label class="flex items-center gap-2.5 text-sm text-brand-mutedGrey cursor-pointer select-none">
+            <input type="checkbox" name="makeDefault" value="true" class="w-4 h-4 rounded border-brand-borderGrey text-brand-primary focus:ring-brand-primaryInk cursor-pointer" />
+            <span>Use as my default delivery address</span>
+          </label>
+          <button type="submit" class="w-full bg-brand-charcoal text-white py-2.5 rounded-full font-bold text-xs tracking-wider uppercase hover:bg-black transition-all cursor-pointer">Save address</button>
+        </form>
+      </section>
+    </div>
+  </div>
+</BaseLayout>

@@ -52,7 +52,7 @@ describe('Frontend API Notifications Unit Tests', () => {
     const res = await getOrderNotificationTimeline('order-123', 'mock-token');
     expect(res.isSample).toBe(true);
     expect(res.items).toHaveLength(0);
-    expect(res.reason).toContain('Timeline query failed (HTTP 500)');
+    expect(res.reason).toBe('The timeline could not be loaded.');
   });
 
   it('should return sample format/error representation if the api is unreachable', async () => {
