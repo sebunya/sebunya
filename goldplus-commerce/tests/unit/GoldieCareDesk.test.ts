@@ -154,12 +154,13 @@ describe('alerts cannot be abused', () => {
 
 describe('Goldie order actions (policy, once wired)', () => {
   const order = (o: Partial<VerifiedOrder> = {}): VerifiedOrder => ({ id: 'o1', orderNumber: 'GP-202610-ABCD1234', orderStatus: 'received', paymentStatus: 'unpaid', totalUgx: 90000, customerName: 'Sarah', customerPhone: '0772123456', ...o });
-  function actions(o: VerifiedOrder | null, payments: Array<{ merchantReference: string; amount: number }> = [], cap = 300000) {
+  function actions(o: VerifiedOrder | null, payments: Array<{ merchantReference: string; amount: number }> = [], cap = 300000, inFlight = false) {
     const calls: string[] = [];
     const deps: GoldieOrderDeps = {
       verify: async () => (o ? { ok: true, order: o } : { ok: false, code: 'VERIFICATION_FAILED', message: 'x', status: 401 }),
       cancel: async (id) => { calls.push(`cancel:${id}`); },
       completedPayments: async () => payments,
+      paymentInFlight: async () => inFlight,
       refund: async (i) => { calls.push(`refund:${i.amountUgx}`); return { ok: true, refundId: 'r1' }; },
       note: async (_id, n) => { calls.push(`note:${n}`); },
       openTask: async (t) => { calls.push(`task:${t.kind}`); return {}; },
@@ -175,6 +176,14 @@ describe('Goldie order actions (policy, once wired)', () => {
     const late = actions(order({ orderStatus: 'dispatched' }));
     expect(await late.uc.cancel(req)).toMatchObject({ ok: false, code: 'TOO_LATE' });
     expect(late.calls).toEqual([]);
+  });
+
+  it('never cancels (or says "nothing was charged") while a payment is in flight: Care Desk instead (review 2026-11)', async () => {
+    const a = actions(order(), [], 300000, true);
+    const r = await a.uc.cancel(req);
+    expect(r).toMatchObject({ ok: false, code: 'PAYMENT_IN_PROGRESS' });
+    expect(r.told).not.toMatch(/nothing was charged/i);
+    expect(a.calls).toEqual(['task:urgent']);
   });
 
   it('cancels a paid online order and refunds it in full, within the cap', async () => {

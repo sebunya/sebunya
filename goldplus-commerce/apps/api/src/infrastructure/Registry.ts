@@ -3353,6 +3353,8 @@ export class Registry {
     },
     completedPayments: async (orderId) => (await this.pesapalPaymentRepo.findAttemptsByOrderId(orderId))
       .filter((a) => a.status === 'completed').map((a) => ({ merchantReference: a.merchantReference, amount: Number(a.amount) })),
+    paymentInFlight: async (orderId) => (await this.pesapalPaymentRepo.findAttemptsByOrderId(orderId))
+      .some((a) => a.status === 'pending' || a.status === 'verification_pending'),
     refund: async (input) => {
       const r = await this.refundPesaPalPaymentUseCase.execute({ ...input, actorId: GOLDIE_ACTOR_ID, actorUsername: 'Goldie (shop assistant)' });
       return r.ok ? { ok: true as const, refundId: r.refundId } : { ok: false as const, code: r.code, message: r.message };
