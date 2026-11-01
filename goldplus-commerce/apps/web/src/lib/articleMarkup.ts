@@ -18,6 +18,8 @@
  *   blank line             new paragraph
  */
 
+import { safeReturnTo } from './safeReturnTo';
+
 const ESCAPES: Record<string, string> = {
   '&': '&amp;',
   '<': '&lt;',
@@ -32,30 +34,40 @@ export function escapeHtml(value: string): string {
 
 /**
  * Links may only point at this site or at https. A javascript: or data: URL in
- * an article body would run in the reader's browser as our own page.
+ * an article body would run in the reader's browser as our own page. A site
+ * path goes through safeReturnTo, the one same-origin rule: '/\\evil.com'
+ * starts with '/' but a browser resolves it to https://evil.com/.
  */
-function safeHref(raw: string): string | null {
+export function safeHref(raw: string): string | null {
   const href = raw.trim();
   if (!href) return null;
-  if (href.startsWith('/') && !href.startsWith('//')) return href;
-  if (/^https:\/\/[^\s"'<>]+$/i.test(href)) return href;
+  if (href.startsWith('/')) return safeReturnTo(href, '') || null;
+  if (/^https:\/\/[^\s"'<>\\]+$/i.test(href)) return href;
   return null;
+}
+
+function emphasis(text: string): string {
+  return text
+    .replace(/\*\*([^*\n]{1,300})\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]{1,300})\*(?!\*)/g, '$1<em>$2</em>');
 }
 
 /** Inline marks, applied to text that is ALREADY escaped. */
 function inline(escaped: string): string {
-  let out = escaped;
-  // Links first: their label may itself contain emphasis.
-  out = out.replace(/\[([^\]\n]{1,200})\]\(([^)\s]{1,500})\)/g, (whole, label: string, href: string) => {
+  // Links first, each held aside as a placeholder, so emphasis never reaches
+  // inside a generated tag (a '*' in an href used to become <em> in the URL).
+  const anchors: string[] = [];
+  let out = escaped.replace(/\u0000/g, '');
+  out = out.replace(/\[([^\]\n]{1,200})\]\(([^)\s]{1,500})\)/g, (_whole, label: string, href: string) => {
     const safe = safeHref(href.replace(/&amp;/g, '&'));
     if (!safe) return label; // A refused link degrades to its own words.
     const external = safe.startsWith('https://');
     const rel = external ? ' rel="nofollow noopener" target="_blank"' : '';
-    return `<a href="${escapeHtml(safe)}" class="gp-article__link"${rel}>${label}</a>`;
+    anchors.push(`<a href="${escapeHtml(safe)}" class="gp-article__link"${rel}>${emphasis(label)}</a>`);
+    return `\u0000${anchors.length - 1}\u0000`;
   });
-  out = out.replace(/\*\*([^*\n]{1,300})\*\*/g, '<strong>$1</strong>');
-  out = out.replace(/(^|[^*])\*([^*\n]{1,300})\*(?!\*)/g, '$1<em>$2</em>');
-  return out;
+  out = emphasis(out);
+  return out.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => anchors[Number(i)] ?? '');
 }
 
 /** The article as HTML, safe to inject with set:html. */
