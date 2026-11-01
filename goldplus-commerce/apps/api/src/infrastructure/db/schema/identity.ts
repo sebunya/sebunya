@@ -67,6 +67,8 @@ export const userMfa = pgTable('user_mfa', {
     .references(() => users.id, { onDelete: 'cascade' })
     .primaryKey(),
   secretCiphertext: varchar('secret_ciphertext', { length: 512 }).notNull(),
+  /** 0213: a replacement secret awaiting its first code; the confirmed one stays live until then. */
+  pendingSecretCiphertext: varchar('pending_secret_ciphertext', { length: 512 }),
   confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
   lastVerifiedAt: timestamp('last_verified_at', { withTimezone: true }),
   failedAttempts: integer('failed_attempts').notNull().default(0),

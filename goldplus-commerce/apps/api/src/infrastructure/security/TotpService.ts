@@ -137,14 +137,40 @@ export function otpauthUri(secretBase32: string, account: string, issuer = 'Gold
 
 // ---- At-rest protection ------------------------------------------------------
 
+const DEV_KEY_MATERIAL = 'local-test-only-mfa-key-material-000000000000';
+const derivedKeys = new Map<string, Buffer>();
+
+function deriveFromJwtSecret(material: string): Buffer {
+  let key = derivedKeys.get(material);
+  if (!key) {
+    key = scryptSync(material, 'goldplus-mfa-secret', 32);
+    derivedKeys.set(material, key);
+  }
+  return key;
+}
+
 function encryptionKey(): Buffer {
   // Prefer an explicit 32-byte key; otherwise derive one deterministically from
   // the JWT secret so dev/test work without extra config. Production supplies
   // MFA_ENCRYPTION_KEY (validated by the config boundary in Slice 3D).
   const explicit = process.env.MFA_ENCRYPTION_KEY;
   if (explicit && explicit.length >= 64) return Buffer.from(explicit.slice(0, 64), 'hex');
-  const material = process.env.JWT_SECRET || 'local-test-only-mfa-key-material-000000000000';
-  return scryptSync(material, 'goldplus-mfa-secret', 32);
+  return deriveFromJwtSecret(process.env.JWT_SECRET || DEV_KEY_MATERIAL);
+}
+
+/**
+ * Keys a stored secret may have been written under, current first. Without MFA_ENCRYPTION_KEY the key comes from
+ * JWT_SECRET, so a JWT rotation (old secret moved to JWT_SECRET_PREVIOUS) would otherwise make every stored
+ * authenticator unreadable and lock every admin out of step-up.
+ */
+function decryptionKeys(): Buffer[] {
+  const keys = [encryptionKey()];
+  const previous = process.env.JWT_SECRET_PREVIOUS;
+  if (previous) {
+    const prevKey = deriveFromJwtSecret(previous);
+    if (!keys[0].equals(prevKey)) keys.push(prevKey);
+  }
+  return keys;
 }
 
 /** AES-256-GCM. Output: base64(iv|tag|ciphertext). */
@@ -156,14 +182,32 @@ export function encryptSecret(plain: string): string {
   return Buffer.concat([iv, tag, ct]).toString('base64');
 }
 
-export function decryptSecret(payload: string): string {
-  const raw = Buffer.from(payload, 'base64');
+function decryptWith(key: Buffer, raw: Buffer): string {
   const iv = raw.subarray(0, 12);
   const tag = raw.subarray(12, 28);
   const ct = raw.subarray(28);
-  const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), iv, { authTagLength: 16 }); // a truncated tag is refused
+  const decipher = createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 }); // a truncated tag is refused
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
+}
+
+/** Decrypt, and say whether it needed a previous key (the caller should then re-encrypt under the current one). */
+export function decryptSecretWithRotation(payload: string): { plain: string; rotated: boolean } {
+  const raw = Buffer.from(payload, 'base64');
+  const keys = decryptionKeys();
+  let lastError: unknown;
+  for (let i = 0; i < keys.length; i += 1) {
+    try {
+      return { plain: decryptWith(keys[i], raw), rotated: i > 0 };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
+
+export function decryptSecret(payload: string): string {
+  return decryptSecretWithRotation(payload).plain;
 }
 
 // ---- Recovery codes ----------------------------------------------------------

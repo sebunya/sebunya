@@ -31,6 +31,10 @@ export const customerSessionMiddleware = async (c: Context<{ Variables: { userId
  * must never take the caller's word for WHO they are. A present token is still
  * fully verified: a revoked or disabled session is rejected rather than quietly
  * downgraded to anonymous, which would let a signed-out session keep writing.
+ *
+ * Only those two are refused. A token that is merely expired or unreadable (the
+ * 15-minute access token lapsing in an open tab) proves nothing about anyone, so
+ * the request goes through as anonymous instead of failing a public page.
  */
 export const optionalCustomerSessionMiddleware = async (c: Context<{ Variables: { userId?: string; userEmail?: string } }>, next: Next) => {
   const header = c.req.header('Authorization');
@@ -41,6 +45,10 @@ export const optionalCustomerSessionMiddleware = async (c: Context<{ Variables: 
   }
   const session = await resolveLiveSession(token);
   if (!session.ok) {
+    if (session.code === 'UNAUTHENTICATED' && !('revoked' in session && session.revoked)) {
+      await next();
+      return;
+    }
     const res: ApiResponse<never> = {
       success: false,
       error: { code: session.code, message: session.message },

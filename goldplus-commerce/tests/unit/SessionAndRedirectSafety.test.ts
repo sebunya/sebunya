@@ -123,7 +123,7 @@ describe('a signature alone is never a live session', () => {
     // account-disabled and both password-change paths all get it.
     const service = read('apps/api/src/infrastructure/security/SessionService.ts');
     const logoutAll = service.slice(service.indexOf('async logoutAll('));
-    expect(logoutAll).toMatch(/this\.users\.invalidateSessionsAfter\(userId, now\)/);
+    expect(logoutAll).toMatch(/this\.users\.invalidateSessionsAfter\(userId, sessionCutoffAt\(now\)\)/);
 
     const port = read('apps/api/src/application/ports/IUserRepository.ts');
     expect(port).toMatch(/invalidateSessionsAfter\(userId: string, at: Date\): Promise<void>;/);

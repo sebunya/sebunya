@@ -297,14 +297,18 @@ routes.post('/addresses/:id/default', async (c) => {
 /** 0190: forget the location pin on a saved address (the address itself stays). The customer's call, one tap. */
 routes.post('/addresses/:id/remove-pin', async (c) => {
   const userId = c.get('userId') as string;
-  const result = await Registry.getInstance().addressRepo.updateForUser(userId, String(c.req.param('id') ?? ''), {
+  // Through the use case, so the before/after pin lands in address_audit like any other edit: a pin that vanished
+  // from an address on an order in flight is exactly what a delivery dispute asks about.
+  const registry = Registry.getInstance();
+  const uc = new UpdateAddressUseCase(registry.addressRepo, registry.addressAuditRepo);
+  const result = await uc.execute(userId, String(c.req.param('id') ?? ''), {
     gpsLat: null,
     gpsLng: null,
     gpsAccuracyM: null,
     gpsSource: null,
   });
-  if (!result) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'That address was not found.' } }, 404);
-  return c.json({ success: true, data: { id: result.after.id } });
+  if (!result.ok) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'That address was not found.' } }, 404);
+  return c.json({ success: true, data: { id: result.address.id } });
 });
 
 routes.delete('/addresses/:id', async (c) => {

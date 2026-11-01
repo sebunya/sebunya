@@ -267,6 +267,14 @@ routes.get("/analytics/commercial", requirePermissions([PERMISSIONS.RECOMMENDATI
  * One row's validation, shared by the single, batch and preview paths so they
  * cannot drift apart. Returns the normalised fact or the reasons it is not one.
  */
+const MAX_MEDIA_COST_BATCH_ROWS = 5_000;
+
+/** Currencies already stored that differ from this one: mixing them makes ROAS unavailable for spanning periods. */
+const conflictingSpendCurrencies = async (currency: string): Promise<string[]> => {
+  const existing = await Registry.getInstance().recommendationCommercialRepo.getIngestedCurrencies();
+  return existing.filter((cur) => cur !== currency);
+};
+
 const validateMediaCostRow = (
   row: any,
 ): { ok: true; fact: Record<string, unknown> } | { ok: false; errors: string[] } => {
@@ -346,9 +354,14 @@ routes.post("/media-costs/batch", requirePermissions([PERMISSIONS.RECOMMENDATION
   if (!body) return c.json({ success: false, error: { code: "INVALID_JSON", message: "Invalid body" } }, 400);
 
   const dryRun = body.dryRun === true;
-  const rows = Array.isArray(body.rows) ? body.rows.slice(0, 5_000) : [];
+  const rows: any[] = Array.isArray(body.rows) ? body.rows : [];
   if (rows.length === 0) {
     return c.json({ success: false, error: { code: "EMPTY_BATCH", message: "The file contains no rows." } }, 400);
+  }
+  // All or nothing means the WHOLE file: rows past the cap used to be dropped silently and the rest reported as a
+  // success, leaving stored spend incomplete with nothing recording which rows were missing.
+  if (rows.length > MAX_MEDIA_COST_BATCH_ROWS) {
+    return c.json({ success: false, error: { code: "BATCH_TOO_LARGE", message: `The file has ${rows.length} rows; the limit is ${MAX_MEDIA_COST_BATCH_ROWS}. Split it into smaller files. Nothing was saved.` } }, 413);
   }
 
   const rowErrors: Array<{ rowNumber: number; errors: string[] }> = [];
@@ -376,8 +389,7 @@ routes.post("/media-costs/batch", requirePermissions([PERMISSIONS.RECOMMENDATION
   if (batchCurrencies.length > 1) {
     rowErrors.push({ rowNumber: 0, errors: [`The file mixes ${batchCurrencies.join(", ")}. A cross-currency spend total is not a number — ingest one currency per file.`] });
   } else if (batchCurrencies.length === 1) {
-    const existing = await Registry.getInstance().recommendationCommercialRepo.getIngestedCurrencies();
-    const conflicting = existing.filter((cur) => cur !== batchCurrencies[0]);
+    const conflicting = await conflictingSpendCurrencies(batchCurrencies[0]);
     if (conflicting.length > 0) {
       rowErrors.push({ rowNumber: 0, errors: [`Spend already exists in ${conflicting.join(", ")} and this file is ${batchCurrencies[0]}. Ingesting it would make ROAS unavailable for every period that spans both — convert to one currency first.`] });
     }
@@ -441,8 +453,12 @@ routes.post("/media-costs/correct", requirePermissions([PERMISSIONS.RECOMMENDATI
     source: f.source,
     spendMinor: f.spendMinor,
     taxOrFeeMinor: f.taxOrFeeMinor,
+    currency: f.currency,
   });
 
+  if (!result.corrected && result.storedCurrency) {
+    return c.json({ success: false, error: { code: "CURRENCY_MISMATCH", message: `That spend fact is stored in ${result.storedCurrency}; a correction must be in the same currency (this one is ${f.currency}). Nothing was changed.` } }, 409);
+  }
   if (!result.corrected) {
     return c.json({ success: false, error: { code: "FACT_NOT_FOUND", message: "No ingested spend fact matches that logical key, so there is nothing to correct." } }, 404);
   }
@@ -465,49 +481,21 @@ routes.post("/media-costs", requirePermissions([PERMISSIONS.RECOMMENDATIONS_MANA
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: "INVALID_JSON", message: "Invalid body" } }, 400);
 
-  const errors: string[] = [];
-  // R3.1 review (minor 6): a REAL calendar date — the regex alone let
-  // 2026-99-99 through to a Postgres cast failure dressed as a 500 — and
-  // never in the future: spend that has not happened cannot be ingested.
-  const dateShape = typeof body.spendDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.spendDate);
-  const parsedDate = dateShape ? new Date(`${body.spendDate}T00:00:00Z`) : null;
-  const dateReal = parsedDate !== null && !Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === body.spendDate;
-  if (!dateReal) errors.push("spendDate must be a real YYYY-MM-DD date.");
-  else if (parsedDate!.getTime() > Date.now()) errors.push("spendDate cannot be in the future.");
-  const FIELD_CAPS = { channel: 40, platform: 80, account: 120, campaign: 150, source: 120 } as const;
-  for (const field of ["channel", "platform", "account", "campaign", "source"] as const) {
-    const value = body[field];
-    if (typeof value !== "string" || !value.trim()) errors.push(`${field} is required.`);
-    else if (value.trim().length > FIELD_CAPS[field]) errors.push(`${field} exceeds ${FIELD_CAPS[field]} characters.`);
+  // The same validation as the batch and correct paths (it used to be a hand-kept copy), and the same currency
+  // rule as the batch: one row in a second currency made every ROAS read spanning both unavailable.
+  const verdict = validateMediaCostRow(body);
+  if (!verdict.ok) {
+    return c.json({ success: false, error: { code: "INVALID_MEDIA_COST", message: verdict.errors.join(" ") } }, 400);
   }
-  for (const field of ["adSetOrGroup", "adOrCreative"] as const) {
-    if (typeof body[field] === "string" && body[field].length > 150) errors.push(`${field} exceeds 150 characters.`);
+  const f = verdict.fact as any;
+  const conflicting = await conflictingSpendCurrencies(f.currency);
+  if (conflicting.length > 0) {
+    return c.json({ success: false, error: { code: "CURRENCY_CONFLICT", message: `Spend already exists in ${conflicting.join(", ")} and this row is ${f.currency}. Ingesting it would make ROAS unavailable for every period that spans both — convert to one currency first.` } }, 422);
   }
-  if (typeof body.sourceReference === "string" && body.sourceReference.length > 200) errors.push("sourceReference exceeds 200 characters.");
-  const MAX_SPEND_MINOR = 10_000_000_000; // UGX 10bn per row: beyond this is a typo, not a campaign.
-  const spendMinor = Number(body.spendMinor);
-  if (!Number.isInteger(spendMinor) || spendMinor < 0 || spendMinor > MAX_SPEND_MINOR) errors.push("spendMinor must be a non-negative integer within a sane ceiling (minor units).");
-  const taxOrFeeMinor = Number(body.taxOrFeeMinor ?? 0);
-  if (!Number.isInteger(taxOrFeeMinor) || taxOrFeeMinor < 0 || taxOrFeeMinor > MAX_SPEND_MINOR) errors.push("taxOrFeeMinor must be a non-negative integer within a sane ceiling.");
-  const currency = String(body.currency ?? "UGX").toUpperCase();
-  if (!/^[A-Z]{3}$/.test(currency)) errors.push("currency must be a 3-letter code.");
-  if (errors.length > 0) {
-    return c.json({ success: false, error: { code: "INVALID_MEDIA_COST", message: errors.join(" ") } }, 400);
-  }
+  const { currency, spendMinor, taxOrFeeMinor } = f;
 
   const result = await Registry.getInstance().recommendationCommercialRepo.insertMediaCostFact({
-    spendDate: body.spendDate,
-    channel: body.channel.trim(),
-    platform: body.platform.trim(),
-    account: body.account.trim(),
-    campaign: body.campaign.trim(),
-    adSetOrGroup: typeof body.adSetOrGroup === "string" ? body.adSetOrGroup.trim() || null : null,
-    adOrCreative: typeof body.adOrCreative === "string" ? body.adOrCreative.trim() || null : null,
-    currency,
-    spendMinor,
-    taxOrFeeMinor,
-    source: body.source.trim(),
-    sourceReference: typeof body.sourceReference === "string" ? body.sourceReference.trim() || null : null,
+    ...f,
     ingestedBy: c.get("user").id,
   });
   // A financial write needs an audit row of its own. The file-scoped
@@ -519,18 +507,18 @@ routes.post("/media-costs", requirePermissions([PERMISSIONS.RECOMMENDATIONS_MANA
     action: result.inserted ? "MEDIA_COST_INGESTED" : "MEDIA_COST_DUPLICATE_REJECTED",
     entity: "media_cost_fact",
     // The logical key IS the identity of a spend fact (0102's unique index).
-    entityId: `${body.spendDate}:${body.platform.trim()}:${body.account.trim()}:${body.campaign.trim()}`,
+    entityId: `${f.spendDate}:${f.platform}:${f.account}:${f.campaign}`,
     previousState: null,
     newState: {
-      spendDate: body.spendDate,
-      channel: body.channel.trim(),
-      platform: body.platform.trim(),
-      account: body.account.trim(),
-      campaign: body.campaign.trim(),
+      spendDate: f.spendDate,
+      channel: f.channel,
+      platform: f.platform,
+      account: f.account,
+      campaign: f.campaign,
       currency,
       spendMinor,
       taxOrFeeMinor,
-      source: body.source.trim(),
+      source: f.source,
       inserted: result.inserted,
     },
   });

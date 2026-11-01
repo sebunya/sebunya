@@ -6,7 +6,7 @@ import {
   sessionExpiries,
   RevocationReason,
 } from '../../domain/identity/SessionPolicy';
-import { isInvalidatedByCutoff } from '../../domain/identity/SessionPolicy';
+import { isInvalidatedByCutoff, sessionCutoffAt } from '../../domain/identity/SessionPolicy';
 
 export interface IssuedSession {
   userId: string;
@@ -186,7 +186,7 @@ export class SessionService {
     now = new Date(),
   ): Promise<number> {
     const revoked = await this.repo.revokeAllForUser(userId, reason, now);
-    await this.users.invalidateSessionsAfter(userId, now);
+    await this.users.invalidateSessionsAfter(userId, sessionCutoffAt(now));
     return revoked;
   }
 }

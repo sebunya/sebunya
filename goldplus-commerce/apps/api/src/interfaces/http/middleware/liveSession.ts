@@ -25,7 +25,7 @@ import { isInvalidatedByCutoff } from '../../../domain/identity/SessionPolicy';
 
 export type LiveSession =
   | { ok: true; user: { id: string; email: string; isActive: boolean; sessionId: string | null } }
-  | { ok: false; code: 'UNAUTHENTICATED'; message: string }
+  | { ok: false; code: 'UNAUTHENTICATED'; message: string; revoked?: true }
   | { ok: false; code: 'ACCOUNT_DISABLED'; message: string };
 
 export function bearerTokenFrom(header: string | undefined | null): string | null {
@@ -51,7 +51,7 @@ export async function resolveLiveSession(token: string | null): Promise<LiveSess
   // Immediate hard revocation: a token issued at or before the cutoff is dead
   // now, rather than when its TTL happens to run out.
   if (verified.issuedAt && isInvalidatedByCutoff(verified.issuedAt, user.sessionsInvalidatedAfter)) {
-    return unauthenticated('This session has been revoked. Please sign in again.');
+    return { ...unauthenticated('This session has been revoked. Please sign in again.'), revoked: true } as const;
   }
 
   return { ok: true, user: { id: user.id, email: user.email, isActive: user.isActive, sessionId: verified.sessionId ?? null } };

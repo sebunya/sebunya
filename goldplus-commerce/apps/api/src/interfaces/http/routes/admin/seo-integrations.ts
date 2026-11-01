@@ -311,6 +311,10 @@ routes.post('/connections/:id/test', requirePermissions([PERMISSIONS.SEO_INTEGRA
 routes.post('/connections/:id/discover', requirePermissions([PERMISSIONS.SEO_INTEGRATIONS_MANAGE]), async (c) => {
   const connection = await repo().getConnection(c.req.param('id') ?? '');
   if (!connection) return bad(c, 'NOT_FOUND', 'Connection not found.', 404);
+  if (!requireCustomConnectorRight(c, connection.provider_id)) {
+    return bad(c, 'FORBIDDEN', 'The custom read-only connector requires seo.integrations.custom_connector.', 403);
+  }
+  if (connection.status === 'DISABLED') return bad(c, 'DISABLED', 'Connection is disabled.', 409);
   const provider = await repo().getProvider(connection.provider_id);
   const { adapterFor } = await import('../../../../infrastructure/seo/adapters/SeoIntegrationAdapters');
   const adapter = adapterFor(connection.provider_id);
@@ -335,6 +339,12 @@ routes.post('/connections/:id/select-resource', requirePermissions([PERMISSIONS.
   }
   const connection = await repo().getConnection(c.req.param('id') ?? '');
   if (!connection) return bad(c, 'NOT_FOUND', 'Connection not found.', 404);
+  // Same guard as PATCH: config here can repoint a custom connector's baseUrl, and the next test/sync would send
+  // the stored vault token to it.
+  if (!requireCustomConnectorRight(c, connection.provider_id)) {
+    return bad(c, 'FORBIDDEN', 'The custom read-only connector requires seo.integrations.custom_connector.', 403);
+  }
+  if (connection.status === 'DISABLED') return bad(c, 'DISABLED', 'Connection is disabled.', 409);
   const row = await repo().updateConnection(connection.id, {
     accountRef: body.accountRef !== undefined ? (body.accountRef === null ? null : String(body.accountRef)) : undefined,
     propertyRef: body.propertyRef !== undefined ? (body.propertyRef === null ? null : String(body.propertyRef)) : undefined,

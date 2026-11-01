@@ -1485,6 +1485,13 @@
       "when": 1790140000089,
       "tag": "0212_delivery_proof_photos",
       "breakpoints": true
+    },
+    {
+      "idx": 212,
+      "version": "5",
+      "when": 1790140000090,
+      "tag": "0213_mfa_pending_secret",
+      "breakpoints": true
     }
   ]
 }

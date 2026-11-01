@@ -297,6 +297,16 @@ export function validateEnv(): Config {
     throw new Error('Environment variable validation failed');
   }
 
+  // MFA_ENCRYPTION_KEY shorter than 64 hex characters is ignored by the TOTP key rule, which then falls back to a key
+  // derived from JWT_SECRET. Say so loudly: the operator believes a dedicated key is in force when it is not.
+  const mfaKey = process.env.MFA_ENCRYPTION_KEY;
+  if (mfaKey && mfaKey.length < 64) {
+    console.warn(
+      `[config] WARNING: MFA_ENCRYPTION_KEY is set but only ${mfaKey.length} characters long; it needs 64 hex characters ` +
+        '(32 bytes) and is being IGNORED. Authenticator secrets are encrypted with a key derived from JWT_SECRET instead.',
+    );
+  }
+
   // Zoho CPaaS WhatsApp: warn on a half-configured channel, never fail the boot.
   // The messages name the variable, never its value.
   for (const warning of zohoWhatsAppStartupWarnings(process.env)) {

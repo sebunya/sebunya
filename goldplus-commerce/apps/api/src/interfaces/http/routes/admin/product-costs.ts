@@ -26,7 +26,7 @@ const MAX_ROWS = 5_000;
 
 const parseRows = (body: any): Array<{ identifier: string; costPriceUgx: unknown; effectiveFrom: unknown; currency?: unknown; note?: unknown }> => {
   const raw = Array.isArray(body?.rows) ? body.rows : [];
-  return raw.slice(0, MAX_ROWS).map((row: any) => ({
+  return raw.map((row: any) => ({
     identifier: String(row?.identifier ?? row?.sku ?? row?.productId ?? '').trim(),
     costPriceUgx: row?.costPriceUgx ?? row?.cost ?? row?.costPrice,
     effectiveFrom: row?.effectiveFrom ?? row?.effective_from,
@@ -34,6 +34,16 @@ const parseRows = (body: any): Array<{ identifier: string; costPriceUgx: unknown
     note: row?.note,
   }));
 };
+
+/** All or nothing means the whole file: rows past the cap used to be dropped silently. Refuse instead. */
+const tooManyRows = (body: any): number | null => {
+  const count = Array.isArray(body?.rows) ? body.rows.length : 0;
+  return count > MAX_ROWS ? count : null;
+};
+const tooManyRowsResponse = (count: number) => ({
+  success: false as const,
+  error: { code: 'BATCH_TOO_LARGE', message: `The file has ${count} rows; the limit is ${MAX_ROWS}. Split it into smaller files. Nothing was saved.` },
+});
 
 /** Which active products carry a cost and which do not — the gap, first. */
 routes.get('/coverage', requirePermissions([PERMISSIONS.PRODUCT_COSTS_READ]), async (c) => {
@@ -55,6 +65,8 @@ routes.post('/import/preview', requirePermissions([PERMISSIONS.PRODUCT_COSTS_MAN
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: 'INVALID_JSON', message: 'Invalid body' } }, 400);
 
+  const overCap = tooManyRows(body);
+  if (overCap !== null) return c.json(tooManyRowsResponse(overCap), 413);
   const result = await Registry.getInstance().importProductCostsUseCase.execute({
     rows: parseRows(body),
     source: String(body.source ?? 'admin-preview').slice(0, 120),
@@ -72,6 +84,8 @@ routes.post('/import', requirePermissions([PERMISSIONS.PRODUCT_COSTS_MANAGE]), a
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: 'INVALID_JSON', message: 'Invalid body' } }, 400);
 
+  const overCap = tooManyRows(body);
+  if (overCap !== null) return c.json(tooManyRowsResponse(overCap), 413);
   const rows = parseRows(body);
   const source = String(body.source ?? 'admin-import').slice(0, 120);
   const actorId = (c.get('user') as { id: string }).id;

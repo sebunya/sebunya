@@ -11,7 +11,7 @@ import {
   verifyTotp,
   matchTotpStep,
   encryptSecret,
-  decryptSecret,
+  decryptSecretWithRotation,
   hashRecoveryCode,
   generateRecoveryCodes,
 } from './TotpService';
@@ -56,6 +56,11 @@ export class MfaService {
    * minutes. A code the thief does not hold cannot be borrowed that way. First
    * enrolment, and re-enrolment of a secret that was never confirmed, are
    * unaffected: there is nothing to protect yet.
+   *
+   * A proven re-enrolment only PARKS the new secret as pending (0213). The
+   * confirmed secret stays live until the new one's first code is confirmed, so
+   * abandoning re-enrolment half way never leaves the account unconfirmed, and
+   * the next enrol still demands a code from the authenticator in force.
    */
   async beginEnrolment(
     userId: string,
@@ -73,7 +78,8 @@ export class MfaService {
     }
 
     const secret = generateTotpSecret();
-    await this.repo.upsertEnrolment(userId, encryptSecret(secret));
+    if (existing?.confirmedAt) await this.repo.setPendingSecret(userId, encryptSecret(secret));
+    else await this.repo.upsertEnrolment(userId, encryptSecret(secret));
     return { secret, otpauthUri: otpauthUri(secret, account) };
   }
 
@@ -86,8 +92,9 @@ export class MfaService {
    * against an already-confirmed enrolment, and a hit stamped step-up freshness
    * and replaced the owner's recovery codes, so the five-strike lock on
    * /mfa/verify could simply be routed around from a stolen bearer token.
-   * Re-enrolment goes through beginEnrolment (step-up gated), which clears
-   * confirmedAt, so nothing legitimate confirms a confirmed secret.
+   * Re-enrolment goes through beginEnrolment (current-code gated), which parks
+   * the new secret as pending; confirming proves the PENDING secret and only
+   * then replaces the live one. A confirmed secret itself is never re-confirmed.
    */
   async confirmEnrolment(
     userId: string,
@@ -96,13 +103,17 @@ export class MfaService {
     sessionId: string | null = null,
   ): Promise<{ ok: boolean; recoveryCodes?: string[]; locked?: true }> {
     const record = await this.repo.get(userId);
-    if (!record || record.confirmedAt) return { ok: false };
+    if (!record) return { ok: false };
+    const pending = record.pendingSecretCiphertext ?? null;
+    if (record.confirmedAt && !pending) return { ok: false };
     if (this.isLocked(record, now)) return { ok: false, locked: true };
-    if (!verifyTotp(decryptSecret(record.secretCiphertext), code, now.getTime())) {
-      await this.repo.recordFailure(userId, now);
+    const ciphertext = pending ?? record.secretCiphertext;
+    if (!verifyTotp(this.readSecret(userId, ciphertext), code, now.getTime())) {
+      await this.countFailure(record, now);
       return { ok: false };
     }
-    await this.repo.confirm(userId, now);
+    if (pending) await this.repo.promotePendingSecret(userId, now);
+    else await this.repo.confirm(userId, now);
     await this.stampSession(sessionId, userId, now);
     const codes = generateRecoveryCodes(RECOVERY_CODE_COUNT, RECOVERY_CODE_BYTES);
     await this.repo.replaceRecoveryCodes(userId, codes.map(hashRecoveryCode));
@@ -129,6 +140,26 @@ export class MfaService {
   }
 
   /**
+   * Count a wrong code. Failures older than the lock window are spent first: without that, five old typos plus ONE
+   * new mistake after the lock had lapsed re-locked the account for another full window.
+   */
+  private async countFailure(record: { userId: string; failedAttempts: number; updatedAt: Date }, now: Date): Promise<void> {
+    if (record.failedAttempts > 0 && now.getTime() - record.updatedAt.getTime() >= MfaService.LOCK_WINDOW_MS) {
+      await this.repo.resetFailures(record.userId);
+    }
+    await this.repo.recordFailure(record.userId, now);
+  }
+
+  /** Decrypt a stored secret; one written under the previous JWT-derived key is re-encrypted under the current one. */
+  private readSecret(userId: string, ciphertext: string): string {
+    const { plain, rotated } = decryptSecretWithRotation(ciphertext);
+    if (rotated && this.repo.rewrapSecret) {
+      void this.repo.rewrapSecret(userId, ciphertext, encryptSecret(plain)).catch(() => undefined);
+    }
+    return plain;
+  }
+
+  /**
    * A code is valid for ~90 seconds, so one read over a shoulder or out of a log could be used again. The last
    * accepted verification's step is known to within one (the window either side), so a code is accepted only from
    * a step after that; the cost is that a second step-up inside about a minute waits for the next code.
@@ -146,11 +177,14 @@ export class MfaService {
     const record = await this.repo.get(userId);
     if (!record || !record.confirmedAt) return false;
     if (this.isLocked(record, now)) return 'LOCKED';
-    const matched = matchTotpStep(decryptSecret(record.secretCiphertext), code, now.getTime());
-    if (matched === null || MfaService.isReplayedStep(matched, record.lastVerifiedAt)) {
-      await this.repo.recordFailure(userId, now);
+    const matched = matchTotpStep(this.readSecret(userId, record.secretCiphertext), code, now.getTime());
+    if (matched === null) {
+      await this.countFailure(record, now);
       return false;
     }
+    // A replayed step is the RIGHT code used twice (a second step-up inside a minute), not a guess: refused, but it
+    // does not eat into the five-strike budget.
+    if (MfaService.isReplayedStep(matched, record.lastVerifiedAt)) return false;
     await this.repo.recordVerification(userId, now);
     await this.stampSession(sessionId, userId, now);
     return true;
@@ -165,7 +199,7 @@ export class MfaService {
     if (consumed) {
       await this.repo.recordVerification(userId, now);
       await this.stampSession(sessionId, userId, now);
-    } else await this.repo.recordFailure(userId, now);
+    } else await this.countFailure(record, now);
     return consumed;
   }
 

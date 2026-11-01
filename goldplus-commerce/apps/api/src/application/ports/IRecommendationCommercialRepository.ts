@@ -144,5 +144,7 @@ export interface IRecommendationCommercialRepository {
     source: string;
     spendMinor: number;
     taxOrFeeMinor: number;
-  }): Promise<{ corrected: boolean; previous: { spendMinor: number; taxOrFeeMinor: number } | null }>;
+    /** When given, the stored fact must be in this currency; a mismatch corrects nothing and says so. */
+    currency?: string;
+  }): Promise<{ corrected: boolean; previous: { spendMinor: number; taxOrFeeMinor: number } | null; storedCurrency?: string }>;
 }

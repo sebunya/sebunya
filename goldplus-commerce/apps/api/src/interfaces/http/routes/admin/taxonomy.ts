@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { Registry } from '../../../../infrastructure/Registry';
+import { logger } from '../../../../infrastructure/logging/logger';
 import { PERMISSIONS } from '@goldplus/shared';
 
 /**
@@ -23,25 +24,33 @@ routes.put('/', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => 
     return c.json({ success: false, error: { code: 'INVALID_JSON', message: 'A config array is required.' } }, 400);
   }
   const actorId = (c.get('user') as { id: string }).id;
+  const registry = Registry.getInstance();
+  // Only the save itself can be an invalid taxonomy. Anything after it runs on a change that is already live, so
+  // it must never answer 400 INVALID_TAXONOMY (the operator would retry or "fix" valid input).
+  let result: Awaited<ReturnType<typeof registry.taxonomyService.updateConfig>>;
   try {
-    const registry = Registry.getInstance();
-    const result = await registry.taxonomyService.updateConfig(body.config, actorId);
+    result = await registry.taxonomyService.updateConfig(body.config, actorId);
+  } catch (e) {
+    return c.json({ success: false, error: { code: 'INVALID_TAXONOMY', message: e instanceof Error ? e.message : 'Invalid taxonomy.' } }, 400);
+  }
 
-    // A category the shop browses by that no product can be FILED into is a
-    // dead end: the storefront reads this taxonomy, but the product form can
-    // only offer categories that exist as rows. Saving the taxonomy therefore
-    // creates the missing rows, so the two lists cannot drift apart again.
-    // Additive only — it never renames or removes a row products point at.
-    let categoriesCreated: string[] = [];
-    try {
-      const { config } = await registry.taxonomyService.getAdminConfig();
-      categoriesCreated = await registry.productRepo.ensureCategories(
-        config.map((category) => ({ name: category.name, slug: category.slug })),
-      );
-    } catch {
-      // The taxonomy itself saved; a filing row can be added later. Never fail
-      // the operator's save over this.
-    }
+  // A category the shop browses by that no product can be FILED into is a
+  // dead end: the storefront reads this taxonomy, but the product form can
+  // only offer categories that exist as rows. Saving the taxonomy therefore
+  // creates the missing rows, so the two lists cannot drift apart again.
+  // Additive only — it never renames or removes a row products point at.
+  let categoriesCreated: string[] = [];
+  try {
+    const { config } = await registry.taxonomyService.getAdminConfig();
+    categoriesCreated = await registry.productRepo.ensureCategories(
+      config.map((category) => ({ name: category.name, slug: category.slug })),
+    );
+  } catch {
+    // The taxonomy itself saved; a filing row can be added later. Never fail
+    // the operator's save over this.
+  }
+  let auditRecorded = true;
+  try {
     await registry.createAuditLogUseCase.execute({
       actorId,
       action: 'TAXONOMY_UPDATED',
@@ -50,10 +59,11 @@ routes.put('/', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => 
       previousState: null,
       newState: { version: result.version, categoriesCreated },
     });
-    return c.json({ success: true, data: { version: result.version, categoriesCreated } });
-  } catch (e) {
-    return c.json({ success: false, error: { code: 'INVALID_TAXONOMY', message: e instanceof Error ? e.message : 'Invalid taxonomy.' } }, 400);
+  } catch (err) {
+    auditRecorded = false;
+    logger.error({ err: err instanceof Error ? err.message : String(err), version: result.version, actorId }, '[taxonomy] saved but the audit row failed');
   }
+  return c.json({ success: true, data: { version: result.version, categoriesCreated, auditRecorded } });
 });
 
 export default routes;

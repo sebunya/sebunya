@@ -12,6 +12,7 @@ import { validateStockAdjustment } from '../../../../domain/inventory/Inventory'
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 import { changedPricingFields, parsePriceTiers, tiersWithStoredDefaults } from '../../../../domain/products/PriceTiers';
 import { checkPublicationChange, effectiveStockStatus } from '../../../../domain/products/ProductPublication';
+import { proposeUploadSlots } from '../../../../domain/products/MediaUploadSlots';
 import { UpdateProductListingUseCase } from '../../../../application/use-cases/products/UpdateProductListingUseCase';
 import { GetAdminProductViewUseCase } from '../../../../application/use-cases/products/GetAdminProductViewUseCase';
 import { ProductUploadError, summariseProductUpload } from '../../../../application/use-cases/products/UploadProductImagesUseCase';
@@ -510,8 +511,10 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
   // body.imageUrl is ignored: the legacy free-text image field is retired and
   // the stored value (legacy imports) is kept, never overwritten or wiped here.
   const imageUrl = existingProduct.imageUrl;
-  const active = body.active !== false;
-  const approvalStatus = String(body.approvalStatus ?? 'draft');
+  // Left out → the stored value, as for subcategory and compare-at above. Defaulting to draft/active used to take
+  // an approved, live product off the storefront whenever a partial save (a script fixing names) omitted them.
+  const active = hasKey('active') ? body.active !== false : existingProduct.active;
+  const approvalStatus = hasKey('approvalStatus') ? String(body.approvalStatus ?? 'draft') : String(existingProduct.approvalStatus);
   const stockQuantity = Number(body.stockQuantity ?? 0);
   // The quantity the editor LOADED. Present → the save only writes stock when
   // the operator changed it, and only while stock still equals what they saw.
@@ -544,7 +547,14 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
   // optional; a product without one is simply not discountable.
   // A tier key left out of the request keeps its stored value; omission
   // never wipes Price A/B/C.
-  const tiersBefore = await registry.productRepo.getPriceTiers(productId).catch(() => null);
+  // A failed read is a failure, not "no stored tiers": treating it as null cleared every tier the body left out and
+  // made the change look like no pricing change, so it skipped the pricing permission.
+  let tiersBefore: Awaited<ReturnType<typeof registry.productRepo.getPriceTiers>>;
+  try {
+    tiersBefore = await registry.productRepo.getPriceTiers(productId);
+  } catch {
+    return c.json({ success: false, error: { code: 'PRICE_TIERS_UNAVAILABLE', message: 'Could not read the stored price tiers. Nothing was saved; try again.' } }, 503);
+  }
   const tiers = parsePriceTiers(tiersWithStoredDefaults(body, tiersBefore), priceUgx);
   if (!tiers.ok) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: tiers.message } }, 400);
@@ -817,9 +827,10 @@ routes.post('/:id/media/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]
   if (snap.mediaRevision !== expectedRevision) return c.json({ success: false, error: { code: 'STALE_REVISION', message: 'The gallery changed while you were choosing files. Review it and try again.', currentRevision: snap.mediaRevision } }, 409);
   const current = registry.productMediaUseCases.currentMap(snap);
   const taken = new Set(current.map((a) => a.slot));
-  const free = ([1, 2, 3, 4] as const).filter((s) => !taken.has(s));
-  // Proposed map: explicit slots when given (must be legal and, unless replace, empty), else the next free slots.
-  const proposed = files.map((f, i) => ({ file: f, slot: Number.isInteger(slots[i]) && slots[i] >= 1 && slots[i] <= 4 ? (slots[i] as 1 | 2 | 3 | 4) : free[i] }));
+  // Proposed map: explicit slots when given (must be legal and, unless replace, empty), else the next free slot
+  // that no explicit file has claimed.
+  const proposedSlots = proposeUploadSlots(files.length, slots, taken);
+  const proposed = files.map((f, i) => ({ file: f, slot: proposedSlots[i] }));
   const seen = new Set<number>();
   for (const p of proposed) {
     if (!p.slot) return c.json({ success: false, error: { code: 'INVALID_SLOT', message: 'Not enough empty slots for these files. Replace or remove an image first, or choose the slots explicitly.' } }, 422);
@@ -832,7 +843,7 @@ routes.post('/:id/media/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]
   const rejected: Array<{ filename: string; reason: string }> = [];
   for (const p of proposed) {
     const [outcome] = await registry.mediaLibraryUseCase.upload({ files: [{ filename: p.file.name, mime: p.file.type, buffer: Buffer.from(await p.file.arrayBuffer()) }], altText: null, caption: null, actorId });
-    if (outcome.kind === 'STORED') staged.push({ slot: p.slot, assetId: outcome.asset.id, filename: p.file.name, deduplicated: outcome.deduplicated });
+    if (outcome.kind === 'STORED') staged.push({ slot: p.slot as 1 | 2 | 3 | 4, assetId: outcome.asset.id, filename: p.file.name, deduplicated: outcome.deduplicated });
     else rejected.push({ filename: p.file.name, reason: outcome.reason });
   }
   if (rejected.length) return c.json({ success: false, error: { code: 'FILE_REJECTED', message: `Not assigned: ${rejected.map((r) => `${r.filename} (${describeUploadRejection(r.reason)})`).join('; ')}. The valid files are in the media library; choose them from there or fix the rejected file and try again.` }, data: { staged, rejected } }, 422);
