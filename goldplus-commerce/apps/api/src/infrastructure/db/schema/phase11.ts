@@ -1,4 +1,5 @@
-import { pgTable, uuid, varchar, text, integer, boolean, timestamp, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, integer, smallint, boolean, timestamp, primaryKey, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { products, categories } from './products';
 import { users } from './identity';
 
@@ -12,6 +13,8 @@ import { users } from './identity';
  * - notification_attempts: append-only log of every send through any channel
  */
 
+import { mediaAssets } from './media';
+
 export const productImages = pgTable('product_images', {
   id: uuid('id').defaultRandom().primaryKey(),
   productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }).notNull(),
@@ -19,8 +22,24 @@ export const productImages = pgTable('product_images', {
   altText: varchar('alt_text', { length: 255 }),
   displayOrder: integer('display_order').default(0).notNull(),
   isPrimary: boolean('is_primary').default(false).notNull(),
+  // Wave 2B: gallery rows created from the media library link back to their asset.
+  assetId: uuid('asset_id').references(() => mediaAssets.id, { onDelete: 'set null' }),
+  /**
+   * Focus 4 (0148): canonical gallery position 1–4; 1 is the cover. NULL = a
+   * legacy row not yet placed in the gallery (readers fall back to is_primary /
+   * display_order for such products). Partial unique indexes on (product, slot)
+   * and (product, asset) live in the migration. is_primary and display_order
+   * are a one-way projection of slot, written only by the mutation service.
+   */
+  slot: smallint('slot'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-});
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  // Declared here so drizzle-kit's diff agrees with migration 0148 and never proposes dropping them.
+  productSlotUq: uniqueIndex('product_images_product_slot_uq').on(t.productId, t.slot).where(sql`${t.slot} IS NOT NULL`),
+  productAssetUq: uniqueIndex('product_images_product_asset_uq').on(t.productId, t.assetId).where(sql`${t.assetId} IS NOT NULL AND ${t.slot} IS NOT NULL`),
+  productSlotIdx: index('product_images_product_slot_idx').on(t.productId, t.slot),
+}));
 
 export const attributes = pgTable('attributes', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -64,7 +83,7 @@ export const notificationAttempts = pgTable('notification_attempts', {
   recipient: varchar('recipient', { length: 255 }).notNull(),
   template: varchar('template', { length: 100 }).notNull(),
   status: varchar('status', { length: 30 }).default('PENDING').notNull(), // PENDING | SENT | FAILED | NOT_CONFIGURED
-  providerCode: varchar('provider_code', { length: 50 }), // raw provider response code
+  providerCode: varchar('provider_code', { length: 160 }), // raw provider response code (a Meta wamid is longer than 50; 0184)
   providerMessage: text('provider_message'),
   relatedEntity: varchar('related_entity', { length: 50 }), // order, dealer, quote, fake_report, support_ticket
   relatedEntityId: uuid('related_entity_id'),
