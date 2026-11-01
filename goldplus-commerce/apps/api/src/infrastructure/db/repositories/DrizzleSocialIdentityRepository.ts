@@ -110,6 +110,9 @@ export class DrizzleSocialIdentityRepository implements ISocialIdentityRepositor
 
   async unlink(userId: string, provider: SocialProvider): Promise<{ ok: boolean; reason?: string }> {
     return db.transaction(async (tx) => {
+      // Lock the account row first: two removals at once (two tabs, a double tap) each saw two identities under
+      // READ COMMITTED and both deleted, leaving no way to sign in. The second now waits and sees one.
+      await tx.execute(sql`select id from users where id = ${userId}::uuid for update`);
       const state = rowsOf(
         await tx.execute(sql`
           select
