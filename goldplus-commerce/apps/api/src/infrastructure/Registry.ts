@@ -149,6 +149,7 @@ import { DrizzleBulkPriceAccessRepository } from './db/repositories/DrizzleBulkP
 import { StartDealerSignInUseCase, VerifyDealerSignInUseCase, GetDealerAccountUseCase } from '../application/use-cases/dealers/DealerPortalUseCases';
 import { DrizzleDealerPortalReader } from './dealers/DrizzleDealerPortalReader';
 import { bulkPriceAccessCrypto } from './quotes/BulkPriceAccessCrypto';
+import { bulkPriceAccessLimiter } from './quotes/BulkPriceAccessLimiter';
 import {
   GetBulkTermsUseCase,
   ListBulkPriceLeadsUseCase,
@@ -1814,7 +1815,7 @@ export class Registry {
   public readonly bulkTermsRepo = new DrizzleBulkTermsRepository();
   public readonly bulkPriceAccessRepo = new DrizzleBulkPriceAccessRepository();
   public readonly getBulkTermsUseCase = new GetBulkTermsUseCase(this.bulkTermsRepo, bulkPriceAccessCrypto);
-  public readonly startBulkPriceAccessUseCase = new StartBulkPriceAccessUseCase(this.bulkPriceAccessRepo, new OutboxOtpSender(), bulkPriceAccessCrypto);
+  public readonly startBulkPriceAccessUseCase = new StartBulkPriceAccessUseCase(this.bulkPriceAccessRepo, new OutboxOtpSender(), bulkPriceAccessCrypto, undefined, bulkPriceAccessLimiter);
   public readonly verifyBulkPriceAccessUseCase = new VerifyBulkPriceAccessUseCase(this.bulkPriceAccessRepo, bulkPriceAccessCrypto);
   /** Dealer portal (gap analysis #16): always an SMS code; its own token; the phone's own records only. */
   public readonly startDealerSignInUseCase = new StartDealerSignInUseCase(this.bulkPriceAccessRepo, new OutboxOtpSender(), bulkPriceAccessCrypto);

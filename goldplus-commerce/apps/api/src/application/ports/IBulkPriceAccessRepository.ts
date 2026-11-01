@@ -7,6 +7,11 @@ export interface IBulkPriceAccessRepository {
   countUses(phone: string): Promise<number>;
   /** A first visit: recorded as used now, no code sent. */
   recordFirstVisit(phone: string, at: Date): Promise<void>;
+  /**
+   * Atomic first use: records the first visit and returns true only when the
+   * phone had no earlier use. Parallel first requests for one phone get ONE true.
+   */
+  claimFirstVisit(phone: string, at: Date): Promise<boolean>;
   create(input: { phone: string; codeHash: string; expiresAt: Date }): Promise<void>;
   /** The newest unverified challenge for the phone, expired or not. */
   latestOpen(phone: string): Promise<AccessChallenge | null>;
