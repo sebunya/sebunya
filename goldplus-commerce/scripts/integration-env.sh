@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Bash only, and run (not sourced): under zsh the migration list does not split into names, and a sourced copy
+# that hits `set -e` closes the terminal it was sourced into.
+if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then echo "Run this script (bash scripts/integration-env.sh), do not source it." >&2; return 1; fi
+# ═══════════════════════════════════════════════════════════════════════════
+# The integration test environment (payments brief, 2026-08-06).
+#
+# Roughly fifty of the 111 integration tests had NEVER EXECUTED ANYWHERE, for
+# want of Redis and a database. The code that broke was precisely the code
+# with no coverage. This script removes the excuse: one command stands up
+# everything, runs all 111 with nothing skipped, and tears nothing down (the
+# databases are cheap and reuse makes the loop fast).
+#
+# THE SCHEMA COMES FROM PRODUCTION, NOT FROM THE MIGRATION CHAIN. Building a
+# database from the migration files produces an orders table with 8 columns;
+# production's has 36. The chain cannot reproduce the schema it supposedly
+# built (recorded in docs/payments/DECISIONS.md), so the honest test target is
+# a schema-only snapshot of production, committed at
+# tests/integration/env/production-schema.sql and refreshed with
+# --refresh-schema.
+#
+# Layout (the env var names ARE the isolation design — conflating them lets
+# the destructive-by-design migration suites clobber everyone else):
+#   goldplus_test_commerce   production schema   DATABASE_URL + COMMERCE_TEST_DATABASE_URL
+#   goldplus_test_auth       production schema   AUTH_TEST_DATABASE_URL
+#   goldplus_test_analytics  EMPTY — its suites self-provision and DROP TABLES
+# ═══════════════════════════════════════════════════════════════════════════
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+SCHEMA=tests/integration/env/production-schema.sql
+PGUSER_LOCAL="${PGUSER:-$(whoami)}"
+BASE="postgresql://${PGUSER_LOCAL}@localhost:5432"
+
+if [[ "${1:-}" == "--refresh-schema" ]]; then
+  echo "Refreshing schema snapshot from production..."
+  ssh goldplus-prod "cd /opt/goldplus/app/goldplus-commerce && docker compose -f docker-compose.production.yml --env-file .env.production exec -T postgres pg_dump -U goldplus --schema-only --no-owner --no-acl goldplus" > "$SCHEMA"
+  echo "Snapshot refreshed: $(wc -l < "$SCHEMA") lines"
+  shift
+fi
+
+[[ -f "$SCHEMA" ]] || { echo "Missing $SCHEMA — run with --refresh-schema first."; exit 1; }
+
+pg_isready -q || { echo "PostgreSQL is not running locally."; exit 1; }
+redis-cli ping >/dev/null 2>&1 || { echo "Starting redis..."; redis-server --daemonize yes --port 6379 --save ''; sleep 1; }
+
+rebuild() {
+  local db="$1" load="$2"
+  dropdb --if-exists "$db"
+  createdb "$db"
+  if [[ "$load" == "schema" ]]; then psql -q "$db" < "$SCHEMA" >/dev/null; fi
+}
+
+rebuild goldplus_test_commerce schema
+rebuild goldplus_test_auth schema
+rebuild goldplus_test_analytics empty
+
+# The production schema snapshot predates the recommendation-programme
+# migrations; apply them so EVERY suite sees the full schema (idempotent —
+# IF NOT EXISTS throughout). Suites keep their own guarded application for
+# standalone runs.
+# The snapshot (2026-09-12) also predates 0130 onwards (AI visibility, ad
+# destinations, measurement 0140+, fulfilment alerts, battery links, media
+# slots 0148/0149 …); every migration from 0130 is layered too, so a new one
+# is picked up without editing this list. Refresh the snapshot to shrink it.
+LATER=$(ls apps/api/src/infrastructure/db/migrations | grep -E '^0(1[3-9]|[2-9][0-9])[0-9]_.*\.sql$' | sed 's/\.sql$//')
+# 0087 seeds the loyalty missions the snapshot (schema only) lacks; 0174 and later reshape them.
+for m in 0087_loyalty_gamification_live 0099_recommendation_event_contract 0100_experience_profiles 0101_order_profile_stitching 0102_commercial_costs 0103_refund_ledger 0104_product_cost_entries 0105_commercial_indexes 0106_account_recovery_and_social_identity 0107_hero_slides 0108_hero_events $LATER; do
+  sed 's/--> statement-breakpoint//' "apps/api/src/infrastructure/db/migrations/${m}.sql" | psql -q goldplus_test_commerce >/dev/null
+done
+
+export DATABASE_URL="${BASE}/goldplus_test_commerce"
+export COMMERCE_TEST_DATABASE_URL="${BASE}/goldplus_test_commerce"
+export AUTH_TEST_DATABASE_URL="${BASE}/goldplus_test_auth"
+export ANALYTICS_TEST_DATABASE_URL="${BASE}/goldplus_test_analytics"
+export REDIS_TEST_URL="redis://127.0.0.1:6379"
+# Same measurement config as scripts/integration-on-clone.sh: delivery routing
+# only creates a GA4 intent when a measurement id is configured, so without it
+# MeasurementCore has nothing to deliver. The collect URL is unroutable (port 9)
+# and the suites stub fetch, so nothing ever leaves the machine.
+export GA4_MEASUREMENT_ID="G-ITEST00001"
+export METRICS_INTERNAL_URL="http://127.0.0.1:9"
+
+# Serial by default: these suites share goldplus_test_commerce, and several
+# assert GLOBAL aggregates (the ROAS denominator, singleton config versions).
+# Parallel workers make those reads race each other's writes — observed as
+# different "failures" every run with every suite green in isolation.
+echo "Environment ready. Running: ${*:-npx vitest run --no-file-parallelism tests/integration}"
+if [[ $# -gt 0 ]]; then "$@"; else npx vitest run --no-file-parallelism tests/integration; fi

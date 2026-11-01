@@ -10,12 +10,12 @@
     "lint": "eslint \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
-    "@astrojs/node": "^8.2.2",
-    "@astrojs/tailwind": "^5.1.0",
+    "@astrojs/node": "^10.1.4",
     "@goldplus/shared": "workspace:*",
     "@sentry/astro": "^10.54.0",
     "@sentry/node": "^10.54.0",
-    "astro": "^4.4.0",
+    "astro": "^6.4.8",
+    "autoprefixer": "^10.6.1",
     "posthog-js": "^1.376.3",
     "tailwindcss": "^3.4.1"
   },

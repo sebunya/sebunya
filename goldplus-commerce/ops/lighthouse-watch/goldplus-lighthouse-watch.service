@@ -1,0 +1,13 @@
+[Unit]
+Description=GoldPlus Lighthouse Watch: real Lighthouse on the live shop, median of 3, posted to the API
+After=docker.service network-online.target
+Wants=network-online.target
+OnFailure=goldplus-alert@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/goldplus/app/goldplus-commerce
+ExecStart=/opt/goldplus/app/goldplus-commerce/scripts/lighthouse-watch.sh cron
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=45min
