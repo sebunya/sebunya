@@ -1,12 +1,19 @@
 import { CHECKOUT_SIDE_EFFECT_EVENT_TYPES } from '../../ports/ICheckoutSideEffectRecorder';
 import { IOutboxRepository } from '../../ports/IOutboxRepository';
 import { INotificationProvider, NotificationDispatchPayload, NotificationStatus } from '../../ports/INotificationProvider';
+import { OUTCOME_UNKNOWN_PROVIDER_CODE, type NotificationDispatchResult } from '../../ports/INotificationProvider';
 import { RecordNotificationAttemptUseCase } from '../notifications/RecordNotificationAttemptUseCase';
 
 export interface NotificationRoutingTarget {
   channel: string;
   provider: INotificationProvider;
   payload: NotificationDispatchPayload;
+  /**
+   * The channel to use INSTEAD when this one cannot deliver — WhatsApp first,
+   * SMS as the fallback. Tried only when the primary did not send and will not
+   * be retried usefully, so a customer never receives the same message on both.
+   */
+  fallback?: NotificationRoutingTarget;
 }
 
 export interface INotificationRouter {
@@ -19,10 +26,19 @@ export interface ProcessOutboxBatchResult {
   retried: number;
   exhausted: number;
   unroutable: number;
+  /** Deliveries whose attempt row could not be written. The send still counts. */
+  unrecordedAttempts?: number;
 }
 
 const BATCH_SIZE = 25;
 const MAX_ATTEMPTS = 8;
+/**
+ * A primary that keeps failing with a RETRYABLE error (rate limit, provider
+ * down) is retried this many times before the fallback is used, so a WhatsApp
+ * outage delays the message by minutes rather than dead-lettering it after
+ * eight attempts on a channel that never worked.
+ */
+const PRIMARY_RETRIES_BEFORE_FALLBACK = 2;
 const BACKOFF_BASE_SECONDS = 60;
 const MAX_BACKOFF_SECONDS = 3600; // Capped at 1 hour
 
@@ -56,6 +72,11 @@ export function computeBackoffSeconds(
   return Math.round(half + random() * half);
 }
 
+/** One delivery target of an event: channel, recipient and template. */
+export function outboxTargetKey(target: NotificationRoutingTarget): string {
+  return `${target.channel}|${target.payload.recipient}|${target.payload.template}`;
+}
+
 export class ProcessOutboxBatchUseCase {
   constructor(
     private readonly outboxRepo: IOutboxRepository,
@@ -72,8 +93,13 @@ export class ProcessOutboxBatchUseCase {
     // would find no route, mark them processed as "unroutable", and report success
     // while the fulfilment task the order depends on was discarded.
     // `ProcessCheckoutSideEffectBatchUseCase` claims them instead.
+    // TELEMETRY_DISPATCH is owned by the telemetry dispatcher, which runs in the
+    // same tick. This worker also claimed those rows, found no notification
+    // route, and retired them as "unroutable": every claim it won was a
+    // measurement event silently dropped.
     const events = await this.outboxRepo.claimDueBatch(now, BATCH_SIZE, {
-      excludeEventTypes: CHECKOUT_SIDE_EFFECT_EVENT_TYPES,
+      // AD_CONVERSION (0138) likewise belongs to the advertising dispatcher.
+      excludeEventTypes: [...CHECKOUT_SIDE_EFFECT_EVENT_TYPES, 'TELEMETRY_DISPATCH', 'AD_CONVERSION'],
     });
 
     const result: ProcessOutboxBatchResult = {
@@ -89,8 +115,18 @@ export class ProcessOutboxBatchUseCase {
     }
 
     for (const event of events) {
+      // Still ours? A batch of slow sends can outlive its five-minute lease; the other replica then claims what is
+      // left and sends it. Renewing first means the late events are skipped here, never sent twice (2026-10-22).
+      if (this.outboxRepo.renewLease && !(await this.outboxRepo.renewLease(event.id, new Date()).catch(() => false))) continue;
+      // Hoisted so the crash path below still knows what THIS attempt delivered.
+      let sentNow: Set<string> | null = null;
       try {
-        const targets = await this.router.route(event.eventType, event.payload);
+        // Targets already delivered on an earlier attempt of THIS event. The
+        // key is kept on the event itself, so a message delivered to one admin
+        // is not sent to them again each time a second address fails.
+        const { _sentTargets: priorSent, ...routedPayload } = (event.payload ?? {}) as Record<string, unknown> & { _sentTargets?: unknown };
+        const alreadySent = new Set(Array.isArray(priorSent) ? priorSent.map(String) : []);
+        const targets = await this.router.route(event.eventType, routedPayload);
 
         if (targets.length === 0) {
           await this.outboxRepo.markProcessed(event.id, {
@@ -101,40 +137,83 @@ export class ProcessOutboxBatchUseCase {
         }
 
         let hasSent = false;
+        let hopeless = false;
         let hasFailed = false;
         let finalError: string | null = null;
         let allTerminalNonRetryable = true;
 
+        sentNow = new Set(alreadySent);
         for (const target of targets) {
-          let dispatchResult;
-          try {
-            dispatchResult = await target.provider.dispatch(target.payload);
-          } catch (err: any) {
-            dispatchResult = {
-              status: 'FAILED' as NotificationStatus,
-              providerCode: 'ADAPTER_THREW',
-              providerMessage: err.message || 'Unknown error during adapter dispatch.',
-            };
+          const targetKey = outboxTargetKey(target);
+          if (alreadySent.has(targetKey) || (target.fallback && alreadySent.has(outboxTargetKey(target.fallback)))) {
+            // Delivered on an earlier attempt: counts as sent, is not re-sent.
+            hasSent = true;
+            allTerminalNonRetryable = false;
+            continue;
           }
+          const dispatchAndRecord = async (t: NotificationRoutingTarget) => {
+            let r: NotificationDispatchResult;
+            try {
+              r = await t.provider.dispatch(t.payload);
+            } catch (err: any) {
+              r = {
+                status: 'FAILED' as NotificationStatus,
+                providerCode: 'ADAPTER_THREW',
+                providerMessage: err.message || 'Unknown error during adapter dispatch.',
+              };
+            }
+            // A failed attempt WRITE must never turn a delivered message into a
+            // retry: that is how one SMS was re-sent 299 times over nine days.
+            try {
+              await this.recordAttempt.execute({
+                channel: t.channel,
+                recipient: t.payload.recipient,
+                template: t.payload.template,
+                status: r.status,
+                providerCode: r.providerCode,
+                providerMessage: r.providerMessage,
+                relatedEntity: t.payload.relatedEntity,
+                relatedEntityId: t.payload.relatedEntityId,
+              });
+            } catch {
+              result.unrecordedAttempts = (result.unrecordedAttempts ?? 0) + 1;
+            }
+            return r;
+          };
 
-          await this.recordAttempt.execute({
-            channel: target.channel,
-            recipient: target.payload.recipient,
-            template: target.payload.template,
-            status: dispatchResult.status,
-            providerCode: dispatchResult.providerCode,
-            providerMessage: dispatchResult.providerMessage,
-            relatedEntity: target.payload.relatedEntity,
-            relatedEntityId: target.payload.relatedEntityId,
-          });
+          let dispatchResult = await dispatchAndRecord(target);
+          let deliveredKey = targetKey;
+
+          // Fall back only when the primary did NOT send (SENT and DRY_RUN are
+          // both outcomes: a second channel would duplicate the message) and
+          // retrying it cannot help, or has already been tried enough.
+          if (target.fallback) {
+            const s = dispatchResult.status;
+            const primaryGaveUp =
+              s === 'NOT_CONFIGURED' ||
+              s === 'DISABLED' ||
+              (s === 'FAILED' &&
+                // A primary that may already have delivered must not be doubled.
+                dispatchResult.providerCode !== OUTCOME_UNKNOWN_PROVIDER_CODE &&
+                (dispatchResult.retryable === false || event.attemptCount >= PRIMARY_RETRIES_BEFORE_FALLBACK));
+            if (primaryGaveUp) {
+              dispatchResult = await dispatchAndRecord(target.fallback);
+              deliveredKey = outboxTargetKey(target.fallback);
+            }
+          }
 
           if (dispatchResult.status === 'SENT') {
             hasSent = true;
+            sentNow.add(deliveredKey);
             allTerminalNonRetryable = false;
           } else if (dispatchResult.status === 'FAILED') {
             hasFailed = true;
             allTerminalNonRetryable = false;
             finalError = dispatchResult.providerMessage;
+            // The provider said retrying cannot help. Believe it: production
+            // spent 244 attempts re-sending into "Credit exhausted", which both
+            // burned the budget and made an account problem look temporary.
+            if (dispatchResult.retryable === false) hopeless = true;
           } else {
             // NOT_CONFIGURED or DISABLED
             if (!finalError) {
@@ -145,7 +224,17 @@ export class ProcessOutboxBatchUseCase {
 
         if (hasFailed) {
           const nextAttemptCount = event.attemptCount + 1;
-          if (nextAttemptCount >= MAX_ATTEMPTS) {
+          if (hopeless) {
+            // Dead-lettered on the first answer, with the provider's own reason,
+            // so the queue shows what must be FIXED rather than what to wait for.
+            const message = `Not retryable: ${finalError}`;
+            if (this.outboxRepo.markDeadLettered) {
+              await this.outboxRepo.markDeadLettered(event.id, message);
+            } else {
+              await this.outboxRepo.markProcessed(event.id, { lastError: message });
+            }
+            result.exhausted++;
+          } else if (nextAttemptCount >= MAX_ATTEMPTS) {
             // Dead-letter, not "processed". An exhausted event was never
             // delivered, and recording it as processed made it identical to a
             // success in every metric and query — the failures were invisible.
@@ -159,7 +248,9 @@ export class ProcessOutboxBatchUseCase {
           } else {
             const backoffSeconds = computeBackoffSeconds(event.attemptCount, this.random);
             const nextAttemptAt = new Date(Date.now() + backoffSeconds * 1000);
-            await this.outboxRepo.recordFailure(event.id, finalError || 'Unknown fail', nextAttemptAt);
+            await this.outboxRepo.recordFailure(event.id, finalError || 'Unknown fail', nextAttemptAt, {
+              sentTargets: [...sentNow],
+            });
             result.retried++;
           }
         } else if (allTerminalNonRetryable) {
@@ -174,11 +265,30 @@ export class ProcessOutboxBatchUseCase {
         }
 
       } catch (fatalErr: any) {
-        // Unexpected crash processing single item, increment counter and retry normally
-        const backoffSeconds = computeBackoffSeconds(event.attemptCount, this.random);
-        const nextAttemptAt = new Date(Date.now() + backoffSeconds * 1000);
-        await this.outboxRepo.recordFailure(event.id, `UNEXPECTED_CRASH: ${fatalErr.message}`, nextAttemptAt);
-        result.retried++;
+        // Unexpected crash processing one event. It keeps what it already
+        // delivered (so a retry does not send it again) and it is bounded like
+        // every other failure: without MAX_ATTEMPTS here, a deterministic crash
+        // retried — and re-sent — for ever, and never reached the dead-letter list.
+        const message = `UNEXPECTED_CRASH: ${fatalErr?.message ?? String(fatalErr)}`;
+        if (event.attemptCount + 1 >= MAX_ATTEMPTS) {
+          const final = `Exhausted after ${MAX_ATTEMPTS} attempts. Last error: ${message}`;
+          if (this.outboxRepo.markDeadLettered) {
+            await this.outboxRepo.markDeadLettered(event.id, final);
+          } else {
+            await this.outboxRepo.markProcessed(event.id, { lastError: final });
+          }
+          result.exhausted++;
+        } else {
+          const backoffSeconds = computeBackoffSeconds(event.attemptCount, this.random);
+          const nextAttemptAt = new Date(Date.now() + backoffSeconds * 1000);
+          await this.outboxRepo.recordFailure(
+            event.id,
+            message,
+            nextAttemptAt,
+            sentNow ? { sentTargets: [...sentNow] } : undefined,
+          );
+          result.retried++;
+        }
       }
     }
 

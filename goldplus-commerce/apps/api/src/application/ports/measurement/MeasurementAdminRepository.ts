@@ -7,5 +7,9 @@ export interface ConsentBreakdown {
 export interface MeasurementAdminRepository {
   getConsentBreakdown(): Promise<ConsentBreakdown[]>;
   getPendingOutboxCount(): Promise<number>;
-  enqueueTelemetryDispatch(payload: any, eventId: string): Promise<void>;
+  /**
+   * Idempotent on `replayKey` (the DLQ entry id): a double-clicked or
+   * concurrent replay enqueues ONE dispatch. Falls back to the event id.
+   */
+  enqueueTelemetryDispatch(payload: any, eventId: string, replayKey?: string): Promise<void>;
 }

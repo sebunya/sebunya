@@ -1,3 +1,17 @@
+
+/**
+ * §19 data purity: a percentage is only shown when its denominator is safe.
+ * Below MIN_SAMPLE the share is withheld with the reason, never rendered as a
+ * misleadingly precise number.
+ */
+export const DEPTH_MIN_SAMPLE = 30;
+export function safeShare(numerator: number, denominator: number): { pct: number | null; reason: string | null } {
+  if (denominator < DEPTH_MIN_SAMPLE) {
+    return { pct: null, reason: `Sample too small (${denominator} < ${DEPTH_MIN_SAMPLE}) — percentage withheld.` };
+  }
+  return { pct: Math.round((numerator / denominator) * 1000) / 10, reason: null };
+}
+
 import type { 
   RecommendationAnalyticsQuery, 
   RecommendationAnalyticsResponse,
@@ -83,7 +97,13 @@ export class RecommendationAnalyticsService {
         ...identity,
         identityLinkRate: this.ratio(identity.eventsWithLeadId + identity.eventsWithCustomerId, identity.eventsWithAnonymousId)
       },
-      unavailableMetrics: this.getUnavailableMetrics()
+      // Empty by design. These five metrics ARE implemented — by
+      // RecommendationCommercialService, which the analytics page already
+      // renders above. This list previously declared them unavailable while
+      // the working panels sat directly above it, so the page contradicted
+      // itself. The field stays for backward compatibility with existing
+      // consumers.
+      unavailableMetrics: []
     };
   }
 
@@ -142,26 +162,106 @@ export class RecommendationAnalyticsService {
     return "healthy";
   }
 
-  private generateQualityWarnings(health: { totalEvents: number; missingAnonymousId: number; missingPlacement: number }): string[] {
+  /**
+   * Quality warnings, measured against the population each field applies to.
+   *
+   * These previously divided by TOTAL events, which is dominated by
+   * server-rendered serving records that can never carry a browser identifier
+   * or a placement. That inflated denominator worked in both directions and
+   * neither was honest: it reported 4% missing identity when 87% of the
+   * numerator's own population lacked one, and it would equally have raised a
+   * false alarm about placement on events that never have a placement.
+   *
+   * The warning now asks the question an operator actually needs answered: is
+   * any event unattributable to a visitor at all? An event carrying a visit
+   * profile but no anonymousId is fully attributable and is not a gap.
+   */
+  private generateQualityWarnings(health: {
+    totalEvents: number; missingAnonymousId: number; missingPlacement: number;
+    identityEligibleEvents?: number; missingAnonymousIdEligible?: number; eventsWithoutAnyIdentity?: number;
+    placementEligibleEvents?: number; missingPlacementEligible?: number;
+  }): string[] {
     const warnings: string[] = [];
-    if (health.totalEvents > 0) {
-      if (health.missingAnonymousId / health.totalEvents > 0.1) {
-        warnings.push("High volume of events missing anonymousId.");
-      }
-      if (health.missingPlacement / health.totalEvents > 0.05) {
-        warnings.push("Some events are missing placement context.");
+
+    const orphanedIdentity = health.eventsWithoutAnyIdentity ?? 0;
+    if (orphanedIdentity > 0 && health.totalEvents > 0) {
+      const share = orphanedIdentity / health.totalEvents;
+      warnings.push(
+        `${orphanedIdentity} event(s) carry no visitor identity of any kind (${(share * 100).toFixed(1)}% of all events); they cannot be attributed.`,
+      );
+    }
+
+    const identityEligible = health.identityEligibleEvents ?? 0;
+    if (identityEligible > 0) {
+      // Matched pair: both sides count client-produced events only.
+      const missingShare = (health.missingAnonymousIdEligible ?? 0) / identityEligible;
+      // Only client-produced events are expected to hold a browser id.
+      if (missingShare > 0.1) {
+        warnings.push(
+          `${(missingShare * 100).toFixed(1)}% of client-produced events are missing anonymousId, which usually means browser storage is unavailable for those visitors.`,
+        );
       }
     }
+
+    const placementEligible = health.placementEligibleEvents ?? 0;
+    if (placementEligible > 0) {
+      const missingPlacementShare = (health.missingPlacementEligible ?? 0) / placementEligible;
+      if (missingPlacementShare > 0.05) {
+        warnings.push(
+          `${(missingPlacementShare * 100).toFixed(1)}% of recommendation events are missing placement context.`,
+        );
+      }
+    }
+
     return warnings;
   }
 
-  private getUnavailableMetrics(): UnavailableMetric[] {
-    return [
-      { metric: "revenueAttribution", reason: "Revenue attribution requires completed order/payment linkage and is not available in this pass." },
-      { metric: "completedOrderConversion", reason: "Completed order conversion is deferred until order attribution is connected." },
-      { metric: "customerLifetimeValue", reason: "Customer lifetime value requires repeat purchase and order history aggregation." },
-      { metric: "roas", reason: "ROAS requires media cost data and revenue attribution." },
-      { metric: "profitContribution", reason: "Profit contribution requires product margin and completed order attribution." }
-    ];
+  /** §19 depth metrics: coverage, placement integrity, concentration, source mix. */
+  /** R6: serving truth per placement, from server-native response events. */
+  async getServingHealth(windowDays = 7) {
+    const clamped = Math.min(90, Math.max(1, windowDays));
+    return this.repo.getServingHealth(clamped);
   }
+
+  /**
+   * R4: lineage health. Distinguishes DATA problems from ENGINE problems
+   * (AC22): historic pre-contract rows are a fact of history, orphan clicks
+   * are a producer defect, identity-unavailable rows are a capture defect.
+   */
+  async getLineageReport(windowDays = 30) {
+    const clamped = Math.min(90, Math.max(1, windowDays));
+    return this.repo.getLineageReport(clamped);
+  }
+
+  async getDepthMetrics(windowDays = 30) {
+    const raw = await this.repo.depthMetricsRaw(windowDays);
+    const unknownPlacement = safeShare(raw.nullPlacementEvents + raw.invalidPlacementEvents, raw.totalEvents);
+    const top5Events = raw.topProducts.reduce((sum, t) => sum + t.events, 0);
+    const concentration = safeShare(top5Events, raw.totalEvents);
+    return {
+      windowDays,
+      totalEvents: raw.totalEvents,
+      coverage: {
+        distinctRecommendedProducts: raw.distinctRecommendedProducts,
+        activeProducts: raw.activeProducts,
+        // Coverage denominator is the catalogue, not the event stream: it is safe
+        // whenever the catalogue is non-empty, so the share gates only on that.
+        pct: raw.activeProducts > 0 ? Math.round((raw.distinctRecommendedProducts / raw.activeProducts) * 1000) / 10 : null,
+        reason: raw.activeProducts > 0 ? null : 'No active products — coverage undefined.',
+      },
+      unknownPlacement: {
+        nullPlacementEvents: raw.nullPlacementEvents,
+        invalidPlacementEvents: raw.invalidPlacementEvents,
+        ...unknownPlacement,
+      },
+      catalogueConcentration: {
+        top5Events,
+        topProducts: raw.topProducts,
+        ...concentration,
+      },
+      sourceBreakdown: raw.sourceBreakdown,
+      note: 'Raw counts always shown; percentages appear only with safe denominators (min sample ' + String(DEPTH_MIN_SAMPLE) + ' events).',
+    };
+  }
+
 }
