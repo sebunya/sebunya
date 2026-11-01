@@ -36,6 +36,10 @@ const readFlowCookie = (request: Request): { sealedFlow: string; returnTo: strin
   }
 };
 
+const readCookieValue = (request: Request, name: string): string | null => {
+  const part = (request.headers.get('cookie') ?? '').split(';').map((p) => p.trim()).find((p) => p.startsWith(`${name}=`));
+  return part ? part.slice(name.length + 1) || null : null;
+};
 
 const handle: APIRoute = async ({ params, request, url }) => {
   const provider = String(params.provider ?? '');
@@ -95,6 +99,30 @@ const handle: APIRoute = async ({ params, request, url }) => {
     // A first sign-in with Google or Apple IS a new account: the same marker
     // the register page sets, so it is reported as one sign_up (lib/siteSignals).
     if (created === true) headers.append('Set-Cookie', `${SIGNED_UP_COOKIE}=1; Path=/${secure}; SameSite=Lax; Max-Age=300`);
+
+    // R9 (M8, fixation), as password login and registration do: the visit token
+    // is ROTATED at the authentication boundary and the NEW one is linked to the
+    // customer, so a planted or shared gp_visit never becomes theirs.
+    const { mintSignedVisitToken } = await import('../../../lib/visitToken');
+    const { VISIT_COOKIE_NAME, VISIT_COOKIE_MAX_AGE_SECONDS } = await import('../../../middleware');
+    const rotatedVisit = mintSignedVisitToken();
+    if (rotatedVisit) {
+      headers.append('Set-Cookie', `${VISIT_COOKIE_NAME}=${rotatedVisit}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${VISIT_COOKIE_MAX_AGE_SECONDS}${secure}`);
+      const fp = readCookieValue(request, '_fp_cid');
+      try {
+        await fetch(`${apiBase}/recommendations/profile/link`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${(json.data as { token: string }).token}`,
+            'x-gp-visit': rotatedVisit,
+            ...(fp && /^fp\.\d+\.[0-9a-f-]{36}$/.test(fp) ? { 'x-gp-fpcid': fp } : {}),
+          },
+          signal: AbortSignal.timeout(3000),
+        });
+      } catch {
+        // Continuity, not correctness.
+      }
+    }
     return new Response(null, { status: 303, headers });
   } catch {
     return fail('exchange');
