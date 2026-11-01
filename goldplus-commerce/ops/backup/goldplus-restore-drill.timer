@@ -1,0 +1,10 @@
+[Unit]
+Description=Monthly GoldPlus restore drill, first Sunday 03:30 UTC (after the 02:15 dump and the 02:50 offsite copy)
+
+[Timer]
+OnCalendar=Sun *-*-1..7 03:30:00 UTC
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,52 @@
+name: Bank of Uganda dollar rate
+
+# Reads the day's USD/UGX mid, buying and selling rates off bou.or.ug (a Power BI report with no JSON feed) in a
+# real browser at 13:00 Kampala, Monday to Friday, and posts them to the shop (POST /internal/fx/bou, shared
+# secret BOU_FX_TOKEN). The shop prices dollar spend at the HIGHER of the market quote and the Bank of Uganda
+# selling rate plus the owner's margin (resolveUgxPerUsd); BoU's last rate stands over weekends and holidays. The
+# AllRatesToday BoU feed already covers this; the schedule runs only with BOU_FX_ENABLED=true. Also on demand
+# (workflow_dispatch; tick dry run to only print the reading).
+on:
+  schedule:
+    - cron: '0 10 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Only print the reading, do not post it'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: goldplus-commerce
+
+jobs:
+  read-and-post:
+    # The scheduled run is off until the owner sets the repository variable BOU_FX_ENABLED=true (with the
+    # BOU_FX_TOKEN secret and the same value on the server). The AllRatesToday feed covers BoU meanwhile; without
+    # this guard the schedule failed every weekday for want of a secret (2026-10-29 review). Manual runs still work.
+    if: ${{ github.event_name != 'schedule' || vars.BOU_FX_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4, pinned 2026-10-07
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4, pinned 2026-10-07
+        with:
+          version: 9.1.4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4, pinned 2026-10-07
+        with:
+          node-version: 22
+          cache: 'pnpm'
+          cache-dependency-path: goldplus-commerce/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Read bou.or.ug and post the reading
+        env:
+          API_URL: https://api.shopgoldplus.com
+          BOU_FX_TOKEN: ${{ secrets.BOU_FX_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run == true }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then node scripts/bou-fx.mjs --dry-run; else node scripts/bou-fx.mjs; fi
