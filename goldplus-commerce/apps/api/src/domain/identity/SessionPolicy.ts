@@ -73,6 +73,16 @@ export function sessionExpiries(now: Date): { accessExpiresAt: Date; refreshExpi
  * A token issued at or before the cutoff is dead regardless of its signature
  * validity — this is what makes revocation not wait for the access TTL.
  */
+/**
+ * The cut-off to stamp for "end every session now". Tokens carry a whole-second iat and the check is iat <= cutoff,
+ * so stamping the millisecond instant also voided a token issued later in that same second (the customer signing
+ * straight back in after a reset). One rule for every revocation path, matching the social repository's SQL
+ * (date_trunc('second', now()) - 1 ms): the start of the current second, less a millisecond.
+ */
+export function sessionCutoffAt(now: Date): Date {
+  return new Date(Math.floor(now.getTime() / 1000) * 1000 - 1);
+}
+
 export function isInvalidatedByCutoff(issuedAt: Date, cutoff: Date | null | undefined): boolean {
   if (!cutoff) return false;
   return issuedAt.getTime() <= cutoff.getTime();
