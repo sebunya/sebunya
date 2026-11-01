@@ -58,13 +58,15 @@ export class DrizzleCustomerProfileRepository implements ICustomerProfileReposit
     // It used to advance on newer data only, so stages froze.
     // jsonb here is written by the driver as an encoded string ('"[]"'), so it
     // is decoded before comparing, and the new value goes in as TEXT (a param
-    // typed jsonb is JSON-encoded again by the driver); timestamps are compared at millisecond
-    // precision (a JS Date has no microseconds, Postgres does).
+    // typed jsonb is JSON-encoded again by the driver); timestamps are compared at SECOND
+    // precision: a JS Date has no microseconds and the round trip does not
+    // keep milliseconds stable either (the real-PostgreSQL test proves a
+    // millisecond compare re-versions unchanged profiles).
     // Never go backwards: a snapshot built from OLDER data (lower sourceVersion)
     // than the stored one is dropped, whatever else differs, so a slow worker
     // finishing late cannot overwrite a newer projection.
     const asJson = (col: unknown) => sql`(case when jsonb_typeof(${col}) = 'string' then (${col} #>> '{}')::jsonb else ${col} end)`;
-    const ms = (v: unknown) => sql`date_trunc('milliseconds', ${v})`;
+    const ms = (v: unknown) => sql`date_trunc('second', ${v})`;
     const at = (d: Date | null) => (d ? sql`${d.toISOString()}::timestamptz` : sql`null::timestamptz`);
     const changed = sql`(${customerProfiles.sourceVersion} <= ${s.sourceVersion}) and (${customerProfiles.sourceVersion} < ${s.sourceVersion}
       or ${customerProfiles.primaryLifecycleStage} is distinct from ${s.primaryLifecycleStage}

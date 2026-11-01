@@ -57,17 +57,17 @@ function inline(escaped: string): string {
   // Links first, each held aside as a placeholder, so emphasis never reaches
   // inside a generated tag (a '*' in an href used to become <em> in the URL).
   const anchors: string[] = [];
-  let out = escaped.replace(/\u0000/g, '');
+  let out = escaped.replace(/\uE000/g, '');
   out = out.replace(/\[([^\]\n]{1,200})\]\(([^)\s]{1,500})\)/g, (_whole, label: string, href: string) => {
     const safe = safeHref(href.replace(/&amp;/g, '&'));
     if (!safe) return label; // A refused link degrades to its own words.
     const external = safe.startsWith('https://');
     const rel = external ? ' rel="nofollow noopener" target="_blank"' : '';
     anchors.push(`<a href="${escapeHtml(safe)}" class="gp-article__link"${rel}>${emphasis(label)}</a>`);
-    return `\u0000${anchors.length - 1}\u0000`;
+    return `\uE000${anchors.length - 1}\uE000`;
   });
   out = emphasis(out);
-  return out.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => anchors[Number(i)] ?? '');
+  return out.replace(/\uE000(\d+)\uE000/g, (_m, i: string) => anchors[Number(i)] ?? '');
 }
 
 /** The article as HTML, safe to inject with set:html. */

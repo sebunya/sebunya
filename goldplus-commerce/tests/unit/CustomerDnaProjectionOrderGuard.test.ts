@@ -14,7 +14,7 @@ vi.mock('../../apps/api/src/infrastructure/db/client', () => {
 import { DrizzleCustomerProfileRepository } from '../../apps/api/src/infrastructure/db/repositories/DrizzleCustomerDnaRepositories';
 
 describe('customer profile projection never goes backwards', () => {
-  it('the update is gated on the stored sourceVersion being <= the snapshot, at ms precision', async () => {
+  it('the update is gated on the stored sourceVersion being <= the snapshot, compared at second precision', async () => {
     await new DrizzleCustomerProfileRepository().upsertProjection({
       canonicalCustomerId: '00000000-0000-4000-8000-000000000001', accountUserId: null,
       sourceVersion: 5, profileVersion: 1, identityConfidence: 'HIGH', firstSeen: null, lastSeen: null,
@@ -23,7 +23,6 @@ describe('customer profile projection never goes backwards', () => {
     } as never);
     const q = new PgDialect().sqlToQuery(wheres[0] as never);
     expect(q.sql).toMatch(/\("customer_profiles"\."source_version" <= \$\d+\) and \(/);
-    expect(q.sql).toContain("date_trunc('milliseconds'");
-    expect(q.sql).not.toContain("date_trunc('second'");
+    expect(q.sql).toContain("date_trunc('second'");
   });
 });
