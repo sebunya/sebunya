@@ -1,0 +1,329 @@
+import {
+  pgTable,
+  uuid,
+  varchar,
+  text,
+  integer,
+  smallint,
+  bigint,
+  boolean,
+  numeric,
+  timestamp,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
+
+/**
+ * Delivery estimation schema (brief v7, migration 0092).
+ *
+ * This is the data the ONE quoting service reads. Nothing here computes a fee.
+ * Every configuration value ships NULL or neutral: a factor at 1.0 means
+ * "nothing learned yet", and the six launch values are absent until Rob sets
+ * them, at which point the module stops returning `fee_unavailable`.
+ */
+
+export const deliveryOrigin = pgTable('delivery_origin', {
+  originCode: varchar('origin_code', { length: 40 }).primaryKey(),
+  name: varchar('name', { length: 120 }).notNull(),
+  role: varchar('role', { length: 40 }).notNull(),
+  street: varchar('street', { length: 160 }),
+  landmarkPrimary: varchar('landmark_primary', { length: 160 }),
+  landmarkSecondary: varchar('landmark_secondary', { length: 160 }),
+  areaSlug: varchar('area_slug', { length: 160 }),
+  district: varchar('district', { length: 100 }),
+  corridor: varchar('corridor', { length: 40 }),
+  distanceBand: varchar('distance_band', { length: 4 }),
+  /** numeric, not float — 32.57750 must round-trip exactly. */
+  latitude: numeric('latitude', { precision: 9, scale: 6 }).notNull(),
+  longitude: numeric('longitude', { precision: 9, scale: 6 }).notNull(),
+  coordSource: varchar('coord_source', { length: 60 }),
+  coordAnchor: varchar('coord_anchor', { length: 300 }),
+  coordConfidence: varchar('coord_confidence', { length: 60 }),
+  active: boolean('active').default(false).notNull(),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ activeIdx: index('delivery_origin_active_idx').on(t.active) }));
+
+export const deliveryCorridor = pgTable('delivery_corridor', {
+  areaSlug: varchar('area_slug', { length: 160 }).primaryKey(),
+  postcode: varchar('postcode', { length: 8 }),
+  deliveryZone: varchar('delivery_zone', { length: 4 }),
+  district: varchar('district', { length: 100 }).notNull(),
+  subCountyOrDivision: varchar('sub_county_or_division', { length: 160 }),
+  area: varchar('area', { length: 160 }).notNull(),
+  /** NOT NULL by design: PART 9 #9 — no metro area without a corridor and band. */
+  corridor: varchar('corridor', { length: 40 }).notNull(),
+  distanceBand: varchar('distance_band', { length: 4 }).notNull(),
+  accessMode: varchar('access_mode', { length: 16 }).notNull(),
+  assignmentConfidence: varchar('assignment_confidence', { length: 16 }),
+  assignmentBasis: varchar('assignment_basis', { length: 24 }),
+  serviceable: boolean('serviceable').default(true).notNull(),
+  /**
+   * Nullable on purpose: null means DERIVE it (from the band against
+   * own_rider_max_band, from access_mode, from serviceable). A value here is an
+   * operator's explicit override and always beats the derivation.
+   */
+  fulfilmentMode: varchar('fulfilment_mode', { length: 16 }),
+  centroidLat: numeric('centroid_lat', { precision: 9, scale: 6 }),
+  centroidLng: numeric('centroid_lng', { precision: 9, scale: 6 }),
+  centroidSource: varchar('centroid_source', { length: 24 }),
+  centroidSampleSize: integer('centroid_sample_size').default(0).notNull(),
+  /** 0189: how far the point can be wrong, measured or stated, never guessed (null = unknown). */
+  centroidExpectedErrorM: integer('centroid_expected_error_m'),
+  /** 0189: what the point was derived from (parish PCODE, 'pins:<n>', an admin note). */
+  centroidSourceRef: varchar('centroid_source_ref', { length: 160 }),
+  /** 0189: several areas share one 2016 parish polygon (a post-2016 split); pins separate them later. */
+  centroidSharedPolygon: boolean('centroid_shared_polygon').default(false).notNull(),
+  centroidUpdatedAt: timestamp('centroid_updated_at', { withTimezone: true }),
+  dataVersion: integer('data_version').default(1).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  corridorIdx: index('delivery_corridor_corridor_idx').on(t.corridor),
+  bandIdx: index('delivery_corridor_band_idx').on(t.distanceBand),
+}));
+
+export const deliveryAliasCorridor = pgTable('delivery_alias_corridor', {
+  alias: varchar('alias', { length: 120 }).primaryKey(),
+  aliasType: varchar('alias_type', { length: 40 }).notNull(),
+  district: varchar('district', { length: 100 }).notNull(),
+  anchorAreaInGazetteer: varchar('anchor_area_in_gazetteer', { length: 160 }),
+  anchorPostcode: varchar('anchor_postcode', { length: 8 }),
+  anchorAreaSlug: varchar('anchor_area_slug', { length: 160 }).notNull(),
+  corridor: varchar('corridor', { length: 40 }).notNull(),
+  distanceBand: varchar('distance_band', { length: 4 }).notNull(),
+  bandConfidence: varchar('band_confidence', { length: 16 }),
+  /** 5 of 28 differ from their anchor — this table is not derivable. */
+  differsFromAnchor: boolean('differs_from_anchor').default(false).notNull(),
+  note: text('note'),
+  dataVersion: integer('data_version').default(1).notNull(),
+});
+
+export const deliveryNameCollision = pgTable('delivery_name_collision', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  collisionType: varchar('collision_type', { length: 48 }).notNull(),
+  collidingName: varchar('colliding_name', { length: 160 }).notNull(),
+  districtWithThatName: varchar('district_with_that_name', { length: 100 }),
+  areaSitsInDistrict: varchar('area_sits_in_district', { length: 100 }).notNull(),
+  subCounty: varchar('sub_county', { length: 160 }),
+  postcode: varchar('postcode', { length: 8 }),
+  areaSlug: varchar('area_slug', { length: 160 }).notNull(),
+  deliveryZone: varchar('delivery_zone', { length: 4 }),
+  routingRule: text('routing_rule'),
+  dataVersion: integer('data_version').default(1).notNull(),
+}, (t) => ({
+  uq: uniqueIndex('delivery_name_collision_uq').on(t.collisionType, t.collidingName, t.areaSlug),
+}));
+
+export const deliveryConfigVersion = pgTable('delivery_config_version', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  status: varchar('status', { length: 12 }).default('draft').notNull(),
+  reason: varchar('reason', { length: 500 }),
+  createdBy: uuid('created_by'),
+  publishedBy: uuid('published_by'),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  /** Compared in EAT by the reader — see packages/shared/src/time/eat.ts. */
+  scheduledFor: timestamp('scheduled_for', { withTimezone: true }),
+  revertedFrom: uuid('reverted_from'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ statusIdx: index('delivery_config_version_status_idx').on(t.status) }));
+
+export const deliveryConfigValue = pgTable('delivery_config_value', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  versionId: uuid('version_id').references(() => deliveryConfigVersion.id, { onDelete: 'cascade' }).notNull(),
+  configKey: varchar('config_key', { length: 80 }).notNull(),
+  configValue: text('config_value'),
+  /** Whether a human set this number or the nightly model proposed it. */
+  origin: varchar('origin', { length: 16 }).default('human').notNull(),
+  sampleSize: integer('sample_size'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ uq: uniqueIndex('delivery_config_value_uq').on(t.versionId, t.configKey) }));
+
+export const deliveryLearnedFactor = pgTable('delivery_learned_factor', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  factorKind: varchar('factor_kind', { length: 24 }).notNull(),
+  scopeKey: varchar('scope_key', { length: 160 }).notNull(),
+  /** 1.0 = nothing learned yet, and admin must show it as such. */
+  value: numeric('value', { precision: 8, scale: 4 }).default('1.0').notNull(),
+  sampleSize: integer('sample_size').default(0).notNull(),
+  origin: varchar('origin', { length: 16 }).default('prior').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ uq: uniqueIndex('delivery_learned_factor_uq').on(t.factorKind, t.scopeKey) }));
+
+export const deliveryQuoteCapture = pgTable('delivery_quote_capture', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orderId: uuid('order_id').notNull(),
+  areaSlug: varchar('area_slug', { length: 160 }),
+  aliasUsed: varchar('alias_used', { length: 120 }),
+  corridor: varchar('corridor', { length: 40 }),
+  distanceBand: varchar('distance_band', { length: 4 }),
+  quotedFeeUgx: bigint('quoted_fee_ugx', { mode: 'number' }),
+  finalFeeUgx: bigint('final_fee_ugx', { mode: 'number' }),
+  varianceReason: varchar('variance_reason', { length: 48 }),
+  /** Moved into stage A: without this from the first delivery, PART 4 is dead. */
+  actualRiderCostUgx: bigint('actual_rider_cost_ugx', { mode: 'number' }),
+  expectedMinutes: numeric('expected_minutes', { precision: 8, scale: 2 }),
+  actualMinutes: numeric('actual_minutes', { precision: 8, scale: 2 }),
+  dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
+  deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+  hadPin: boolean('had_pin'),
+  firstAttemptSuccess: boolean('first_attempt_success'),
+  distanceTravelledKm: numeric('distance_travelled_km', { precision: 8, scale: 2 }),
+  centroidSource: varchar('centroid_source', { length: 24 }),
+  configVersionId: uuid('config_version_id'),
+  // 0093 — which mechanism answered, and with which negotiated card. Without
+  // this a disputed shipping charge cannot be reproduced, because the card may
+  // have been renegotiated since.
+  fulfilmentMode: varchar('fulfilment_mode', { length: 16 }),
+  carrier: varchar('carrier', { length: 80 }),
+  rateCardId: uuid('rate_card_id'),
+  rateCardVersion: integer('rate_card_version'),
+  parcelClass: varchar('parcel_class', { length: 8 }),
+  parcelOfficeId: uuid('parcel_office_id'),
+  pricedBy: varchar('priced_by', { length: 24 }),
+  // 0094 — per PARCEL, because a bus office charges per parcel.
+  parcelCount: integer('parcel_count'),
+  perParcelFeeUgx: bigint('per_parcel_fee_ugx', { mode: 'number' }),
+  // 0152 — the inputs the hour and detour fits need, recorded when the quote is
+  // given. Hour of week in EAT (0–167); straight-line distance is the ROUND trip
+  // before any detour, comparable to distance_travelled_km.
+  eatHourOfWeek: smallint('eat_hour_of_week'),
+  straightLineKm: numeric('straight_line_km', { precision: 8, scale: 2 }),
+  /** 0189: PIN | AREA_POINT | BAND_MIDPOINT | DISTRICT — how precisely the customer's location was known. */
+  accuracyTier: varchar('accuracy_tier', { length: 16 }),
+  /** 0189: one-way km from the active origin to the area's point, recorded whether or not the quote used it. */
+  centroidKm: numeric('centroid_km', { precision: 8, scale: 2 }),
+  centroidExpectedErrorM: integer('centroid_expected_error_m'),
+  /** 0189: which distance priced this quote (band_midpoint | measured_centroid), so populations can be separated later. */
+  distanceSource: varchar('distance_source', { length: 16 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  orderUq: uniqueIndex('delivery_quote_capture_order_uq').on(t.orderId),
+  areaIdx: index('delivery_quote_capture_area_idx').on(t.areaSlug),
+  deliveredIdx: index('delivery_quote_capture_delivered_idx').on(t.deliveredAt),
+}));
+
+/**
+ * Observed delivery minutes per area (0152), replaced wholesale by the nightly
+ * calibration from real deliveries. The quote reads it for the hour window.
+ */
+export const deliveryWindowPercentile = pgTable('delivery_window_percentile', {
+  scopeKey: varchar('scope_key', { length: 160 }).primaryKey(),
+  p10Minutes: numeric('p10_minutes', { precision: 8, scale: 2 }).notNull(),
+  p90Minutes: numeric('p90_minutes', { precision: 8, scale: 2 }).notNull(),
+  sampleSize: integer('sample_size').notNull(),
+  computedAt: timestamp('computed_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * Bus destinations (0093) — the skeleton, without a single price.
+ *
+ * 128 towns across nine trunk routes. Mubende appears on TWO routes (R7 and R8)
+ * because two trunk roads reach it, so the key is (route, town) and not the
+ * district. Fees live in `deliveryBusRateCard` and arrive per carrier as
+ * negotiations close, route by route.
+ */
+export const deliveryBusDestination = pgTable('delivery_bus_destination', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  route: varchar('route', { length: 48 }).notNull(),
+  destinationTown: varchar('destination_town', { length: 120 }).notNull(),
+  matchingDistrict: varchar('matching_district', { length: 100 }).notNull(),
+  region: varchar('region', { length: 60 }),
+  currentZone: varchar('current_zone', { length: 4 }),
+  areasInDistrict: integer('areas_in_district'),
+  notes: text('notes'),
+  dataVersion: integer('data_version').default(1).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  uq: uniqueIndex('delivery_bus_destination_uq').on(t.route, t.destinationTown),
+  districtIdx: index('delivery_bus_destination_district_idx').on(t.matchingDistrict),
+}));
+
+/**
+ * Negotiated carrier rate cards (0093). NEVER a model, never interpolated.
+ *
+ * A row exists only once a fee has actually been agreed, which is why
+ * `feeUgx` is NOT NULL: a card with a null fee would be indistinguishable from
+ * no card, and the module's answer to "no card" is to say so and use the manual
+ * path rather than borrow a neighbouring town's price.
+ */
+export const deliveryBusRateCard = pgTable('delivery_bus_rate_card', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  carrier: varchar('carrier', { length: 80 }).notNull(),
+  destinationTown: varchar('destination_town', { length: 120 }).notNull(),
+  destinationDistrict: varchar('destination_district', { length: 100 }).notNull(),
+  parcelClass: varchar('parcel_class', { length: 8 }).notNull(),
+  feeUgx: bigint('fee_ugx', { mode: 'number' }).notNull(),
+  /** Null = the carrier offers no cover, which is not zero percent cover. */
+  insurancePctOfDeclaredValue: numeric('insurance_pct_of_declared_value', { precision: 6, scale: 3 }),
+  transitDaysMin: integer('transit_days_min').notNull(),
+  transitDaysMax: integer('transit_days_max').notNull(),
+  chargedAt: varchar('charged_at', { length: 12 }).notNull(),
+  effectiveFrom: timestamp('effective_from', { withTimezone: true }).notNull(),
+  effectiveTo: timestamp('effective_to', { withTimezone: true }),
+  version: integer('version').default(1).notNull(),
+  sourceNote: text('source_note'),
+  /** 0192: 'taxi' | 'bus' | 'special'. */
+  carrierKind: varchar('carrier_kind', { length: 12 }).default('bus').notNull(),
+  handoverPoint: varchar('handover_point', { length: 160 }),
+  createdBy: uuid('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  uq: uniqueIndex('delivery_bus_rate_card_uq').on(t.carrier, t.destinationTown, t.destinationDistrict, t.parcelClass, t.version),
+  lookupIdx: index('delivery_bus_rate_card_lookup_idx').on(t.destinationTown, t.destinationDistrict, t.parcelClass),
+}));
+
+/**
+ * Applied fee variances (0095, brief PART 5).
+ *
+ * A row here carries old, new, reason, actor, timestamp and agreement — every
+ * field the brief requires — and the audit log carries the same facts. The
+ * pairing constraint is the control: an absorbed variance can never be waiting
+ * on a customer, and one that needs agreement can never be 'not_required'.
+ */
+export const deliveryFeeVariance = pgTable('delivery_fee_variance', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orderId: uuid('order_id').notNull(),
+  oldFeeUgx: bigint('old_fee_ugx', { mode: 'number' }).notNull(),
+  newFeeUgx: bigint('new_fee_ugx', { mode: 'number' }).notNull(),
+  deltaUgx: bigint('delta_ugx', { mode: 'number' }).notNull(),
+  reason: varchar('reason', { length: 48 }).notNull(),
+  note: text('note'),
+  disposition: varchar('disposition', { length: 20 }).notNull(),
+  agreement: varchar('agreement', { length: 16 }).notNull(),
+  appliedBy: uuid('applied_by').notNull(),
+  appliedAt: timestamp('applied_at', { withTimezone: true }).defaultNow().notNull(),
+  agreementBy: uuid('agreement_by'),
+  agreementAt: timestamp('agreement_at', { withTimezone: true }),
+  cancelledOrder: boolean('cancelled_order').default(false).notNull(),
+}, (t) => ({
+  orderIdx: index('delivery_fee_variance_order_idx').on(t.orderId),
+}));
+
+/** Calibration proposals (0096). PROPOSED, NEVER APPLIED. */
+export const deliveryCalibrationProposal = pgTable('delivery_calibration_proposal', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  factorKind: varchar('factor_kind', { length: 24 }).notNull(),
+  scopeKey: varchar('scope_key', { length: 160 }).notNull(),
+  /** NULL when nothing was learned before — never 1.0 standing in for absence. */
+  currentValue: numeric('current_value', { precision: 10, scale: 4 }),
+  currentState: varchar('current_state', { length: 16 }).notNull(),
+  proposedValue: numeric('proposed_value', { precision: 10, scale: 4 }).notNull(),
+  sampleSize: integer('sample_size').notNull(),
+  feeImpactUgx: bigint('fee_impact_ugx', { mode: 'number' }),
+  status: varchar('status', { length: 12 }).default('pending').notNull(),
+  decidedBy: uuid('decided_by'),
+  decidedAt: timestamp('decided_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ statusIdx: index('delivery_calibration_proposal_status_idx').on(t.status) }));
+
+/** One-time milestones, so "fires once ever" survives restarts and replicas. */
+export const deliveryCalibrationMilestone = pgTable('delivery_calibration_milestone', {
+  milestone: varchar('milestone', { length: 48 }).primaryKey(),
+  orderId: uuid('order_id'),
+  firedAt: timestamp('fired_at', { withTimezone: true }).defaultNow().notNull(),
+  note: text('note'),
+});

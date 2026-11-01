@@ -1,0 +1,196 @@
+import {
+  UGANDA_DISTRICTS,
+  normalizeUgandaDistrict,
+  districtRoadKm,
+} from '@goldplus/shared';
+import {
+  DEFAULT_DELIVERY_BAND_POLICY,
+  DeliveryBandPolicy,
+  DeliveryEstimate,
+  bandForKm,
+  bandFeeUgx,
+  estimateDeliveryFee,
+  validateBandPolicy,
+} from '../../../domain/commerce/DeliveryFeePrediction';
+import { normalizeDistrict } from '../../../domain/commerce/DeliveryFee';
+import { IDeliveryZoneRepository } from '../../ports/IDeliveryZoneRepository';
+import {
+  IDeliveryFeeObservationReader,
+  IDeliveryPricingPolicyRepository,
+  StoredDeliveryBandPolicy,
+} from '../../ports/IDeliveryIntelligence';
+
+interface Deps {
+  zones: IDeliveryZoneRepository;
+  policy: IDeliveryPricingPolicyRepository;
+  observations: IDeliveryFeeObservationReader;
+  /**
+   * THE quoting service (docs/delivery/CONTRACT.md, guarantee #1), through the
+   * same narrow adapter checkout holds. Optional only so the cockpit use case,
+   * which shares these deps, still constructs without it.
+   */
+  quoting?: {
+    quote(input: {
+      areaSlug?: string | null;
+      district?: string | null;
+      deliveryArea?: string | null;
+      items: ReadonlyArray<{ productId: string; quantity: number }>;
+    }): Promise<{ feeUgx: number | null; confirmed: boolean; mayFallBackToLegacy: boolean; unavailableReason?: string | null; paidAtCollectionUgx?: number | null }>;
+  } | null;
+}
+
+/** One destination's estimate — the checkout read. */
+export class GetDeliveryEstimateUseCase {
+  constructor(private readonly deps: Deps) {}
+
+  async execute(input: {
+    district: string;
+    area?: string | null;
+    /** The gazetteer slug of the picked or saved area — the same key checkout charges on. */
+    areaSlug?: string | null;
+    /**
+     * The basket, when the caller has one (checkout does). With it the quote is
+     * asked EXACTLY the question CheckoutUseCase will ask when it charges the
+     * order, so the page's figure and the order's fee cannot disagree.
+     */
+    items?: ReadonlyArray<{ productId: string; quantity: number }> | null;
+  }): Promise<
+    | { ok: true; district: string; area: string | null; estimate: DeliveryEstimate }
+    | { ok: false; code: 'UNKNOWN_DISTRICT'; message: string }
+  > {
+    const area = input.area?.trim() || null;
+    // A typed place with no district: checkout prices it from the text alone (district null), so the estimate
+    // asks the same. Only a district that is given and not a Uganda district is refused.
+    const typedOnly = !(input.district ?? '').trim() && !!area;
+    const district = typedOnly ? null : normalizeUgandaDistrict(input.district);
+    if (!district && !typedOnly) {
+      return { ok: false, code: 'UNKNOWN_DISTRICT', message: `"${input.district}" is not a Uganda district.` };
+    }
+    const areaSlug = input.areaSlug?.trim() || null;
+    const items = (input.items ?? []).filter((i) => i && i.productId && i.quantity > 0);
+
+    // THE quoting service answers first, under exactly the rule CheckoutUseCase
+    // applies: the legacy zone/band model is consulted only on CONFIG_INCOMPLETE
+    // (mayFallBackToLegacy). There is no other door into the legacy model.
+    //
+    // This endpoint drives the checkout page's "Delivery" row and its grand
+    // total, and it answered from the legacy model alone while the order was
+    // charged the quoting service's fee. Gulu was the concrete case: an enabled
+    // zone row said 15,000, so the totals showed goods + 15,000, while the
+    // service resolved it to a bus parcel with no rate card and the order was
+    // created with fee 0, unconfirmed. Two quoting paths, two answers, one page.
+    // The customer saw a total the order did not charge.
+    //
+    // A later "basket-derived" escape handed NO_RATE_CARD / PARCEL_CLASS_UNKNOWN
+    // back to the legacy model because this endpoint had no basket — and so
+    // brought the Gulu case straight back: the zone fee (or the seed band
+    // defaults, which CONTRACT #4 forbids) was shown CONFIRMED while the order
+    // was charged 0. That escape is gone. With a basket, the service's answer is
+    // the charge. Without one, a per-parcel refusal is shown as UNAVAILABLE —
+    // honest "not priced yet" beats a figure the order will not charge.
+    if (this.deps.quoting) {
+      const quoted = await this.deps.quoting.quote({ areaSlug, district, deliveryArea: area, items });
+      if (!quoted.mayFallBackToLegacy) {
+        const estimate: DeliveryEstimate = quoted.feeUgx === null
+          ? { kind: 'UNAVAILABLE', feeUgx: null, source: null, band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false }
+          : { kind: quoted.confirmed ? 'CONFIRMED' : 'ESTIMATED', feeUgx: quoted.feeUgx, source: 'MODEL', band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false, ...(quoted.paidAtCollectionUgx ? { paidAtCollectionUgx: quoted.paidAtCollectionUgx } : {}) };
+        return { ok: true, district: district ?? '', area, estimate };
+      }
+    }
+    // The legacy zone model needs a district; without one there is no figure to show (CONTRACT #4).
+    if (!district) {
+      return { ok: true, district: '', area, estimate: { kind: 'UNAVAILABLE', feeUgx: null, source: null, band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false } };
+    }
+
+    // CONFIG_INCOMPLETE: the zone row alone, exactly what CheckoutUseCase (resolveDeliveryFee) charges and what
+    // /delivery/quote falls back to. This used to run the band model, whose never-saved seed figures (CITY 8,000
+    // and so on) and observed medians showed "about UGX 8,000" in the Delivery row beside a panel saying pricing
+    // was being finalised, for an order charged 0 (CONTRACT #1, #4). The band model stays in the cockpit.
+    const zone = await this.deps.zones.findByDistrict(district);
+    const estimate: DeliveryEstimate = zone && zone.enabled
+      ? { kind: 'CONFIRMED', feeUgx: zone.feeUgx, source: 'ZONE', band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false }
+      : { kind: 'UNAVAILABLE', feeUgx: null, source: null, band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false };
+    return { ok: true, district, area, estimate };
+  }
+}
+
+export interface DistrictIntelligenceRow {
+  district: string;
+  km: number | null;
+  band: string | null;
+  modelFeeUgx: number | null;
+  observedMedianUgx: number | null;
+  observedCount: number;
+  zoneFeeUgx: number | null;
+  zoneEnabled: boolean | null;
+  effective: DeliveryEstimate;
+}
+
+/** The operator's cockpit: every district, model vs observed vs promised. */
+export class GetDeliveryIntelligenceUseCase {
+  constructor(private readonly deps: Deps) {}
+
+  async execute(): Promise<{
+    policy: DeliveryBandPolicy & { note?: string | null; stored: boolean };
+    rows: DistrictIntelligenceRow[];
+  }> {
+    const [stored, zones, observed] = await Promise.all([
+      this.deps.policy.get(),
+      this.deps.zones.list(),
+      this.deps.observations.summarizeByDistrict(),
+    ]);
+    const policy = stored ?? DEFAULT_DELIVERY_BAND_POLICY;
+    const zoneByDistrict = new Map(zones.map((z) => [normalizeDistrict(z.district), z]));
+
+    const rows = UGANDA_DISTRICTS.map((district) => {
+      const km = districtRoadKm(district);
+      const band = km !== null ? bandForKm(km) : null;
+      const zone = zoneByDistrict.get(normalizeDistrict(district)) ?? null;
+      const obs = observed.get(normalizeDistrict(district)) ?? null;
+      const effective = estimateDeliveryFee({
+        policy,
+        km,
+        zoneFeeUgx: zone && zone.enabled ? zone.feeUgx : null,
+        observation: obs,
+      });
+      return {
+        district,
+        km,
+        band,
+        modelFeeUgx: band !== null ? bandFeeUgx(policy, band) : null,
+        observedMedianUgx: obs?.medianFeeUgx ?? null,
+        observedCount: obs?.sampleSize ?? 0,
+        zoneFeeUgx: zone?.feeUgx ?? null,
+        zoneEnabled: zone?.enabled ?? null,
+        effective,
+      };
+    });
+
+    return {
+      policy: { ...policy, note: stored?.note ?? null, stored: Boolean(stored) },
+      rows,
+    };
+  }
+}
+
+export class SaveDeliveryPricingPolicyUseCase {
+  constructor(private readonly policyRepo: IDeliveryPricingPolicyRepository) {}
+
+  async execute(input: {
+    policy: Partial<DeliveryBandPolicy>;
+    note?: string | null;
+    actorId: string | null;
+  }): Promise<
+    | { ok: true; policy: StoredDeliveryBandPolicy }
+    | { ok: false; code: 'BAD_INPUT'; message: string }
+  > {
+    const problem = validateBandPolicy(input.policy);
+    if (problem) return { ok: false, code: 'BAD_INPUT', message: problem };
+    const note = input.note?.toString().trim().slice(0, 300) || null;
+    const saved = await this.policyRepo.save(input.policy as DeliveryBandPolicy, {
+      note,
+      actorId: input.actorId,
+    });
+    return { ok: true, policy: saved };
+  }
+}

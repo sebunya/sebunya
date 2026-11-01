@@ -131,6 +131,31 @@ export function parseForwardedFor(header: string | null | undefined): string[] {
   return out;
 }
 
+/**
+ * Is this our own service calling, rather than a client out on the internet?
+ *
+ * The storefront renders every page server-side, so each visitor's page turns
+ * into API calls made BY the web container. Those calls carry no forwarding
+ * headers, so they all resolved to one address and shared one rate-limit
+ * bucket: a burst of ordinary crawling exhausted it and the site answered 503
+ * to everyone — proven on 2026-09-02, when 67 of 214 sitemap URLs failed while
+ * each succeeded on its own.
+ *
+ * The distinction is exact in this deployment, not a heuristic:
+ *  - the api container publishes NO host port, so the only ways in are the
+ *    compose network and the edge;
+ *  - the edge (Caddy) sets BOTH `X-Real-IP` and `X-Forwarded-For` on every
+ *    proxied request, so anything arriving from outside always carries them.
+ * A request with neither header therefore came from inside our own network.
+ *
+ * This exempts trusted service traffic from the PUBLIC-CLIENT limiter only.
+ * Per-client protection still applies to everything that arrives through the
+ * edge, which is every request a real client can make.
+ */
+export function isInternalServiceCall(input: Pick<ClientAddressInput, 'forwardedFor' | 'realIp'>): boolean {
+  return parseForwardedFor(input.forwardedFor).length === 0 && normaliseIp(input.realIp) === null;
+}
+
 export function resolveClientAddress(input: ClientAddressInput): ClientAddress {
   const hops = Number.isFinite(input.trustedHops) ? Math.max(0, Math.trunc(input.trustedHops)) : 0;
   const remote = normaliseIp(input.remoteAddr);
