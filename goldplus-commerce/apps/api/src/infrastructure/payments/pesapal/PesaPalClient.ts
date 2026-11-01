@@ -175,7 +175,10 @@ export class PesaPalClient implements IPesaPalClient {
     return data;
   }
 
-  public async getTransactionStatus(orderTrackingId: string): Promise<PesaPalTransactionStatusResponse> {
+  public async getTransactionStatus(
+    orderTrackingId: string,
+    options?: { breakerName?: string },
+  ): Promise<PesaPalTransactionStatusResponse> {
     const token = await this.getToken();
     const url = `${this.getBaseUrl()}/api/Transactions/GetTransactionStatus?orderTrackingId=${encodeURIComponent(orderTrackingId)}`;
 
@@ -185,7 +188,10 @@ export class PesaPalClient implements IPesaPalClient {
         'Accept': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-      breakerName: 'pesapal',
+      // Read-only callers (the admin queue) pass their own breaker, so a page
+      // of status lookups during a provider slowdown cannot open the breaker
+      // that checkout, callbacks and refunds depend on.
+      breakerName: options?.breakerName ?? 'pesapal',
       timeoutMs: 3000,
     });
 
@@ -208,6 +214,49 @@ export class PesaPalClient implements IPesaPalClient {
       confirmation_code: data.confirmation_code,
       payment_account: data.payment_account,
     };
+  }
+
+  /**
+   * Request a refund against a COMPLETED transaction's confirmation code.
+   *
+   * Pesapal v3: POST /api/Transactions/RefundRequest. The provider processes
+   * refunds asynchronously — a 200 here means "refund request accepted", not
+   * "money returned"; the transaction later reads REVERSED (status_code 3) on
+   * GetTransactionStatus, which is how the poller observes it landing.
+   */
+  public async requestRefund(input: {
+    confirmationCode: string;
+    amount: number;
+    username: string;
+    remarks: string;
+  }): Promise<{ status: string; message: string }> {
+    const token = await this.getToken();
+    const url = `${this.getBaseUrl()}/api/Transactions/RefundRequest`;
+    const response = await resilientFetch(url, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        confirmation_code: input.confirmationCode,
+        amount: String(input.amount),
+        username: input.username,
+        remarks: input.remarks,
+      }),
+      breakerName: 'pesapal',
+      // A single, never-retried call that moves money. At 5 s a slow
+      // acceptance became PROVIDER_CALL_FAILED ("unknown whether money
+      // moved"), a row nobody could see resolve. Waiting longer is safe.
+      timeoutMs: 30_000,
+    });
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => 'No details');
+      throw new Error(`PESAPAL_REFUND_FAILED: Refund request failed. Status ${response.status}: ${errBody}`);
+    }
+    const data = await response.json() as { status?: string; message?: string };
+    return { status: String(data.status ?? ''), message: String(data.message ?? '') };
   }
 
   public toJSON(): object {

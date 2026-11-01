@@ -1,41 +1,41 @@
-import { eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { IPaymentAttributionRepository, AttributionSummary, AttributionTouchpoint } from '../../application/ports/measurement/PaymentAttributionRepository';
-import { attributionTouchpoints } from '../db/schema/measurement';
 import { db } from '../db/client';
+import { channelAttribution } from './createChannelAttribution';
 
+const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Payment → attribution link. This used to be an empty method whose comment
+ * assumed "the checkout process having already stamped orderId onto the
+ * touchpoints" — nothing ever did, and it read the legacy
+ * attribution_touchpoints table, whose only writer (ConversionRouter.routeAndRecord)
+ * is never called. It now uses the attribution module (0156): the order is linked
+ * to its visitor's landing touches (measurement.touchpoint) and credited.
+ */
 export class DrizzlePaymentAttributionRepository implements IPaymentAttributionRepository {
-  constructor() {}
-
-  async linkPaymentToTouchpoints(orderId: string, paymentReference: string | null): Promise<void> {
-    // In a real system, we'd look up touchpoints by identity/session and link the orderId to them.
-    // For this implementation, we assume `orderId` is already stamped on the `attributionTouchpoints` 
-    // at checkout time or we update them here if we have a sessionId mapping.
-    // Since we don't have the sessionId in the hook easily, we rely on the checkout process 
-    // having already stamped `orderId` onto the touchpoints.
+  async linkPaymentToTouchpoints(orderId: string, _paymentReference: string | null): Promise<void> {
+    if (!UUID.test(orderId)) return;
+    await channelAttribution().attributeOrder.execute(orderId);
   }
 
   async findTouchpointsForOrder(orderId: string): Promise<AttributionTouchpoint[]> {
-    const records = await db.select().from(attributionTouchpoints).where(eq(attributionTouchpoints.orderId, orderId));
-    return records.map((r: any) => ({
-      id: r.id,
-      source: 'unknown',
-      medium: 'unknown',
-      campaign: 'unknown',
-      timestamp: r.eventTime
-    }));
+    if (!UUID.test(orderId)) return [];
+    const r = rows(await db.execute(sql`
+      select t.touch_id, t.source, t.medium, t.campaign, t.channel, t.occurred_at
+      from measurement.order_touch_link l join measurement.touchpoint t on t.touch_id = l.touch_id
+      where l.order_id = ${orderId}::uuid order by t.occurred_at, t.touch_id`));
+    // No source recorded is said as the channel, not as a made-up "unknown" campaign.
+    return r.map((x) => ({ id: String(x.touch_id), source: x.source ?? x.channel, medium: x.medium ?? x.channel, campaign: x.campaign ?? null, timestamp: new Date(x.occurred_at) }));
   }
 
-  async findTouchpointsForIdentity(identityHash: string): Promise<AttributionTouchpoint[]> {
+  async findTouchpointsForIdentity(_identityHash: string): Promise<AttributionTouchpoint[]> {
     return [];
   }
 
   async getAttributionSummaryForPayment(orderId: string, paymentReference: string | null): Promise<AttributionSummary> {
     const touchpoints = await this.findTouchpointsForOrder(orderId);
-    return {
-      orderId,
-      paymentReference,
-      touchpoints,
-      isAttributed: touchpoints.length > 0
-    };
+    return { orderId, paymentReference, touchpoints, isAttributed: touchpoints.length > 0 };
   }
 }

@@ -4,6 +4,7 @@ import {
 } from '../../ports/ICheckoutIdempotencyRepository';
 import { ICheckoutSideEffectRecorder } from '../../ports/ICheckoutSideEffectRecorder';
 import { CHECKOUT_POLICY_VERSION } from '../../../domain/commerce/CheckoutPrincipal';
+import { mayProgressToPayment, OrderReservationState } from '../../../domain/inventory/Inventory';
 
 /**
  * Starts payment for an order the caller is entitled to pay for.
@@ -88,20 +89,38 @@ export interface PaymentProviderStarter {
 
 export interface PaymentAttemptReader {
   findAttemptsByOrderId(orderId: string): Promise<
-    Array<{ status: string; redirectUrl: string | null; orderTrackingId: string | null; merchantReference: string }>
+    Array<{ status: string; redirectUrl: string | null; orderTrackingId: string | null; merchantReference: string; amount: number; createdAt: Date }>
   >;
 }
 
 export interface StartPaymentOrderReader {
-  findById(orderId: string): Promise<{ id: string; paymentStatus: string } | null>;
+  findById(orderId: string): Promise<{ id: string; paymentStatus: string; totalUgx: number; orderStatus?: string; storeCreditAppliedUgx?: number } | null>;
 }
 
+/**
+ * Orders nothing can be collected for. Until 2026-09-12 only the storefront
+ * hid the pay button for these; the use case checked paymentStatus alone, so
+ * a direct call — and, once guests could pay by reference, a plain form post —
+ * could open a provider transaction for an order the shop had already closed.
+ */
+const CLOSED_ORDER_STATUSES = new Set(['cancelled', 'failed']);
+
 export interface StartOrderPaymentDeps {
+  /** Injected so the reuse window is testable without waiting 30 minutes. */
+  now?: () => Date;
+  /** 0196: settles an order store credit pays in full (SettleByStoreCreditUseCase). Optional for older suites. */
+  settleByStoreCredit?: { execute(orderId: string, traceId: string): Promise<'settled' | 'not_fully_covered' | 'already_paid' | 'not_found'> };
   idempotency: ICheckoutIdempotencyRepository;
   orders: StartPaymentOrderReader;
   attempts: PaymentAttemptReader;
   provider: PaymentProviderStarter;
   sideEffectRecorder: ICheckoutSideEffectRecorder;
+  /**
+   * Optional: the order's stock position. When present, an order whose hold
+   * was RELEASED (the TTL sweep put its units back on sale) is not payable:
+   * paying it shipped goods nobody was holding, with no stock deducted.
+   */
+  reservationState?: { getReservationState(orderId: string): Promise<OrderReservationState | null> };
   observer?: {
     onForbidden(orderId: string, traceId: string): void;
     onNotPayable(orderId: string, traceId: string, stage: string): void;
@@ -115,6 +134,27 @@ export interface StartOrderPaymentDeps {
  * `invalid` and `reversed` are deliberately absent: those need a fresh attempt.
  */
 const REUSABLE_ATTEMPT_STATUSES = new Set(['pending', 'verification_pending']);
+
+/**
+ * A declined attempt whose provider page is almost certainly still open.
+ *
+ * On Ugandan mobile money a first decline is routine — no funds on that wallet,
+ * a mistyped PIN — and the provider page stays usable: proven in production on
+ * 2026-09-20, when MTN declined and the SAME PesaPal page then took an Airtel
+ * payment (order GP-202609-0B3BA402). Sending the customer back to that page is
+ * both what they expect and the only retry that cannot double-charge them:
+ * opening a SECOND provider transaction leaves two payable pages for one order.
+ *
+ * The window is ours, not the provider's — PesaPal does not publish a page
+ * lifetime, so this is a deliberately conservative assumption rather than a
+ * documented fact. Past it we open a fresh transaction, which is the safe
+ * direction: a customer who waited that long is starting again anyway.
+ */
+const RETRY_REUSE_STATUSES = new Set(['failed', 'invalid']);
+function retryReuseWindowMs(): number {
+  const minutes = Number(process.env.PESAPAL_RETRY_REUSE_MINUTES);
+  return (Number.isInteger(minutes) && minutes > 0 ? minutes : 30) * 60_000;
+}
 
 /**
  * Provider faults that will not resolve by retrying the same request. Kept as a
@@ -161,6 +201,10 @@ export class StartOrderPaymentUseCase {
     if (order.paymentStatus === 'paid') {
       return { kind: 'ALREADY_PAID', reason: 'ORDER_ALREADY_PAID' };
     }
+    if (order.orderStatus && CLOSED_ORDER_STATUSES.has(order.orderStatus)) {
+      this.deps.observer?.onNotPayable(orderId, command.traceId, `order:${order.orderStatus}`);
+      return { kind: 'NOT_PAYABLE', reason: 'ORDER_CANCELLED' };
+    }
 
     // The saga must have reached the point where the order is payable. Starting
     // payment for a stock-blocked order would take money for goods nobody
@@ -172,13 +216,48 @@ export class StartOrderPaymentUseCase {
       return { kind: 'NOT_PAYABLE', reason: 'ORDER_NOT_PAYABLE' };
     }
 
+    // Inventory.ts: RELEASED must not progress to payment. Fail closed: the
+    // customer is told the hold expired and to order again (the stock may
+    // since have been sold to someone else), and nothing is charged. Only
+    // RELEASED is refused here: a CONSUMED order has its goods (a dispatched
+    // cash-on-delivery order may still be paid online), and a state nobody
+    // recorded (legacy orders) is left to the checkout stage check above.
+    const reservation = this.deps.reservationState ? await this.deps.reservationState.getReservationState(orderId) : null;
+    if (reservation === 'RELEASED' && !mayProgressToPayment(reservation)) {
+      this.deps.observer?.onNotPayable(orderId, command.traceId, `reservation:${reservation}`);
+      return { kind: 'NOT_PAYABLE', reason: 'ORDER_HOLD_EXPIRED' };
+    }
+
+    // 0196: store credit covers the whole order, so there is nothing to send to Pesapal. Checkout settles such an
+    // order itself; if that step failed, every Pay button would otherwise refuse with NOTHING_TO_PAY for good.
+    // Finishing the settlement here makes any later "Pay" the retry.
+    if (this.deps.settleByStoreCredit && order.storeCreditAppliedUgx && order.storeCreditAppliedUgx >= order.totalUgx && order.totalUgx > 0) {
+      const settled = await this.deps.settleByStoreCredit.execute(orderId, command.traceId);
+      if (settled === 'settled' || settled === 'already_paid') return { kind: 'ALREADY_PAID', reason: 'ORDER_ALREADY_PAID' };
+      return { kind: 'NOT_PAYABLE', reason: 'ORDER_NOT_PAYABLE' };
+    }
+
     // A live attempt is reused rather than re-submitted. Submitting again gave one
     // order several concurrent provider transactions, any of which could later
     // report a payment.
     const existing = await this.deps.attempts.findAttemptsByOrderId(orderId);
-    const reusable = existing.find(
-      (a) => REUSABLE_ATTEMPT_STATUSES.has(a.status) && a.redirectUrl && a.orderTrackingId,
-    );
+    // ...and only while it is still for the right money. A delivery variance
+    // agreed after the attempt was opened raises the order total, but the
+    // provider page still quotes the old figure, and verification compares the
+    // payment against the ATTEMPT's amount, so the order settled as fully paid
+    // at the stale, lower total and the shop silently under-collected.
+    const now = this.deps.now?.() ?? new Date();
+    const stillOpen = (a: { status: string; createdAt: Date }) =>
+      REUSABLE_ATTEMPT_STATUSES.has(a.status) ||
+      (RETRY_REUSE_STATUSES.has(a.status) &&
+        now.getTime() - new Date(a.createdAt).getTime() < retryReuseWindowMs());
+    // 0196: a store-credit order is sent to Pesapal for what is still due, so a reusable attempt is for that amount.
+    const amountDue = order.storeCreditAppliedUgx ? Math.max(0, order.totalUgx - order.storeCreditAppliedUgx) : order.totalUgx;
+    const reusable = existing
+      // Newest first: the page the customer was last on is the one to return to.
+      .slice()
+      .sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime())
+      .find((a) => stillOpen(a) && a.redirectUrl && a.orderTrackingId && a.amount === amountDue);
     if (reusable) {
       await this.recordPaymentProgress(checkout.identity, orderId, command);
       return {

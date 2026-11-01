@@ -1,32 +1,70 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getBusinessInfo } from '../../../lib/businessInfo';
+import { orderNumberFromMerchantReference } from '../../../lib/paymentReturn';
+import { ORDER_NUMBER_PATTERN } from '../../../lib/checkout';
+
+/**
+ * The customer pressed Cancel on the PesaPal page. The ORDER already exists —
+ * it was created before the handoff — and the checkout intent is retained so
+ * going back reaches the same order, not a second one. The old copy said only
+ * "no charges have been made" and sent them to a cart that had just been
+ * emptied; it never mentioned the order at all.
+ *
+ * "Pay for this order" then went to /checkout, whose basket was emptied before
+ * the handoff, so it always ended on "Your cart is empty" (the page even
+ * hedged: "if the checkout looks empty…"). It now goes to the ORDER, through
+ * the tracking page's pay-by-reference. The order number comes from PesaPal's
+ * merchant reference when the URL carries one, otherwise from the note the
+ * checkout left on this device at the handoff (the cancellation URL is a fixed
+ * address and does not reliably name the order).
+ */
+const fromUrl = orderNumberFromMerchantReference(
+  Astro.url.searchParams.get('OrderMerchantReference') || Astro.url.searchParams.get('reference') || '',
+);
+const remembered = Astro.cookies.get('gp_pay_order')?.value ?? '';
+const orderNumber = fromUrl ?? (ORDER_NUMBER_PATTERN.test(remembered) ? remembered : null);
+const payHref = orderNumber ? `/track-order?reference=${encodeURIComponent(orderNumber)}` : '/track-order';
+
+const biz = await getBusinessInfo();
+const helpHref = `${biz.whatsappUrl}?text=${encodeURIComponent(
+  orderNumber
+    ? `Hello GoldPlus, I cancelled the payment for order ${orderNumber} and want to finish it.`
+    : 'Hello GoldPlus, I cancelled a payment and want to finish my order.',
+)}`;
 ---
 
-<BaseLayout title="Payment Cancelled">
+<BaseLayout robotsMeta="noindex,follow" title="Payment cancelled">
   <div class="bg-brand-softGrey py-10 border-b border-brand-borderGrey">
     <div class="container mx-auto px-4 lg:px-8 text-center">
-      <h1 class="text-2xl md:text-3xl font-black tracking-tight text-brand-charcoal mb-2">Payment Cancelled</h1>
-      <p class="text-brand-mutedGrey max-w-xl mx-auto">
-        Your transaction was not completed. No charges have been made.
-      </p>
+      <h1 class="text-2xl md:text-3xl font-black tracking-tight text-brand-charcoal mb-2">Payment cancelled</h1>
+      <p class="text-brand-mutedGrey max-w-xl mx-auto">The payment was stopped before it finished. If money left your phone or card anyway, tell us and we will sort it out.</p>
+      {orderNumber && <p class="mt-1 text-brand-mutedGrey">Order <strong class="font-mono text-brand-charcoal whitespace-nowrap">{orderNumber}</strong></p>}
     </div>
   </div>
 
   <div class="container mx-auto px-4 lg:px-8 py-16">
     <div class="max-w-xl mx-auto bg-white border border-brand-borderGrey rounded-3xl shadow-sm p-8 text-center">
       <div class="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6">
-        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
         </svg>
       </div>
-      <h2 class="text-2xl font-black text-brand-charcoal mb-4">Transaction Cancelled</h2>
+      <p class="text-lg font-bold text-brand-charcoal mb-3" role="status">Your order is saved and still unpaid.</p>
       <p class="text-gray-600 mb-8 leading-relaxed">
-        You can return to your cart and complete checkout using a different payment option, or retry when you are ready.
+        {orderNumber
+          ? 'Pay for it when you are ready: open the order, confirm the phone number or email you used at checkout, and choose to pay now. It will not create a second order. If paying online does not work for you, message us on WhatsApp and we will help.'
+          : 'Pay for it when you are ready: find the order with the order number we showed you and the phone number or email you used at checkout, then choose to pay now. It will not create a second order. If paying online does not work for you, message us on WhatsApp and we will help.'}
       </p>
       <div class="flex flex-col sm:flex-row gap-4 justify-center">
-        <a href="/cart" class="bg-brand-charcoal text-white px-6 py-3 rounded-xl font-bold hover:bg-black transition-all">Return to Cart</a>
-        <a href="/checkout" class="border border-brand-borderGrey text-brand-charcoal px-6 py-3 rounded-xl font-bold hover:bg-brand-softGrey transition-all">Retry Checkout</a>
+        <a href={payHref} class="inline-flex min-h-12 flex-wrap items-center justify-center gap-x-1.5 bg-brand-charcoal text-white px-6 py-3 rounded-xl font-bold hover:bg-black transition-all">
+          {orderNumber ? <>Pay for order <span class="whitespace-nowrap">{orderNumber}</span></> : 'Find my order to pay'}
+        </a>
+        <a href="/shop" class="inline-flex min-h-12 items-center justify-center border border-brand-borderGrey text-brand-charcoal px-6 py-3 rounded-xl font-bold hover:bg-brand-softGrey transition-all">Back to the shop</a>
       </div>
+      <p class="mt-8 text-sm text-gray-600">
+        Need a hand? <a href={helpHref} class="font-bold text-brand-charcoal underline">Ask us on WhatsApp</a> or call {biz.phoneDisplay}.
+      </p>
     </div>
   </div>
 </BaseLayout>
