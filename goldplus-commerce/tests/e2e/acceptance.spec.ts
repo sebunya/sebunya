@@ -33,8 +33,10 @@ test('shop search finds a real catalogue product and zero-result CTA appears', a
 
   await page.goto('/shop?search=zzznotarealproduct');
   await expect(page.getByText(/no products matched/i)).toBeVisible();
-  await expect(page.getByRole('link', { name: /request this product/i })).toBeVisible();
-  await expect(page.getByRole('link', { name: /ask support/i })).toBeVisible();
+  // The zero-result page offers WhatsApp help and a bulk quote (copy since the
+  // "no dashes" and shop-window rounds; the old CTA names no longer exist).
+  await expect(page.getByRole('link', { name: /ask us on whatsapp/i })).toBeVisible();
+  await expect(page.locator('a[href^="/quote-request?requested="]', { hasText: /request a quote/i })).toBeVisible();
 });
 
 test('PDP renders live API product detail', async ({ page }) => {
@@ -52,14 +54,25 @@ test('PDP renders live API product detail', async ({ page }) => {
   if (product.formattedPrice) {
     await expect(page.getByText(product.formattedPrice, { exact: false }).first()).toBeVisible();
   }
+
+  // Share this product (2026-10-23): a WhatsApp share (no number: never a chat with us) and Copy link, both carrying
+  // the friend-referral tags, so a passed-on product is not counted as Direct.
+  const wa = page.getByRole('link', { name: /share on whatsapp/i });
+  await expect(wa).toBeVisible();
+  const href = await wa.getAttribute('href');
+  expect(href).toMatch(/^https:\/\/wa\.me\/\?text=/);
+  expect(decodeURIComponent(href!)).toContain(`/products/${product.slug}?utm_source=customer_share&utm_medium=friend&utm_campaign=product_share&utm_content=whatsapp`);
+  await expect(page.getByRole('button', { name: /copy link/i })).toBeVisible();
 });
 
 test('legal pages show registry status chips and support-routed claims', async ({ page }) => {
+  // Every policy is in force now (legal-policies.ts); the draft chip is kept
+  // for future policies only, so the page must say what is true today.
   await page.goto('/returns');
-  await expect(page.getByText(/draft — pending legal review/i)).toBeVisible();
+  await expect(page.getByText(/^in force$/i).first()).toBeVisible();
   await expect(page.getByRole('link', { name: /contact support/i }).first()).toBeVisible();
   await page.goto('/privacy');
-  await expect(page.getByText(/interim public guidance/i)).toBeVisible();
+  await expect(page.getByText(/^in force$/i).first()).toBeVisible();
 });
 
 test('admin pages redirect logged-out visitors to login', async ({ page }) => {

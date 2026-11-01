@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { getCategoryAwareProducts } from '../../apps/web/src/lib/homepage-merchandising';
-import { LOCAL_SEED_PRODUCTS } from '../../apps/web/src/lib/catalog/catalog';
 import type { ProductPublicDto } from '@goldplus/shared';
 
 describe('GoldPlus UI Pass H1E — Homepage Merchandising', () => {

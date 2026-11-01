@@ -57,7 +57,6 @@ describe("Architecture boundaries", () => {
       if (
         file.includes("DealerApplicationUseCase.ts") ||
         file.includes("VerificationCheckUseCase.ts") ||
-        file.includes("EnqueuePurchaseEventUseCase.ts") ||
         file.includes("TrackBrowserTelemetryEventUseCase.ts") ||
         file.includes("StitchBrowserIdentityUseCase.ts")
       ) {
@@ -99,7 +98,10 @@ describe("Architecture boundaries", () => {
     }
 
     const writeVerbRegex = /\b(routes|app)\.(post|put|patch|delete)\s*\(/;
-    const auditRegex = /\bauditUc\.execute\s*\(|CreateAuditLogUseCase/;
+    // `createAuditLogUseCase` is the Registry accessor for the very same use
+    // case; a route that audits through it is audited, and the detector must not
+    // push authors toward a fake `audit-exempt` marker to satisfy a regex.
+    const auditRegex = /\bauditUc\.execute\s*\(|CreateAuditLogUseCase|createAuditLogUseCase/;
     const exemptionMarker = /\/\/\s*audit-exempt:/;
 
     for (const file of candidateFiles) {

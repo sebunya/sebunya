@@ -22,6 +22,8 @@ class Profiles implements ICustomerProfileRepository {
   async findByAccountUserId(uid: string) { return [...this.rows.values()].find((p) => p.accountUserId === uid) ?? null; }
   async upsertProjection(s: any) { this.rows.set(s.canonicalCustomerId, s); return { updated: true, profileVersion: s.profileVersion }; }
   async search() { return []; }
+  async stageCounts() { return {}; }
+  async listForReprojection() { return []; }
 }
 class Identities implements ICustomerIdentityRepository {
   links: any[] = [];
