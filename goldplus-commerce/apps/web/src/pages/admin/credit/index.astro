@@ -1,0 +1,295 @@
+---
+import { isPhotoId } from '../../../lib/giftCardPhoto';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { apiBase } from '../../../lib/api';
+import { readSessionToken } from '../../../lib/session';
+import { formatUgx } from '../../../lib/money';
+
+/**
+ * Gift cards and store credit (0196, gap analysis #17). Issue a card (the code is shown here ONCE and texted to
+ * the recipient; only a hash is kept), approve a large one (a different person), cancel what is left, correct a
+ * balance, and read every movement. Every action needs payments.refund and a fresh two-step verification, like a
+ * refund: a card is money.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/credit', 303);
+const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+type Notice = { kind: 'success' | 'error'; text: string };
+let notice: Notice | null = null;
+let issued: { code: string; masked: string; status: string; texted: boolean } | null = null;
+// What was typed into "Issue a card" when it was refused: put back, so a mistake is corrected, not retyped.
+let draft: Record<string, string> | null = null;
+const selected = Astro.url.searchParams.get('card');
+// Post/redirect/get: a refresh after an action must never repeat it (a second card, a doubled correction). The
+// outcome, including the one-time code, rides a short-lived httpOnly cookie to the GET that follows and is
+// deleted as it is read, so the code is still shown exactly once.
+const FLASH = 'gp_credit_flash';
+const flashOptions = { path: '/admin/credit', httpOnly: true, secure: Astro.url.protocol === 'https:', sameSite: 'strict' as const, maxAge: 120 };
+
+const stepUpHint = (json: any, res: Response, fallback: string) =>
+  json?.error?.code === 'MFA_STEP_UP_REQUIRED' || json?.error?.code === 'MFA_ENROLMENT_REQUIRED'
+    ? `${json.error.message} Verify on Two-step verification (/admin/security/mfa), then try again. Nothing was changed.`
+    : res.status === 403 ? 'Not permitted: your account cannot issue or change cards (payments.refund).' : (json?.error?.message || fallback);
+
+// 0200: the occasion settings, read before a save so fields this form does not edit (windows, period) are kept.
+let occasionData: any = null;
+try {
+  const previewOn = Astro.url.searchParams.get('previewOn');
+  const r = await fetch(`${apiBase}/admin/credit/occasions${previewOn && /^\d{4}-\d{2}-\d{2}$/.test(previewOn) ? `?on=${previewOn}` : ''}`, { headers });
+  const j: any = await r.json().catch(() => null);
+  if (j?.success) occasionData = j.data;
+} catch { /* the section shows it could not load */ }
+const occasionSettingsKept = { windowDays: occasionData?.settings?.windowDays, festivePeriod: occasionData?.settings?.festivePeriod };
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? '');
+  const id = String(form.get('id') ?? '');
+  try {
+    if (intent === 'issue') {
+      const res = await fetch(`${apiBase}/admin/credit`, { method: 'POST', headers, body: JSON.stringify({
+        kind: form.get('kind'), amountUgx: Number(form.get('amountUgx')), reason: String(form.get('reason') ?? ''),
+        recipientName: String(form.get('recipientName') ?? ''), recipientPhone: String(form.get('recipientPhone') ?? ''),
+        expiresAt: String(form.get('expiresAt') ?? '') || null,
+        orderNumber: String(form.get('orderNumber') ?? '').trim() || null,
+      }) });
+      const json: any = await res.json().catch(() => null);
+      if (res.ok && json?.success) { issued = json.data; notice = { kind: 'success', text: json.data.status === 'pending_approval' ? 'Issued. Above UGX 500,000 it waits for a second person to approve it before it can be spent.' : json.data.texted ? 'Issued. The code is queued to text to the recipient (it usually arrives within a minute; check with them).' : 'Issued.' }; }
+      else {
+        notice = { kind: 'error', text: stepUpHint(json, res, 'Not issued.') };
+        draft = Object.fromEntries(['kind', 'amountUgx', 'expiresAt', 'reason', 'orderNumber', 'recipientName', 'recipientPhone'].map((k) => [k, String(form.get(k) ?? '').slice(0, 500)]));
+      }
+    } else if (intent === 'return') {
+      const res = await fetch(`${apiBase}/admin/credit/return`, { method: 'POST', headers, body: JSON.stringify({
+        orderNumber: String(form.get('orderNumber') ?? ''), amountUgx: Number(form.get('amountUgx')), note: String(form.get('note') ?? ''),
+      }) });
+      const json: any = await res.json().catch(() => null);
+      notice = res.ok && json?.success
+        ? { kind: 'success', text: `Given back to the card. ${formatUgx(json.data.leftUgx)} more could still go back for that order.` }
+        : { kind: 'error', text: stepUpHint(json, res, 'Nothing was given back.') };
+    } else if (intent === 'occasions') {
+      // 0200: Eid dates and time-boxed adjustments, one per line (prominence only; nothing is ever removed).
+      const lines = (name: string) => String(form.get(name) ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const dates = lines('dates').map((l) => { const [start, end, ...label] = l.split(/\s+/); return { occasion: 'eid', start, end, label: label.join(' ') || undefined }; });
+      const overrides = lines('overrides').map((l) => { const [occasion, mode, from, to] = l.split(/\s+/); return { occasion, mode, from, to }; });
+      const res = await fetch(`${apiBase}/admin/credit/occasions`, { method: 'PUT', headers, body: JSON.stringify({ ...occasionSettingsKept, dates, overrides }) });
+      const json: any = await res.json().catch(() => null);
+      notice = res.ok && json?.success ? { kind: 'success', text: 'Occasions saved. The buy page uses them within a minute.' }
+        : { kind: 'error', text: res.status === 403 ? 'Not permitted: changing occasions needs settings.manage.' : (json?.error?.message ?? 'Not saved.') };
+    } else if (intent === 'redirect-purchase') {
+      // 0199: the code goes to a corrected number (an untouched card gets a new code; the old one stops working).
+      const reference = String(form.get('reference') ?? '');
+      const res = await fetch(`${apiBase}/admin/credit/purchases/${encodeURIComponent(reference)}/redirect`, { method: 'POST', headers, body: JSON.stringify({ phone: String(form.get('phone') ?? ''), reason: String(form.get('reason') ?? '') }) });
+      const json: any = await res.json().catch(() => null);
+      notice = res.ok && json?.success ? { kind: 'success', text: json.data.message } : { kind: 'error', text: stepUpHint(json, res, 'Nothing was changed.') };
+    } else if (intent === 'refund-purchase') {
+      // 0199: a gift card bought online: the card is cancelled (if untouched) and Pesapal refunds the buyer.
+      const reference = String(form.get('reference') ?? '');
+      const res = await fetch(`${apiBase}/admin/credit/purchases/${encodeURIComponent(reference)}/refund`, { method: 'POST', headers, body: JSON.stringify({ reason: String(form.get('reason') ?? '') }) });
+      const json: any = await res.json().catch(() => null);
+      notice = res.ok && json?.success ? { kind: 'success', text: json.data.message } : { kind: 'error', text: stepUpHint(json, res, 'Nothing was refunded.') };
+    } else if (intent === 'remove-photo') {
+      // 0201: the buyer's photo comes off the card (deleted); the card and its money are not touched.
+      const reference = String(form.get('reference') ?? '');
+      const res = await fetch(`${apiBase}/admin/credit/purchases/${encodeURIComponent(reference)}/remove-photo`, { method: 'POST', headers, body: '{}' });
+      const json: any = await res.json().catch(() => null);
+      notice = res.ok && json?.success ? { kind: 'success', text: json.data.message } : { kind: 'error', text: stepUpHint(json, res, 'The photo was not removed.') };
+    } else if (intent === 'approve' || intent === 'void' || intent === 'adjust') {
+      const res = await fetch(`${apiBase}/admin/credit/${encodeURIComponent(id)}/${intent}`, { method: 'POST', headers, body: JSON.stringify({ note: String(form.get('note') ?? ''), amountUgx: Number(form.get('amountUgx')) }) });
+      const json: any = await res.json().catch(() => null);
+      notice = res.ok && json?.success
+        ? { kind: 'success', text: intent === 'approve' ? 'Approved: the card can be spent now.' : intent === 'void' ? `Cancelled. ${formatUgx(json.data?.voidedUgx ?? 0)} removed.` : 'Balance changed.' }
+        : { kind: 'error', text: stepUpHint(json, res, 'Not changed.') };
+    }
+  } catch { notice = { kind: 'error', text: 'The API is unavailable. Nothing was changed.' }; }
+  Astro.cookies.set(FLASH, JSON.stringify({ notice, issued, draft }), flashOptions);
+  return Astro.redirect(`/admin/credit${id && /^[0-9a-f-]{36}$/i.test(id) ? `?card=${id}` : ''}`, 303);
+}
+{
+  const raw = Astro.cookies.get(FLASH)?.value;
+  if (raw) {
+    Astro.cookies.delete(FLASH, { path: '/admin/credit' });
+    try { ({ notice, issued, draft = null } = JSON.parse(raw)); } catch { /* a malformed flash shows nothing */ }
+  }
+}
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+
+let cards: any[] = []; let detail: any = null; let loadFailed = false;
+try {
+  const res = await fetch(`${apiBase}/admin/credit`, { headers });
+  const json: any = await res.json().catch(() => null);
+  if (json?.success) cards = json.data; else loadFailed = true;
+  if (selected && /^[0-9a-f-]{36}$/i.test(selected)) {
+    const d = await fetch(`${apiBase}/admin/credit/${selected}`, { headers });
+    const dj: any = await d.json().catch(() => null);
+    detail = dj?.success && dj.data?.instrument && Array.isArray(dj.data.ledger) ? dj.data : null;
+  }
+} catch { loadFailed = true; }
+// 0199: gift cards customers bought online.
+let purchases: any[] = [];
+try {
+  const pr = await fetch(`${apiBase}/admin/credit/purchases`, { headers });
+  const pj: any = await pr.json().catch(() => null);
+  if (pj?.success && Array.isArray(pj.data)) purchases = pj.data;
+} catch { /* the cards still show */ }
+const PURCHASE: Record<string, string> = {
+  awaiting_payment: 'Waiting for payment', paid: 'Paid, card due', issued: 'Card texted', failed: 'Payment failed', abandoned: 'Not paid',
+  review: 'Check payment', refunded: 'Refunded',
+};
+const d = (k: string) => draft?.[k] ?? '';
+const TEXT: Record<string, string> = { sent: 'Text sent', sending: 'Text sending', failed: 'TEXT FAILED', not_sent: 'Text not sent (live sending off)' };
+const fmt = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Africa/Kampala', dateStyle: 'medium', timeStyle: 'short' });
+const KIND: Record<string, string> = { gift_card: 'Gift card', store_credit: 'Store credit' };
+const STATUS: Record<string, string> = { active: 'Spendable', pending_approval: 'Waiting for approval', void: 'Cancelled' };
+const ENTRY: Record<string, string> = { ISSUE: 'Issued', HOLD: 'Order', RETURN: 'Given back', ADJUST: 'Correction', VOID: 'Cancelled' };
+// An expired card can no longer be spent, so it is shown as expired and is not money the shop still owes in goods.
+const isExpired = (c: any) => Boolean(c.expiresAt) && new Date(c.expiresAt).getTime() <= Date.now();
+const statusLabel = (c: any) => (c.status === 'active' && isExpired(c) ? 'Expired' : STATUS[c.status]);
+const outstanding = cards.filter((c) => c.status === 'active' && !isExpired(c)).reduce((s, c) => s + c.balanceUgx, 0);
+// Held by unpaid orders: not spendable now, but still owed (it comes back if the order is cancelled).
+const reserved = cards.filter((c) => c.status !== 'void').reduce((s, c) => s + (c.heldUgx ?? 0), 0);
+const prefillReturn = (Astro.url.searchParams.get('return') ?? '').toUpperCase().slice(0, 40);
+---
+<AdminLayout title="Gift cards and store credit" description="Issue, approve and cancel gift cards and store credit; every movement on each card.">
+  <div class="container mx-auto max-w-6xl px-6 lg:px-8 space-y-6" data-credit-admin>
+    {notice && <div class={`rounded-xl border p-4 text-sm font-semibold ${notice.kind === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-800'}`}>{notice.text}</div>}
+    {issued && (
+      <div class="rounded-2xl border-2 border-amber-400 bg-amber-50 p-5" role="status">
+        <p class="text-xs font-black uppercase tracking-widest text-amber-900">Write this code down or hand it over now. It is not shown again.</p>
+        <p class="mt-2 font-mono text-2xl font-black tracking-widest text-gray-900" data-issued-code>{issued.code}</p>
+        <p class="mt-1 text-xs text-amber-900">Afterwards the card shows as {issued.masked}. Anyone with the code can spend it.</p>
+      </div>
+    )}
+
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h2 class="text-2xl font-black">Gift cards and store credit</h2>
+        <p class="text-sm text-gray-500">Spendable now across all cards: <strong>{formatUgx(outstanding)}</strong>. Reserved by unpaid orders: <strong>{formatUgx(reserved)}</strong>. Together, what the shop still owes in goods: <strong>{formatUgx(outstanding + reserved)}</strong>.</p>
+      </div>
+    </div>
+    <form method="GET" action="/admin/credit/ledger.csv" class="flex flex-wrap items-end gap-3 text-xs" data-credit-export>
+      <label class="font-bold">From<input name="from" type="date" required class="mt-1 block border rounded-xl p-2" /></label>
+      <label class="font-bold">To<input name="to" type="date" required class="mt-1 block border rounded-xl p-2" /></label>
+      <button class="min-h-11 rounded-full border px-4 font-black uppercase">Download movements (CSV)</button>
+      <span class="text-gray-500">For the accountant: every issue, spend, give-back, correction and cancellation in the period.</span>
+    </form>
+    {loadFailed && <p class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Cards could not be loaded. You may lack payments.read.</p>}
+
+    <form method="POST" class="rounded-2xl border bg-white p-5 grid gap-3 md:grid-cols-3">
+      <input type="hidden" name="intent" value="issue" />
+      <h3 class="md:col-span-3 font-black">Issue a card</h3>
+      <label class="text-xs font-bold">Kind<select name="kind" class="mt-1 w-full border rounded-xl p-2"><option value="gift_card">Gift card (sold or given)</option><option value="store_credit" selected={d('kind') === 'store_credit'}>Store credit (refund, goodwill)</option></select></label>
+      <label class="text-xs font-bold">Amount (UGX)<input name="amountUgx" type="number" min="1000" max="5000000" step="1" required value={d('amountUgx')} class="mt-1 w-full border rounded-xl p-2" /></label>
+      <label class="text-xs font-bold">Expires (optional)<input name="expiresAt" type="date" value={d('expiresAt')} class="mt-1 w-full border rounded-xl p-2" /></label>
+      <label class="text-xs font-bold md:col-span-3">Why (kept on the card and in the audit)<input name="reason" required minlength="5" maxlength="500" value={d('reason')} placeholder="e.g. Sold at the counter, paid MoMo ref 123 / Refund for GP-202610-…" class="mt-1 w-full border rounded-xl p-2" /></label>
+      <label class="text-xs font-bold">For order (optional, a GP- order number only)<input name="orderNumber" maxlength="40" value={d('orderNumber')} placeholder="GP-202610-… (store credit as a refund)" class="mt-1 w-full border rounded-xl p-2 uppercase" /></label>
+      <label class="text-xs font-bold">Recipient name (optional)<input name="recipientName" maxlength="120" value={d('recipientName')} class="mt-1 w-full border rounded-xl p-2" /></label>
+      <label class="text-xs font-bold">Recipient phone (texted the code)<input name="recipientPhone" inputmode="tel" value={d('recipientPhone')} placeholder="0772 123456" class="mt-1 w-full border rounded-xl p-2" /></label>
+      <div class="flex items-end"><button class="min-h-11 rounded-full bg-brand-charcoal px-5 text-xs font-black uppercase tracking-widest text-white">Issue</button></div>
+      <p class="md:col-span-3 text-xs text-gray-500">With an order number, the credit is linked to that order and the customer's account (they see it under Gift cards), and their name and phone fill in by themselves. Above UGX 500,000 a different person must approve before it can be spent; then hand the code over yourself (it is texted only when spendable at issue).</p>
+    </form>
+
+    <form method="POST" class="rounded-2xl border bg-white p-5 flex flex-wrap items-end gap-3" data-credit-return>
+      <input type="hidden" name="intent" value="return" />
+      <h3 class="w-full font-black">Give back to a card (an item returned)</h3>
+      <label class="text-xs font-bold">Order number<input name="orderNumber" required value={prefillReturn} placeholder="GP-202610-…" class="mt-1 block w-48 border rounded-xl p-2 uppercase" /></label>
+      <label class="text-xs font-bold">Amount (UGX)<input name="amountUgx" type="number" min="1" step="1" required class="mt-1 block w-36 border rounded-xl p-2" /></label>
+      <label class="text-xs font-bold grow">Why<input name="note" required minlength="5" maxlength="500" placeholder="e.g. GP-C11 charger returned unused" class="mt-1 block w-full border rounded-xl p-2" /></label>
+      <button class="min-h-11 rounded-full border px-4 text-xs font-black uppercase">Give back</button>
+      <p class="w-full text-xs text-gray-500">Only what the card paid for that order, less anything already given back. Money paid by Mobile Money or card is refunded from Payments instead. Cancelling the whole order gives back the rest by itself.</p>
+    </form>
+
+    {detail && (
+      <section class="rounded-2xl border bg-white p-5 space-y-3" data-credit-detail>
+        <h3 class="font-black">{KIND[detail.instrument.kind]} ••••{detail.instrument.last4} · {statusLabel(detail.instrument)} · balance {formatUgx(detail.instrument.balanceUgx)}</h3>
+        <p class="text-sm text-gray-600">Issued {fmt(detail.instrument.createdAt)} for {formatUgx(detail.instrument.initialValueUgx)}: {detail.instrument.reason}{detail.instrument.recipientName ? ` · to ${detail.instrument.recipientName}` : ''}</p>
+        <table class="w-full text-sm">
+          <thead><tr class="text-left text-xs uppercase text-gray-500"><th class="py-1">When</th><th>What</th><th>Order</th><th class="text-right">Amount</th><th class="pl-4">Note</th></tr></thead>
+          <tbody>{detail.ledger.map((l: any) => (
+            <tr class="border-t"><td class="py-1.5">{fmt(l.createdAt)}</td><td>{ENTRY[l.type] ?? l.type}{l.holdState ? ` (${l.holdState})` : ''}</td><td>{l.orderNumber ?? ''}</td><td class={`text-right tabular-nums ${l.amountUgx < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{formatUgx(l.amountUgx)}</td><td class="pl-4 text-xs text-gray-600">{l.note ?? ''}</td></tr>
+          ))}</tbody>
+        </table>
+        <div class="flex flex-wrap gap-3">
+          {detail.instrument.status === 'pending_approval' && (
+            <form method="POST"><input type="hidden" name="intent" value="approve" /><input type="hidden" name="id" value={detail.instrument.id} /><button class="min-h-11 rounded-full bg-emerald-700 px-4 text-xs font-black uppercase text-white">Approve</button></form>
+          )}
+          {detail.instrument.status !== 'void' && (
+            <>
+              <form method="POST" class="flex gap-2"><input type="hidden" name="intent" value="adjust" /><input type="hidden" name="id" value={detail.instrument.id} /><input name="amountUgx" type="number" required placeholder="+/- UGX" class="w-28 border rounded-xl p-2 text-sm" /><input name="note" required minlength="5" placeholder="Why" class="w-48 border rounded-xl p-2 text-sm" /><button class="min-h-11 rounded-full border px-4 text-xs font-black uppercase">Correct</button></form>
+              <form method="POST" class="flex gap-2"><input type="hidden" name="intent" value="void" /><input type="hidden" name="id" value={detail.instrument.id} /><input name="note" required minlength="5" placeholder="Why (lost, issued in error…)" class="w-56 border rounded-xl p-2 text-sm" /><button class="min-h-11 rounded-full border border-red-300 px-4 text-xs font-black uppercase text-red-800">Cancel the rest</button></form>
+            </>
+          )}
+        </div>
+      </section>
+    )}
+
+    <section class="rounded-2xl border bg-white p-5 space-y-3" data-credit-occasions>
+      <h3 class="font-black">Occasions on the buy page</h3>
+      {occasionData ? (
+        <>
+          <form method="GET" class="flex flex-wrap items-end gap-2 text-xs"><label class="font-bold">Preview a day<input type="date" name="previewOn" class="mt-1 block rounded-xl border p-2" /></label><button class="min-h-11 rounded-full border px-4 font-black uppercase">Preview</button></form>
+          <p class="text-sm text-gray-600">First six on {occasionData.today.today} (Kampala): <strong>{occasionData.today.featured.join(', ')}</strong>. Every other occasion is under "View all occasions", always selectable. Seasons come forward by the calendar on their own (Christmas from 27 November, Valentine's 21 days before, Easter computed); Eid only once you enter its dates.</p>
+          <form method="POST" class="grid gap-3 md:grid-cols-2">
+            <input type="hidden" name="intent" value="occasions" />
+            <label class="text-xs font-bold">Eid dates, one per line: start end name
+              <textarea name="dates" rows="3" placeholder="2027-03-10 2027-03-11 Eid al-Fitr" class="mt-1 w-full rounded-xl border p-2 font-mono text-xs">{(occasionData.settings.dates ?? []).map((d: any) => `${d.start} ${d.end}${d.label ? ` ${d.label}` : ''}`).join('\n')}</textarea>
+            </label>
+            <label class="text-xs font-bold">Adjustments, one per line: occasion feature|hide from to (at most 90 days)
+              <textarea name="overrides" rows="3" placeholder="christmas feature 2026-11-10 2026-12-25" class="mt-1 w-full rounded-xl border p-2 font-mono text-xs">{(occasionData.settings.overrides ?? []).map((o: any) => `${o.occasion} ${o.mode} ${o.from} ${o.to}`).join('\n')}</textarea>
+            </label>
+            <p class="text-xs text-gray-500 md:col-span-2">Occasion names: gold (A gift for you), birthday, thanks, celebrate (Congratulations), love, anniversary, valentine, mothers_day, fathers_day, easter, eid, christmas, new_year, festive (Season's greetings). "feature" brings one forward early; "hide" stops featuring it. Neither removes it from the list, and each ends on its "to" date.</p>
+            <div><button class="min-h-11 rounded-full border px-4 text-xs font-black uppercase">Save occasions</button></div>
+          </form>
+        </>
+      ) : <p class="text-sm text-gray-600">Occasion settings could not be loaded.</p>}
+    </section>
+
+    <section class="rounded-2xl border bg-white p-5" data-credit-purchases>
+      <h3 class="font-black">Bought online</h3>
+      <p class="mb-3 text-xs text-gray-500">Gift cards customers bought on <a class="underline" href="/gift-card/buy">/gift-card/buy</a>, paid through Pesapal. The card is made and its code texted once Pesapal confirms the money (a scheduled one on its day, from 9am).</p>
+      {purchases.length === 0 ? <p class="text-sm text-gray-600">None yet.</p> : (
+        <div class="overflow-x-auto"><table class="w-full text-sm">
+          <thead><tr class="text-left text-xs uppercase text-gray-500"><th class="py-1">Reference</th><th>Status</th><th class="text-right">Amount</th><th class="pl-4">Bought by</th><th>For</th><th>Paid by</th><th>Date</th><th></th></tr></thead>
+          <tbody>{purchases.map((p) => (
+            <tr class="border-t align-top">
+              <td class="py-1.5 font-mono text-xs">{p.reference}{p.cardLast4 && p.instrumentId ? <a class="block font-sans font-bold underline" href={`/admin/credit?card=${p.instrumentId}`}>card ••••{p.cardLast4}</a> : ''}</td>
+              <td>{PURCHASE[p.status] ?? p.status}{p.status === 'paid' && p.deliverOn ? ` (${p.deliverOn})` : ''}{p.status === 'review' && p.providerStatus ? <span class="block text-xs text-red-700">{p.providerStatus}</span> : ''}{p.status === 'issued' && p.textStatus ? <span class={`block text-xs ${p.textStatus === 'failed' ? 'font-black text-red-700' : 'text-gray-500'}`}>{TEXT[p.textStatus]}</span> : ''}</td>
+              <td class="text-right tabular-nums">{formatUgx(p.amountUgx)}</td>
+              <td class="pl-4 text-xs">{p.buyerName}<span class="block text-gray-500">{p.buyerPhone}</span></td>
+              <td class="text-xs">{p.recipientName}<span class="block text-gray-500">{p.sendTo === 'buyer' ? 'code to buyer' : p.recipientPhone}</span>
+                {isPhotoId(p.photoId) && (
+                  <form method="POST" class="mt-1 flex items-center gap-2"><input type="hidden" name="intent" value="remove-photo" /><input type="hidden" name="reference" value={p.reference} />
+                    <a href={`/gift-card/photo/${p.photoId}`} target="_blank" rel="noopener"><img src={`/gift-card/photo/${p.photoId}`} alt="Photo on the card" width="40" height="40" loading="lazy" class="h-10 w-10 rounded object-cover ring-1 ring-black/10" /></a>
+                    <details class="text-[11px]"><summary class="cursor-pointer font-black uppercase underline">Remove photo</summary>
+                      <button class="mt-1 min-h-9 rounded-full border border-red-300 px-2 text-[11px] font-black uppercase text-red-800" title="Deletes the photo; the card shows its occasion picture instead">Yes, delete it</button></details></form>
+                )}
+              </td>
+              <td class="text-xs">{p.paymentMethod ?? ''}<span class="block text-gray-500">{p.confirmationCode ?? ''}</span></td>
+              <td class="text-xs">{fmt(p.createdAt)}</td>
+              <td class="space-y-2">
+                {p.sendTo === 'recipient' && ['paid', 'issued'].includes(p.status) && (
+                  <form method="POST" class="flex flex-wrap gap-2" data-redirect-purchase><input type="hidden" name="intent" value="redirect-purchase" /><input type="hidden" name="reference" value={p.reference} /><input name="phone" required inputmode="tel" placeholder="Correct number" class="w-32 border rounded-xl p-2 text-xs" /><input name="reason" required minlength="5" placeholder="Why" class="w-28 border rounded-xl p-2 text-xs" /><button class="min-h-11 rounded-full border px-3 text-xs font-black uppercase" title="An unspent card gets a new code at the new number; the old code stops working">Send to new number</button></form>
+                )}
+                {['paid', 'issued', 'review'].includes(p.status) && (
+                  <form method="POST" class="flex gap-2"><input type="hidden" name="intent" value="refund-purchase" /><input type="hidden" name="reference" value={p.reference} /><input name="reason" required minlength="5" placeholder="Why" class="w-32 border rounded-xl p-2 text-xs" /><button class="min-h-11 rounded-full border border-red-300 px-3 text-xs font-black uppercase text-red-800">Refund</button></form>
+                )}
+              </td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
+    </section>
+
+    <section class="rounded-2xl border bg-white p-5">
+      <h3 class="font-black mb-3">Cards</h3>
+      {cards.length === 0 ? <p class="text-sm text-gray-600">No cards yet.</p> : (
+        <table class="w-full text-sm">
+          <thead><tr class="text-left text-xs uppercase text-gray-500"><th class="py-1">Card</th><th>Status</th><th class="text-right">Issued</th><th class="text-right">Balance</th><th class="pl-4">For</th><th>Date</th></tr></thead>
+          <tbody>{cards.map((card) => (
+            <tr class="border-t"><td class="py-1.5"><a class="font-bold underline" href={`/admin/credit?card=${card.id}`}>{KIND[card.kind]} ••••{card.last4}</a></td><td>{statusLabel(card)}</td><td class="text-right tabular-nums">{formatUgx(card.initialValueUgx)}</td><td class="text-right tabular-nums font-bold">{formatUgx(card.balanceUgx)}</td><td class="pl-4 text-xs">{card.recipientName ?? ''}</td><td class="text-xs">{fmt(card.createdAt)}</td></tr>
+          ))}</tbody>
+        </table>
+      )}
+    </section>
+  </div>
+</AdminLayout>

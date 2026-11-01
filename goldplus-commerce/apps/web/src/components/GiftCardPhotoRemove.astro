@@ -1,0 +1,22 @@
+---
+/**
+ * 0201: take the photo off a gift card, with one confirming tap (no browser dialog; works without JavaScript).
+ * The page that renders it handles the POST: `intent=remove-photo` plus whatever proves the right to (`fields`).
+ */
+interface Props {
+  /** Hidden fields the page needs to act (the card's code, or nothing when the reference is in the address). */
+  fields?: Record<string, string>;
+  /** "Their card will show…" / "Your card will show…" */
+  whose: 'their' | 'your';
+}
+const { fields = {}, whose } = Astro.props;
+---
+<details class="group mt-3 text-sm" data-photo-remove-box>
+  <summary class="inline-flex min-h-11 cursor-pointer list-none items-center font-bold text-slate-700 underline [&::-webkit-details-marker]:hidden">Remove the photo</summary>
+  <form method="POST" class="mt-2 rounded-xl border border-slate-200 bg-white p-3">
+    <input type="hidden" name="intent" value="remove-photo" />
+    {Object.entries(fields).map(([k, v]) => <input type="hidden" name={k} value={v} />)}
+    <p class="text-slate-700">The photo is deleted for good and {whose} card shows its occasion picture instead. The card and its value do not change.</p>
+    <button class="mt-2 inline-flex min-h-11 items-center rounded-full border border-red-300 px-4 text-sm font-black text-red-800">Yes, remove the photo</button>
+  </form>
+</details>
