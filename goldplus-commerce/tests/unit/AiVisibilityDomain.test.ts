@@ -145,7 +145,11 @@ describe('actions and approvals', () => {
   it('publishing is never executed by an agent; nothing executes unapproved', () => {
     expect(mayExecute({ status: 'APPROVED', risk: RISK_OF.INDEXING_SUBMISSION, actorKind: 'AGENT' }).ok).toBe(false);
     expect(mayExecute({ status: 'AWAITING_APPROVAL', risk: 'EDIT', actorKind: 'USER' }).ok).toBe(false);
-    expect(mayExecute({ status: 'APPROVED', risk: 'EDIT', actorKind: 'AGENT' }).ok).toBe(true);
+    // Agents prepare only: an approved EDIT or CONFIGURE is still carried out by a person.
+    expect(mayExecute({ status: 'APPROVED', risk: 'EDIT', actorKind: 'AGENT' }).ok).toBe(false);
+    expect(mayExecute({ status: 'APPROVED', risk: 'CONFIGURE', actorKind: 'API_KEY' }).ok).toBe(false);
+    expect(mayExecute({ status: 'APPROVED', risk: 'MEASURE', actorKind: 'AGENT' }).ok).toBe(true);
+    expect(mayExecute({ status: 'APPROVED', risk: 'EDIT', actorKind: 'USER' }).ok).toBe(true);
     expect(canMove('VERIFIED', 'DRAFT')).toBe(false);
   });
   it('verification is before/after and says it is not causal', () => {
@@ -153,6 +157,8 @@ describe('actions and approvals', () => {
     expect(v.status).toBe('VERIFIED');
     expect(v.summary).toMatch(/not that one caused the other/);
     expect(verificationVerdict({ cited: 1, eligible: 2 }, { cited: 0, eligible: 0 }).status).toBe('NOT_VERIFIED');
+    // No baseline is no data, not 0%: one citation afterwards proves nothing.
+    expect(verificationVerdict({ cited: 0, eligible: 0 }, { cited: 1, eligible: 3 }).status).toBe('NOT_VERIFIED');
   });
   it('recommendations name evidence, mechanism, verification and limitations', () => {
     const r = recommendFor({ kind: 'COMPETITOR_CITED_NOT_US', queryId: 'q', queryText: 'power bank kampala', providers: ['OPENAI'], observationIds: ['o'], competitorIds: ['c'], candidatePage: null });
