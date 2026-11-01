@@ -1,10 +1,26 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
-import { filterDisplayableRecommendations, previewRecommendationRules, productToRecommendationItem } from "../../lib/recommendation-display";
-import { getCleanCatalog } from "../../lib/catalog/catalog";
-import { apiBase } from "../../lib/api";
-import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
+import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
+import { getProductSubcategory, subcategoryNameForSlug } from "../../lib/product-discovery";
+import { getTaxonomy } from "../../lib/taxonomy";
+
+/**
+ * R7 (2026-08-06): the rail trusts the engine. The old frontmatter re-fetched
+ * the whole catalogue and re-ranked it through a second, client-side ladder
+ * whenever the API returned nothing — exactly the case the engine's own
+ * fallback ladder (R3) now owns, with sources and typed emptiness. The
+ * display boundary still normalises every candidate (safe slug, truthful
+ * price/availability) and the title matches the evidence that actually served.
+ *
+ * 2026-09-24: the engine's same-category step filters by category only, and one
+ * category holds most of the catalogue, so a wall charger, a power bank and a
+ * battery all showed the same four phone batteries. The rail now asks for a
+ * wider slice and hands the display boundary the product's SUBCATEGORY — its
+ * existing same_subcategory rule puts same-family items first. Nothing is
+ * invented or dropped: the engine's candidates and reason codes are kept, only
+ * their display order changes.
+ */
 
 interface Props {
   productId: string;
@@ -18,56 +34,41 @@ const { productId, productSlug, categoryName, subcategoryName = "" } = Astro.pro
 const response = await getRecommendations({
   placement: "product_related",
   productId,
-  limit: 8,
-});
+  limit: 16,
+}, { visitToken: Astro.locals.gpVisit });
 
-const displayItems = filterDisplayableRecommendations(response.items, {
+const taxonomy = await getTaxonomy();
+// The same keyword inference the PDP used for its own subcategory (name +
+// category), so both sides of the comparison speak one vocabulary.
+const withSubcategory = response.items.map((item) => ({
+  ...item,
+  subcategoryName: getProductSubcategory({ name: item.name, categoryName } as Parameters<typeof getProductSubcategory>[0], taxonomy),
+}));
+
+const finalItems = filterDisplayableRecommendations(withSubcategory, {
   currentProductId: productId,
   currentProductSlug: productSlug,
-  currentCategory: categoryName,
-  currentSubcategory: subcategoryName,
+  currentSubcategory: subcategoryName || undefined,
+  minimumSameSubcategoryCandidates: 1,
   limit: 4,
 });
 
-let finalItems = displayItems;
-let selectionRule = "eligible_candidates";
+const subcategoryLabel = subcategoryName ? subcategoryNameForSlug(subcategoryName as Parameters<typeof subcategoryNameForSlug>[0], taxonomy) : "";
+const allSameFamily = Boolean(subcategoryLabel) && finalItems.length > 0
+  && finalItems.every((item) => (item as { subcategoryName?: string }).subcategoryName === subcategoryName);
 
-if (finalItems.length === 0) {
-  let allProducts: ProductPublicDto[] = [];
-  try {
-    const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
-    if (res.ok) {
-      const json = await res.json() as ApiResponse<ProductPublicDto[]>;
-      if (json.success && json.data) {
-        allProducts = json.data;
-      }
-    }
-  } catch {
-    // ignore
-  }
-  allProducts = getCleanCatalog(allProducts);
-  
-  const preview = previewRecommendationRules(
-    allProducts.map((product) => productToRecommendationItem(product, "RELATED_FALLBACK")),
-    {
-      currentProductId: productId,
-      currentProductSlug: productSlug,
-      currentCategory: categoryName,
-      currentSubcategory: subcategoryName,
-      maxCount: 4,
-      categoryDominanceCap: 2,
-    },
-  );
-  finalItems = preview.selected;
-  selectionRule = preview.selectedRule;
-}
+const evidenceBased = finalItems.some((item) =>
+  ["EXACT_PRODUCT_COMPATIBILITY", "SAME_CATEGORY_ATTRIBUTE_MATCH", "CATEGORY_BESTSELLER"].includes(
+    (item as { candidateSource?: string }).candidateSource ?? "",
+  ),
+);
 ---
 
 <RecommendationRail
-    title={selectionRule === "same_subcategory" || selectionRule === "same_category" ? "Similar products" : "Browse available products"}
-    subtitle={selectionRule === "same_subcategory" || selectionRule === "same_category"
-      ? `More products listed in ${categoryName}.`
-      : "A catalogue fallback based only on currently listed products."}
+    title={evidenceBased ? "Similar products" : "Also in the shop"}
+    subtitle={evidenceBased
+      ? (allSameFamily ? `More in ${subcategoryLabel}.` : `More products listed in ${categoryName}.`)
+      : "More from what's on the shelf right now."}
     placement="product_related"
     items={finalItems}
     showEmptyState={true}
