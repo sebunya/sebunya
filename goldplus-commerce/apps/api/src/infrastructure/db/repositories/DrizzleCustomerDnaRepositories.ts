@@ -4,6 +4,7 @@ import {
 } from '../schema/customer_dna';
 import { and, asc, desc, eq, isNull, lt, sql } from 'drizzle-orm';
 import { users } from '../schema/identity';
+import { likeContains } from '../like';
 import { CustomerProfileSnapshot, CustomerFeature, IdentityConfidence, LifecycleStage } from '../../../domain/customer-dna/CustomerProfile';
 import { IdentityLinkSnapshot, IdentitySignalType, IdentityLinkStatus } from '../../../domain/customer-dna/CustomerIdentity';
 import { NbaDecision } from '../../../domain/customer-dna/NextBestAction';
@@ -59,10 +60,13 @@ export class DrizzleCustomerProfileRepository implements ICustomerProfileReposit
     // is decoded before comparing, and the new value goes in as TEXT (a param
     // typed jsonb is JSON-encoded again by the driver); timestamps are compared at millisecond
     // precision (a JS Date has no microseconds, Postgres does).
+    // Never go backwards: a snapshot built from OLDER data (lower sourceVersion)
+    // than the stored one is dropped, whatever else differs, so a slow worker
+    // finishing late cannot overwrite a newer projection.
     const asJson = (col: unknown) => sql`(case when jsonb_typeof(${col}) = 'string' then (${col} #>> '{}')::jsonb else ${col} end)`;
-    const ms = (v: unknown) => sql`date_trunc('second', ${v})`;
+    const ms = (v: unknown) => sql`date_trunc('milliseconds', ${v})`;
     const at = (d: Date | null) => (d ? sql`${d.toISOString()}::timestamptz` : sql`null::timestamptz`);
-    const changed = sql`(${customerProfiles.sourceVersion} < ${s.sourceVersion}
+    const changed = sql`(${customerProfiles.sourceVersion} <= ${s.sourceVersion}) and (${customerProfiles.sourceVersion} < ${s.sourceVersion}
       or ${customerProfiles.primaryLifecycleStage} is distinct from ${s.primaryLifecycleStage}
       or ${asJson(customerProfiles.valueFlags)} is distinct from ${valueFlags}::text::jsonb
       or ${asJson(customerProfiles.riskFlags)} is distinct from ${riskFlags}::text::jsonb
@@ -90,7 +94,7 @@ export class DrizzleCustomerProfileRepository implements ICustomerProfileReposit
     if (res.length > 0) return { updated: true, profileVersion: res[0].profileVersion };
     // Unchanged: record that it was checked (the nightly batch takes the oldest
     // first), without a new profile version.
-    const [cur] = await db.update(customerProfiles).set({ computedAt: s.computedAt })
+    const [cur] = await db.update(customerProfiles).set({ computedAt: sql`greatest(${customerProfiles.computedAt}, ${s.computedAt.toISOString()}::timestamptz)` })
       .where(eq(customerProfiles.canonicalCustomerId, s.canonicalCustomerId))
       .returning({ v: customerProfiles.profileVersion });
     return { updated: false, profileVersion: cur?.v ?? s.profileVersion };
@@ -107,13 +111,13 @@ export class DrizzleCustomerProfileRepository implements ICustomerProfileReposit
     // phone digits (last 9, so 0772… and +256772… both match), contains on email.
     const digits = q.replace(/\D/g, '');
     const byContact = q.includes('@')
-      ? sql`${users.email} ilike ${'%' + q.toLowerCase() + '%'}`
+      ? sql`${users.email} ilike ${likeContains(q.toLowerCase())}`
       : digits.length >= 9
         ? sql`right(regexp_replace(coalesce(${users.phone}, ''), '\\D', '', 'g'), 9) = ${digits.slice(-9)}`
         : sql`false`;
     const rows = await db.select({ p: customerProfiles }).from(customerProfiles)
       .leftJoin(users, eq(users.id, customerProfiles.accountUserId))
-      .where(and(live, sql`(${byContact} or ${customerProfiles.canonicalCustomerId}::text ilike ${'%' + q + '%'} or ${customerProfiles.accountUserId}::text ilike ${'%' + q + '%'})`))
+      .where(and(live, sql`(${byContact} or ${customerProfiles.canonicalCustomerId}::text ilike ${likeContains(q)} or ${customerProfiles.accountUserId}::text ilike ${likeContains(q)})`))
       .orderBy(...recentFirst)
       .limit(limit);
     return rows.map((r) => toProfile(r.p));
