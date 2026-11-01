@@ -1,19 +1,29 @@
 ---
 import type { ProductPublicDto } from '@goldplus/shared';
+import { offerPriceUgx } from '../lib/offerPrice';
+import { serializeJsonLd, schemaAvailability } from '../lib/jsonld';
+import { SITE_ORIGIN } from '../lib/sitemap';
+import { merchantReturnPolicyJsonLd } from '../lib/returnsPolicy';
+import { batteryProductJsonLdProps, mergeBatteryProperties, type BatteryJsonLdFacts } from '../lib/phoneBatteryPage';
 
 interface Props {
   product: ProductPublicDto;
   url: string;
+  /** The campaign sale price the page is showing, when one is running. */
+  priceUgx?: number | null;
+  /** AggregateRating from published, verified-purchase reviews; omitted when there are none. */
+  aggregateRating?: Record<string, unknown> | null;
+  /**
+   * A replacement battery: the pack code, the recorded capacity and voltage
+   * (only when the catalogue holds them) and the phones it is published as
+   * fitting, so an engine reads "spare part for <phone>" as a fact rather
+   * than inferring it from the name. Nothing here is invented: null stays out.
+   */
+  battery?: BatteryJsonLdFacts | null;
 }
 
-const { product, url } = Astro.props;
+const { product, url, priceUgx, aggregateRating, battery } = Astro.props;
 
-const availabilityUrl: Record<string, string | null> = {
-  in_stock: 'https://schema.org/InStock',
-  out_of_stock: 'https://schema.org/OutOfStock',
-  pre_order: 'https://schema.org/PreOrder',
-  unknown: null,
-};
 
 const node: Record<string, unknown> = {
   '@context': 'https://schema.org',
@@ -21,6 +31,9 @@ const node: Record<string, unknown> = {
   name: product.name,
   category: product.categoryName,
   url,
+  // The house brand: every product here is GoldPlus-branded; Google's product
+  // rich results and Merchant free listings want brand on the page as in the feed.
+  brand: { '@type': 'Brand', name: 'GoldPlus' },
 };
 
 const hasValidSku = product.sku && product.sku !== 'Needs Business Confirmation' && !product.sku.toLowerCase().includes('pending');
@@ -36,9 +49,19 @@ const specEntries = Object.entries(product.verifiedSpecs).filter(([_, v]) => {
 });
 if (specEntries.length > 0) {
   node.description = specEntries.map(([k, v]) => `${k}: ${v}`).join('; ');
+} else if (product.longDescription?.trim() || product.shortDescription?.trim()) {
+  node.description = (product.longDescription?.trim() || product.shortDescription).trim();
 }
 
-if (product.primaryImageUrl) node.image = product.primaryImageUrl;
+// Focus 4: every available canonical image, slot 1 first, absolute, no empties.
+const abs = (u: string) => (/^https?:\/\//i.test(u) ? u : `${SITE_ORIGIN}${u}`);
+// Demo/sample frames (alt begins "Sample ") are placeholders: they must never be published as
+// this product's picture to Google or any other consumer of structured data.
+const jsonLdImages = (product.images ?? [])
+  .filter((i) => !(i.alt ?? '').startsWith('Sample '))
+  .map((i) => i.url).filter((u): u is string => typeof u === 'string' && u.length > 0).map(abs);
+if (jsonLdImages.length > 0) node.image = jsonLdImages.length === 1 ? jsonLdImages[0] : jsonLdImages;
+// No real photograph: no `image` at all. A placeholder card is not a picture of the product.
 
 const verifiedAttrs = product.attributeValues.filter((v) => v.isVerified);
 if (verifiedAttrs.length > 0) {
@@ -53,19 +76,36 @@ if (verifiedAttrs.length > 0) {
   });
 }
 
+if (battery) {
+  const { additionalProperty, ...rest } = batteryProductJsonLdProps(battery, !!hasValidMpn);
+  Object.assign(node, rest);
+  // The live fits replace the free-text "Fits" attribute; the code is not stated twice (lib/phoneBatteryPage).
+  node.additionalProperty = mergeBatteryProperties((node.additionalProperty as Array<Record<string, unknown>> | undefined) ?? [], additionalProperty);
+}
+
 if (product.retailPriceUgx !== null) {
   const offers: Record<string, unknown> = {
     '@type': 'Offer',
     priceCurrency: 'UGX',
-    price: product.retailPriceUgx,
+    // The price the customer sees and pays — never the regular price under a running sale.
+    price: offerPriceUgx(product.retailPriceUgx, priceUgx),
     url,
+    itemCondition: 'https://schema.org/NewCondition',
+    // The shop's returns promise, on the offer Google reads.
+    hasMerchantReturnPolicy: merchantReturnPolicyJsonLd(),
+    // Who sells it: the same organisation node the home page describes (@id),
+    // inline so the offer is complete on its own page.
+    seller: { '@type': 'Organization', '@id': `${SITE_ORIGIN}/#organization`, name: 'ShopGoldPlus', url: SITE_ORIGIN },
   };
-  const availUrl = availabilityUrl[product.availability.kind];
+  const availUrl = schemaAvailability(product.availability.kind);
   if (availUrl) offers.availability = availUrl;
   node.offers = offers;
 }
 
-// Two-space indent is fine; crawlers don't care. Keep newlines out of inline script.
-const jsonText = JSON.stringify(node);
+// Stars in search results only from real, published ratings (never from zero, never invented).
+if (aggregateRating) node.aggregateRating = aggregateRating;
+
+// Escaped like every other JSON-LD block: a product name or spec containing "</script>" must not end the tag.
+const jsonText = serializeJsonLd(node);
 ---
 <script type="application/ld+json" is:inline set:html={jsonText} />

@@ -1,14 +1,19 @@
 ---
 import type { ProductPublicDto } from '@goldplus/shared';
+import { productSrcset, CARD_SIZES } from '../lib/imageSrcset';
+import { formatUgx } from '../lib/money';
+import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../lib/storefrontDiscount';
 
 interface Props {
   product: ProductPublicDto;
   subcategory?: string;
   searchQuery?: string;
   searchRank?: number;
+  /** First-row cards are in the first viewport on desktop: eager, not lazy. */
+  eager?: boolean;
 }
 
-const { product, subcategory = '', searchQuery = '', searchRank = 0 } = Astro.props;
+const { product, subcategory = '', searchQuery = '', searchRank = 0, eager = false } = Astro.props;
 const productHref = searchQuery && searchRank > 0
   ? `/products/${product.slug}?searchQuery=${encodeURIComponent(searchQuery)}&searchRank=${searchRank}`
   : `/products/${product.slug}`;
@@ -16,9 +21,16 @@ const productHref = searchQuery && searchRank > 0
 const hasValidPrice = typeof product.retailPriceUgx === 'number'
   && Number.isFinite(product.retailPriceUgx)
   && product.retailPriceUgx > 0;
-const formattedPrice = hasValidPrice
-  ? `UGX ${product.retailPriceUgx!.toLocaleString('en-UG')}`
-  : "Price on request";
+const formattedPrice = hasValidPrice ? formatUgx(product.retailPriceUgx!) : "Price on request";
+
+// Active campaign discount (display only; mirrors what checkout charges).
+const discount = await getStorefrontDiscount();
+const campaignRunning = hasValidPrice && discount.active && discount.percentBps > 0;
+const saleUgx = campaignRunning ? salePriceUgx(product.retailPriceUgx!, discount.percentBps, effectiveFloorUgx(discount.priceFloorUgx, product.floorPriceUgx, product.retailPriceUgx!)) : null;
+// A card only claims a sale when the price actually drops. At the per-unit
+// price floor the evaluator takes nothing off, and the card was striking
+// through a price and reprinting the same number beside it.
+const onSale = campaignRunning && saleUgx !== null && saleUgx < product.retailPriceUgx!;
 
 const lowerName = product.name.toLowerCase();
 const productType = lowerName.includes("charger") ? "Charger"
@@ -30,11 +42,17 @@ const productType = lowerName.includes("charger") ? "Charger"
 
 const shortDescAttr = product.attributeValues?.find(a => a.name === 'CardShortDescription')?.value;
 
+// Stock STATE only, never a number (owner decision 2026-09-24): 180 of 183
+// products carried the same imported 200, which read as test data. The count
+// comes back only once real stock figures exist; in/out of stock stays.
+const inStock = product.availability.kind === 'in_stock';
+const soldOut = product.availability.kind === 'out_of_stock';
+
 const availabilityLabel = (() => {
   switch(product.availability.kind) {
     case 'in_stock': return 'In Stock';
     case 'pre_order': return 'Pre-Order';
-    case 'out_of_stock': return 'Out of Stock';
+    case 'out_of_stock': return 'Sold out';
     default: return 'Confirm availability';
   }
 })();
@@ -42,60 +60,69 @@ const availabilityLabel = (() => {
 const availabilityBadgeClass = (() => {
   switch(product.availability.kind) {
     case 'in_stock': return 'bg-brand-primary/15 text-brand-charcoal border-brand-primary/20';
-    case 'pre_order': return 'bg-blue-50/80 text-blue-700 border-blue-150';
-    default: return 'bg-red-50 text-red-600 border-red-100';
+    case 'pre_order': return 'bg-blue-50/80 text-blue-700 border-blue-200';
+    default: return 'bg-red-50 text-red-700 border-red-100';
   }
 })();
 ---
 
+{/* Phones get two cards per row (home, shop, category and search), so the
+    card is compact below 640px: 12px padding, a third title line so the model
+    that tells two batteries apart is not cut off, and the two 44px actions
+    stack instead of breaking their labels. */}
 <article
-  class="group flex flex-col h-full border border-slate-200/80 rounded-2xl p-5 hover:border-brand-primary hover:shadow-lg hover:shadow-slate-100 transition-all duration-300 bg-white"
+  class="group flex flex-col h-full border border-slate-200/80 rounded-2xl p-3 sm:p-5 hover:border-brand-primary hover:-translate-y-0.5 transition-[transform,border-color] duration-200 bg-white"
   data-product-id={product.id}
   data-product-name={product.name}
-  data-product-price={product.retailPriceUgx ?? ''}
+  data-product-price={onSale ? saleUgx : product.retailPriceUgx ?? ''}
   data-product-category={product.categoryName ?? ''}
-  aria-label={`${product.name}, ${formattedPrice}, ${availabilityLabel}`}
+  aria-label={`${product.name}, ${onSale ? `on sale at ${formatUgx(saleUgx)}, was ${formattedPrice}` : formattedPrice}, ${availabilityLabel}`}
 >
   
   {/* Product Image & Status Badge */}
-  <div class="relative mb-4">
-    <a href={productHref} class="block aspect-square bg-slate-50 rounded-xl overflow-hidden relative outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 border border-slate-100">
+  <div class="relative mb-3 sm:mb-4">
+    <a href={productHref} class="block aspect-square bg-slate-50 rounded-xl overflow-hidden relative outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk border border-slate-100">
       {product.primaryImageUrl ? (
-        <img 
-          src={product.primaryImageUrl} 
-          alt={`Photo of ${product.name}`} 
-          class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-[1.035]"
-          loading="lazy"
+        <img
+          src={product.primaryImageUrl}
+          srcset={productSrcset(product.primaryImageUrl) ?? undefined}
+          sizes={productSrcset(product.primaryImageUrl) ? CARD_SIZES : undefined}
+          alt={`Photo of ${product.name}`}
+          class="object-cover w-full h-full"
+          loading={eager ? 'eager' : 'lazy'}
+          fetchpriority={eager ? 'high' : undefined}
+          decoding="async"
         />
       ) : (
         <div class="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 p-4 text-center select-none">
           <svg class="w-10 h-10 mb-2 text-brand-mutedGrey/20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-          <span class="text-[10px] font-bold text-slate-400 tracking-wider uppercase">{productType}</span>
-          <span class="text-[9px] font-bold text-slate-300 mt-1 uppercase tracking-tight">Coming Soon</span>
+          <span class="text-[11px] font-bold text-slate-600 tracking-wider uppercase">{productType}</span>
+          <span class="text-[11px] font-bold text-slate-600 mt-1 uppercase tracking-tight">Image unavailable</span>
         </div>
       )}
-      <div class="absolute top-3 left-3">
-         <span class={`text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider border shadow-xs ${availabilityBadgeClass}`}>
-           {availabilityLabel}
-         </span>
-      </div>
-      
-      {/* Verified Original Trust Overlay Badge */}
-      <div class="absolute bottom-3 right-3">
-         <span class="bg-gray-900/90 backdrop-blur-xs text-white text-[9px] font-bold px-2.5 py-1.5 rounded-full uppercase tracking-wider border border-white/10 shadow-sm flex items-center gap-1">
-           <svg class="w-3 h-3 text-brand-primary" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M2.166 4.9L10 1.154l7.834 3.746a1 1 0 01.586.904v4.32a9.002 9.002 0 01-4.707 7.925L10 19l-3.713-2.007a9.002 9.002 0 01-4.707-7.925v-4.32a1 1 0 01.586-.904zM10 3.018L3.999 5.892v3.232a7.001 7.001 0 003.659 6.16l2.342 1.266 2.342-1.266a7.001 7.001 0 003.659-6.16V5.892L10 3.018zm.707 6.293a1 1 0 00-1.414 0L7.5 11.086 6.707 10.293a1 1 0 00-1.414 1.414l1.5 1.5a1 1 0 001.414 0l2.5-2.5a1 1 0 000-1.414z" clip-rule="evenodd"></path></svg>
-           Authentic
-         </span>
-      </div>
+      {/* Sold out reads at a glance, as on oraimo's cards: the photo dims and
+          "Sold out" sits across it. Pre-order and unconfirmed keep the pill. */}
+      {soldOut && (
+        <span class="absolute inset-0 flex items-center justify-center bg-slate-900/55 pointer-events-none" aria-hidden="true" data-sold-out-overlay>
+          <span class="text-white text-xl sm:text-2xl font-black tracking-tight drop-shadow-md">Sold out</span>
+        </span>
+      )}
+      {!inStock && !soldOut && (
+        <div class="absolute top-3 left-3">
+           <span class={`text-[11px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider border ${availabilityBadgeClass}`}>
+             {availabilityLabel}
+           </span>
+        </div>
+      )}
     </a>
   </div>
   
   <div class="flex flex-col flex-grow">
     {/* Category */}
-    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">{product.categoryName}{subcategory ? ` · ${subcategory}` : ''}</p>
+    <p class="text-[11px] font-bold text-slate-600 uppercase tracking-widest mb-1 truncate">{product.categoryName}{subcategory ? ` · ${subcategory}` : ''}</p>
     
     {/* Title */}
-    <h3 class="text-[15px] font-bold text-gray-900 leading-snug mb-2 group-hover:text-brand-primary transition-colors line-clamp-2 min-h-[2.5rem]">
+    <h3 class="text-[15px] font-bold text-gray-900 leading-snug mb-2 group-hover:text-brand-primaryInk transition-colors line-clamp-3 sm:line-clamp-2 min-h-[2.5rem]">
       <a href={productHref} class="outline-none focus-visible:underline">
         {product.name}
       </a>
@@ -108,26 +135,56 @@ const availabilityBadgeClass = (() => {
       </p>
     )}
     
-    {/* Conditional SKU Tag */}
-    {product.sku && product.sku !== 'Needs Business Confirmation' && !product.sku.toLowerCase().includes('pending') && (
-      <div class="mb-4">
-        <span class="text-[9px] text-slate-500 font-mono bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100/80 inline-block">
-          SKU: {product.sku}
-        </span>
-      </div>
-    )}
+    <div class="mt-auto pt-3 border-t border-slate-100">
+      {onSale ? (
+        <div class="flex flex-wrap items-baseline gap-2">
+          <span class="font-black tracking-tight tabular-nums text-lg text-gray-900">{formatUgx(saleUgx)}</span>
+          <span class="text-xs font-semibold text-slate-600 line-through tabular-nums">{formatUgx(product.retailPriceUgx)}</span>
+          <span class="text-[11px] font-black uppercase tracking-wider rounded-full px-2 py-0.5" style="background:#93D500;color:#0A0A0A">{discount.percent}% discount</span>
+        </div>
+      ) : (
+        <p class={`font-black tracking-tight tabular-nums ${hasValidPrice ? 'text-lg text-gray-900' : 'text-xs text-slate-500 font-bold'}`}>
+          {formattedPrice}
+        </p>
+      )}
+      {onSale && discount.endsIso && !soldOut && (
+        <p class="mt-1 text-[11px] font-bold text-amber-700 tabular-nums" data-card-sale-ends={discount.endsIso}>Discounted price. Limited time</p>
+      )}
+      {inStock && <p class="mt-1 text-[11px] font-bold text-slate-500">In stock</p>}
 
-    <div class="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
-      <p class={`font-black tracking-tight ${hasValidPrice ? 'text-base text-gray-900' : 'text-xs text-slate-500 font-bold'}`}>
-        {formattedPrice}
-      </p>
-      
-      <a 
-        href={productHref}
-        class="px-3.5 py-1.5 rounded-full font-bold text-xs transition-all duration-300 outline-none focus:ring-4 focus:ring-brand-primary/20 bg-slate-50 text-gray-700 hover:bg-brand-primary hover:text-gray-950 border border-slate-200/60 shadow-xs active:scale-95"
-        aria-label={`View product details for ${product.name}`}>
-         View details
-      </a>
+      {/* The call to action — the SAME server-handled add/buy the PDP uses
+          (form POST /cart; buyNow goes straight to checkout on success). */}
+      {inStock && hasValidPrice ? (
+        <form method="POST" action="/cart" class="mt-3 flex flex-wrap gap-2">
+          <input type="hidden" name="action" value="add" />
+          <input type="hidden" name="productId" value={product.id} />
+          <input type="hidden" name="slug" value={product.slug} />
+          <input type="hidden" name="name" value={product.name} />
+          <input type="hidden" name="categoryName" value={product.categoryName ?? ''} />
+          <input type="hidden" name="priceUgx" value={product.retailPriceUgx ?? 0} />
+          {/* Same hierarchy as the PDP buy box: Add to cart is the lime primary,
+              Buy now the secondary. flex-wrap + nowrap: two labels that cannot
+              share a narrow (2-up phone) card stack instead of breaking. */}
+          <button
+            type="submit"
+            class="flex-1 min-h-11 px-3 whitespace-nowrap rounded-full text-[11px] font-black uppercase tracking-wider outline-none transition hover:shadow-md hover:shadow-brand-primary/25 focus-visible:ring-2 focus-visible:ring-brand-primaryInk active:scale-[0.98]"
+            style="background:#93D500;color:#0A0A0A"
+          >Add to cart</button>
+          <button
+            type="submit"
+            name="buyNow"
+            value="1"
+            class="flex-1 min-h-11 px-3 whitespace-nowrap rounded-full border border-slate-300 text-[11px] font-black uppercase tracking-wider text-gray-800 outline-none transition hover:border-gray-900 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-primaryInk active:scale-[0.98]"
+          >Buy now</button>
+        </form>
+      ) : (
+        <a href={productHref} class="mt-3 flex min-h-11 items-center justify-center rounded-full border border-slate-300 text-[11px] font-black uppercase tracking-wider text-gray-800 outline-none transition hover:border-gray-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">
+          View product
+        </a>
+      )}
     </div>
   </div>
 </article>
+
+{/* The sale-countdown ticker for [data-card-sale-ends] chips lives in
+    BaseLayout. One owner, every page (rails inject cards on ANY page). */}
