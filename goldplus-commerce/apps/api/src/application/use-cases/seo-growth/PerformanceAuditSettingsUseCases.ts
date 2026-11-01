@@ -44,11 +44,17 @@ export type SettingsValidation =
   | { ok: false; code: 'BAD_INPUT'; message: string; field: string };
 
 const isHttps = (v: string) => { try { const u = new URL(v); return u.protocol === 'https:' && !!u.host; } catch { return false; } };
-const hostOf = (v: string) => { try { return new URL(v).host.toLowerCase().replace(/^www\./, ''); } catch { return ''; } };
+// hostname, not host: 'shopgoldplus.com:443' is the production host too.
+const hostOf = (v: string) => { try { return new URL(v).hostname.toLowerCase().replace(/^www\./, '').replace(/\.$/, ''); } catch { return ''; } };
+/**
+ * The production host is FIXED, never derived from the editable TARGET_URL: deriving it let an admin point
+ * TARGET_URL at staging and then aim LOAD_TARGET_URL at production in the same form.
+ */
+export const PRODUCTION_HOST = 'shopgoldplus.com';
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null);
 
 /** Pure: turns a settings form into the two documents the runner reads, or the first problem found. */
-export function validateSettingsInput(input: SettingsInput, current: { productionHost: string }): SettingsValidation {
+export function validateSettingsInput(input: SettingsInput, current: { productionHost: string; targetHost?: string }): SettingsValidation {
   const bad = (field: string, message: string): SettingsValidation => ({ ok: false, code: 'BAD_INPUT', message, field });
   const env: Record<string, string> = {};
   for (const k of SETTINGS_ENV) {
@@ -62,9 +68,9 @@ export function validateSettingsInput(input: SettingsInput, current: { productio
     if (k === 'DEBUGBEAR_PROJECT_ID' || k === 'SPEEDCURVE_SITE_ID') { if (!/^[A-Za-z0-9_-]{1,64}$/.test(s)) return bad(k, `${k} must be an identifier (letters, digits, - or _).`); }
     env[k] = s.replace(/\/+$/, '');
   }
-  const targetHost = env.TARGET_URL ? hostOf(env.TARGET_URL) : current.productionHost;
+  const targetHost = env.TARGET_URL ? hostOf(env.TARGET_URL) : current.targetHost || current.productionHost;
   if (env.AUDIT_PRODUCT_URL && hostOf(env.AUDIT_PRODUCT_URL) !== targetHost) return bad('AUDIT_PRODUCT_URL', 'The test product must live on the audited site.');
-  if (env.LOAD_TARGET_URL && hostOf(env.LOAD_TARGET_URL) === (current.productionHost || targetHost)) {
+  if (env.LOAD_TARGET_URL && [PRODUCTION_HOST, hostOf(`https://${current.productionHost || PRODUCTION_HOST}`)].includes(hostOf(env.LOAD_TARGET_URL))) {
     return bad('LOAD_TARGET_URL', 'Heavy load against the production host cannot be enabled from the back office. Set a staging host here; production needs the two terminal-only approvals.');
   }
 
@@ -166,10 +172,9 @@ export class GetPerformanceAuditSettingsUseCase {
       ? await Promise.all([this.store.readEffectiveConfig(), this.store.readSettingsOverrides(), this.store.secretsPresence([...SETTINGS_SECRETS])])
       : [null, null, {}];
     const secretsPresent = Object.fromEntries(SETTINGS_SECRETS.map((k) => [k, Boolean(present[k])])) as Record<SettingsSecretName, boolean>;
-    const resolved = (effective as { resolved?: { targetUrl?: string } } | null)?.resolved;
     return {
       configured, effective, overrides, secretsPresent,
-      productionHost: hostOf(overrides?.env?.TARGET_URL || resolved?.targetUrl || 'https://shopgoldplus.com'),
+      productionHost: PRODUCTION_HOST,
       limits: { minIntervalDays: MIN_INTERVAL_DAYS, maxIntervalDays: MAX_INTERVAL_DAYS, providers: SETTINGS_PROVIDERS, budgetKeys: BUDGET_KEYS, regressionKeys: REGRESSION_KEYS },
     };
   }
@@ -180,14 +185,15 @@ export type UpdateSettingsResult =
   | { ok: false; code: 'NOT_CONFIGURED' | 'BAD_INPUT' | 'SETTINGS_UNAVAILABLE'; message: string; field?: string; status: number };
 
 export class UpdatePerformanceAuditSettingsUseCase {
-  constructor(private readonly store: IPerformanceAuditStore) {}
+  constructor(private readonly store: IPerformanceAuditStore, private readonly productionHost: string = PRODUCTION_HOST) {}
   /** Merges the submitted fields over the stored overrides (a field left out is left alone). */
   async execute(input: SettingsInput): Promise<UpdateSettingsResult> {
     if (!(await this.store.isConfigured())) return { ok: false, code: 'NOT_CONFIGURED', message: 'The audit data directory is not mounted into the API; settings cannot be stored.', status: 503 };
     const current = (await this.store.readSettingsOverrides()) ?? { version: 1, env: {}, config: {} };
     const effective = await this.store.readEffectiveConfig();
-    const productionHost = hostOf(current.env?.TARGET_URL || (effective as { resolved?: { targetUrl?: string } } | null)?.resolved?.targetUrl || 'https://shopgoldplus.com');
-    const v = validateSettingsInput(input, { productionHost });
+    // The audited site (may be staging) is only used to check the test product lives on it.
+    const targetHost = hostOf(current.env?.TARGET_URL || (effective as { resolved?: { targetUrl?: string } } | null)?.resolved?.targetUrl || `https://${this.productionHost}`);
+    const v = validateSettingsInput(input, { productionHost: this.productionHost, targetHost });
     if (!v.ok) return { ok: false, code: 'BAD_INPUT', message: v.message, field: v.field, status: 400 };
     const merged: PerformanceAuditSettingsDocument = { version: 1, env: { ...current.env }, config: { ...current.config } };
     for (const [k, val] of Object.entries(v.overrides.env)) { if (val === '') delete merged.env[k]; else merged.env[k] = val; }

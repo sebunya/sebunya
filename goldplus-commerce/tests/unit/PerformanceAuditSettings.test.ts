@@ -44,6 +44,16 @@ describe('validateSettingsInput', () => {
     expect(validateSettingsInput({ env: { TARGET_URL: 'https://other.example.test', LOAD_TARGET_URL: 'https://shopgoldplus.com' } }, PROD)).toMatchObject({ ok: false, field: 'LOAD_TARGET_URL' });
   });
 
+  it('the production host is fixed: a stored staging TARGET_URL or a port does not unlock production load', async () => {
+    const store = new FilesystemPerformanceAuditStore(dataDir());
+    const update = new UpdatePerformanceAuditSettingsUseCase(store);
+    expect((await update.execute({ env: { TARGET_URL: 'https://staging.example.test' } })).ok).toBe(true);
+    expect(await update.execute({ env: { LOAD_TARGET_URL: 'https://shopgoldplus.com' } })).toMatchObject({ ok: false, field: 'LOAD_TARGET_URL' });
+    expect(validateSettingsInput({ env: { LOAD_TARGET_URL: 'https://shopgoldplus.com:443/' } }, PROD)).toMatchObject({ ok: false, field: 'LOAD_TARGET_URL' });
+    // The test product still has to live on the (staging) audited site.
+    expect((await update.execute({ env: { AUDIT_PRODUCT_URL: 'https://staging.example.test/products/x' } })).ok).toBe(true);
+  });
+
   it('has no way to express the production approvals', () => {
     const r = validateSettingsInput({ env: { ALLOW_PROD_LOAD_TEST: 'true', PROD_LOAD_TEST_ACK: 'I_UNDERSTAND_THIS_GENERATES_REAL_TRAFFIC' } as never }, PROD);
     expect(r.ok).toBe(true);
