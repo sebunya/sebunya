@@ -1,5 +1,7 @@
 import { db } from '../client';
 import { products } from '../schema/products';
+import { stockStatusAfter } from '../StockStatusSql';
+import { orders, orderItems } from '../schema/commerce';
 import { inventoryReservations } from '../schema/inventory';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
@@ -13,6 +15,8 @@ import {
   summariseReservation,
   computeAvailable,
   isLowStock,
+  daysOfCover,
+  SALES_VELOCITY_WINDOW_DAYS,
 } from '../../../domain/inventory/Inventory';
 import { IInventoryRepository, AvailabilityRow, ReservationStatusSummary } from '../../../application/ports/IInventoryRepository';
 
@@ -81,13 +85,23 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
   async setStockQuantity(
     productId: string,
     newStock: number,
-  ): Promise<{ applied: boolean; reserved: number; stock: number } | null> {
+    expectedStock: number | null = null,
+  ): Promise<{ applied: boolean; reserved: number; stock: number; stale?: boolean } | null> {
     return withTransactionRetry(async () =>
       db.transaction(async (tx) => {
         const updated = await tx
           .update(products)
-          .set({ stockQuantity: newStock })
-          .where(and(eq(products.id, productId), sql`${products.reservedQuantity} <= ${newStock}`))
+          // The same rule the adjust path applies; the two had diverged, so a
+          // quantity of 0 left stock_status 'in_stock' and the in-stock filter
+          // kept listing a product its own card showed as out of stock.
+          .set({ stockQuantity: newStock, stockStatus: stockStatusAfter(newStock) })
+          .where(and(
+            eq(products.id, productId),
+            sql`${products.reservedQuantity} <= ${newStock}`,
+            // Compare-and-set: a caller that says what it loaded never
+            // overwrites a movement made since (dispatch, adjustment).
+            expectedStock === null ? undefined : eq(products.stockQuantity, expectedStock),
+          ))
           .returning({ stock: products.stockQuantity, reserved: products.reservedQuantity });
 
         if (updated.length === 1) {
@@ -102,7 +116,8 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
           .from(products)
           .where(eq(products.id, productId));
         if (current.length === 0) return null;
-        return { applied: false, reserved: current[0].reserved, stock: current[0].stock };
+        const stale = expectedStock !== null && current[0].stock !== expectedStock;
+        return { applied: false, reserved: current[0].reserved, stock: current[0].stock, ...(stale ? { stale: true } : {}) };
       }),
     );
   }
@@ -136,13 +151,22 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
           .from(products)
           .where(inArray(products.id, existing.map((r) => r.productId)));
         const policyById = new Map(policyRows.map((r) => [r.id, parseInventoryPolicy(r.policy)]));
-        const outcomeLines: ReservationLineOutcome[] = existing.map((r) => ({
-          productId: r.productId,
-          requested: r.requestedQuantity,
-          reserved: r.reservedQuantity,
-          shortfall: Math.max(0, r.requestedQuantity - r.reservedQuantity),
-          policy: policyById.get(r.productId) ?? DEFAULT_INVENTORY_POLICY,
-        }));
+        // A RELEASED row holds nothing: its units are back on sale (the TTL
+        // sweep, a cancel). Counted as held, a resumed checkout replayed
+        // ALREADY_RESERVED and the order was marked RESERVED — and went on to
+        // payment — while holding no stock. It now reads as a shortfall, so
+        // the order cannot progress on stock it does not have. (A consumed
+        // row did receive its units.)
+        const outcomeLines: ReservationLineOutcome[] = existing.map((r) => {
+          const held = r.status === 'released' ? 0 : r.reservedQuantity;
+          return {
+            productId: r.productId,
+            requested: r.requestedQuantity,
+            reserved: held,
+            shortfall: Math.max(0, r.requestedQuantity - held),
+            policy: policyById.get(r.productId) ?? DEFAULT_INVENTORY_POLICY,
+          };
+        });
         return summariseReservation(orderId, outcomeLines, true);
       }
 
@@ -220,8 +244,11 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
     });
   }
 
+  // Release and consume retry a lost race like reserve does: each moves only
+  // 'reserved' rows under FOR UPDATE, so a retry after an unseen commit finds
+  // nothing left to move.
   async releaseForOrder(orderId: string): Promise<{ released: boolean }> {
-    return db.transaction(async (tx) => {
+    return withTransactionRetry(() => db.transaction(async (tx) => {
       const active = await tx
         .select()
         .from(inventoryReservations)
@@ -240,12 +267,16 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
           .set({ status: 'released', updatedAt: new Date() })
           .where(eq(inventoryReservations.id, r.id));
       }
+      // The order's own denormalised state mirrors the ledger IN THE SAME
+      // TRANSACTION. Before 2026-08-06 it did not, and released orders claimed
+      // RESERVED forever — on the field payment and fulfilment fail closed on.
+      await this.mirrorOrderReservationState(tx, orderId, 'RELEASED');
       return { released: true };
-    });
+    }));
   }
 
   async consumeForOrder(orderId: string): Promise<{ consumed: boolean }> {
-    return db.transaction(async (tx) => {
+    return withTransactionRetry(() => db.transaction(async (tx) => {
       const active = await tx
         .select()
         .from(inventoryReservations)
@@ -259,6 +290,10 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
             .set({
               stockQuantity: sql`greatest(0, ${products.stockQuantity} - ${r.reservedQuantity})`,
               reservedQuantity: sql`greatest(0, ${products.reservedQuantity} - ${r.reservedQuantity})`,
+              // Selling the last unit is what usually takes a product out of
+              // stock; without this the in-stock filter and the Merchant feed
+              // kept saying "in stock" for a product nobody could buy.
+              stockStatus: stockStatusAfter(sql`greatest(0, ${products.stockQuantity} - ${r.reservedQuantity})`),
             })
             .where(eq(products.id, r.productId));
         }
@@ -267,8 +302,9 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
           .set({ status: 'consumed', updatedAt: new Date() })
           .where(eq(inventoryReservations.id, r.id));
       }
+      await this.mirrorOrderReservationState(tx, orderId, 'CONSUMED');
       return { consumed: true };
-    });
+    }));
   }
 
   async summariseReservations(orderId: string): Promise<ReservationStatusSummary> {
@@ -295,10 +331,60 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
         stock: products.stockQuantity,
         reserved: products.reservedQuantity,
         reorder: products.reorderPoint,
+        policy: products.inventoryPolicy,
       })
       .from(products)
       .where(inArray(products.id, productIds));
-    return rows.map((r) => this.toAvailability(r));
+    const sold = await this.unitsSoldLast30Days(rows.map((r) => r.id));
+    return rows.map((r) => this.toAvailability(r, sold.get(r.id) ?? 0));
+  }
+
+  /** Units on PAID orders created in the last 30 days, per product (read-only). */
+  private async unitsSoldLast30Days(productIds: string[]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    if (productIds.length === 0) return out;
+    const rows = await db
+      .select({ productId: orderItems.productId, units: sql<number>`coalesce(sum(${orderItems.quantity}), 0)::int` })
+      .from(orderItems)
+      .innerJoin(orders, eq(orders.id, orderItems.orderId))
+      .where(
+        and(
+          inArray(orderItems.productId, productIds),
+          eq(orders.paymentStatus, 'paid'),
+          sql`${orders.createdAt} >= now() - (${sql.raw(String(SALES_VELOCITY_WINDOW_DAYS))} * interval '1 day')`
+        )
+      )
+      .groupBy(orderItems.productId);
+    for (const row of rows) out.set(row.productId, Number(row.units ?? 0));
+    return out;
+  }
+
+  /**
+   * Live products that need reordering: at or below their reorder point when one is set, or (most products have
+   * none) selling fast enough to run out within `coverDays`, out-of-stock sellers first. Drafts, hidden products and
+   * NON_STOCK_ITEM products never appear.
+   */
+  async listRunningOut(coverDays: number, limit: number): Promise<AvailabilityRow[]> {
+    const rows = (await db.execute(sql`
+      with sold as (
+        select oi.product_id, coalesce(sum(oi.quantity), 0)::int as units
+        from order_items oi join orders o on o.id = oi.order_id
+        where o.payment_status = 'paid' and o.created_at >= now() - (${sql.raw(String(SALES_VELOCITY_WINDOW_DAYS))} * interval '1 day')
+        group by oi.product_id)
+      select p.id, p.sku, p.name, p.stock_quantity as stock, p.reserved_quantity as reserved, p.reorder_point as reorder,
+             p.inventory_policy as policy, coalesce(s.units, 0) as units
+      from products p left join sold s on s.product_id = p.id
+      where p.approval_status = 'approved' and p.active
+        and coalesce(p.inventory_policy, 'STOCK_CONTROLLED') <> 'NON_STOCK_ITEM'
+        and ((p.reorder_point > 0 and p.stock_quantity - p.reserved_quantity <= p.reorder_point)
+          or (coalesce(s.units, 0) > 0
+              and (p.stock_quantity - p.reserved_quantity) * ${SALES_VELOCITY_WINDOW_DAYS} <= coalesce(s.units, 0) * ${coverDays}))
+      order by (p.stock_quantity - p.reserved_quantity) <= 0 desc, coalesce(s.units, 0) desc, p.sku
+      limit ${limit}`)) as unknown as Array<{ id: string; sku: string; name: string; stock: number; reserved: number; reorder: number; policy: string | null; units: number }>;
+    return rows.map((r) => this.toAvailability(
+      { id: r.id, sku: r.sku, name: r.name, stock: Number(r.stock), reserved: Number(r.reserved), reorder: Number(r.reorder), policy: r.policy },
+      Number(r.units),
+    ));
   }
 
   async listLowStock(limit: number): Promise<AvailabilityRow[]> {
@@ -310,20 +396,27 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
         stock: products.stockQuantity,
         reserved: products.reservedQuantity,
         reorder: products.reorderPoint,
+        policy: products.inventoryPolicy,
       })
       .from(products)
       .where(
         and(
           sql`${products.reorderPoint} > 0`,
+          sql`coalesce(${products.inventoryPolicy}, 'STOCK_CONTROLLED') <> 'NON_STOCK_ITEM'`,
           sql`${products.stockQuantity} - ${products.reservedQuantity} <= ${products.reorderPoint}`
         )
       )
       .orderBy(sql`${products.stockQuantity} - ${products.reservedQuantity} asc`)
       .limit(limit);
-    return rows.map((r) => this.toAvailability(r));
+    const sold = await this.unitsSoldLast30Days(rows.map((r) => r.id));
+    return rows.map((r) => this.toAvailability(r, sold.get(r.id) ?? 0));
   }
 
-  private toAvailability(r: { id: string; sku: string; name: string; stock: number; reserved: number; reorder: number }): AvailabilityRow {
+  private toAvailability(
+    r: { id: string; sku: string; name: string; stock: number; reserved: number; reorder: number; policy?: string | null },
+    unitsSold30d = 0,
+  ): AvailabilityRow {
+    const available = computeAvailable(r.stock, r.reserved);
     return {
       productId: r.id,
       sku: r.sku,
@@ -332,7 +425,63 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
       reserved: r.reserved,
       available: computeAvailable(r.stock, r.reserved),
       reorderPoint: r.reorder,
-      lowStock: isLowStock({ stockOnHand: r.stock, reserved: r.reserved, reorderPoint: r.reorder }),
+      lowStock: isLowStock({ stockOnHand: r.stock, reserved: r.reserved, reorderPoint: r.reorder, inventoryPolicy: r.policy ?? null }),
+      tracked: parseInventoryPolicy(r.policy) !== 'NON_STOCK_ITEM',
+      unitsSold30d,
+      daysOfCover: parseInventoryPolicy(r.policy) === 'NON_STOCK_ITEM' ? null : daysOfCover(available, unitsSold30d),
     };
   }
+  /**
+   * Mirrors the ledger outcome onto the order's denormalised state, inside the
+   * caller's transaction. NEVER touches lifecycle `status` — that belongs
+   * exclusively to OrderTransitionService — only `reservation_state`, which the
+   * canonical-transition guard explicitly permits. Kept as its own method so
+   * the guard's inspection window around `.update(orders)` contains nothing
+   * but these two fields.
+   */
+  /**
+   * Hold again the stock of an order whose holds were RELEASED (expired unpaid)
+   * but which has now been paid. All or nothing: every released line is held
+   * again, or none is and the short lines are returned. Products are locked in
+   * id order, as reserveOnce locks them, so this cannot deadlock against it.
+   */
+  async reacquireReleasedForOrder(orderId: string): Promise<{ ok: true; lines: number } | { ok: false; short: Array<{ productId: string; wanted: number; available: number }> }> {
+    return withTransactionRetry(() => db.transaction(async (tx) => {
+      const released = await tx.select().from(inventoryReservations)
+        .where(and(eq(inventoryReservations.orderId, orderId), eq(inventoryReservations.status, 'released')))
+        .for('update');
+      if (released.length === 0) return { ok: true as const, lines: 0 };
+      const ids = [...new Set(released.map((r) => r.productId))].sort();
+      const stock = await tx.select({ id: products.id, stock: products.stockQuantity, reserved: products.reservedQuantity })
+        .from(products).where(inArray(products.id, ids)).orderBy(products.id).for('update');
+      const byId = new Map(stock.map((p) => [p.id, p]));
+      const short = released
+        .filter((r) => r.reservedQuantity > 0)
+        .map((r) => ({ productId: r.productId, wanted: r.reservedQuantity, available: Math.max(0, (byId.get(r.productId)?.stock ?? 0) - (byId.get(r.productId)?.reserved ?? 0)) }))
+        .filter((l) => l.available < l.wanted);
+      if (short.length > 0) return { ok: false as const, short };
+      for (const r of released) {
+        if (r.reservedQuantity > 0) {
+          await tx.update(products)
+            .set({ reservedQuantity: sql`${products.reservedQuantity} + ${r.reservedQuantity}` })
+            .where(eq(products.id, r.productId));
+        }
+        await tx.update(inventoryReservations).set({ status: 'reserved', updatedAt: new Date() }).where(eq(inventoryReservations.id, r.id));
+      }
+      await this.mirrorOrderReservationState(tx, orderId, 'RESERVED');
+      return { ok: true as const, lines: released.length };
+    }));
+  }
+
+  private async mirrorOrderReservationState(
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+    orderId: string,
+    state: 'RELEASED' | 'CONSUMED' | 'RESERVED',
+  ): Promise<void> {
+    await tx
+      .update(orders)
+      .set({ reservationState: state, reservationUpdatedAt: new Date() })
+      .where(eq(orders.id, orderId));
+  }
+
 }

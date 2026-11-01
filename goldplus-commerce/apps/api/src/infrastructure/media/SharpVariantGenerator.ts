@@ -1,0 +1,160 @@
+import { logger } from '../logging/logger';
+import { IMediaVariantGenerator, MediaVariantRecord } from '../../application/ports/IMediaLibrary';
+import { MAX_IMAGE_PIXELS } from '../../domain/media/ImageHeaderDimensions';
+
+/** The decoder's own cap, matching the upload check: a header the upload could not read still cannot make sharp allocate past it. */
+const DECODE_LIMITS = { limitInputPixels: MAX_IMAGE_PIXELS } as const;
+
+/**
+ * Derivative generation via sharp, loaded lazily so an environment without the
+ * native binary still stores originals: variants are a progressive enhancement,
+ * never a gate on upload. GIFs pass through untouched (resizing animations is a
+ * different problem than thumbnails).
+ */
+
+const PURPOSE_WIDTHS: Array<{ purpose: MediaVariantRecord['purpose']; width: number }> = [
+  { purpose: 'thumb', width: 160 },
+  { purpose: 'card', width: 480 },
+  { purpose: 'pdp', width: 1024 },
+  { purpose: 'zoom', width: 2048 },
+];
+
+const FORMATS: Array<{ format: MediaVariantRecord['format']; ext: string }> = [
+  { format: 'avif', ext: 'avif' },
+  { format: 'webp', ext: 'webp' },
+  { format: 'jpeg', ext: 'jpg' },
+];
+
+// sharp 0.35 ships ESM types: the callable is the default export.
+type SharpFn = typeof import('sharp').default;
+let sharpModule: SharpFn | null | undefined;
+async function loadSharp(): Promise<SharpFn | null> {
+  if (sharpModule !== undefined) return sharpModule;
+  try {
+    sharpModule = (await import('sharp')).default;
+    // Every upload is new: libvips' cache would only hold the decoded photo's memory (outside the JS heap).
+    sharpModule.cache(false);
+  } catch (err) {
+    sharpModule = null;
+    logger.warn({ err: (err as Error).message }, '[SharpVariantGenerator] sharp unavailable — storing originals only');
+  }
+  return sharpModule;
+}
+
+/**
+ * One photo at a time in a process. A camera photo (24-45 MP) is decoded for the renditions and again for the
+ * metadata strip, outside the JavaScript heap, in an API container limited to 512 MB that also serves checkout; two
+ * uploads at once could take a replica down (2026-10-22 review). A finished one hands its place straight to the next.
+ */
+let photoRunning = false;
+const photoWaiting: Array<() => void> = [];
+async function onePhotoAtATime<T>(work: () => Promise<T>): Promise<T> {
+  if (!photoRunning) photoRunning = true;
+  else await new Promise<void>((resolve) => photoWaiting.push(resolve));
+  try {
+    return await work();
+  } finally {
+    const next = photoWaiting.shift();
+    if (next) next();
+    else photoRunning = false;
+  }
+}
+
+export class SharpVariantGenerator implements IMediaVariantGenerator {
+  /**
+   * Originals are served publicly (and are the storefront/feed image when no
+   * rendition fits), so they must not carry a phone's GPS fix or serial. sharp
+   * drops all metadata on output by default; .rotate() bakes the EXIF
+   * orientation into the pixels first, and the ICC profile is kept so colours
+   * do not shift. GIF (animation) and AVIF pass through unchanged.
+   */
+  stripMetadata(buffer: Buffer, mime: string): Promise<Buffer | null> {
+    return onePhotoAtATime(() => this.stripMetadataNow(buffer, mime));
+  }
+
+  private async stripMetadataNow(buffer: Buffer, mime: string): Promise<Buffer | null> {
+    const format = mime === 'image/jpeg' ? 'jpeg' : mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : null;
+    if (!format) return null;
+    const sharp = await loadSharp();
+    if (!sharp) return null;
+    try {
+      const pipeline = sharp(buffer, DECODE_LIMITS).rotate().keepIccProfile();
+      return format === 'jpeg'
+        ? await pipeline.jpeg({ quality: 95, mozjpeg: true }).toBuffer()
+        : format === 'webp'
+          ? await pipeline.webp({ quality: 95 }).toBuffer()
+          : await pipeline.png().toBuffer();
+    } catch (err) {
+      logger.warn({ err: (err as Error).message }, '[SharpVariantGenerator] metadata strip failed — keeping the received bytes');
+      return null;
+    }
+  }
+
+  generate(args: Parameters<SharpVariantGenerator['generateNow']>[0]): Promise<{ width: number | null; height: number | null; variants: MediaVariantRecord[] }> {
+    return onePhotoAtATime(() => this.generateNow(args));
+  }
+
+  private async generateNow(args: {
+    buffer: Buffer;
+    mime: string;
+    checksum: string;
+    saveVariant: (key: string, buffer: Buffer) => Promise<{ url: string; storageKey: string }>;
+  }): Promise<{ width: number | null; height: number | null; variants: MediaVariantRecord[] }> {
+    if (args.mime === 'image/gif') return { width: null, height: null, variants: [] };
+    const sharp = await loadSharp();
+    if (!sharp) return { width: null, height: null, variants: [] };
+
+    try {
+      const meta = await sharp(args.buffer, DECODE_LIMITS).metadata();
+      // Phones and cameras store a portrait shot as landscape pixels plus an EXIF
+      // Orientation tag (5–8 mean rotated by 90°). Browsers honour the tag on the
+      // original; our renditions strip EXIF, so each one is auto-oriented below and
+      // the recorded size is the UPRIGHT one — or portraits come out sideways.
+      const quarterTurn = (meta.orientation ?? 1) >= 5;
+      const sourceWidth = (quarterTurn ? meta.height : meta.width) ?? null;
+      const sourceHeight = (quarterTurn ? meta.width : meta.height) ?? null;
+      const variants: MediaVariantRecord[] = [];
+      // Decoded ONCE: upright and no wider than the largest rendition, as raw pixels. Each of the 12 renditions used to
+      // decode the full camera photo again (up to 50 MP); now they resize this copy (2048 px wide at most).
+      const largest = Math.max(...PURPOSE_WIDTHS.map((p) => p.width));
+      const base = await sharp(args.buffer, DECODE_LIMITS).rotate().resize({ width: largest, withoutEnlargement: true }).raw().toBuffer({ resolveWithObject: true });
+      const fromBase = () => sharp(base.data, { raw: { width: base.info.width, height: base.info.height, channels: base.info.channels } });
+
+      for (const { purpose, width: purposeWidth } of PURPOSE_WIDTHS) {
+        let width = purposeWidth;
+        // Never upscale. But the pdp rendition is the one every storefront
+        // surface resolves (mediaDisplayUrl, productSrcset): without it a 480–1023px
+        // upload — an exactly-1000px photo meets the owner's spec — served its
+        // full original everywhere, card.webp and thumb.webp unused. So pdp is
+        // written at the source's own width when the source is at least card size.
+        if (sourceWidth !== null && width > sourceWidth) {
+          if (purpose === 'pdp' && sourceWidth >= 480) width = sourceWidth;
+          else continue;
+        }
+        for (const { format, ext } of FORMATS) {
+          const pipeline = fromBase().resize({ width, withoutEnlargement: true });
+          const output =
+            format === 'avif'
+              ? await pipeline.avif({ quality: 55 }).toBuffer({ resolveWithObject: true })
+              : format === 'webp'
+                ? await pipeline.webp({ quality: 78 }).toBuffer({ resolveWithObject: true })
+                : await pipeline.jpeg({ quality: 80, mozjpeg: true }).toBuffer({ resolveWithObject: true });
+          const saved = await args.saveVariant(`${purpose}.${ext}`, output.data);
+          variants.push({
+            purpose,
+            format,
+            width: output.info.width,
+            height: output.info.height,
+            byteSize: output.data.length,
+            storageKey: saved.storageKey,
+            url: saved.url,
+          });
+        }
+      }
+      return { width: sourceWidth, height: sourceHeight, variants };
+    } catch (err) {
+      logger.warn({ err: (err as Error).message }, '[SharpVariantGenerator] generation failed — original kept');
+      return { width: null, height: null, variants: [] };
+    }
+  }
+}

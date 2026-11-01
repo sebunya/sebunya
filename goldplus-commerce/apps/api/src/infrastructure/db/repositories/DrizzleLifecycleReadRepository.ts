@@ -28,17 +28,24 @@ export class DrizzleLifecycleReadRepository implements ILifecycleReadRepository 
 
   async getPersonalisationConsent(userIds: string[]): Promise<Map<string, ConsentState>> {
     const map = new Map<string, ConsentState>();
-    for (const id of userIds) map.set(id, 'unknown');
+    // Owner decision (2026-08-07): first-party personalisation is on by default,
+    // so absence is 'granted', not 'unknown'. An explicit stored withdrawal below
+    // still overrides to 'denied'.
+    for (const id of userIds) map.set(id, 'granted');
     if (userIds.length === 0) return map;
     // Identity refs are written by the consent module; we accept both raw ids
     // and 'user:<id>' refs. Any state other than an unexpired grant stays as
     // written; absence stays 'unknown' (which downstream treats as no consent).
     const refs = userIds.flatMap((id) => [id, `user:${id}`]);
+    // Parameterised, not hand-escaped: the previous form built the IN list with
+    // manual quote-doubling inside sql.raw — the exact identifier-escaping
+    // pattern the drizzle advisory warns about, and needless when the driver can
+    // bind the values.
     const result: any = await db.execute(sql`
       select customer_identity_ref as ref, state
       from customer_consent_states
       where purpose_key = 'personalization'
-        and customer_identity_ref in ${sql.raw(`(${refs.map((r) => `'${r.replace(/'/g, "''")}'`).join(',')})`)}
+        and customer_identity_ref in (${sql.join(refs.map((r) => sql`${r}`), sql`, `)})
         and (expires_at is null or expires_at > now())
         and superseded_by is null
     `);

@@ -16,9 +16,33 @@ import { serve } from '@hono/node-server';
 import app from './app';
 
 import { startOutboxTicker, gracefulStopOutboxTicker } from '../../infrastructure/scheduler/OutboxTicker';
+import { startLoyaltyDailyTicker, stopLoyaltyDailyTicker } from '../../infrastructure/scheduler/LoyaltyDailyTicker';
+import { startPaymentReconcileTicker, stopPaymentReconcileTicker } from '../../infrastructure/scheduler/PaymentReconcileTicker';
+import { startLighthouseWatchTicker, stopLighthouseWatchTicker } from '../../infrastructure/scheduler/LighthouseWatchTicker';
+import { startProductCostTicker, stopProductCostTicker } from '../../infrastructure/scheduler/ProductCostTicker';
+import { startReviewReminderTicker, stopReviewReminderTicker } from '../../infrastructure/scheduler/ReviewReminderTicker';
+import { startLowStockAlertTicker, stopLowStockAlertTicker } from '../../infrastructure/scheduler/LowStockAlertTicker';
+import { startUnpaidOrderReminderTicker, stopUnpaidOrderReminderTicker } from '../../infrastructure/scheduler/UnpaidOrderReminderTicker';
+import { startBasketReminderTicker, stopBasketReminderTicker } from '../../infrastructure/scheduler/BasketReminderTicker';
+import { startCreditExpiryReminderTicker, stopCreditExpiryReminderTicker } from '../../infrastructure/scheduler/CreditExpiryReminderTicker';
+import { startAdvertisingTicker, stopAdvertisingTicker } from '../../infrastructure/scheduler/AdvertisingTicker';
+import { startFirstPartyNightlyTicker, stopFirstPartyNightlyTicker } from '../../infrastructure/scheduler/FirstPartyNightlyTicker';
+import { startMeasurementNightlyTicker, stopMeasurementNightlyTicker } from '../../infrastructure/scheduler/MeasurementNightlyTicker';
+import { startGoldieCareTicker, stopGoldieCareTicker } from '../../infrastructure/scheduler/GoldieCareTicker';
+import { Registry } from '../../infrastructure/Registry';
+import { runPermissionRegistrySyncAtBoot } from '../../infrastructure/security/PermissionRegistrySync';
+import { runHeroSlideSeedAtBoot } from '../../infrastructure/hero/HeroSlideSeeder';
+import { runNavSeedAtBoot } from '../../infrastructure/nav/NavSeeder';
+import { runBusinessInfoSeedAtBoot } from '../../infrastructure/business/BusinessInfoSeeder';
+import { runTaxonomySeedAtBoot } from '../../infrastructure/taxonomy/TaxonomySeeder';
+import { runHomepageContentSeedAtBoot } from '../../infrastructure/homepage/HomepageContentSeeder';
+import { runStorefrontCopySeedAtBoot } from '../../infrastructure/storefront-copy/StorefrontCopySeeder';
+import { runBatterySeedAtBoot } from '../../infrastructure/batteries/BatterySeeder';
+import { templateOverrideCache } from '../../infrastructure/notifications/TemplateOverrideCache';
 import { endDbConnection } from '../../infrastructure/db/client';
 import { QueueService } from '../../infrastructure/queues/QueueService';
 import { registerAllWorkers } from '../../infrastructure/queues/QueueWorkers';
+import { beginDraining } from './lifecycle';
 
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
@@ -32,7 +56,45 @@ const server = serve({
 
   if (process.env.NODE_ENV !== 'test') {
     startOutboxTicker();
+    startLoyaltyDailyTicker();
+    // The payment safety net: polls the provider for every attempt still
+    // non-terminal past the threshold. Must run even when callbacks work.
+    startPaymentReconcileTicker();
+    // Lighthouse Watch: keeps the storefront's Lighthouse scores measured and alerted.
+    startLighthouseWatchTicker();
+    // A cost dated for a future day becomes the COGS figure on that day.
+    startProductCostTicker();
+    // The one review reminder per delivered or collected order.
+    startReviewReminderTicker();
+    // The daily stock alert: products to reorder, to the Care Desk.
+    startLowStockAlertTicker();
+    startUnpaidOrderReminderTicker();
+    startBasketReminderTicker();
+    startCreditExpiryReminderTicker();
+    // Advertising operations (0154): offline conversions every 5 min; audiences + spend daily. Inert until a capability is LIVE.
+    startAdvertisingTicker();
+    // First-party data (0155): nightly order→customer linking + segment materialisation.
+    startFirstPartyNightlyTicker();
+    // Measurement nightly (0203): derived costs, MMM dataset, holdout outcomes, GA4 reconciliation.
+    startMeasurementNightlyTicker();
+    // Goldie (0177-0181): finish interrupted WhatsApp replies; re-page urgent customers nobody has taken.
+    startGoldieCareTicker();
+    // Meta's template approvals read at start: customer updates go on WhatsApp from the first message after a deploy.
+    void Registry.getInstance().whatsappTemplateCatalog.refresh().catch(() => undefined);
     registerAllWorkers();
+    // Converge DB permissions on the code registry (advisory-locked, add-only).
+    void runPermissionRegistrySyncAtBoot();
+    // Ensure the hero library exists (idempotent, add-only, never overwrites edits).
+    void runHeroSlideSeedAtBoot();
+    void runNavSeedAtBoot();
+    void runBusinessInfoSeedAtBoot();
+    void runTaxonomySeedAtBoot();
+    void runHomepageContentSeedAtBoot();
+    void runStorefrontCopySeedAtBoot();
+    // Battery module defaults: the default stock location and the finder copy.
+    void runBatterySeedAtBoot();
+    // Notification wording overrides: load published rows now, refresh every minute.
+    templateOverrideCache.start();
   }
 });
 
@@ -47,6 +109,18 @@ async function gracefulShutdown(signal: string) {
   isShuttingDown = true;
   logger.info(`\n[Process] Received ${signal}. Initiating graceful shutdown...`);
 
+  // Slice 3F: flip readiness to false FIRST, then pause briefly so at least one
+  // load-balancer health poll observes 503 and drains this instance before we
+  // start closing sockets. Liveness stays true throughout. Nothing polls /ready in
+  // the compose topology (Caddy has no active health checks), so production sets
+  // SHUTDOWN_DRAIN_MS=0 and the whole sequence fits the container's grace period.
+  beginDraining();
+  const drainMs = Number(process.env.SHUTDOWN_DRAIN_MS ?? 3000);
+  if (drainMs > 0) {
+    logger.info(`[Process] Draining: readiness is now false. Waiting ${drainMs}ms for load balancer.`);
+    await new Promise((resolve) => setTimeout(resolve, drainMs));
+  }
+
   // Wait for HTTP connections to close and outbox batch to finish
   const timeoutId = setTimeout(() => {
     logger.fatal('[Process] Forcefully terminating due to shutdown timeout.');
@@ -54,6 +128,21 @@ async function gracefulShutdown(signal: string) {
   }, 15000);
 
   try {
+    // Tickers first: stopped after the HTTP drain, they could start new
+    // provider calls during it that the forced exit then cut off mid-flight.
+    stopLoyaltyDailyTicker();
+    stopPaymentReconcileTicker();
+    stopLighthouseWatchTicker();
+    stopProductCostTicker();
+    stopReviewReminderTicker();
+    stopLowStockAlertTicker();
+    stopUnpaidOrderReminderTicker();
+    stopBasketReminderTicker();
+    stopCreditExpiryReminderTicker();
+    stopAdvertisingTicker();
+    stopFirstPartyNightlyTicker();
+    stopMeasurementNightlyTicker();
+    stopGoldieCareTicker();
     logger.info('[Process] Stopping HTTP server...');
     await new Promise<void>((resolve) => {
       server.close((err) => {
@@ -68,16 +157,22 @@ async function gracefulShutdown(signal: string) {
 
     logger.info('[Process] Waiting for background tasks to finish...');
     await gracefulStopOutboxTicker(10000);
+    await Registry.getInstance().recommendationServingStats?.stop(3000);
+
+    // Workers BEFORE the database. closeAll pauses the workers and waits for their
+    // active jobs; ending the pool first failed every job still running (a
+    // telemetry dispatch already sent to GA4 was left 'processing' and sent again
+    // when its lease expired).
+    logger.info('[Process] Closing message queue connections...');
+    await QueueService.getInstance().closeAll();
 
     logger.info('[Process] Closing database connections...');
     await endDbConnection();
 
-    logger.info('[Process] Closing message queue connections...');
-    await QueueService.getInstance().closeAll();
-
     logger.info('[Process] Shutdown complete.');
     clearTimeout(timeoutId);
-    process.exit(0);
+    // exitCode is 1 after a crash, so restart policies and alerts see a failure.
+    process.exit(process.exitCode ?? 0);
   } catch (err) {
     logger.error({ err }, '[Process] Error during graceful shutdown:');
     process.exit(1);
@@ -90,11 +185,13 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('uncaughtException', (err) => {
   Sentry.captureException(err);
   logger.fatal({ err }, '[Process] UNCAUGHT EXCEPTION! Shutting down gracefully.');
+  process.exitCode = 1;
   gracefulShutdown('uncaughtException');
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   Sentry.captureException(reason);
   logger.fatal({ reason }, '[Process] UNHANDLED REJECTION! Shutting down gracefully.');
+  process.exitCode = 1;
   gracefulShutdown('unhandledRejection');
 });

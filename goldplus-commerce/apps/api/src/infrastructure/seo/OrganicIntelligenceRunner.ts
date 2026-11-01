@@ -1,0 +1,1172 @@
+import { sql } from 'drizzle-orm';
+import { db } from '../db/client';
+import { tryAcquireSessionLock, type HeldSessionLock } from '../db/sessionLock';
+import { logger } from '../logging/logger';
+import { pgJsonb, pgInTextList } from '../db/PgParams';
+import {
+  resolveSourceChanges, stateHashOf, SOURCE_DESCRIPTORS, type SourceStatePorts,
+} from '../../application/use-cases/seo-growth/SourceStateResolver';
+import {
+  resolveLandingPage, type RouteTruth,
+} from '../../application/use-cases/seo-growth/LandingPageEntityResolver';
+import { projectObservationsToQueries } from '../../application/use-cases/seo-growth/GscQueryProjection';
+import {
+  OrganicIntelligenceMaterialiser,
+  type MaterialiserPorts, type MaterialisationMode, type EntityCandidate, type MaterialisationResult,
+} from '../../application/use-cases/seo-growth/OrganicIntelligenceMaterialiser';
+import type { StoredSnapshot } from '../../application/use-cases/seo-growth/OrganicIntelligenceIdentity';
+import { known, unknown } from '../../application/use-cases/seo-growth/OrganicOpportunityScoring';
+
+/**
+ * Binds the materialiser to real storage. All decisions live in the use case;
+ * this file only reads canonical GoldPlus truth and writes the result.
+ *
+ * Concurrency: an advisory lock serialises materialisation across replicas.
+ * Combined with the unique semantic-key indexes, a losing racer stands down
+ * rather than producing a duplicate universe.
+ */
+
+const rowsOf = (r: unknown): any[] => (Array.isArray(r) ? r : (r as any)?.rows ?? []);
+
+/**
+ * gsc_performance -> seo_queries.
+ *
+ * Metrics are deliberately NOT copied. Clicks and impressions stay in
+ * gsc_performance; a second mutable copy would be a second truth, and the two
+ * would disagree the first time Google revises a period. seo_queries carries
+ * identity and provenance only.
+ */
+async function projectGscQueries(conn: { execute: (q: unknown) => Promise<unknown> }): Promise<{ identities: number; inserted: number }> {
+  const observations = rowsOf(await conn.execute(sql`
+    select date::text as date, page, query, clicks, impressions from gsc_performance
+  `)).map((r) => ({
+    date: String(r.date), page: String(r.page), query: String(r.query),
+    clicks: Number(r.clicks ?? 0), impressions: Number(r.impressions ?? 0),
+  }));
+  if (observations.length === 0) return { identities: 0, inserted: 0 };
+
+  const projected = projectObservationsToQueries(observations);
+  let inserted = 0;
+  for (const q of projected.queries) {
+    const res = rowsOf(await conn.execute(sql`
+      insert into seo_queries (query, normalized_query, source, evidence_state, last_observed_at)
+      values (${q.raw}, ${q.normalized}, 'GSC', 'OBSERVED', ${q.lastObservedAt}::timestamptz)
+      -- The unique index is plain (normalized_query), so no predicate belongs
+      -- here. One normalized query is one identity regardless of which source
+      -- first recorded it; the source column is left untouched so original provenance
+      -- survives while freshness advances.
+      on conflict (normalized_query) do update set
+        -- Freshness may only move forward; a backfill of older dates must not
+        -- drag it backwards. first-seen is never rewritten.
+        last_observed_at = greatest(seo_queries.last_observed_at, excluded.last_observed_at),
+        updated_at = now()
+      returning (xmax = 0) as inserted
+    `));
+    if (res[0]?.inserted) inserted += 1;
+  }
+  return { identities: projected.identities, inserted };
+}
+
+/** Route truth as the STOREFRONT defines it, plus the product->category link. */
+interface RunnerRouteTruth extends RouteTruth {
+  categorySlugByProductId: Map<string, string>;
+}
+
+/**
+ * Loads the storefront's own routing vocabulary.
+ *
+ * `taxonomy_config` is what the shop page consults: each entry has a canonical
+ * slug and operator-editable aliases, and `?category=power` resolves to
+ * `power-devices` through that alias map. Reproducing that mapping by hand
+ * would drift the moment an operator edits it, so it is read from the same
+ * source the storefront reads.
+ */
+async function loadRouteTruth(conn: { execute: (q: unknown) => Promise<unknown> }): Promise<RunnerRouteTruth> {
+  const categoryByKey = new Map<string, string>();
+  const taxonomyRows = rowsOf(await conn.execute(sql`
+    select x->>'slug' as slug, coalesce(x->'aliases', '[]'::jsonb) as aliases
+    from taxonomy_config tc, jsonb_array_elements(tc.config) x
+  `));
+  for (const r of taxonomyRows) {
+    const slug = String(r.slug ?? '').toLowerCase();
+    if (!slug) continue;
+    categoryByKey.set(slug, slug);
+    const aliases = Array.isArray(r.aliases) ? r.aliases : [];
+    for (const a of aliases) {
+      const alias = String(a ?? '').toLowerCase().trim();
+      if (alias) categoryByKey.set(alias, slug);
+    }
+  }
+
+  // Categories the opportunity universe actually contains. A taxonomy entry
+  // with no catalogue category cannot receive attribution, and says so.
+  const knownCategorySlugs = new Set<string>(
+    rowsOf(await conn.execute(sql`select slug from categories`)).map((r) => String(r.slug).toLowerCase()),
+  );
+
+  const productIdBySlug = new Map<string, string>();
+  const categorySlugByProductId = new Map<string, string>();
+  for (const r of rowsOf(await conn.execute(sql`
+    select p.id::text as id, lower(p.slug) as slug, lower(c.slug) as category_slug
+    from products p left join categories c on c.id = p.category_id
+    where p.slug is not null
+  `))) {
+    productIdBySlug.set(String(r.slug), String(r.id));
+    if (r.category_slug) categorySlugByProductId.set(String(r.id), `/${String(r.category_slug)}`);
+  }
+
+  return { categoryByKey, productIdBySlug, knownCategorySlugs, categorySlugByProductId };
+}
+
+const INTEL_LOCK_ID = 887_401_122;
+const STALE_RUN_MINUTES = 45;
+
+export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREMENTAL'): Promise<MaterialisationResult> {
+  const conn = db as unknown as { execute: (q: unknown) => Promise<unknown> };
+  // Held on one reserved connection (db/sessionLock): through the pool, the
+  // unlock ran on another backend and the lock leaked.
+  let lock: HeldSessionLock | null = null;
+
+  const ports: MaterialiserPorts = {
+    async startRun(i) {
+      lock = await tryAcquireSessionLock(INTEL_LOCK_ID);
+      if (!lock) return null;
+
+      // Reap an abandoned predecessor so a crash cannot block for ever.
+      await conn.execute(sql`
+        update seo_intel_runs set status = 'ABANDONED', finished_at = now(),
+          error = 'Abandoned: no completion within the stale window.'
+        where status = 'STARTED' and started_at < now() - (${STALE_RUN_MINUTES} * interval '1 minute')
+      `);
+
+      const rows = rowsOf(await conn.execute(sql`
+        insert into seo_intel_runs (mode, status, policy_version, engine_version, materialisation_version)
+        values (${i.mode}, 'STARTED', ${i.policyVersion}, ${i.engineVersion}, ${i.materialisationVersion})
+        returning id
+      `));
+      return { runId: String(rows[0]?.id ?? '') };
+    },
+
+    async finishRun(f) {
+      await conn.execute(sql`
+        update seo_intel_runs set
+          status = ${f.status}, finished_at = now(),
+          entities_evaluated = ${f.counts.entitiesEvaluated},
+          opportunities_created = ${f.counts.created},
+          opportunities_updated = ${f.counts.updated},
+          opportunities_unchanged = ${f.counts.unchanged},
+          opportunities_closed = ${f.counts.closed},
+          history_events = ${f.counts.historyEvents},
+          work_items_created = ${f.counts.workItemsCreated},
+          work_items_updated = ${f.counts.workItemsUpdated},
+          evidence_state = ${pgJsonb(f.evidenceState)},
+          error = ${f.error ?? null}
+        where id = ${f.runId}::uuid
+      `);
+    },
+
+    /**
+     * Candidates from canonical GoldPlus truth. Search demand is deliberately
+     * absent until Search Console is connected — it is reported UNKNOWN, never
+     * zero, so the engine scores on what is genuinely known.
+     */
+    async loadCandidates(_mode, affected) {
+      // The planner's affected set is authoritative when present. Slugs are
+      // how a CATEGORY entity is identified downstream, so the narrowing is
+      // applied on the slug the planner named.
+      // A category and its URL share the "/slug" namespace, so the planner can
+      // legitimately name the same thing as both a direct CATEGORY and a
+      // dependent URL. Deduplicate, or the entity is evaluated twice.
+      const wanted = affected === null ? null
+        : [...new Set(
+            affected
+              .filter((a) => a.entityType === 'CATEGORY' || a.entityType === 'URL')
+              .map((a) => a.entityId.replace(/^\//, '')),
+          )];
+      // An EXACT plan that touches no category legitimately evaluates nothing.
+      if (wanted !== null && wanted.length === 0) return [];
+
+      /**
+       * Observed search demand from Search Console, attributed through the
+       * canonical LandingPageEntityResolver.
+       *
+       * The previous rule matched category slugs as URL path segments, which
+       * was an assumption about the storefront rather than knowledge of it.
+       * Real data disproved it immediately: the site serves /products/<slug>
+       * and /shop?category=power, while the catalogue slug is power-devices.
+       * Nothing matched and no opportunity ever saw demand.
+       *
+       * Resolution now follows the storefront's own semantics — the taxonomy
+       * alias map, exactly as the shop page uses it.
+       *
+       * Only completed days count: today is still accumulating, and comparing
+       * a partial day against a full period would understate demand.
+       */
+      const routeTruth = await loadRouteTruth(conn);
+      const observations = rowsOf(await conn.execute(sql`
+        select date::text as date, page, query, clicks, impressions
+        from gsc_performance
+        where date < current_date
+      `));
+
+      const demandBySlug = new Map<string, {
+        impressions: number; clicks: number; queries: number;
+        periodStart: string | null; periodEnd: string | null;
+      }>();
+      const seenQueriesByEntity = new Map<string, Set<string>>();
+
+      for (const o of observations) {
+        const resolved = resolveLandingPage(String(o.page ?? ''), routeTruth);
+        // A product page's demand rolls up to the category that owns it; an
+        // unmapped or homepage observation attributes to nothing, and stays
+        // visible as PARTIAL/UNMAPPED rather than becoming a zero somewhere.
+        const entityId = resolved.entityType === 'CATEGORY'
+          ? resolved.entityId
+          : resolved.entityType === 'PRODUCT'
+            ? routeTruth.categorySlugByProductId.get(String(resolved.entityId)) ?? null
+            : null;
+        if (!entityId) continue;
+
+        const current = demandBySlug.get(entityId) ?? {
+          impressions: 0, clicks: 0, queries: 0, periodStart: null as string | null, periodEnd: null as string | null,
+        };
+        current.impressions += Number(o.impressions ?? 0);
+        current.clicks += Number(o.clicks ?? 0);
+        const date = String(o.date);
+        if (!current.periodStart || date < current.periodStart) current.periodStart = date;
+        if (!current.periodEnd || date > current.periodEnd) current.periodEnd = date;
+        demandBySlug.set(entityId, current);
+
+        if (!seenQueriesByEntity.has(entityId)) seenQueriesByEntity.set(entityId, new Set());
+        seenQueriesByEntity.get(entityId)!.add(String(o.query ?? ''));
+      }
+      for (const [entityId, queries] of seenQueriesByEntity) {
+        const d = demandBySlug.get(entityId);
+        if (d) d.queries = queries.size;
+      }
+
+      const cats = rowsOf(await conn.execute(sql`
+        select c.id::text as category_id, c.name, c.slug,
+               count(p.id) filter (where p.active = true and p.approval_status = 'approved')::int as eligible,
+               count(p.id) filter (where p.active = true and p.approval_status = 'approved' and coalesce(p.stock_quantity,0) > 0)::int as in_stock,
+               count(p.id) filter (where p.active = true and coalesce(p.price_ugx,0) <= 0)::int as unpriced
+        from categories c
+        left join products p on p.category_id = c.id
+        where ${wanted === null ? sql`true` : pgInTextList(sql`c.slug`, wanted)}
+        group by c.id, c.name, c.slug
+        order by c.name
+        limit 500
+      `));
+
+      return cats.map((r): EntityCandidate => {
+        const eligible = Number(r.eligible ?? 0);
+        const inStock = Number(r.in_stock ?? 0);
+        const unpriced = Number(r.unpriced ?? 0);
+        const entityId = `/${String(r.slug)}`;
+
+        // Absent evidence stays UNKNOWN. It must never become 0 — "Search
+        // Console reported nothing for this page" and "nobody has connected
+        // Search Console" are different facts, and only the first is a
+        // measurement.
+        const demand = demandBySlug.get(entityId) ?? null;
+        // Real Search Console figures drift by a few impressions every single
+        // day. Feeding raw counts into the evidence hash would rewrite every
+        // opportunity on every run — daily churn that says nothing. Banding to
+        // 5% keeps the meaning ("about five thousand impressions") and drops
+        // the noise. The exact figures remain in gsc_performance for analysis.
+        // Two significant figures, on a FIXED grid.
+        //
+        // Deriving the step from the value itself (n * 5%) is self-referential:
+        // a tiny change alters the step, which alters the banded result, so the
+        // noise it was meant to absorb comes straight back. The grid must
+        // depend only on magnitude.
+        const band = (n: number) => {
+          if (!Number.isFinite(n) || n <= 0) return 0;
+          const step = Math.max(1, 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1));
+          return Math.round(n / step) * step;
+        };
+        const demandComponent = demand
+          ? {
+              component: 'SEARCH_DEMAND' as const,
+              raw: {
+                impressions: band(demand.impressions),
+                clicks: band(demand.clicks),
+                queries: demand.queries,
+              },
+              // Log-scaled so one high-visibility category cannot flatten the
+              // rest of the portfolio to zero. Computed from the BANDED figure
+              // so the score cannot drift on daily noise either.
+              //
+              // The divisor sets where the scale saturates: /6 means a category
+              // has to reach roughly a million impressions in the window before
+              // demand stops differentiating it. /4 saturated at 10,000, which
+              // any real property clears immediately — every category would
+              // have scored an identical, maximal 1.0.
+              normalized: Math.min(1, Math.log10(band(demand.impressions) + 1) / 6),
+              state: 'KNOWN' as const,
+              reasonCode: 'gsc_observed_impressions',
+            }
+          : {
+              component: 'SEARCH_DEMAND' as const,
+              raw: null, normalized: null, state: 'UNKNOWN' as const,
+              reasonCode: 'search_console_not_connected',
+            };
+
+        return {
+          entityType: 'CATEGORY',
+          entityId,
+          entityLabel: String(r.name),
+          templateFamily: 'category',
+          commercial: {
+            eligibleProducts: known(eligible, 'catalogue'),
+            inStockProducts: known(inStock, 'inventory'),
+            pricingComplete: known(unpriced === 0, 'catalogue'),
+            lifecycleBlocked: known(false, 'lifecycle'),
+          },
+          seoBlockers: [],
+          contentThin: eligible < 3,
+          hasOwnerPage: true,
+          components: [
+            { component: 'CATALOGUE_DEPTH', raw: eligible, normalized: Math.min(1, eligible / 20), state: 'KNOWN', reasonCode: 'eligible_products' },
+            { component: 'STOCK_CONFIDENCE', raw: inStock, normalized: eligible === 0 ? 0 : inStock / eligible, state: 'KNOWN', reasonCode: 'in_stock_ratio' },
+            { component: 'COMMERCIAL_INTENT', raw: 'CATEGORY', normalized: 0.8, state: 'KNOWN', reasonCode: 'category_is_commercial' },
+            demandComponent,
+            { component: 'CONVERSION_SIGNAL', raw: null, normalized: null, state: 'UNKNOWN', reasonCode: 'ga4_not_connected' },
+            { component: 'REVENUE_SIGNAL', raw: null, normalized: null, state: 'UNKNOWN', reasonCode: 'ga4_not_connected' },
+          ],
+          evidenceStates: {
+            COMMERCE: 'KNOWN', TECHNICAL: 'KNOWN', CONTENT: 'KNOWN',
+            SEARCH_DEMAND: demand ? 'KNOWN' : 'UNKNOWN', GA4: 'UNKNOWN', MERCHANT: 'UNKNOWN',
+            LINK_GRAPH: 'UNKNOWN', COMPETITOR: 'UNKNOWN', GBP: 'UNKNOWN', CWV: 'UNKNOWN',
+          },
+          effort: eligible === 0 ? 'HIGH' : 'MEDIUM',
+          risk: 'LOW',
+          confirmingSignals: 2,
+          persistent: true,
+          staleEvidence: false,
+          // Observation period, so scoring can tell a complete window from a
+          // partial one rather than treating all evidence as equally fresh.
+          sourcePeriodStart: demand?.periodStart ?? null,
+          sourcePeriodEnd: demand?.periodEnd ?? null,
+          sourceObservedAt: demand?.periodEnd ?? null,
+        };
+      });
+    },
+
+    async loadSnapshots(keys) {
+      if (keys.length === 0) return new Map();
+      const rows = rowsOf(await conn.execute(sql`
+        select opportunity_key, source_hash, semantic_hash, evaluation_hash, policy_version,
+               evidence_available, score, priority_bucket
+        from seo_intel_opportunities
+        -- A raw JS array binds as a RECORD, so casting it to a text array fails
+        -- with "cannot cast type record to text[]". Bind as jsonb text and
+        -- expand it, the same array rule used elsewhere in this codebase.
+        where opportunity_key in (
+          select jsonb_array_elements_text(${JSON.stringify(keys)}::text::jsonb)
+        )
+      `));
+      const map = new Map<string, StoredSnapshot>();
+      for (const r of rows) {
+        map.set(String(r.opportunity_key), {
+          sourceHash: String(r.source_hash),
+          semanticHash: String(r.semantic_hash),
+          evaluationHash: String(r.evaluation_hash),
+          policyVersion: String(r.policy_version),
+          evidenceAvailable: Array.isArray(r.evidence_available) ? r.evidence_available.map(String) : [],
+          score: r.score === null ? null : Number(r.score),
+          priorityBucket: String(r.priority_bucket),
+        });
+      }
+      return map;
+    },
+
+    async upsertOpportunity({ runId, opportunity: o, isNew }) {
+      // ON CONFLICT against the PLAIN unique index on opportunity_key. Deliberately
+      // not partial — the Guardian's partial-index trap does not recur here.
+      // first_seen_at and created_run_id are preserved on update, so a FULL_REBUILD
+      // cannot rewrite an opportunity's origin.
+      await conn.execute(sql`
+        insert into seo_intel_opportunities (
+          opportunity_key, opportunity_class, entity_type, entity_id, entity_label, root_cause_key,
+          policy_version, engine_version, materialisation_version,
+          source_hash, semantic_hash, evaluation_hash,
+          score, adjusted_score, unscored_weight_share,
+          commercial_readiness, seo_ready, content_ready, seo_blockers,
+          confidence, evidence_completeness, evidence_available, evidence_missing,
+          effort, risk, priority_bucket, recommended_action_class, blocked_by, status,
+          source_observed_at, source_period_start, source_period_end,
+          created_run_id, last_run_id
+        ) values (
+          ${o.opportunityKey}, ${o.opportunityClass}, ${o.entityType}, ${o.entityId}, ${o.entityLabel}, ${o.rootCauseKey},
+          ${o.policyVersion}, ${o.engineVersion}, ${o.materialisationVersion},
+          ${o.sourceHash}, ${o.semanticHash}, ${o.evaluationHash},
+          ${o.score}, ${o.adjustedScore}, ${o.unscoredWeightShare},
+          ${o.commercialReadiness}, ${o.seoReady}, ${o.contentReady}, ${JSON.stringify(o.seoBlockers)}::text::jsonb,
+          ${o.confidence}, ${o.evidenceCompleteness}, ${JSON.stringify(o.evidenceAvailable)}::text::jsonb, ${JSON.stringify(o.evidenceMissing)}::text::jsonb,
+          ${o.effort}, ${o.risk}, ${o.priorityBucket}, ${o.recommendedActionClass}, ${JSON.stringify(o.blockedBy)}::text::jsonb, ${o.status},
+          ${o.sourceObservedAt}, ${o.sourcePeriodStart}, ${o.sourcePeriodEnd},
+          ${runId}::uuid, ${runId}::uuid
+        )
+        on conflict (opportunity_key) do update set
+          opportunity_class = excluded.opportunity_class,
+          entity_label = excluded.entity_label,
+          root_cause_key = excluded.root_cause_key,
+          policy_version = excluded.policy_version,
+          engine_version = excluded.engine_version,
+          materialisation_version = excluded.materialisation_version,
+          source_hash = excluded.source_hash,
+          semantic_hash = excluded.semantic_hash,
+          evaluation_hash = excluded.evaluation_hash,
+          score = excluded.score,
+          adjusted_score = excluded.adjusted_score,
+          unscored_weight_share = excluded.unscored_weight_share,
+          commercial_readiness = excluded.commercial_readiness,
+          seo_ready = excluded.seo_ready,
+          content_ready = excluded.content_ready,
+          seo_blockers = excluded.seo_blockers,
+          confidence = excluded.confidence,
+          evidence_completeness = excluded.evidence_completeness,
+          evidence_available = excluded.evidence_available,
+          evidence_missing = excluded.evidence_missing,
+          effort = excluded.effort,
+          risk = excluded.risk,
+          priority_bucket = excluded.priority_bucket,
+          recommended_action_class = excluded.recommended_action_class,
+          blocked_by = excluded.blocked_by,
+          status = excluded.status,
+          last_seen_at = now(),
+          last_material_change_at = now(),
+          materialised_at = now(),
+          last_run_id = excluded.last_run_id
+      `);
+      if (isNew) logger.debug({ key: o.opportunityKey }, '[OrganicIntelligence] opportunity created');
+    },
+
+    async writeComponents({ opportunityKey, policyVersion, evaluationHash, components }) {
+      for (const c of components) {
+        await conn.execute(sql`
+          insert into seo_intel_score_components
+            (opportunity_key, policy_version, evaluation_hash, component, raw_evidence,
+             evidence_state, normalized, weight, contribution, reason_code)
+          values
+            (${opportunityKey}, ${policyVersion}, ${evaluationHash}, ${c.component},
+             ${JSON.stringify(c.raw ?? null)}::text::jsonb, ${c.evidenceState},
+             ${c.normalized}, ${c.weight}, ${c.contribution}, ${c.reasonCode})
+          on conflict (opportunity_key, evaluation_hash, component) do update set
+            normalized = excluded.normalized,
+            contribution = excluded.contribution,
+            evaluated_at = now()
+        `);
+      }
+    },
+
+    async writeHistory(h) {
+      await conn.execute(sql`
+        insert into seo_intel_history
+          (opportunity_key, run_id, event_type, from_state, to_state, reason, policy_version)
+        values
+          (${h.opportunityKey}, ${h.runId}::uuid, ${h.eventType},
+           ${JSON.stringify(h.fromState ?? null)}::text::jsonb, ${JSON.stringify(h.toState ?? null)}::text::jsonb,
+           ${h.reason}, ${h.policyVersion})
+      `);
+    },
+
+    async touchSeen({ opportunityKey, runId }) {
+      // Freshness only. last_material_change_at is deliberately NOT moved: an
+      // unchanged reconciliation must leave the semantic timeline untouched.
+      await conn.execute(sql`
+        update seo_intel_opportunities
+        set last_seen_at = now(), last_run_id = ${runId}::uuid
+        where opportunity_key = ${opportunityKey}
+      `);
+    },
+
+    async upsertRootCause({ rootCauseKey, summary, memberKeys, unlockedScore }) {
+      // Root causes ride the opportunity table as TEMPLATE entities, so the
+      // portfolio stays one universe rather than two.
+      await conn.execute(sql`
+        insert into seo_intel_opportunities (
+          opportunity_key, opportunity_class, entity_type, entity_id, entity_label,
+          policy_version, engine_version, materialisation_version,
+          source_hash, semantic_hash, evaluation_hash,
+          adjusted_score, priority_bucket, status, recommended_action_class,
+          evidence_available, evidence_missing
+        ) values (
+          ${rootCauseKey}, 'ROOT_CAUSE', 'TEMPLATE', ${rootCauseKey}, ${summary},
+          '1.0.0', '1.0.0', 1,
+          ${`rc:${memberKeys.length}`}, ${`rc:${memberKeys.sort().join('|').slice(0, 200)}`}, ${`rc:${unlockedScore}`},
+          ${unlockedScore}, 'NOW', 'OPEN', 'CLEAR_TECHNICAL_BLOCKER',
+          '[]'::jsonb, '[]'::jsonb
+        )
+        on conflict (opportunity_key) do update set
+          entity_label = excluded.entity_label,
+          adjusted_score = excluded.adjusted_score,
+          semantic_hash = excluded.semantic_hash,
+          last_seen_at = now()
+      `);
+    },
+
+    async reconcileWorkItem({ opportunityKey, title, detail, priority, material, targetUrl }) {
+      if (!material) return { workItemId: null, created: false, updated: false };
+      // Deduplicated on the OPPORTUNITY key carried in target_url-independent
+      // detail: one opportunity yields at most one work item, ever.
+      const existing = rowsOf(await conn.execute(sql`
+        select id from seo_work_items where detail like ${`%${opportunityKey}%`} limit 1
+      `));
+      if (existing[0]?.id) {
+        await conn.execute(sql`
+          update seo_work_items set title = ${title}, priority = ${priority}, updated_at = now()
+          where id = ${existing[0].id}::uuid
+        `);
+        return { workItemId: String(existing[0].id), created: false, updated: true };
+      }
+      const rows = rowsOf(await conn.execute(sql`
+        insert into seo_work_items (title, detail, state, priority, target_url, created_by)
+        values (${title}, ${`${detail}\n\n[opportunity:${opportunityKey}]`}, 'BACKLOG', ${priority}, ${targetUrl},
+                coalesce((select id from users order by created_at limit 1), gen_random_uuid()))
+        returning id
+      `));
+      return { workItemId: String(rows[0]?.id ?? ''), created: true, updated: false };
+    },
+
+    async linkWorkItem({ opportunityKey, workItemId }) {
+      await conn.execute(sql`
+        update seo_intel_opportunities set work_item_id = ${workItemId}::uuid
+        where opportunity_key = ${opportunityKey} and work_item_id is distinct from ${workItemId}::uuid
+      `);
+    },
+
+    async upsertAnswerUnit(a) {
+      await conn.execute(sql`
+        insert into seo_intel_answer_units (
+          answer_key, template_id, display_question, intent, answer_type,
+          readiness, confidence, blocked_reason, fact_refs, missing_facts,
+          unverified_facts, product_entities, category_entities, fact_hash
+        ) values (
+          ${a.answerKey}, ${a.templateId}, ${a.displayQuestion}, ${a.intent}, ${a.answerType},
+          ${a.readiness}, ${a.confidence}, ${a.blockedReason},
+          ${JSON.stringify(a.factRefs)}::text::jsonb, ${JSON.stringify(a.missingFacts)}::text::jsonb,
+          ${JSON.stringify(a.unverifiedFacts)}::text::jsonb, ${JSON.stringify(a.productEntities)}::text::jsonb,
+          ${JSON.stringify(a.categoryEntities)}::text::jsonb, ${a.factHash}
+        )
+        on conflict (answer_key) do update set
+          display_question = excluded.display_question,
+          readiness = excluded.readiness,
+          confidence = excluded.confidence,
+          blocked_reason = excluded.blocked_reason,
+          fact_refs = excluded.fact_refs,
+          missing_facts = excluded.missing_facts,
+          unverified_facts = excluded.unverified_facts,
+          fact_hash = excluded.fact_hash,
+          last_evaluated_at = now(),
+          last_material_change_at = now()
+      `);
+      return { changed: true };
+    },
+
+    async loadAnswerUnitHashes(keys) {
+      if (keys.length === 0) return new Map();
+      const rows = rowsOf(await conn.execute(sql`
+        select answer_key, fact_hash from seo_intel_answer_units
+        where answer_key in (
+          select jsonb_array_elements_text(${JSON.stringify(keys)}::text::jsonb)
+        )
+      `));
+      return new Map(rows.map((r) => [String(r.answer_key), String(r.fact_hash)]));
+    },
+
+    // ── Source-state resolution and dependency planning ─────────────────────
+
+    async loadUniverse() {
+      const rows = rowsOf(await conn.execute(sql`select slug from categories order by slug limit 500`));
+      return rows.map((r) => ({ entityType: 'CATEGORY' as const, entityId: `/${String(r.slug)}` }));
+    },
+
+    async resolveChanges() {
+      const ports: SourceStatePorts = {
+        now: async () => String(rowsOf(await conn.execute(sql`select now()::text as t`))[0]?.t ?? ''),
+
+        readCursor: async (key) => {
+          const row = rowsOf(await conn.execute(sql`
+            select cursor_at::text as at, cursor_id from seo_intel_source_cursors where source_key = ${key}
+          `))[0];
+          return { at: row?.at ? String(row.at) : null, id: row?.cursor_id ? String(row.cursor_id) : null };
+        },
+
+        readKnownState: async (key) => {
+          const rows = rowsOf(await conn.execute(sql`
+            select entity_id, state_hash from seo_intel_source_state where source_key = ${key}
+          `));
+          return new Map(rows.map((r) => [String(r.entity_id), String(r.state_hash)]));
+        },
+
+        readSince: async (d, lower, upperBound) => {
+          if (d.key === 'products') {
+            // Composite (updated_at, id) comparison: rows sharing an instant
+            // are ordered by id so none is skipped.
+            const rows = rowsOf(await conn.execute(sql`
+              select id::text as id, updated_at::text as at,
+                     active, approval_status, stock_status, stock_quantity, price_ugx,
+                     has_retail_price, category_id::text as category_id
+              from products
+              where updated_at <= ${upperBound}::timestamptz
+                and (${lower.at === null ? sql`true` : sql`
+                  (updated_at > ${lower.at}::timestamptz
+                   or (updated_at = ${lower.at}::timestamptz and id::text > ${lower.id ?? ''}))`})
+              order by updated_at, id
+              limit 5000
+            `));
+            return rows.map((r) => ({
+              id: String(r.id), at: String(r.at),
+              stateHash: stateHashOf({
+                active: r.active, approval: r.approval_status, stock: r.stock_status,
+                qty: r.stock_quantity, price: r.price_ugx, retail: r.has_retail_price,
+                category: r.category_id,
+              }),
+            }));
+          }
+          if (d.key === 'seo_change_ledger') {
+            const rows = rowsOf(await conn.execute(sql`
+              select id::text as id, occurred_at::text as at, target, scope, validation_state
+              from seo_change_ledger
+              where occurred_at <= ${upperBound}::timestamptz
+                and (${lower.at === null ? sql`true` : sql`
+                  (occurred_at > ${lower.at}::timestamptz
+                   or (occurred_at = ${lower.at}::timestamptz and id::text > ${lower.id ?? ''}))`})
+              order by occurred_at, id
+              limit 5000
+            `));
+            return rows.map((r) => ({
+              id: String(r.target), at: String(r.at),
+              stateHash: stateHashOf({ scope: r.scope, state: r.validation_state, id: r.id }),
+            }));
+          }
+          if (d.key === 'seo_queries') {
+            const rows = rowsOf(await conn.execute(sql`
+              select id::text as id, last_observed_at::text as at, query, intent, evidence_state, source
+              from seo_queries
+              where last_observed_at is not null
+                and last_observed_at <= ${upperBound}::timestamptz
+                and (${lower.at === null ? sql`true` : sql`
+                  (last_observed_at > ${lower.at}::timestamptz
+                   or (last_observed_at = ${lower.at}::timestamptz and id::text > ${lower.id ?? ''}))`})
+              order by last_observed_at, id
+              limit 5000
+            `));
+            return rows.map((r) => ({
+              id: String(r.query), at: String(r.at),
+              stateHash: stateHashOf({ intent: r.intent, evidence: r.evidence_state }),
+              // A CSV import or operator entry describes the past, so it must
+              // not be read as a new current SEO event.
+              historical: String(r.source) === 'CSV_IMPORT' || String(r.source) === 'OPERATOR',
+            }));
+          }
+          return [];
+        },
+
+        readInventory: async (d) => {
+          if (d.key === 'provider_enrichment') {
+            // A connection that has genuinely reached an operational state AND
+            // holds an active credential. The revision is (connection,
+            // credential version): replacing a credential creates a new
+            // revision and legitimately warrants enrichment again, while a
+            // mere status flap does not.
+            const rows = rowsOf(await conn.execute(sql`
+              select n.id::text as connection_id, n.provider_id,
+                     coalesce(max(c.version), 0) as credential_version
+              from seo_integration_connections n
+              join seo_integration_credentials c
+                on c.connection_id = n.id and c.status = 'ACTIVE'
+              where n.status in ('CONNECTED','SYNCING','HEALTHY','STALE')
+              group by n.id, n.provider_id
+            `));
+            return rows.map((r) => {
+              const revision = `${r.provider_id}:${r.connection_id}:v${r.credential_version}`;
+              // id and hash are both the revision, so a completed revision
+              // compares equal on the next run and enriches exactly once.
+              return { id: revision, at: null, stateHash: revision };
+            });
+          }
+          if (d.key === 'gsc_performance') {
+            // Same attribution rule and same canonical grain as scoring uses:
+            // page-based, completed days only. The digest moves only when the
+            // entity's observed demand actually moves.
+            const rows = rowsOf(await conn.execute(sql`
+              select c.slug,
+                     sum(g.impressions)::bigint as impressions,
+                     sum(g.clicks)::bigint as clicks,
+                     max(g.date)::text as period_end
+              from gsc_performance g
+              join categories c
+                on g.page ilike '%/' || c.slug
+                or g.page ilike '%/' || c.slug || '/%'
+                or g.page ilike '%/' || c.slug || '?%'
+              where g.date < current_date
+              group by c.slug
+            `));
+            return rows.map((r) => ({
+              id: `/${String(r.slug)}`,
+              at: r.period_end ? String(r.period_end) : null,
+              stateHash: stateHashOf({
+                impressions: Number(r.impressions ?? 0),
+                clicks: Number(r.clicks ?? 0),
+                through: r.period_end ?? null,
+              }),
+            }));
+          }
+          if (d.key === 'categories') {
+            // categories has no timestamp column at all, so the full observed
+            // state IS the change evidence.
+            const rows = rowsOf(await conn.execute(sql`
+              select c.id::text as id, c.slug, c.name,
+                     count(p.id) filter (where p.active = true and p.approval_status = 'approved')::int as eligible
+              from categories c left join products p on p.category_id = c.id
+              group by c.id, c.slug, c.name limit 500
+            `));
+            return rows.map((r) => ({
+              id: `/${String(r.slug)}`, at: null,
+              stateHash: stateHashOf({ name: r.name, slug: r.slug, eligible: r.eligible }),
+            }));
+          }
+          if (d.key === 'products') {
+            const rows = rowsOf(await conn.execute(sql`select id::text as id from products limit 20000`));
+            return rows.map((r) => ({ id: String(r.id), at: null, stateHash: '' }));
+          }
+          return [];
+        },
+      };
+
+      const snapshot = await resolveSourceChanges(ports);
+
+      return {
+        snapshotId: snapshot.snapshotId,
+        changes: snapshot.changes,
+        coverageLimits: snapshot.coverageLimits,
+        // Committed only by the coordinator, and only after the whole run
+        // succeeded.
+        commit: async () => {
+          for (const [key, cur] of Object.entries(snapshot.proposedCursors)) {
+            await conn.execute(sql`
+              insert into seo_intel_source_cursors (source_key, cursor_at, cursor_id, snapshot_id, updated_at)
+              values (${key}, ${cur.at}::timestamptz, ${cur.id}, ${snapshot.snapshotId}, now())
+              on conflict (source_key) do update set
+                cursor_at = excluded.cursor_at, cursor_id = excluded.cursor_id,
+                snapshot_id = excluded.snapshot_id, updated_at = now()
+            `);
+          }
+          for (const [key, state] of Object.entries(snapshot.proposedState)) {
+            for (const [entityId, hash] of state) {
+              await conn.execute(sql`
+                insert into seo_intel_source_state (source_key, entity_id, state_hash, updated_at)
+                values (${key}, ${entityId}, ${hash}, now())
+                on conflict (source_key, entity_id) do update set
+                  state_hash = excluded.state_hash, updated_at = now()
+              `);
+            }
+
+            // Retire state rows for entities that no longer exist. Without
+            // this the inventory diff re-reports the same deletion on every
+            // run forever, because the tombstone it compares against is the
+            // very row it is trying to retire.
+            //
+            // Only safe for sources whose proposed state is the FULL current
+            // inventory; a cursor scan sees a slice, and pruning from a slice
+            // would delete everything it did not happen to read.
+            const descriptor = SOURCE_DESCRIPTORS.find((d) => d.key === key);
+            if (descriptor && descriptor.capability !== 'CURSOR_EXACT') {
+              const present = [...state.keys()];
+              await conn.execute(sql`
+                delete from seo_intel_source_state
+                where source_key = ${key}
+                  and ${present.length === 0 ? sql`true` : sql`not (${pgInTextList(sql`entity_id`, present)})`}
+              `);
+            }
+          }
+        },
+      };
+    },
+
+    async dependencyResolver() {
+      // Loaded once per run: the graph is small and a per-lookup query would
+      // turn planning into N round-trips.
+      const prodCats = rowsOf(await conn.execute(sql`
+        select p.id::text as product_id, c.slug from products p
+        join categories c on c.id = p.category_id limit 20000
+      `));
+      const byProduct = new Map<string, string[]>();
+      for (const r of prodCats) {
+        const k = String(r.product_id);
+        if (!byProduct.has(k)) byProduct.set(k, []);
+        byProduct.get(k)!.push(`/${String(r.slug)}`);
+      }
+
+      const clusterByUrl = new Map<string, string[]>();
+      for (const r of rowsOf(await conn.execute(sql`
+        select cluster_key, preferred_owner_url from seo_intel_clusters where preferred_owner_url is not null
+      `))) {
+        const u = String(r.preferred_owner_url);
+        if (!clusterByUrl.has(u)) clusterByUrl.set(u, []);
+        clusterByUrl.get(u)!.push(String(r.cluster_key));
+      }
+
+      const answersByFact = new Map<string, string[]>();
+      for (const r of rowsOf(await conn.execute(sql`
+        select answer_key, fact_hash from seo_intel_answer_units
+      `))) {
+        const f = String(r.fact_hash);
+        if (!answersByFact.has(f)) answersByFact.set(f, []);
+        answersByFact.get(f)!.push(String(r.answer_key));
+      }
+
+      return {
+        categoriesForProduct: (id) => byProduct.get(id) ?? [],
+        // A category entity IS its URL in this model; a product has no
+        // standalone indexable route yet, so it contributes through its
+        // categories rather than inventing one.
+        urlsForEntity: (ref) => (ref.entityType === 'CATEGORY' ? [ref.entityId] : []),
+        clustersForUrl: (url) => clusterByUrl.get(url) ?? [],
+        answerUnitsForFact: (fact) => answersByFact.get(fact) ?? [],
+        linkSourcesForUrl: () => [],
+      };
+    },
+
+    // ── Query intelligence ──────────────────────────────────────────────────
+
+    async loadQueryUniverse() {
+      // Project provider observations into the semantic query universe before
+      // reading it. gsc_performance is the METRIC source of truth at the
+      // DATE x PAGE x QUERY grain; seo_queries is the IDENTITY universe, one
+      // row per query however many times it was observed. Without this bridge
+      // real Google queries existed but the query graph was empty.
+      await projectGscQueries(conn);
+
+      // Queries come from whatever providers are actually connected. There is
+      // no synthetic fallback: an empty universe is reported as empty, and the
+      // coordinator renders that as provider absence rather than zero demand.
+      const queries = rowsOf(await conn.execute(sql`
+        select query as raw, source, last_observed_at::text as observed_at,
+               -- A CSV import is historical by nature; it must never read as a
+               -- live observation.
+               (source in ('CSV_IMPORT','OPERATOR')) as is_backfill
+        from seo_queries
+        where query is not null and query <> ''
+        order by last_observed_at desc nulls last
+        limit 5000
+      `)).map((r) => ({
+        raw: String(r.raw),
+        source: String(r.source),
+        observedAt: r.observed_at ? String(r.observed_at) : null,
+        isBackfill: Boolean(r.is_backfill),
+      }));
+
+      // Entities give clustering something concrete to attach queries to, so a
+      // cluster can name a real category rather than a token bag.
+      const entities = rowsOf(await conn.execute(sql`
+        select id::text as entity_id, name, slug from categories limit 500
+      `)).map((r) => ({
+        entityId: String(r.entity_id),
+        entityType: 'CATEGORY' as const,
+        label: String(r.name ?? r.slug ?? ''),
+        terms: String(r.name ?? '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean),
+      }));
+
+      return { queries, entities };
+    },
+
+    async loadClusterHashes(keys) {
+      if (keys.length === 0) return new Map();
+      const rows = rowsOf(await conn.execute(sql`
+        select cluster_key, membership_signature from seo_intel_clusters
+        where ${pgInTextList(sql`cluster_key`, keys)}
+      `));
+      return new Map(rows.map((r) => [String(r.cluster_key), String(r.membership_signature ?? '')]));
+    },
+
+    async upsertCluster(i) {
+      const before = rowsOf(await conn.execute(sql`
+        select membership_signature from seo_intel_clusters where cluster_key = ${i.clusterKey}
+      `))[0]?.membership_signature ?? null;
+
+      await conn.execute(sql`
+        insert into seo_intel_clusters (
+          cluster_key, label, cluster_method, cluster_confidence, membership_signature, member_count,
+          entity_id, entity_type, primary_intent, secondary_intent, intent_confidence, intent_method,
+          current_owner_url, current_owner_type, preferred_owner_url, preferred_owner_type,
+          ownership_decision, ownership_rationale, last_seen_at, updated_at
+        ) values (
+          ${i.clusterKey}, ${i.label}, ${i.method}, ${i.confidence}, ${i.membershipSignature}, ${i.memberCount},
+          ${i.entityId}, ${i.entityType}, ${i.primaryIntent}, ${i.secondaryIntent}, ${i.intentConfidence}, ${i.intentMethod},
+          ${i.currentOwnerUrl}, ${i.currentOwnerType}, ${i.preferredOwnerUrl}, ${i.preferredOwnerType},
+          ${i.ownershipDecision}, ${i.ownershipRationale}, now(), now()
+        )
+        on conflict (cluster_key) do update set
+          label = excluded.label, cluster_method = excluded.cluster_method,
+          cluster_confidence = excluded.cluster_confidence,
+          membership_signature = excluded.membership_signature, member_count = excluded.member_count,
+          entity_id = excluded.entity_id, entity_type = excluded.entity_type,
+          primary_intent = excluded.primary_intent, secondary_intent = excluded.secondary_intent,
+          intent_confidence = excluded.intent_confidence, intent_method = excluded.intent_method,
+          current_owner_url = excluded.current_owner_url, current_owner_type = excluded.current_owner_type,
+          preferred_owner_url = excluded.preferred_owner_url, preferred_owner_type = excluded.preferred_owner_type,
+          ownership_decision = excluded.ownership_decision, ownership_rationale = excluded.ownership_rationale,
+          last_seen_at = now(),
+          -- Freshness is not a change. updated_at only moves when the
+          -- membership signature actually differs.
+          updated_at = case
+            when seo_intel_clusters.membership_signature is distinct from excluded.membership_signature
+            then now() else seo_intel_clusters.updated_at end
+      `);
+      return { changed: before !== i.membershipSignature };
+    },
+
+    async loadMembershipKeys(clusterKeys) {
+      if (clusterKeys.length === 0) return new Set();
+      const rows = rowsOf(await conn.execute(sql`
+        select membership_key from seo_intel_query_membership
+        where ${pgInTextList(sql`cluster_key`, clusterKeys)}
+      `));
+      return new Set(rows.map((r) => String(r.membership_key)));
+    },
+
+    async upsertQueryMembership(i) {
+      const res = rowsOf(await conn.execute(sql`
+        insert into seo_intel_query_membership (
+          membership_key, cluster_key, raw_query, normalized_query, membership_method,
+          membership_confidence, source, source_observed_at, is_backfill, demand_state, last_seen_at
+        ) values (
+          ${i.membershipKey}, ${i.clusterKey}, ${i.rawQuery}, ${i.normalizedQuery}, ${i.method},
+          ${i.confidence}, ${i.source}, ${i.observedAt}, ${i.isBackfill},
+          -- Placement does not measure demand. impressions/clicks stay NULL and
+          -- the CHECK constraint enforces that pairing.
+          'UNKNOWN', now()
+        )
+        on conflict (membership_key) do update set
+          membership_confidence = excluded.membership_confidence,
+          last_seen_at = now()
+        returning (xmax = 0) as inserted
+      `));
+      return { changed: Boolean(res[0]?.inserted) };
+    },
+
+    async loadCompetingUrls(clusterKeys) {
+      const out = new Map<string, any[]>();
+      if (clusterKeys.length === 0) return out;
+      // Competition is only observable where a page is actually indexable and
+      // alive. A noindexed or retired URL is not competing for anything.
+      // TWO sources, and the difference between them is the whole point.
+      //
+      // gsc_performance is Search Console telling us which PAGE it actually
+      // served for which QUERY, with that page's own impressions and clicks:
+      // observed reality, and the only thing resolveOwnership is allowed to
+      // believe. Until this was joined here every candidate was lexical, every
+      // owner was therefore discarded as untrusted, and the module produced no
+      // opportunities at all.
+      //
+      // The crawl-page join stays as the fallback for demand no provider has
+      // reported yet. It matches on the query appearing IN the URL, which is a
+      // guess, so it keeps null metrics and is not marked observed.
+      const rows = rowsOf(await conn.execute(sql`
+        select cluster_key, url, impressions, clicks, canonical_target, provider_observed
+        from (
+          select m.cluster_key,
+                 g.page as url,
+                 sum(g.impressions)::int as impressions,
+                 sum(g.clicks)::int as clicks,
+                 null::text as canonical_target,
+                 true as provider_observed
+          from seo_intel_query_membership m
+          join gsc_performance g
+            on lower(btrim(g.query)) = m.normalized_query
+          where ${pgInTextList(sql`m.cluster_key`, clusterKeys)}
+          group by m.cluster_key, g.page
+
+          union all
+
+          select distinct m.cluster_key, p.final_url as url,
+                 -- No provider has reported demand for this URL; writing 0
+                 -- would fabricate a measurement.
+                 null::int as impressions, null::int as clicks,
+                 p.canonical as canonical_target,
+                 false as provider_observed
+          from seo_intel_query_membership m
+          join seo_crawl_pages p
+            on position(lower(m.normalized_query) in lower(coalesce(p.final_url, ''))) > 0
+          where ${pgInTextList(sql`m.cluster_key`, clusterKeys)}
+            -- A noindexed page is not competing for anything.
+            and coalesce(p.meta_robots, '') not ilike '%noindex%'
+        ) candidates
+        limit 2000
+      `));
+      for (const r of rows) {
+        const key = String(r.cluster_key);
+        if (!out.has(key)) out.set(key, []);
+        out.get(key)!.push({
+          url: String(r.url),
+          impressions: r.impressions === null ? null : Number(r.impressions),
+          clicks: r.clicks === null ? null : Number(r.clicks),
+          intent: 'UNKNOWN' as never,
+          ownerType: null,
+          canonicalTarget: r.canonical_target ? String(r.canonical_target) : null,
+          contentSimilarity: null,
+          // Reached only via the indexable filter above.
+          lifecycleActive: true,
+          providerObserved: Boolean(r.provider_observed),
+        });
+      }
+      return out;
+    },
+
+    async loadCannibalisationHashes(keys) {
+      if (keys.length === 0) return new Map();
+      const rows = rowsOf(await conn.execute(sql`
+        select finding_key, classification, rationale from seo_intel_cannibalisation
+        where ${pgInTextList(sql`finding_key`, keys)}
+      `));
+      return new Map(rows.map((r) => [String(r.finding_key), String(r.classification ?? '')]));
+    },
+
+    async upsertCannibalisation(i) {
+      const res = rowsOf(await conn.execute(sql`
+        insert into seo_intel_cannibalisation (
+          finding_key, cluster_key, classification, confidence, rationale,
+          affected_urls, persistence, status, last_seen_at, last_material_change_at
+        ) values (
+          ${i.findingKey}, ${i.clusterKey}, ${i.classification}, ${i.confidence}, ${i.rationale},
+          ${pgJsonb(i.affectedUrls)}, ${i.persistence}, 'OPEN', now(), now()
+        )
+        on conflict (finding_key) do update set
+          confidence = excluded.confidence, rationale = excluded.rationale,
+          affected_urls = excluded.affected_urls,
+          persistence = seo_intel_cannibalisation.persistence + 1,
+          last_seen_at = now(),
+          last_material_change_at = case
+            when seo_intel_cannibalisation.classification is distinct from excluded.classification
+            then now() else seo_intel_cannibalisation.last_material_change_at end
+        returning (xmax = 0) as inserted
+      `));
+      return { changed: Boolean(res[0]?.inserted) };
+    },
+
+    // ── Answer units (AEO) ──────────────────────────────────────────────────
+
+    /**
+     * Drafts built from catalogue truth. A fact is only offered here while the
+     * underlying row still supports it — when a product is deactivated or its
+     * price removed, the fact simply stops appearing, which is what drives the
+     * answer unit out of READY on the next run.
+     */
+    async loadAnswerUnitDrafts(affectedKeys) {
+      const rows = rowsOf(await conn.execute(sql`
+        select p.id::text as product_id, p.name, p.slug,
+               p.price_ugx, p.stock_quantity, p.active, p.approval_status,
+               c.slug as category_slug
+        from products p
+        left join categories c on c.id = p.category_id
+        where p.active = true and p.approval_status = 'approved'
+        limit 2000
+      `));
+
+      const drafts = rows.map((r) => {
+        const productId = String(r.product_id);
+        const facts: Array<{ key: string; value: string; source: string; sourceId: string; verified: boolean }> = [];
+
+        // Price is a fact only while the catalogue actually carries one. A
+        // missing price must not become "0" — it must be absent.
+        if (r.price_ugx !== null && Number(r.price_ugx) > 0) {
+          facts.push({
+            key: `price:${productId}`, value: String(r.price_ugx),
+            source: 'CATALOGUE', sourceId: productId, verified: true,
+          });
+        }
+        if (r.stock_quantity !== null) {
+          facts.push({
+            key: `availability:${productId}`, value: String(r.stock_quantity),
+            source: 'CATALOGUE', sourceId: productId, verified: true,
+          });
+        }
+
+        return {
+          templateId: 'product-availability',
+          entityContext: String(r.slug),
+          question: `Is ${String(r.name)} available at GoldPlus, and what does it cost?`,
+          intent: 'PRICE',
+          answerType: 'PRICE' as never,
+          // Both facts are required: an answer that states availability without
+          // a price is not the answer to this question.
+          requiredFactKeys: [`price:${productId}`, `availability:${productId}`],
+          availableFacts: facts as never,
+          productEntities: [productId],
+          categoryEntities: r.category_slug ? [`/${String(r.category_slug)}`] : [],
+        };
+      });
+
+      if (affectedKeys === null) return drafts as never;
+      // Incremental: only the units the planner marked as fact-affected.
+      const wanted = new Set(affectedKeys);
+      return drafts.filter((d) => wanted.has(`${d.templateId}::${d.entityContext}`)) as never;
+    },
+
+    // ── Content intelligence ────────────────────────────────────────────────
+
+    async loadContentHashes(keys) {
+      if (keys.length === 0) return new Map();
+      const rows = rowsOf(await conn.execute(sql`
+        select content_key, semantic_hash from seo_intel_content
+        where ${pgInTextList(sql`content_key`, keys)}
+      `));
+      return new Map(rows.map((r) => [String(r.content_key), String(r.semantic_hash)]));
+    },
+
+    async upsertContentIntelligence(i) {
+      const res = rowsOf(await conn.execute(sql`
+        insert into seo_intel_content (
+          content_key, url, classification, primary_intent, cluster_key,
+          content_completeness, semantic_hash, last_seen_at, last_material_change_at
+        ) values (
+          ${i.contentKey}, ${i.url}, ${i.classification}, ${i.primaryIntent}, ${i.clusterKey},
+          ${i.contentCompleteness}, ${i.semanticHash}, now(), now()
+        )
+        on conflict (content_key) do update set
+          classification = excluded.classification, primary_intent = excluded.primary_intent,
+          cluster_key = excluded.cluster_key, content_completeness = excluded.content_completeness,
+          semantic_hash = excluded.semantic_hash, last_seen_at = now(),
+          last_material_change_at = case
+            when seo_intel_content.semantic_hash is distinct from excluded.semantic_hash
+            then now() else seo_intel_content.last_material_change_at end
+        returning (xmax = 0) as inserted
+      `));
+      return { changed: Boolean(res[0]?.inserted) };
+    },
+
+    // ── Action requests (recorded, never executed) ───────────────────────────
+
+    async upsertActionRequest(i) {
+      const res = rowsOf(await conn.execute(sql`
+        insert into seo_intel_action_requests (
+          request_key, opportunity_key, action_class, entity_id, evidence_ids,
+          policy_version, preconditions, unmet_preconditions, confidence, blast_radius,
+          expected_effect, rollback_class, verification_plan, state, decision_reason, updated_at
+        ) values (
+          ${i.requestKey}, ${i.opportunityKey}, ${i.actionClass}, ${i.entityId}, ${pgJsonb(i.evidenceIds)},
+          ${i.policyVersion}, ${pgJsonb(i.preconditions)}, ${pgJsonb(i.unmetPreconditions)}, ${i.confidence}, ${i.blastRadius},
+          ${i.expectedEffect}, ${i.rollbackClass}, ${i.verificationPlan}, ${i.state}, ${i.decisionReason}, now()
+        )
+        on conflict (request_key) do update set
+          state = excluded.state, decision_reason = excluded.decision_reason,
+          unmet_preconditions = excluded.unmet_preconditions, updated_at = now()
+        returning (xmax = 0) as inserted
+      `));
+      return { changed: Boolean(res[0]?.inserted) };
+    },
+  };
+
+  try {
+    return await new OrganicIntelligenceMaterialiser(ports).execute(mode);
+  } catch (err: any) {
+    logger.error({ err: String(err?.message ?? err) }, '[OrganicIntelligence] run threw');
+    throw err;
+  } finally {
+    if (lock) await (lock as HeldSessionLock).release().catch(() => undefined);
+  }
+}

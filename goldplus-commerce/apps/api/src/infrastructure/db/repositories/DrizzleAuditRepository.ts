@@ -1,6 +1,7 @@
 import { db } from '../client';
+import { auditEntityId } from '../../../domain/audit/AuditEntityId';
 import { auditLogs } from '../schema/system';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, ilike } from 'drizzle-orm';
 import { AuditLogEntity } from '../../../domain/audit/AuditLogEntity';
 import { IAuditRepository } from '../../../application/ports/IAuditRepository';
 
@@ -18,8 +19,13 @@ export class DrizzleAuditRepository implements IAuditRepository {
     });
   }
 
-  async findAll(opts?: { limit?: number }): Promise<AuditLogEntity[]> {
+  async findAll(opts?: { limit?: number; actorId?: string; action?: string; entity?: string }): Promise<AuditLogEntity[]> {
+    const conditions = [];
+    if (opts?.entity) conditions.push(eq(auditLogs.entity, opts.entity));
+    if (opts?.actorId) conditions.push(eq(auditLogs.actorId, opts.actorId));
+    if (opts?.action) conditions.push(ilike(auditLogs.action, `%${opts.action}%`));
     const results = await db.query.auditLogs.findMany({
+      where: conditions.length ? and(...conditions) : undefined,
       orderBy: [desc(auditLogs.createdAt)],
       limit: opts?.limit,
     });
@@ -38,8 +44,13 @@ export class DrizzleAuditRepository implements IAuditRepository {
 
   async findByEntity(entity: string, entityId: string): Promise<AuditLogEntity[]> {
     const results = await db.query.auditLogs.findMany({
-      where: eq(auditLogs.entityId, entityId),
+      // The same mapping the writer uses, so a singleton's history is findable
+      // by the name the route knows it by.
+      where: eq(auditLogs.entityId, auditEntityId(entity, entityId)),
       orderBy: [desc(auditLogs.createdAt)],
+      // Bounded: a busy singleton (nav, business info) collects thousands of
+      // rows with two jsonb snapshots each; every caller shows the newest few.
+      limit: 500,
     });
 
     return results.map(r => new AuditLogEntity(

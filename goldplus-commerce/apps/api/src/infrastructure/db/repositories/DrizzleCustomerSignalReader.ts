@@ -1,7 +1,8 @@
 import { db } from '../client';
-import { orders, carts } from '../schema/commerce';
+import { orders, carts, cartItems } from '../schema/commerce';
 import { fulfilmentDeliveries, fulfilmentTasks, fulfilmentLines } from '../schema/fulfilment';
 import { loyaltyAccounts, loyaltyLedgerEntries } from '../schema/loyalty';
+import { supportIssues } from '../schema/governance';
 import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { RawCustomerSignals } from '../../../domain/customer-dna/CustomerFeatures';
 import { IdentitySignalType } from '../../../domain/customer-dna/CustomerIdentity';
@@ -16,12 +17,21 @@ import { ICustomerSignalReader } from '../../../application/ports/ICustomerDnaRe
  */
 export class DrizzleCustomerSignalReader implements ICustomerSignalReader {
   async readSignals(input: { accountUserId: string | null; identifierKeys: string[] }): Promise<RawCustomerSignals> {
-    const anon = input.identifierKeys.filter(Boolean);
+    // 0155 stitching keys are prefixed: `order:<id>` (the order itself) and
+    // `xp:<profile id>` (the server-issued visitor profile). Unprefixed keys are
+    // the legacy client anonymous ids. `fp:` visitor ids join no order column.
+    const keys = input.identifierKeys.filter(Boolean);
+    const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+    const orderIdKeys = keys.filter((k) => k.startsWith('order:')).map((k) => k.slice(6)).filter(isUuid);
+    const profileKeys = keys.filter((k) => k.startsWith('xp:')).map((k) => k.slice(3)).filter(isUuid);
+    const anon = keys.filter((k) => !k.startsWith('order:') && !k.startsWith('xp:') && !k.startsWith('fp:'));
     const matchers = [] as any[];
     if (input.accountUserId) matchers.push(eq(orders.userId, input.accountUserId));
     if (anon.length > 0) matchers.push(inArray(orders.anonymousId, anon));
+    if (orderIdKeys.length > 0) matchers.push(inArray(orders.id, orderIdKeys));
+    if (profileKeys.length > 0) matchers.push(inArray(orders.profileId, profileKeys));
     if (matchers.length === 0) {
-      return { sourceVersion: 0, orders: [], searches: [], deliveries: [], backorderCount: 0, supportInteractions: 0, cartAbandonments: 0, loyaltyBalance: null, declaredPreferences: null };
+      return { sourceVersion: 0, orders: [], searches: null, deliveries: [], backorderCount: 0, supportInteractions: 0, cartAbandonments: 0, loyaltyBalance: null, declaredPreferences: null };
     }
     const orderRows = await db.select().from(orders).where(or(...matchers));
     const orderIds = orderRows.map((o) => o.id);
@@ -39,16 +49,23 @@ export class DrizzleCustomerSignalReader implements ICustomerSignalReader {
       backorderCount = bo?.n ?? 0;
     }
 
-    // Cart abandonments — carts for this customer that never converted to an order.
+    // Cart abandonments: carts that HAD something in them, were left alone for
+    // a day, and never became an order. Every unconverted cart used to count,
+    // including empty ones and the cart the customer is filling right now.
     const cartMatchers = [] as any[];
     if (input.accountUserId) cartMatchers.push(eq(carts.userId, input.accountUserId));
     if (anon.length > 0) cartMatchers.push(inArray(carts.anonymousId, anon));
     let cartAbandonments = 0;
     if (cartMatchers.length > 0) {
       const convertedCartIds = orderRows.map((o) => o.cartId).filter((id): id is string => !!id);
+      const abandoned = and(
+        or(...cartMatchers),
+        sql`${carts.updatedAt} < now() - interval '24 hours'`,
+        sql`exists (select 1 from ${cartItems} where ${cartItems.cartId} = ${carts.id})`,
+      );
       const notConverted = convertedCartIds.length > 0
-        ? and(or(...cartMatchers), sql`${carts.id} not in (${sql.join(convertedCartIds.map((id) => sql`${id}`), sql`, `)})`)
-        : or(...cartMatchers);
+        ? and(abandoned, sql`${carts.id} not in (${sql.join(convertedCartIds.map((id) => sql`${id}`), sql`, `)})`)
+        : abandoned;
       const [c] = await db.select({ n: sql<number>`count(*)::int` }).from(carts).where(notConverted);
       cartAbandonments = c?.n ?? 0;
     }
@@ -64,6 +81,13 @@ export class DrizzleCustomerSignalReader implements ICustomerSignalReader {
       }
     }
 
+    // 0157: support tickets on the account are a real count, not a 0 placeholder.
+    let supportInteractions = 0;
+    if (input.accountUserId) {
+      const [s] = await db.select({ n: sql<number>`count(*)::int` }).from(supportIssues).where(eq(supportIssues.customerId, input.accountUserId));
+      supportInteractions = s?.n ?? 0;
+    }
+
     const stamps = [
       ...orderRows.map((o) => o.updatedAt?.getTime() ?? o.createdAt.getTime()),
       ...deliveryRows.map((d) => d.createdAt.getTime()),
@@ -72,11 +96,13 @@ export class DrizzleCustomerSignalReader implements ICustomerSignalReader {
 
     return {
       sourceVersion,
-      orders: orderRows.map((o) => ({ totalAmountUgx: o.totalAmount, createdAt: o.createdAt, paymentMethod: null, status: o.status })),
-      searches: [],
+      // 0157: the payment method chosen at checkout ('offline' = cash on delivery, 'pesapal' = online), not a null placeholder.
+      orders: orderRows.map((o) => ({ totalAmountUgx: o.totalAmount, createdAt: o.createdAt, paymentMethod: o.paymentMethod ?? null, status: o.status, paymentStatus: o.paymentStatus ?? null })),
+      // No per-customer search source is joined here: NOT_OBSERVED, never 0.
+      searches: null,
       deliveries: deliveryRows,
       backorderCount,
-      supportInteractions: 0,
+      supportInteractions,
       cartAbandonments,
       loyaltyBalance,
       declaredPreferences: null,

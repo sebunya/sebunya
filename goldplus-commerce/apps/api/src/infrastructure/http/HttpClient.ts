@@ -39,6 +39,37 @@ const circuitBreakerFailures = new client.Counter({
 
 export type CircuitBreakerState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
 
+
+/**
+ * An error message can echo a request URL or header, so a credential could
+ * reach the logs through it. Mask the value of every secret-looking setting,
+ * plus bearer and Zoho key patterns, before anything is logged.
+ */
+export function redactSecrets(message: unknown): string {
+  let out = String(message ?? '');
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value && value.length >= 8 && /(KEY|TOKEN|SECRET|PASSWORD|PEPPER)/i.test(name)) out = out.split(value).join('******');
+  }
+  return out.replace(/(Bearer|Zoho-enczapikey)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 ******');
+}
+
+/**
+ * A send threw: may the provider have received it anyway? A timeout, a connection that broke after the request
+ * was written, or an unreadable answer to a request that went out all may have delivered the message, and a retry
+ * would send it twice. Only a failure before anything left (open breaker, SSRF block, no route, DNS, TLS) or a
+ * provider's own error status is a definite "not sent".
+ */
+export function sendMayHaveReachedProvider(err: unknown): boolean {
+  const e = err as { name?: unknown; message?: unknown; code?: unknown; cause?: { code?: unknown } } | null;
+  const name = String(e?.name ?? '');
+  if (name === 'AbortError' || name === 'TimeoutError') return true;
+  if (name === 'CircuitBreakerError') return false;
+  const message = String(e?.message ?? '');
+  if (/^HTTP error status \d+/.test(message) || message.startsWith('SSRF Block')) return false;
+  const code = String(e?.cause?.code ?? e?.code ?? '');
+  return !/^(ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|UND_ERR_CONNECT_TIMEOUT|CERT_|ERR_TLS|DEPTH_ZERO|UNABLE_TO)/.test(code);
+}
+
 export class CircuitBreakerError extends Error {
   constructor(message: string) {
     super(message);
@@ -84,7 +115,7 @@ export class CircuitBreaker {
     } catch (err: any) {
       this.onFailure(err);
       if (fallback) {
-        logger.warn({ breaker: this.name, err: err.message }, `[CircuitBreaker] Request failed. Executing fallback.`);
+        logger.warn({ breaker: this.name, err: redactSecrets(err?.message) }, `[CircuitBreaker] Request failed. Executing fallback.`);
         return fallback();
       }
       throw err;
@@ -104,7 +135,7 @@ export class CircuitBreaker {
     this.failureCount++;
     circuitBreakerFailures.inc({ breaker_name: this.name });
     logger.warn(
-      { breaker: this.name, failures: this.failureCount, err: err.message },
+      { breaker: this.name, failures: this.failureCount, err: redactSecrets(err?.message) },
       `[CircuitBreaker] Execution failed`
     );
 
@@ -157,7 +188,7 @@ export async function resilientFetch(
       const { address } = await dnsLookup(parsed.hostname);
       if (isPrivateIp(address)) {
         const ssrfErr = new Error(`SSRF Block: Hostname ${parsed.hostname} resolved to private IP: ${address}`);
-        logger.error({ url, err: ssrfErr.message }, '[SSRF] Outbound request blocked');
+        logger.error({ url: redactSecrets(url), err: redactSecrets(ssrfErr.message) }, '[SSRF] Outbound request blocked');
         throw ssrfErr;
       }
     } catch (dnsErr: any) {
