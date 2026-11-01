@@ -120,6 +120,12 @@ export const SOURCE_DESCRIPTORS: SourceDescriptor[] = [
 /** One observed source row, reduced to what change detection needs. */
 export interface SourceRow {
   id: string;
+  /**
+   * The id the CURSOR tie-breaks on, when it differs from the entity id. A ledger row is keyed by its target URL
+   * and a query row by its text, but the SQL cursor compares the row's own uuid: committing the entity text as the
+   * cursor id skipped (or replayed) every row that shared the boundary instant. Defaults to `id`.
+   */
+  cursorId?: string;
   /** Null for STATE_HASH sources, which have no timestamp. */
   at: string | null;
   /** Deterministic digest of the semantically relevant columns. */
@@ -195,7 +201,18 @@ export function isAfter(row: SourceRow, cursor: SourceCursor): boolean {
   if (row.at > cursor.at) return true;
   if (row.at < cursor.at) return false;
   // Same instant: the stable id is the tie-breaker, so no row is skipped.
-  return cursor.id === null ? true : row.id > cursor.id;
+  return cursor.id === null ? true : cursorIdOf(row) > cursor.id;
+}
+
+export const cursorIdOf = (row: SourceRow): string => row.cursorId ?? row.id;
+
+/** (at, cursor id) ascending, in plain code-point order: the order the cursor itself assumes. */
+export function compareCursorOrder(a: SourceRow, b: SourceRow): number {
+  const at = (a.at ?? '') < (b.at ?? '') ? -1 : (a.at ?? '') > (b.at ?? '') ? 1 : 0;
+  if (at !== 0) return at;
+  const ai = cursorIdOf(a);
+  const bi = cursorIdOf(b);
+  return ai < bi ? -1 : ai > bi ? 1 : 0;
 }
 
 /**
@@ -222,7 +239,9 @@ export async function resolveSourceChanges(
     watermarks[d.key] = lower;
 
     if (d.capability === 'CURSOR_EXACT') {
-      const rows = (await ports.readSince(d, lower, upperBound)).filter((r) => isAfter(r, lower));
+      // Sorted here, not trusted from the adapter: the cursor is taken from the LAST row, so the rows must be in
+      // exactly the order isAfter compares in, whatever collation the database sorted by.
+      const rows = (await ports.readSince(d, lower, upperBound)).filter((r) => isAfter(r, lower)).sort(compareCursorOrder);
       const known = await ports.readKnownState(d.key);
 
       for (const row of rows) {
@@ -249,7 +268,7 @@ export async function resolveSourceChanges(
       // Advance only to the last row actually processed — never to the upper
       // bound, which would silently claim rows we never read.
       const last = rows.length > 0 ? rows[rows.length - 1] : null;
-      proposedCursors[d.key] = last ? { at: last.at, id: last.id } : lower;
+      proposedCursors[d.key] = last ? { at: last.at, id: cursorIdOf(last) } : lower;
       proposedState[d.key] = new Map([
         ...(await ports.readKnownState(d.key)),
         ...rows.map((r) => [r.id, r.stateHash] as [string, string]),

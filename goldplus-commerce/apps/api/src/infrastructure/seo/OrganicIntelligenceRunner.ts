@@ -613,8 +613,8 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
               where updated_at <= ${upperBound}::timestamptz
                 and (${lower.at === null ? sql`true` : sql`
                   (updated_at > ${lower.at}::timestamptz
-                   or (updated_at = ${lower.at}::timestamptz and id::text > ${lower.id ?? ''}))`})
-              order by updated_at, id
+                   or (updated_at = ${lower.at}::timestamptz and id::text collate "C" > ${lower.id ?? ''}))`})
+              order by updated_at, id::text collate "C"
               limit 5000
             `));
             return rows.map((r) => ({
@@ -633,12 +633,12 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
               where occurred_at <= ${upperBound}::timestamptz
                 and (${lower.at === null ? sql`true` : sql`
                   (occurred_at > ${lower.at}::timestamptz
-                   or (occurred_at = ${lower.at}::timestamptz and id::text > ${lower.id ?? ''}))`})
-              order by occurred_at, id
+                   or (occurred_at = ${lower.at}::timestamptz and id::text collate "C" > ${lower.id ?? ''}))`})
+              order by occurred_at, id::text collate "C"
               limit 5000
             `));
             return rows.map((r) => ({
-              id: String(r.target), at: String(r.at),
+              id: String(r.target), cursorId: String(r.id), at: String(r.at),
               stateHash: stateHashOf({ scope: r.scope, state: r.validation_state, id: r.id }),
             }));
           }
@@ -650,12 +650,12 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
                 and last_observed_at <= ${upperBound}::timestamptz
                 and (${lower.at === null ? sql`true` : sql`
                   (last_observed_at > ${lower.at}::timestamptz
-                   or (last_observed_at = ${lower.at}::timestamptz and id::text > ${lower.id ?? ''}))`})
-              order by last_observed_at, id
+                   or (last_observed_at = ${lower.at}::timestamptz and id::text collate "C" > ${lower.id ?? ''}))`})
+              order by last_observed_at, id::text collate "C"
               limit 5000
             `));
             return rows.map((r) => ({
-              id: String(r.query), at: String(r.at),
+              id: String(r.query), cursorId: String(r.id), at: String(r.at),
               stateHash: stateHashOf({ intent: r.intent, evidence: r.evidence_state }),
               // A CSV import or operator entry describes the past, so it must
               // not be read as a new current SEO event.
