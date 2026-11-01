@@ -2,6 +2,8 @@ import '../config/env';
 import { sql } from 'drizzle-orm';
 import { db, endDbConnection } from '../infrastructure/db/client';
 import { normalizeQuery } from '../application/use-cases/seo-growth/QueryIntelligence';
+import { rowsOf } from './lib/scriptHelpers';
+import { planStaleQueryPrune, type QueryIdentityRow } from './lib/staleQueryIdentities';
 
 /**
  * Remove seo_queries rows whose stored identity no longer matches the rules.
@@ -18,39 +20,31 @@ import { normalizeQuery } from '../application/use-cases/seo-growth/QueryIntelli
  * exists (the projection upserts it), and the metrics live in gsc_performance,
  * never here — this table carries identity and provenance only.
  *
- * Refuses to delete a stale row whose correct identity is NOT already present,
- * which would lose the query altogether.
+ * Refuses to delete a stale row whose correct identity is NOT already held by
+ * a correct row (a stale row deleted in the same pass does not count), which
+ * would lose the query altogether.
  *
  * Usage: npx tsx src/scripts/prune-stale-query-identities.ts [--apply]
  */
 async function main(): Promise<void> {
   const apply = process.argv.includes('--apply');
 
-  const rows = (await db.execute(sql`
+  const all = rowsOf(await db.execute(sql`
     select id::text as id, query, normalized_query from seo_queries
-  `)) as unknown as Array<{ id: string; query: string; normalized_query: string }>;
-  const all = Array.isArray(rows) ? rows : (rows as { rows?: typeof rows }).rows ?? [];
-
-  const live = new Set(all.map((r) => r.normalized_query));
-  let stale = 0;
-  let skipped = 0;
-
-  for (const r of all) {
-    const correct = normalizeQuery(r.query).normalized;
-    if (correct === r.normalized_query) continue;
-
-    if (!live.has(correct)) {
-      skipped += 1;
-      console.log(`SKIP  "${r.query}": ${r.normalized_query} -> ${correct} (target identity absent; would lose the query)`);
-      continue;
-    }
-    stale += 1;
-    console.log(`STALE "${r.query}": ${r.normalized_query} -> ${correct}`);
+  `)) as unknown as QueryIdentityRow[];
+  const plan = planStaleQueryPrune(all, (q) => normalizeQuery(q).normalized);
+  for (const { row, correct } of plan.skipped) {
+    console.log(`SKIP  "${row.query}": ${row.normalized_query} -> ${correct} (no correct row holds the target identity; would lose the query)`);
+  }
+  for (const { row, correct } of plan.stale) {
+    console.log(`STALE "${row.query}": ${row.normalized_query} -> ${correct}`);
     if (apply) {
-      await db.execute(sql`delete from seo_queries where id = ${r.id}::uuid`);
+      await db.execute(sql`delete from seo_queries where id = ${row.id}::uuid`);
       console.log('  DELETED');
     }
   }
+  const stale = plan.stale.length;
+  const skipped = plan.skipped.length;
 
   console.log(`\nrows=${all.length} stale=${stale} skipped=${skipped}${apply ? '' : '  (dry run — pass --apply)'}`);
 }
