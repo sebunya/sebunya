@@ -93,8 +93,10 @@ export function paymentReturnCopy(kind: PaymentReturnKind, orderNumber: string |
         kind,
         tone: 'success',
         title: 'This order is already paid',
-        money: `Order${ref} was paid earlier. This attempt did not take a second payment.`,
-        next: 'There is nothing more to do. We will contact you when it is on its way.',
+        // No promise that this attempt took nothing: another payment page for the
+        // order may still be pending on the customer's phone (review 2026-11).
+        money: `Order${ref} was paid earlier. If this attempt or one still waiting on your phone also takes money, we will see it and return the extra.`,
+        next: 'Please do not pay again, and do not approve another payment request for this order. We will contact you when it is on its way.',
         primaryCta: { label: 'Track this order', href: trackHref },
         secondaryCta: { label: 'Continue shopping', href: '/shop' },
         offerHelp: false,

@@ -72,3 +72,12 @@ describe('refund resolve step-up (review 2026-11)', () => {
     expect(src).toMatch(/routes\.post\('\/orders\/:orderId\/refunds\/:refundId\/resolve', requirePermissions\(\[PERMISSIONS\.PAYMENTS_REFUND\]\), requireStepUp\('payment_refund'\)/);
   });
 });
+
+describe('already_settled return copy (review 2026-11)', () => {
+  it('never promises "no second payment" (a sibling attempt may still be pending)', async () => {
+    const { paymentReturnCopy } = await import('../../apps/web/src/lib/paymentReturn');
+    const copy = paymentReturnCopy('already_settled', 'GP-202611-ABCD');
+    expect(`${copy.money} ${copy.next}`).not.toMatch(/did not take a second payment|no second payment|nothing more to do/i);
+    expect(copy.next).toMatch(/do not pay again/i);
+  });
+});
