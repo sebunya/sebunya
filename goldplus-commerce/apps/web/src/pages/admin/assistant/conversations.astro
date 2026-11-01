@@ -1,0 +1,113 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+import { apiBase } from '../../../lib/api';
+import { TOPIC_LABEL, MOOD_LABEL, OUTCOME_LABEL, CHANNEL_LABEL, pct } from '../../../lib/goldieArchiveCopy';
+
+/**
+ * Goldie's conversations: every chat on every channel (website, WhatsApp, Messenger, Instagram),
+ * with the meeting summary on top (what customers came for, how they felt,
+ * how it ended, who still needs a person) and the inbox below. Reading needs
+ * customers.data.view (the API enforces it). Kept 365 days.
+ */
+export const prerender = false;
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/assistant/conversations', 303);
+
+const q = Astro.url.searchParams;
+const keep = ['channel', 'outcome', 'mood', 'topic', 'q', 'from', 'to'];
+const params = new URLSearchParams();
+for (const k of keep) { const v = (q.get(k) ?? '').trim(); if (v) params.set(k, v.slice(0, 80)); }
+const offset = Math.max(0, Number(q.get('offset') ?? 0) || 0);
+
+const call = async <T,>(path: string): Promise<{ ok: true; data: T } | { ok: false; message: string }> => {
+  try {
+    const res = await fetch(`${apiBase}/admin/assistant${path}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success) return { ok: false, message: json?.error?.message ?? `The API answered ${res.status}.` };
+    return { ok: true, data: json.data as T };
+  } catch { return { ok: false, message: 'The API could not be reached.' }; }
+};
+interface Row { id: string; channel: string; contactName: string | null; contactPhone: string | null; contactEmail: string | null; firstTopic: string | null; lastTopic: string | null; worstMood: string; outcome: string; messageCount: number; aiTurns: number; humanUntil: string | null; lastMessageAt: string; lastCustomerLine: string; csat?: number | null }
+interface Summary { from: string; to: string; conversations: number; customerMessages: number; byChannel: Record<string, number>; byTopic: Array<{ topic: string; count: number }>; byMood: Record<string, number>; byOutcome: Record<string, number>; selfServeRate: number | null; csatAverage: number | null; csatCount: number; byRoute: Record<string, number>; influence?: { linkableConversations: number; orders: number; revenueUgx: number; conversionRate: number | null; withHint: number; hintConversionRate: number | null }; needsFollowUp: Array<{ id: string; channel: string; contact: string | null; topic: string | null; mood: string; lastMessageAt: string; lastCustomerLine: string }> }
+
+const [list, summary, channels] = await Promise.all([
+  call<{ rows: Row[]; total: number }>(`/conversations?${params.toString()}&limit=50&offset=${offset}`),
+  call<Summary>(`/conversations/summary?${params.toString()}`),
+  call<{ whatsapp: string; rollout: string; messenger?: string; instagram?: string }>('/channels'),
+]);
+const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Africa/Kampala', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', day: 'numeric', month: 'short' });
+const csvHref = `/api/admin/assistant/conversations.csv?${params.toString()}`;
+const tone: Record<string, string> = { upset: 'bg-red-50 text-red-700 border-red-200', worried: 'bg-amber-50 text-amber-800 border-amber-200', confused: 'bg-sky-50 text-sky-800 border-sky-200', happy: 'bg-green-50 text-green-700 border-green-200', neutral: 'bg-gray-50 text-gray-600 border-gray-200' };
+const page = (o: number) => { const p = new URLSearchParams(params); if (o) p.set('offset', String(o)); return `?${p.toString()}`; };
+---
+<AdminLayout title="Goldie conversations" description="Every chat with Goldie on the website and WhatsApp: the meeting summary, then each thread." activePath="/admin/assistant">
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl space-y-6">
+    <p class="text-sm"><a href="/admin/assistant" class="font-bold underline">Shop assistant settings</a> · WhatsApp: <strong>{channels.ok ? (channels.data.whatsapp === 'on' ? `on${channels.data.rollout === 'test_numbers' ? ' (test numbers only)' : ''}` : 'not configured') : 'unknown'}</strong>{channels.ok && <> · Messenger: <strong>{channels.data.messenger === 'on' ? 'on' : 'not configured'}</strong> · Instagram: <strong>{channels.data.instagram === 'on' ? 'on' : 'not configured'}</strong></>}</p>
+    {!list.ok && <div role="status" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{list.message}</div>}
+
+    <form method="get" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 grid gap-3 sm:grid-cols-4 lg:grid-cols-8 items-end text-sm">
+      <label class="grid gap-1 lg:col-span-2"><span class="text-[10px] uppercase font-black tracking-widest text-gray-500">Search words, name, phone</span><input name="q" value={params.get('q') ?? ''} class="rounded-lg border border-gray-300 px-3 py-2" /></label>
+      <label class="grid gap-1"><span class="text-[10px] uppercase font-black tracking-widest text-gray-500">Channel</span><select name="channel" class="rounded-lg border border-gray-300 px-2 py-2"><option value="">All</option>{Object.entries(CHANNEL_LABEL).map(([k, v]) => <option value={k} selected={params.get('channel') === k}>{v}</option>)}</select></label>
+      <label class="grid gap-1"><span class="text-[10px] uppercase font-black tracking-widest text-gray-500">Outcome</span><select name="outcome" class="rounded-lg border border-gray-300 px-2 py-2"><option value="">All</option>{Object.entries(OUTCOME_LABEL).map(([k, v]) => <option value={k} selected={params.get('outcome') === k}>{v}</option>)}</select></label>
+      <label class="grid gap-1"><span class="text-[10px] uppercase font-black tracking-widest text-gray-500">Mood</span><select name="mood" class="rounded-lg border border-gray-300 px-2 py-2"><option value="">All</option>{Object.entries(MOOD_LABEL).map(([k, v]) => <option value={k} selected={params.get('mood') === k}>{v}</option>)}</select></label>
+      <label class="grid gap-1"><span class="text-[10px] uppercase font-black tracking-widest text-gray-500">Topic</span><select name="topic" class="rounded-lg border border-gray-300 px-2 py-2"><option value="">All</option>{Object.entries(TOPIC_LABEL).map(([k, v]) => <option value={k} selected={params.get('topic') === k}>{v}</option>)}</select></label>
+      <label class="grid gap-1"><span class="text-[10px] uppercase font-black tracking-widest text-gray-500">From</span><input type="date" name="from" value={params.get('from') ?? ''} class="rounded-lg border border-gray-300 px-2 py-2" /></label>
+      <label class="grid gap-1"><span class="text-[10px] uppercase font-black tracking-widest text-gray-500">To</span><input type="date" name="to" value={params.get('to') ?? ''} class="rounded-lg border border-gray-300 px-2 py-2" /></label>
+      <div class="flex gap-2 lg:col-span-8"><button class="rounded-full bg-brand-dark text-white font-bold px-4 py-2">Apply</button><a href="/admin/assistant/conversations" class="rounded-full border border-gray-300 font-bold px-4 py-2">Clear</a><a href={csvHref} class="rounded-full border border-gray-300 font-bold px-4 py-2 ml-auto">Download CSV</a></div>
+    </form>
+
+    {summary.ok && (
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-5" aria-labelledby="meeting">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="meeting" class="text-sm font-black uppercase tracking-widest text-gray-500">For the meeting: {day(summary.data.from)} to {day(summary.data.to)}</h2>
+          <p class="text-xs text-gray-500">Defaults to the last 7 days; the filters above change it.</p>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-4">
+          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Conversations</p><p class="text-2xl font-black tabular-nums">{summary.data.conversations}</p><p class="text-xs text-gray-500">{Object.entries(summary.data.byChannel).map(([k, v]) => `${CHANNEL_LABEL[k] ?? k} ${v}`).join(' · ') || 'none yet'}</p></div>
+          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Customer messages</p><p class="text-2xl font-black tabular-nums">{summary.data.customerMessages}</p><p class="text-xs text-gray-500">{summary.data.csatCount ? `rated ${(summary.data.csatAverage ?? 0).toFixed(1)} / 5 by ${summary.data.csatCount}` : 'no ratings yet'}</p></div>
+          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Handled by Goldie</p><p class="text-2xl font-black tabular-nums">{pct(summary.data.selfServeRate)}</p><p class="text-xs text-gray-500">resolved or still open without a person{(() => { const total = Object.values(summary.data.byRoute).reduce((s, n) => s + n, 0); return total ? `; ${Math.round(((total - (summary.data.byRoute.ai ?? 0)) / total) * 100)}% of answers at no model cost` : ''; })()}</p></div>
+          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Need a person</p><p class="text-2xl font-black tabular-nums text-red-700">{(summary.data.byOutcome.needs_human ?? 0) + (summary.data.byOutcome.handed_over ?? 0)}</p><p class="text-xs text-gray-500">upset, or passed to the team</p></div>
+        </div>
+        {summary.data.influence && (
+          <div class="rounded-xl bg-lime-50 border border-lime-200 p-4 text-sm">
+            <h3 class="font-black mb-1">Sales after a chat</h3>
+            <p><strong>{summary.data.influence.orders}</strong> paid order{summary.data.influence.orders === 1 ? '' : 's'} worth <strong>UGX {new Intl.NumberFormat('en-UG').format(summary.data.influence.revenueUgx)}</strong> came from shoppers within 7 days of chatting with Goldie{summary.data.influence.conversionRate != null ? `, ${Math.round(summary.data.influence.conversionRate * 100)}% of chats we can link to a shopper` : ''}.{summary.data.influence.withHint > 0 && summary.data.influence.hintConversionRate != null ? ` When Goldie had a suggestion for the shopper: ${Math.round(summary.data.influence.hintConversionRate * 100)}% bought.` : ''}</p>
+            <p class="text-xs text-gray-600 mt-1">Influence, not proof that the chat caused the sale.</p>
+          </div>
+        )}
+        <div class="grid gap-6 md:grid-cols-3 text-sm">
+          <div><h3 class="font-black mb-2">What they came for</h3><ul class="space-y-1">{summary.data.byTopic.map((t) => <li class="flex justify-between gap-2"><span>{TOPIC_LABEL[t.topic] ?? 'Other'}</span><span class="tabular-nums font-bold">{t.count}</span></li>)}</ul></div>
+          <div><h3 class="font-black mb-2">How they felt (lowest point)</h3><ul class="space-y-1">{Object.entries(summary.data.byMood).map(([k, v]) => <li class="flex justify-between gap-2"><span>{MOOD_LABEL[k] ?? k}</span><span class="tabular-nums font-bold">{v}</span></li>)}</ul></div>
+          <div><h3 class="font-black mb-2">How it ended</h3><ul class="space-y-1">{Object.entries(summary.data.byOutcome).map(([k, v]) => <li class="flex justify-between gap-2"><span>{OUTCOME_LABEL[k] ?? k}</span><span class="tabular-nums font-bold">{v}</span></li>)}</ul></div>
+        </div>
+        {summary.data.needsFollowUp.length > 0 && (
+          <div><h3 class="font-black mb-2 text-sm">Follow up</h3>
+            <ul class="divide-y divide-gray-100 text-sm">{summary.data.needsFollowUp.map((f) => (
+              <li class="py-2 flex flex-wrap gap-x-3 gap-y-1 items-baseline"><a href={`/admin/assistant/conversations/${f.id}`} class="font-bold underline">{f.contact ?? 'Unknown contact'}</a><span class="text-gray-500">{CHANNEL_LABEL[f.channel] ?? f.channel} · {TOPIC_LABEL[f.topic ?? ''] ?? 'Other'} · {when(f.lastMessageAt)}</span><span class={`text-xs border rounded-full px-2 ${tone[f.mood] ?? tone.neutral}`}>{MOOD_LABEL[f.mood] ?? f.mood}</span><span class="w-full text-gray-600">“{f.lastCustomerLine}”</span></li>
+            ))}</ul>
+          </div>
+        )}
+      </section>
+    )}
+
+    {list.ok && (
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+        <h2 class="sr-only">Conversations</h2>
+        {list.data.rows.length === 0 && <p class="p-6 text-sm text-gray-600">No conversations match yet.</p>}
+        <ul class="divide-y divide-gray-100">{list.data.rows.map((r) => (
+          <li class="p-4 hover:bg-gray-50">
+            <a href={`/admin/assistant/conversations/${r.id}`} class="grid gap-1 sm:grid-cols-[1fr_auto] text-sm">
+              <span class="font-bold">{r.contactName ?? r.contactPhone ?? r.contactEmail ?? 'Website visitor'} <span class="font-normal text-gray-500">· {CHANNEL_LABEL[r.channel] ?? r.channel} · {TOPIC_LABEL[r.lastTopic ?? r.firstTopic ?? ''] ?? 'Other'} · {r.messageCount} messages</span></span>
+              <span class="text-gray-500 tabular-nums">{when(r.lastMessageAt)}</span>
+              <span class="text-gray-700 truncate">“{r.lastCustomerLine}”</span>
+              <span class="flex gap-1 justify-end"><span class={`text-xs border rounded-full px-2 ${tone[r.worstMood] ?? tone.neutral}`}>{MOOD_LABEL[r.worstMood] ?? r.worstMood}</span><span class="text-xs border rounded-full px-2 border-gray-200">{OUTCOME_LABEL[r.outcome] ?? r.outcome}</span>{r.csat != null && <span class={`text-xs border rounded-full px-2 ${r.csat >= 4 ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{r.csat >= 4 ? 'Rated well' : 'Rated poorly'}</span>}{r.humanUntil && new Date(r.humanUntil) > new Date() && <span class="text-xs border rounded-full px-2 border-indigo-200 bg-indigo-50 text-indigo-700">Team has it</span>}</span>
+            </a>
+          </li>
+        ))}</ul>
+        <div class="flex justify-between p-4 text-sm"><span class="text-gray-500">{list.data.total} in all</span><span class="flex gap-3">{offset > 0 && <a class="underline font-bold" href={page(Math.max(0, offset - 50))}>Newer</a>}{offset + 50 < list.data.total && <a class="underline font-bold" href={page(offset + 50)}>Older</a>}</span></div>
+      </section>
+    )}
+  </div>
+</AdminLayout>

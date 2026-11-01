@@ -31,7 +31,7 @@ if (!token) {
     <!-- Match Quality KPIs -->
     <div class="kpi-row">
       <div class="kpi-box">
-        <div class="kpi-icon">🎯</div>
+        <div class="kpi-icon"></div>
         <div class="kpi-info">
           <div class="kpi-val" id="avg-score">—</div>
           <div class="kpi-lbl">Average Match Quality</div>
@@ -46,14 +46,15 @@ if (!token) {
         <div class="kpi-icon">⚠️</div>
         <div class="kpi-info">
           <div class="kpi-val" id="below-40-pct">—</div>
-          <div class="kpi-lbl">Events Below 40% Threshold</div>
+          <div class="kpi-lbl">Share of events scoring below 40 (Poor)</div>
+          <div class="kpi-sub" id="below-40-count">—</div>
         </div>
       </div>
       <div class="kpi-box kpi-good">
-        <div class="kpi-icon">✨</div>
         <div class="kpi-info">
           <div class="kpi-val" id="above-80-pct">—</div>
-          <div class="kpi-lbl">Excellent Match Events ≥80%</div>
+          <div class="kpi-lbl">Share of events scoring 80 or above (Excellent)</div>
+          <div class="kpi-sub" id="above-80-count">—</div>
         </div>
       </div>
       <div class="kpi-box">
@@ -68,61 +69,82 @@ if (!token) {
     <!-- Signal Coverage Breakdown -->
     <div class="section-panel">
       <div class="section-header">
-        <h2>Signal Coverage Guide</h2>
-        <p class="section-desc">Identity signals available for user-graph matching at each destination.</p>
+        <h2>Signal Coverage</h2>
+        <p class="section-desc">Identity signals available for user-graph matching at each destination, with the share of tracked events in the selected window that carried each one.</p>
       </div>
       <div class="signal-grid">
         <div class="signal-card signal-high">
           <div class="signal-name">📧 Hashed Email</div>
           <div class="signal-score">+25 pts</div>
           <div class="signal-desc">SHA-256 normalized email — highest match signal for Meta, Google, TikTok</div>
+          <div class="signal-coverage">Coverage: <strong data-signal="hashedEmail">—</strong></div>
         </div>
         <div class="signal-card signal-high">
           <div class="signal-name">📱 Hashed Phone</div>
           <div class="signal-score">+20 pts</div>
           <div class="signal-desc">SHA-256 E.164 phone — mobile match signal especially for TikTok</div>
+          <div class="signal-coverage">Coverage: <strong data-signal="hashedPhone">—</strong></div>
         </div>
         <div class="signal-card signal-medium">
           <div class="signal-name">🍪 Meta FBP/FBC</div>
           <div class="signal-score">+24 pts</div>
           <div class="signal-desc">_fbp browser cookie + _fbc click cookie — critical for Meta CAPI</div>
+          <div class="signal-coverage">FBP coverage: <strong data-signal="fbp">—</strong> · FBC: <strong data-signal="fbc">—</strong></div>
         </div>
         <div class="signal-card signal-medium">
           <div class="signal-name">🔗 GCLID</div>
           <div class="signal-score">+10 pts</div>
           <div class="signal-desc">Google click ID — essential for Google Ads enhanced conversions</div>
+          <div class="signal-coverage">Coverage: <strong data-signal="gclid">—</strong></div>
+        </div>
+        <div class="signal-card signal-medium">
+          <div class="signal-name">🎵 TTCLID</div>
+          <div class="signal-score">click ID</div>
+          <div class="signal-desc">TikTok click ID — ties a conversion to a TikTok ad click</div>
+          <div class="signal-coverage">Coverage: <strong data-signal="ttclid">—</strong></div>
         </div>
         <div class="signal-card signal-low">
           <div class="signal-name">🌐 IP Address</div>
           <div class="signal-score">+8 pts</div>
           <div class="signal-desc">Server-captured IP — fallback signal for CAPI matching</div>
+          <div class="signal-coverage">Coverage: <strong data-signal="ipAddress">—</strong></div>
         </div>
         <div class="signal-card signal-low">
           <div class="signal-name">🖥️ User Agent</div>
           <div class="signal-score">+5 pts</div>
           <div class="signal-desc">Browser UA string — device fingerprint signal</div>
+          <div class="signal-coverage">Coverage: not recorded per touchpoint</div>
         </div>
       </div>
+    </div>
+
+    <!-- Orders by channel -->
+    <div class="section-panel">
+      <div class="section-header">
+        <h2>Orders by channel</h2>
+        <p class="section-desc">Where your orders came from, over the selected window. Source/medium/campaign from the last touch before checkout. "(direct)" = no campaign or referrer.</p>
+      </div>
+      <div id="channel-summary" class="attribution-result attribution-empty">Loading…</div>
     </div>
 
     <!-- Order Lookup -->
     <div class="section-panel">
       <div class="section-header">
-        <h2>Attribution Report by Order</h2>
-        <p class="section-desc">Look up the full attribution journey for a specific order ID.</p>
+        <h2>Attribution by order</h2>
+        <p class="section-desc">Look up where a specific order came from, by its order reference.</p>
       </div>
       <div class="order-lookup">
         <input
           type="text"
           id="order-id-input"
           class="order-input"
-          placeholder="Enter Order UUID…"
+          placeholder="Enter order reference (e.g. GP-2026-01234)…"
           autocomplete="off"
         />
         <button id="lookup-btn" class="btn-primary">Look Up</button>
       </div>
       <div id="attribution-result" class="attribution-result attribution-empty">
-        Enter an order ID above to view its attribution report.
+        Enter an order reference above to view its attribution.
       </div>
     </div>
   </div>
@@ -138,7 +160,7 @@ if (!token) {
   .page-header {
     margin-bottom: 1.25rem;
   }
-  .back-link { display: inline-block; font-size: 0.8125rem; color: #6366f1; text-decoration: none; margin-bottom: 0.5rem; }
+  .back-link { display: inline-block; font-size: 0.8125rem; color: #4f46e5; text-decoration: none; margin-bottom: 0.5rem; }
   .back-link:hover { text-decoration: underline; }
   .page-header h1 { font-size: 1.375rem; font-weight: 700; color: #0f172a; margin: 0 0 0.25rem; }
   .page-desc { font-size: 0.8125rem; color: #64748b; margin: 0; }
@@ -161,8 +183,8 @@ if (!token) {
     transition: all 0.15s;
   }
   .time-btn:hover, .time-btn.active {
-    background: #6366f1;
-    border-color: #6366f1;
+    background: #4f46e5;
+    border-color: #4f46e5;
     color: white;
   }
 
@@ -195,7 +217,7 @@ if (!token) {
   }
   .kpi-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #6366f1, #8b5cf6);
+    background: linear-gradient(90deg, #4f46e5, #8b5cf6);
     border-radius: 999px;
     transition: width 0.8s cubic-bezier(0.4,0,0.2,1);
   }
@@ -225,8 +247,11 @@ if (!token) {
   .signal-card.signal-medium { border-color: #6ee7b7; background: #f0fdf9; }
   .signal-card.signal-low    { border-color: #fcd34d; background: #fffbeb; }
   .signal-name { font-size: 0.875rem; font-weight: 600; color: #1e293b; margin-bottom: 0.25rem; }
-  .signal-score { font-size: 0.75rem; font-weight: 700; color: #6366f1; margin-bottom: 0.375rem; }
-  .signal-desc { font-size: 0.75rem; color: #64748b; line-height: 1.4; }
+  .signal-score { font-size: 0.75rem; font-weight: 700; color: #4f46e5; margin-bottom: 0.375rem; }
+  .signal-desc { font-size: 0.75rem; color: #475569; line-height: 1.4; }
+  .signal-coverage { margin-top: 0.5rem; font-size: 0.75rem; color: #334155; }
+  .signal-coverage strong { color: #0f172a; }
+  .kpi-sub { font-size: 0.75rem; color: #64748b; margin-top: 0.125rem; }
 
   .order-lookup {
     display: flex;
@@ -244,10 +269,10 @@ if (!token) {
     font-family: monospace;
     color: #1e293b;
   }
-  .order-input:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+  .order-input:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
   .btn-primary {
     padding: 0.625rem 1.125rem;
-    background: #6366f1;
+    background: #4f46e5;
     color: white;
     border: none;
     border-radius: 8px;
@@ -258,8 +283,8 @@ if (!token) {
   .btn-primary:hover { background: #4f46e5; }
 
   .attribution-result { font-size: 0.875rem; }
-  .attribution-empty { color: #94a3b8; padding: 1rem 0; }
-  .attribution-loading { color: #6366f1; padding: 1rem 0; }
+  .attribution-empty { color: #64748b; padding: 1rem 0; }
+  .attribution-loading { color: #4f46e5; padding: 1rem 0; }
   .attribution-error { color: #dc2626; padding: 1rem 0; }
 
   .attr-report {
@@ -284,8 +309,9 @@ if (!token) {
     font-size: 0.8125rem;
     font-weight: 700;
   }
-  .score-high { background: #f0fdf4; color: #16a34a; }
-  .score-med  { background: #fffbeb; color: #d97706; }
+  .score-high { background: #f0fdf4; color: #15803d; }
+  .score-good { background: #eff6ff; color: #1d4ed8; }
+  .score-med  { background: #fffbeb; color: #b45309; }
   .score-low  { background: #fef2f2; color: #dc2626; }
   .attr-tp-list { padding: 0; }
   .attr-tp {
@@ -307,7 +333,7 @@ if (!token) {
     font-family: monospace;
     white-space: nowrap;
   }
-  .tp-time { font-size: 0.75rem; color: #94a3b8; }
+  .tp-time { font-size: 0.75rem; color: #64748b; }
   .tp-score-pill {
     padding: 0.125rem 0.5rem;
     border-radius: 999px;
@@ -322,39 +348,72 @@ if (!token) {
     ? __GP_API_BASE__
     : (window as any).__GP_API_BASE__ || '';
 
-  function authHeader() {
-    const t = localStorage.getItem('gp_auth_token');
-    return t ? { 'Authorization': `Bearer ${t}` } : {};
-  }
 
   let currentDays = 7;
 
   async function loadMatchQuality(days: number) {
     try {
-      const res = await fetch(`${API_BASE}/admin/measurement/match-quality?days=${days}`, { headers: authHeader() });
+      const res = await fetch(`/api/admin/measurement/match-quality?days=${days}`, { credentials: 'same-origin' });
       const json = await res.json();
       if (!json.success) return;
       const d = json.data;
 
-      (document.getElementById('avg-score') as HTMLElement).textContent = `${d.avgScore.toFixed(1)}%`;
-      (document.getElementById('below-40-pct') as HTMLElement).textContent = `${d.below40Pct}%`;
-      (document.getElementById('above-80-pct') as HTMLElement).textContent = `${d.above80Pct}%`;
-      (document.getElementById('total-events') as HTMLElement).textContent = d.totalEvents.toLocaleString();
+      // No conversion events in the window is "no data", never 0% (#19).
+      const pct = (v: number | null | undefined, digits = 0) => (typeof v === 'number' ? `${v.toFixed(digits)}%` : 'No data');
+      (document.getElementById('avg-score') as HTMLElement).textContent = pct(d.avgScore, 1);
+      (document.getElementById('below-40-pct') as HTMLElement).textContent = pct(d.below40Pct);
+      const total = Number(d.totalEvents ?? 0);
+      const countText = (n: unknown) => (total > 0 && typeof n === 'number'
+        ? `${n.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} of ${total.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} events`
+        : 'No data');
+      (document.getElementById('below-40-count') as HTMLElement).textContent = countText(d.below40Count);
+      (document.getElementById('above-80-count') as HTMLElement).textContent = countText(d.above80Count);
+      const coverage = (d.signalCoverage ?? {}) as Record<string, number | null>;
+      document.querySelectorAll<HTMLElement>('[data-signal]').forEach((el) => {
+        el.textContent = pct(coverage[el.dataset.signal!]);
+      });
+      (document.getElementById('above-80-pct') as HTMLElement).textContent = pct(d.above80Pct);
+      (document.getElementById('total-events') as HTMLElement).textContent = d.totalEvents.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' });
       const bar = document.getElementById('avg-score-bar') as HTMLElement | null;
-      if (bar) bar.style.width = `${d.avgScore}%`;
+      if (bar) bar.style.width = `${typeof d.avgScore === 'number' ? d.avgScore : 0}%`;
     } catch (err) {
       console.error('[Attribution] Load error:', err);
     }
   }
 
+  async function loadChannelSummary(days: number) {
+    const el = document.getElementById('channel-summary');
+    if (!el) return;
+    try {
+      const res = await fetch(`/api/admin/measurement/attribution-summary?windowDays=${days}`, { credentials: 'same-origin' });
+      const json = await res.json();
+      const channels: any[] = json?.success ? json.data.channels : [];
+      if (!channels.length) { el.className = 'attribution-result attribution-empty'; el.textContent = 'No attributed orders in this window yet.'; return; }
+      const esc = (v: any) => String(v).replace(/[&<>"]/g, (m: string) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m] as string));
+      const total = channels.reduce((a, c) => a + c.orders, 0);
+      el.className = 'attribution-result';
+      el.innerHTML = `<table style="width:100%;font-size:0.85rem;border-collapse:collapse">
+        <thead><tr style="text-align:left;color:#64748b"><th style="padding:.4rem 0">Source</th><th>Medium</th><th>Campaign</th><th style="text-align:right">Orders</th></tr></thead>
+        <tbody>${channels.map((c) => `<tr style="border-top:1px solid #eef2f7"><td style="padding:.4rem 0">${esc(c.source)}</td><td>${esc(c.medium)}</td><td>${esc(c.campaign)}</td><td style="text-align:right;font-weight:700">${c.orders}</td></tr>`).join('')}</tbody>
+        <tfoot><tr style="border-top:2px solid #e2e8f0;font-weight:700"><td style="padding:.4rem 0">Total</td><td></td><td></td><td style="text-align:right">${total}</td></tr></tfoot>
+      </table>`;
+    } catch {
+      el.className = 'attribution-result attribution-error';
+      el.textContent = 'Could not load the channel summary.';
+    }
+  }
+
+  // Same bands as the Control Tower: Excellent >=80, Good 60-79, Fair 40-59, Poor <40.
   function scoreClass(score: number) {
-    if (score >= 70) return 'score-high';
+    if (score >= 80) return 'score-high';
+    if (score >= 60) return 'score-good';
     if (score >= 40) return 'score-med';
     return 'score-low';
   }
 
   function tpScoreClass(score: number) {
-    if (score >= 70) return 'background:#f0fdf4;color:#16a34a';
+    if (score >= 80) return 'background:#f0fdf4;color:#16a34a';
+    if (score >= 60) return 'background:#eff6ff;color:#1d4ed8';
     if (score >= 40) return 'background:#fffbeb;color:#d97706';
     return 'background:#fef2f2;color:#dc2626';
   }
@@ -372,7 +431,7 @@ if (!token) {
     resultEl.textContent = 'Loading attribution data…';
 
     try {
-      const res = await fetch(`${API_BASE}/admin/measurement/attribution/${orderId}`, { headers: authHeader() });
+      const res = await fetch(`/api/admin/measurement/attribution/${encodeURIComponent(orderId)}`, { credentials: 'same-origin' });
       const json = await res.json();
 
       if (!json.success) {
@@ -384,32 +443,23 @@ if (!token) {
       }
 
       const r = json.data;
-      const avgScore = r.matchQualityAvg.toFixed(1);
-
+      const esc = (v: any) => (v == null ? '—' : String(v).replace(/[&<>"]/g, (m: string) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m] as string)));
+      const row = (label: string, val: any) => `<div class="attr-tp"><span class="tp-event">${label}</span><div style="font-size:0.8rem;color:#334155;word-break:break-all;text-align:right">${esc(val)}</div></div>`;
       resultEl.className = 'attribution-result';
       resultEl.innerHTML = `
         <div class="attr-report">
           <div class="attr-report-header">
-            <div>
-              <span class="attr-report-title">Order ${orderId.slice(0, 8)}…</span>
-              <span style="font-size:0.75rem;color:#64748b;margin-left:0.5rem">${r.touchpoints.length} touchpoints · ${r.hasAdvertisingConsent ? '✓ Advertising consent' : '✗ No ad consent'}</span>
-            </div>
-            <span class="attr-score ${scoreClass(r.matchQualityAvg)}">Avg Match ${avgScore}%</span>
+            <span class="attr-report-title">Order ${esc(r.orderNumber || orderId)}</span>
           </div>
           <div class="attr-tp-list">
-            ${r.touchpoints.map((tp: any) => `
-              <div class="attr-tp">
-                <div>
-                  <span class="tp-event">${tp.eventName}</span>
-                  <div class="tp-time">${new Date(tp.eventTime).toLocaleString()}</div>
-                </div>
-                <div style="font-size:0.75rem;color:#64748b;">
-                  Routed: ${tp.routedDestinations.join(', ') || '—'}
-                  ${tp.blockedDestinations.length ? `· Blocked: ${tp.blockedDestinations.join(', ')}` : ''}
-                </div>
-                <span class="tp-score-pill" style="${tpScoreClass(tp.matchScore)}">${tp.matchScore.toFixed(0)}%</span>
-              </div>
-            `).join('')}
+            ${row('Source', r.source)}
+            ${row('Medium', r.medium)}
+            ${row('Campaign', r.campaign)}
+            ${r.term ? row('Term', r.term) : ''}
+            ${r.content ? row('Content', r.content) : ''}
+            ${r.landingPath ? row('Landing page', r.landingPath) : ''}
+            ${r.referrer ? row('Referrer', r.referrer) : ''}
+            ${r.firstAt ? row('First seen', new Date(r.firstAt).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })) : ''}
           </div>
         </div>
       `;
@@ -427,6 +477,7 @@ if (!token) {
       (e.currentTarget as HTMLElement).classList.add('active');
       currentDays = parseInt((e.currentTarget as HTMLElement).dataset.days!);
       loadMatchQuality(currentDays);
+      loadChannelSummary(currentDays);
     });
   });
 
@@ -436,4 +487,5 @@ if (!token) {
   });
 
   loadMatchQuality(currentDays);
+  loadChannelSummary(currentDays);
 </script>

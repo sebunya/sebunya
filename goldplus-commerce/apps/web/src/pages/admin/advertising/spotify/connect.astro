@@ -1,0 +1,66 @@
+---
+import { randomBytes } from "node:crypto";
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../../lib/session";
+import { advertisingApi } from "../../../../lib/adminAdvertising";
+import { SITE_ORIGIN } from "../../../../lib/sitemap";
+import { SPOTIFY_COOKIE_PATH, SPOTIFY_FLOW_SECONDS, SPOTIFY_REDIRECT_PATH, SPOTIFY_STATE_COOKIE, SPOTIFY_VERIFIER_COOKIE, isSpotifyClientId, isUuid, pkcePair, spotifyAuthoriseUrl, spotifyField } from "../../../../lib/spotifyConnect";
+
+/**
+ * Starts "Connect Spotify" (2026-10-06): saves the app's client ID and the ad
+ * account, gives this browser a random state and a PKCE verifier (HttpOnly
+ * cookies, ten minutes), and sends the owner to Spotify to approve the
+ * GoldPlus Ads app. No client secret is asked for or used.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/advertising/spotify/connect", 303);
+Astro.response.headers.set("Cache-Control", "no-store");
+
+const res = await advertisingApi(token, "GET", "/capabilities");
+const cap: any = res.ok ? (res.data ?? []).find((c: any) => c.platform === "spotify" && c.capability === "ads_api") : null;
+let clientId = spotifyField(cap, "clientId");
+let adAccountId = spotifyField(cap, "adAccountId");
+const connected = !!cap?.hasSecret || !!cap?.secretMask;
+let formError: string | null = res.ok ? null : res.message;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  clientId = String(f.get("clientId") ?? "").trim().toLowerCase();
+  adAccountId = String(f.get("adAccountId") ?? "").trim().toLowerCase();
+  if (!isSpotifyClientId(clientId)) formError = "The client ID does not look right (developer.spotify.com > Dashboard > GoldPlus Ads: 32 letters and digits).";
+  else if (!isUuid(adAccountId)) formError = "The ad account ID does not look right (Spotify Ads Manager: the adAccountId in the address bar).";
+  else {
+    const saved = await advertisingApi(token, "PUT", "/capabilities/spotify/ads_api", { config: { clientId, adAccountId } });
+    if (!saved.ok) formError = saved.message;
+    else {
+      const state = randomBytes(24).toString("base64url");
+      const { verifier, challenge } = pkcePair();
+      const opts = { path: SPOTIFY_COOKIE_PATH, httpOnly: true, sameSite: "lax" as const, secure: import.meta.env.PROD, maxAge: SPOTIFY_FLOW_SECONDS };
+      Astro.cookies.set(SPOTIFY_STATE_COOKIE, state, opts);
+      Astro.cookies.set(SPOTIFY_VERIFIER_COOKIE, verifier, opts);
+      return Astro.redirect(spotifyAuthoriseUrl(clientId, challenge, state, SITE_ORIGIN), 303);
+    }
+  }
+}
+---
+<AdminLayout title="Connect Spotify" description="Approve the GoldPlus Ads app in Spotify so the shop can read your ad account and stage ad drafts.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-2xl">
+    <p class="text-sm mb-2"><a class="underline" href="/admin/advertising">Advertising</a> / <a class="underline" href="/admin/advertising/spotify">Spotify rotation</a> / Connect</p>
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-2">Connect Spotify</h2>
+    <p class="text-sm text-gray-600 mb-6">This sends you to Spotify to approve your own GoldPlus Ads app. Spotify then brings you back here; the shop keeps the connection only if it can read the ad account below. Nothing is published or spent through it. No client secret is needed.</p>
+    {connected && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">Connected. Connecting again replaces the stored sign-in.</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+    <form method="POST" class="grid gap-4 rounded-2xl border border-gray-200 bg-white p-5" autocomplete="off">
+      <label class="text-xs font-bold text-gray-700">Spotify app client ID
+        <input name="clientId" required pattern="[0-9a-f]{32}" value={clientId} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm font-normal" />
+        <span class="mt-1 block font-normal text-gray-600">developer.spotify.com &gt; Dashboard &gt; GoldPlus Ads: the Client ID. Not the client secret.</span>
+      </label>
+      <label class="text-xs font-bold text-gray-700">Goldplus ad account ID
+        <input name="adAccountId" required value={adAccountId} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm font-normal" />
+        <span class="mt-1 block font-normal text-gray-600">Spotify Ads Manager, with the Goldplus ad account selected: the adAccountId in the address bar.</span>
+      </label>
+      <p class="text-xs text-gray-600">The app's Redirect URI in Spotify must be exactly <span class="font-mono">{SITE_ORIGIN}{SPOTIFY_REDIRECT_PATH}</span></p>
+      <div><button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Continue to Spotify</button></div>
+    </form>
+  </div>
+</AdminLayout>

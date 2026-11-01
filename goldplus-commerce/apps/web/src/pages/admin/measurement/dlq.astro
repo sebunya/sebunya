@@ -85,7 +85,7 @@ if (!token) {
   .back-link {
     display: inline-block;
     font-size: 0.8125rem;
-    color: #6366f1;
+    color: #4f46e5;
     text-decoration: none;
     margin-bottom: 0.5rem;
   }
@@ -114,7 +114,7 @@ if (!token) {
     font-weight: 500;
   }
   .dlq-alert-hidden { display: none; }
-  .dlq-alert-success { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+  .dlq-alert-success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
   .dlq-alert-error   { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
 
   .dlq-stats {
@@ -148,7 +148,7 @@ if (!token) {
     border-bottom: 1px solid #f1f5f9;
   }
   .table-title { font-size: 0.9375rem; font-weight: 600; color: #1e293b; }
-  .table-meta  { font-size: 0.8125rem; color: #94a3b8; }
+  .table-meta  { font-size: 0.8125rem; color: #64748b; }
   .table-scroll { overflow-x: auto; }
   .dlq-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
   .dlq-table th {
@@ -171,7 +171,7 @@ if (!token) {
   }
   .dlq-table tr:last-child td { border-bottom: none; }
   .dlq-table tr:hover td { background: #fafafa; }
-  .table-empty { text-align: center; color: #94a3b8; padding: 2.5rem; }
+  .table-empty { text-align: center; color: #64748b; padding: 2.5rem; }
   .event-badge {
     display: inline-block;
     padding: 0.2rem 0.6rem;
@@ -185,7 +185,7 @@ if (!token) {
   .event-id-mono {
     font-family: monospace;
     font-size: 0.6875rem;
-    color: #94a3b8;
+    color: #64748b;
     max-width: 160px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -210,7 +210,7 @@ if (!token) {
   }
   .btn-replay {
     padding: 0.375rem 0.75rem;
-    background: #6366f1;
+    background: #4f46e5;
     color: white;
     border: none;
     border-radius: 6px;
@@ -222,6 +222,24 @@ if (!token) {
   }
   .btn-replay:hover { background: #4f46e5; }
   .btn-replay:disabled { background: #c7d2fe; cursor: not-allowed; }
+  .row-actions { display: flex; gap: 0.375rem; }
+  .btn-dismiss {
+    padding: 0.375rem 0.75rem;
+    background: #fff;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-dismiss:disabled { opacity: 0.5; cursor: not-allowed; }
+  .dismiss-form-row td { background: #f8fafc; }
+  .dismiss-form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+  .dismiss-form label { font-size: 0.75rem; font-weight: 600; color: #334155; }
+  .dismiss-form input { flex: 1 1 240px; padding: 0.375rem 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.8125rem; }
+  .dismiss-form .dismiss-error { color: #b91c1c; font-size: 0.75rem; width: 100%; }
 </style>
 
 <script>
@@ -230,10 +248,8 @@ if (!token) {
     ? __GP_API_BASE__
     : (window as any).__GP_API_BASE__ || '';
 
-  function authHeader() {
-    const t = localStorage.getItem('gp_auth_token');
-    return t ? { 'Authorization': `Bearer ${t}` } : {};
-  }
+  // Session lives in an HttpOnly cookie; calls go through the same-origin
+  // proxy which attaches the bearer token server-side.
 
   function showAlert(msg: string, type: 'success' | 'error') {
     const el = document.getElementById('dlq-alert')!;
@@ -242,18 +258,99 @@ if (!token) {
     setTimeout(() => { el.className = 'dlq-alert dlq-alert-hidden'; }, 5000);
   }
 
+  function esc(v: unknown): string {
+    return String(v ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!));
+  }
+
+  let unresolvedTotal = 0;
+  function setUnresolved(n: number) {
+    unresolvedTotal = Math.max(0, n);
+    (document.getElementById('stat-unresolved') as HTMLElement).textContent = unresolvedTotal.toString();
+  }
+
+  function removeRow(row: Element | null) {
+    if (!row) return;
+    const next = row.nextElementSibling;
+    if (next?.classList.contains('dismiss-form-row')) next.remove();
+    const tbody = row.parentElement;
+    row.remove();
+    setUnresolved(unresolvedTotal - 1);
+    // The page holds the newest 100. Once they are cleared, fetch what is left
+    // instead of showing an empty table beside a non-zero count.
+    if (tbody && tbody.querySelectorAll('tr').length === 0) void loadDlq();
+  }
+
+  const DISMISS_ERRORS: Record<string, string> = {
+    INVALID_REASON: 'Give a reason of 3 to 500 characters.',
+    ALREADY_RESOLVED: 'This entry was already replayed or dismissed.',
+    NOT_FOUND: 'This entry no longer exists.',
+    FORBIDDEN: 'You do not have permission to dismiss entries.',
+  };
+
+  function openDismissForm(id: string, btn: HTMLButtonElement) {
+    const row = btn.closest('tr');
+    if (!row) return;
+    if (row.nextElementSibling?.classList.contains('dismiss-form-row')) {
+      (row.nextElementSibling.querySelector('input') as HTMLInputElement | null)?.focus();
+      return;
+    }
+    const formRow = document.createElement('tr');
+    formRow.className = 'dismiss-form-row';
+    formRow.innerHTML = `<td colspan="6">
+      <form class="dismiss-form">
+        <label for="dismiss-reason-${esc(id)}">Reason for dismissing (it will not be re-sent)</label>
+        <input id="dismiss-reason-${esc(id)}" name="reason" required minlength="3" maxlength="500" placeholder="e.g. test order, provider rejected permanently" />
+        <button type="submit" class="btn-replay">Confirm dismiss</button>
+        <button type="button" class="btn-dismiss" data-cancel>Cancel</button>
+        <div class="dismiss-error" role="alert" aria-live="polite"></div>
+      </form></td>`;
+    row.after(formRow);
+    const form = formRow.querySelector('form') as HTMLFormElement;
+    const input = form.querySelector('input') as HTMLInputElement;
+    const errEl = form.querySelector('.dismiss-error') as HTMLElement;
+    input.focus();
+    form.querySelector('[data-cancel]')?.addEventListener('click', () => formRow.remove());
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const reason = input.value.trim();
+      if (reason.length < 3) { errEl.textContent = DISMISS_ERRORS.INVALID_REASON!; return; }
+      const submit = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+      submit.disabled = true;
+      errEl.textContent = '';
+      try {
+        const res = await fetch(`/api/admin/measurement/dlq/${encodeURIComponent(id)}/dismiss`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (json.success) {
+          showAlert('Entry dismissed. It will not be re-sent.', 'success');
+          removeRow(row);
+          return;
+        }
+        const code = typeof json.error === 'string' ? json.error : json.error?.code;
+        throw new Error(DISMISS_ERRORS[code] ?? code ?? `HTTP ${res.status}`);
+      } catch (err: any) {
+        errEl.textContent = `Dismiss failed: ${err.message}`;
+        submit.disabled = false;
+      }
+    });
+  }
+
   async function replayEntry(id: string, btn: HTMLButtonElement) {
     btn.disabled = true;
     btn.textContent = 'Replaying…';
     try {
-      const res = await fetch(`${API_BASE}/admin/measurement/dlq/${id}/replay`, {
+      const res = await fetch(`/api/admin/measurement/dlq/${id}/replay`, {
         method: 'POST',
-        headers: authHeader(),
+        credentials: 'same-origin',
       });
       const json = await res.json();
       if (json.success) {
         showAlert('Event re-enqueued for dispatch successfully.', 'success');
-        btn.closest('tr')?.remove();
+        removeRow(btn.closest('tr'));
       } else {
         throw new Error(json.error);
       }
@@ -270,13 +367,14 @@ if (!token) {
     if (meta) meta.textContent = 'Loading…';
 
     try {
-      const res  = await fetch(`${API_BASE}/admin/measurement/dlq`, { headers: authHeader() });
+      const res  = await fetch('/api/admin/measurement/dlq', { credentials: 'same-origin' });
       const json = await res.json();
 
       if (!json.success) throw new Error('API error');
       const rows: any[] = json.data;
 
-      (document.getElementById('stat-unresolved') as HTMLElement).textContent = rows.length.toString();
+      // `data` is capped at 100 rows; `total` is the real unresolved count.
+      setUnresolved(typeof json.total === 'number' ? json.total : rows.length);
       const eventTypes = new Set(rows.map(r => r.eventName)).size;
       (document.getElementById('stat-event-types') as HTMLElement).textContent = eventTypes.toString();
 
@@ -291,23 +389,32 @@ if (!token) {
       if (!tbody) return;
 
       if (rows.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="table-empty">🎉 No unresolved DLQ entries — measurement pipeline is healthy.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="table-empty">No unresolved DLQ entries. Nothing is currently failing.</td></tr>`;
         if (meta) meta.textContent = '0 entries';
         return;
       }
 
       tbody.innerHTML = rows.map(r => `
         <tr>
-          <td>${new Date(r.failedAt).toLocaleString()}</td>
-          <td><span class="event-badge">${r.eventName}</span></td>
-          <td><span class="event-id-mono" title="${r.eventId}">${r.eventId.slice(0, 16)}…</span></td>
-          <td><span class="attempts-badge">${r.totalAttempts}x</span></td>
-          <td><div class="reason-text" title="${r.failedReason}">${r.failedReason}</div></td>
-          <td><button class="btn-replay" data-id="${r.id}">Replay</button></td>
+          <td>${esc(new Date(r.failedAt).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' }))}</td>
+          <td><span class="event-badge">${esc(r.eventName)}</span></td>
+          <td><span class="event-id-mono" title="${esc(r.eventId)}">${esc(String(r.eventId).slice(0, 16))}…</span></td>
+          <td><span class="attempts-badge">${esc(r.totalAttempts)}x</span></td>
+          <td><div class="reason-text" title="${esc(r.failedReason)}">${esc(r.failedReason)}</div></td>
+          <td><div class="row-actions"><button class="btn-replay" data-id="${esc(r.id)}">Replay</button><button class="btn-dismiss" data-id="${esc(r.id)}">Dismiss</button></div></td>
         </tr>
       `).join('');
 
-      if (meta) meta.textContent = `${rows.length} entries`;
+      if (meta) meta.textContent = unresolvedTotal > rows.length
+        ? `Showing newest ${rows.length} of ${unresolvedTotal} entries`
+        : `${rows.length} entries`;
+
+      tbody.querySelectorAll('.btn-dismiss').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const el = e.currentTarget as HTMLButtonElement;
+          openDismissForm(el.dataset.id!, el);
+        });
+      });
 
       // Attach replay handlers
       tbody.querySelectorAll('.btn-replay').forEach(btn => {

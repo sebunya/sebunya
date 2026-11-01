@@ -24,6 +24,11 @@
 // Configuration — resolved at SDK load time from Astro env injection
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { isDeclaredAutomation, PROBE_COOKIE } from './declaredAutomation';
+import { CLICK_ID_PARAMS, landingTouch } from '@goldplus/shared/src/attribution/arrival';
+import { visitorCookieDomain } from './visitorCookieDomain';
+import { recentAdClickIds } from './attribution';
+
 declare const __GP_API_BASE__: string;
 
 // Resolved at build time by Astro (vite define). Falls back to window.origin
@@ -61,7 +66,28 @@ function setCookie(name: string, value: string, days: number): void {
   // SameSite=Lax (NOT Strict) — Strict breaks attribution for users arriving from
   // Google Ads, Meta, TikTok ads since the browser won't send Strict cookies on
   // top-level cross-site navigations. Lax allows the cookie on safe navigations.
-  document.cookie = `${name}=${value}; expires=${expires}; path=/; SameSite=Lax; Secure`;
+  // Same Domain scope as the server-set id, so the collector on api. gets it.
+  const domain = visitorCookieDomain(location.hostname);
+  document.cookie = `${name}=${value}; expires=${expires}; path=/; SameSite=Lax; Secure${domain ? `; Domain=${domain}` : ''}`;
+}
+
+/**
+ * Our own robots: Playwright (webdriver), the audits' `gp_probe` cookie, and
+ * the lab tools that name themselves in the user agent. Their journeys were
+ * recorded as shopper behaviour and forwarded to GA4 and the ad platforms,
+ * because only the web relays checked. The collector checks the user agent
+ * too; the cookie never reaches api., so this is where it is honoured.
+ */
+function isOwnAutomation(): boolean {
+  try {
+    return !!(navigator as { webdriver?: boolean }).webdriver
+      || new RegExp(`(^|;\\s*)${PROBE_COOKIE}=`).test(document.cookie)
+      // Staff (set when the admin opens, middleware): not a shopper either.
+      || /(^|;\s*)gp_staff=/.test(document.cookie)
+      || isDeclaredAutomation(navigator.userAgent);
+  } catch {
+    return false;
+  }
 }
 
 export function getFpClientId(): string {
@@ -93,7 +119,11 @@ function getPageSessionId(): string {
 export function extractClickIds(): Record<string, string> {
   const params = new URLSearchParams(window.location.search);
   const ids: Record<string, string> = {};
-  const clickIdKeys = ['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik'];
+  // msclkid: Microsoft Ads; ScCid: Snapchat; clickid/click_id: the network
+  // click id Opera, Transsion (Eagllwin), Boomplay and most ad networks append
+  // for server-to-server postbacks.
+  // The rulebook's click ids, less fbclid (Meta's is the fbc built from it, below and in lib/attribution).
+  const clickIdKeys = CLICK_ID_PARAMS.filter((k) => k !== 'fbclid');
   for (const key of clickIdKeys) {
     const val = params.get(key);
     if (val) ids[key] = val;
@@ -112,8 +142,13 @@ export function captureAndPersistClickIds(): Record<string, string> {
   if (Object.keys(fresh).length > 0) {
     sessionStorage.setItem('_gp_click_ids', JSON.stringify(fresh));
   }
-  const stored = sessionStorage.getItem('_gp_click_ids');
-  return stored ? { ...JSON.parse(stored), ...fresh } : fresh;
+  // The 30-day ad-click record is kept by lib/attribution (recordAdClick),
+  // which runs on EVERY page from BaseLayout. It is the fallback here: this
+  // session's own capture only exists if a page in this session ran the
+  // stitch, and a landing on the homepage never did (2026-10-01).
+  let stored: Record<string, string> = {};
+  try { stored = JSON.parse(sessionStorage.getItem('_gp_click_ids') ?? '{}'); } catch { /* storage off */ }
+  return { ...recentAdClickIds(), ...stored, ...fresh };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -123,10 +158,15 @@ export function captureAndPersistClickIds(): Record<string, string> {
 export function assembleUserData(extra?: {
   user_id?: string;
 }): Record<string, string | undefined> {
+  const ids = captureAndPersistClickIds();
+  // The event schema names Snapchat's click id `sccid`; the URL's `ScCid` was stripped as an unknown key, so no
+  // browsing event ever carried it (2026-10-22).
+  const { ScCid, ...rest } = ids;
   return {
     fp_client_id: getFpClientId(),
     session_id:   getPageSessionId(),
-    ...captureAndPersistClickIds(),
+    ...rest,
+    ...(ScCid ? { sccid: ScCid } : {}),
     ...extra,
   };
 }
@@ -138,10 +178,18 @@ export function assembleUserData(extra?: {
 export type EventName =
   | 'view_item_list' | 'select_item' | 'view_item'
   | 'add_to_cart'    | 'remove_from_cart' | 'begin_checkout'
-  | 'add_shipping_info' | 'add_payment_info';
+  | 'add_shipping_info' | 'add_payment_info'
+  // A WhatsApp chat opened with us, or a quote request sent (advertising 0154).
+  | 'generate_lead'
+  // A product search, a new account, the shop's map opened (lib/siteSignals).
+  | 'search' | 'sign_up' | 'find_location'
+  // A storefront page was opened (lib/siteSignals; ad platforms only, never GA4).
+  | 'page_seen';
 
 export interface TelemetryItem {
   item_id:       string;
+  /** The SKU (Merchant Center g:id): GA4 names the product by it for Google Ads dynamic retargeting. */
+  item_sku?:     string;
   item_name?:    string;
   price?:        number;
   quantity?:     number;
@@ -166,6 +214,10 @@ export interface TrackOptions {
   };
   recommendation_context?: RecommendationContext;
   user_id?: string;
+  /** generate_lead only: how the shopper reached out. */
+  lead?: { method: 'whatsapp' | 'quote_request'; ref?: string };
+  /** search only: what was searched for. */
+  search_term?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -180,28 +232,67 @@ interface QueuedEvent {
 const queue: QueuedEvent[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
+/**
+ * The API forwards an event to GA4 only with the visit's GA4 session id, read from the `_ga_<stream>` cookie on this
+ * request (2026-10-23 audit: events sent before the tag had made one became users with no session, all "Direct").
+ * The tag loads after the page, so events wait for a CURRENT session cookie, up to GA_SESSION_WAIT_MS: one whose last
+ * activity is over 30 minutes old is the previous visit's, which the tag replaces as it loads (GA4 ends a visit after
+ * 30 idle minutes). Hiding or leaving the page sends them at once, and a page without the tag (staff, a probe,
+ * measurement off) never waits.
+ */
+const GA_SESSION_WAIT_MS = 15_000;
+const GA_SESSION_IDLE_S = 30 * 60;
+let firstQueuedAt = 0;
+
+function gaSessionReady(): boolean {
+  const now = Date.now() / 1000;
+  for (const m of document.cookie.matchAll(/(?:^|;\s*)_ga_[A-Z0-9]+=([^;]+)/g)) {
+    // GS1.1.<sid>.<n>.<engaged>.<last activity>… or GS2.1.s<sid>$o<n>$g<engaged>$t<last activity>$…
+    const t = m[1].match(/^GS1\.\d\.\d+\.\d+\.\d+\.(\d+)/)?.[1] ?? m[1].match(/\$t(\d+)/)?.[1];
+    if (!t || now - Number(t) < GA_SESSION_IDLE_S) return true;
+  }
+  return false;
+}
+
+function gaTagExpected(): boolean {
+  const dl = (window as { dataLayer?: unknown[] }).dataLayer;
+  return Array.isArray(dl) && dl.some((e) => !!e && typeof e === 'object' && (e as { event?: unknown }).event === 'gtm.js');
+}
+
+function flushWhenGaReady(): void {
+  flushTimer = null;
+  if (queue.length && gaTagExpected() && !gaSessionReady() && Date.now() - firstQueuedAt < GA_SESSION_WAIT_MS) {
+    flushTimer = setTimeout(flushWhenGaReady, BATCH_FLUSH_MS);
+    return;
+  }
+  flushQueue();
+}
+
 function scheduleFlush(): void {
   if (flushTimer) return;
-  flushTimer = setTimeout(flushQueue, BATCH_FLUSH_MS);
+  firstQueuedAt = Date.now();
+  flushTimer = setTimeout(flushWhenGaReady, BATCH_FLUSH_MS);
 }
 
 function flushQueue(): void {
   flushTimer = null;
   if (queue.length === 0) return;
+  if (isOwnAutomation()) { queue.splice(0, queue.length); return; }
 
   const batch = queue.splice(0, queue.length);
 
-  // Push each to GTM dataLayer immediately (synchronous)
-  for (const { payload } of batch) {
-    if ((window as any).dataLayer) {
-      (window as any).dataLayer.push({ event: payload.event_name, ...payload });
-    }
-  }
+  // dataLayer: already pushed once, in track(). Pushing again here fired every
+  // GTM trigger twice (every view_item/add_to_cart counted double in GA4).
 
   // Batch-beacon all events in one Blob to the API
   // Note: sendBeacon supports up to 64KB per call
   const events = batch.map(e => e.payload);
-  const blob = new Blob([JSON.stringify(events)], { type: 'application/json' });
+  // text/plain, not application/json (2026-09-14): sendBeacon always sends credentials, and a
+  // JSON content type forces a credentialed CORS preflight that the API (rightly) does not allow
+  // (no Access-Control-Allow-Credentials) — every batch from the storefront was blocked with a
+  // console error (Lighthouse Best Practices 96 on product pages). text/plain is CORS-safelisted,
+  // so no preflight; the API's bot-detection middleware reads the raw body and parses the JSON.
+  const blob = new Blob([JSON.stringify(events)], { type: 'text/plain;charset=UTF-8' });
 
   let sent = false;
   if (navigator.sendBeacon) {
@@ -243,6 +334,9 @@ function flushQueue(): void {
 export function track(eventName: EventName, opts: TrackOptions = {}): string {
   const eventId   = crypto.randomUUID();
   const eventTime = Math.floor(Date.now() / 1000);
+  // Not a shopper: no dataLayer push, no beacon. The id is still returned so
+  // callers that link a click to a view keep working.
+  if (isOwnAutomation()) return eventId;
 
   const payload: Record<string, unknown> = {
     event_name:             eventName,
@@ -252,24 +346,23 @@ export function track(eventName: EventName, opts: TrackOptions = {}): string {
     user_data:              assembleUserData({ user_id: opts.user_id }),
     ecommerce:              opts.ecommerce,
     recommendation_context: opts.recommendation_context,
+    lead:                   opts.lead,
+    search_term:            opts.search_term,
     page_location:          window.location.href,
     page_referrer:          document.referrer || undefined,
     page_title:             document.title,
   };
 
-  // Immediate dataLayer push — don't wait for batch flush
-  if ((window as any).dataLayer) {
-    (window as any).dataLayer.push({ event: eventName, event_id: eventId, ...payload });
-  }
+  // Immediate dataLayer push, exactly once. `ecommerce: null` first is GA4's
+  // documented reset: GTM merges dataLayer objects, so without it one event's
+  // items leak into the next event that has none.
+  const dl = ((window as any).dataLayer = (window as any).dataLayer || []);
+  if (payload.ecommerce) dl.push({ ecommerce: null });
+  dl.push({ event: eventName, ...payload });
 
-  // Queue for batched API delivery
-  return new Promise<string>((resolve) => {
-    queue.push({ payload, resolve });
-    scheduleFlush();
-  }) as unknown as string; // Synchronous contract maintained for call sites
-
-  // Note: The actual return value is the eventId above. The Promise wrapping
-  // is internal. We return the eventId synchronously for immediate use.
+  // Queue for batched API delivery (the API keeps its own first-party record).
+  queue.push({ payload, resolve: () => undefined });
+  scheduleFlush();
   return eventId;
 }
 
@@ -279,14 +372,23 @@ export function track(eventName: EventName, opts: TrackOptions = {}): string {
 
 /**
  * Call once per page load. Captures URL click IDs and persists them server-side.
- * Only fires if there are actual signals to capture (no noise requests).
+ * Only fires if there are actual signals to capture (no noise requests), and
+ * only once per session for the same signals: it now runs on every page
+ * (BaseLayout), and a visitor with a 30-day ad click would otherwise re-post
+ * the same ids on each page.
  */
 export function captureClickIdsServerSide(opts?: { user_id?: string }): void {
+  if (isOwnAutomation()) return;
   const clickIds    = captureAndPersistClickIds();
   const hasSignals  = Object.keys(clickIds).length > 0 || !!opts?.user_id;
   if (!hasSignals) return;
 
   const fpClientId = getFpClientId();
+  const signature = JSON.stringify({ fpClientId, user_id: opts?.user_id ?? null, ...clickIds });
+  try {
+    if (sessionStorage.getItem('_gp_identity_sent') === signature) return;
+    sessionStorage.setItem('_gp_identity_sent', signature);
+  } catch { /* storage off: post it rather than lose it */ }
   fetch(IDENTITY_ENDPOINT, {
     method:    'POST',
     headers:   { 'Content-Type': 'application/json' },
@@ -381,6 +483,13 @@ export function getRecommendationAttributionContext(): RecommendationContext | u
 
 // Ensure queued events are sent before the page is unloaded
 if (typeof window !== 'undefined') {
+  // Mobile browsers often never fire pagehide when the shopper switches app and the tab is later discarded; hidden is
+  // the last moment that is reliably ours. Held events (waiting for the GA4 session) go then.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'hidden') return;
+    if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+    flushQueue();
+  });
   window.addEventListener('pagehide', () => {
     if (flushTimer) {
       clearTimeout(flushTimer);
@@ -388,4 +497,62 @@ if (typeof window !== 'undefined') {
     }
     flushQueue();
   }, { capture: true });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Landing touch (collector contract v2): one per visit, plus one whenever a new
+// campaign, click id or outside referrer arrives mid-visit. The server
+// classifies the channel and keeps it for attribution; it is never forwarded
+// to GA4 or an ad platform. Automation (webdriver) is not a visit.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * For lib/whatsappClicks, the WhatsApp tap handler. It is registered by the
+ * pages that render WhatsApp chat links (product page, bulk request sent),
+ * never from this every-page script.
+ */
+export const flushTelemetry = (): void => flushQueue();
+export const telemetryBatchUrl = (): string => `${TELEMETRY_ENDPOINT}/batch`;
+export { isOwnAutomation };
+
+export function recordLandingTouch(): void {
+  try {
+    if (isOwnAutomation()) return;
+    // The tag loader put the landing's campaign on this page's address (the tag had not seen the landing): the
+    // arrival was already filed on the landing page itself.
+    if ((window as { __gpCarried?: boolean }).__gpCarried) return;
+    const q = new URLSearchParams(location.search);
+    // The rulebook decides (packages/shared/src/attribution/arrival.ts, the same rules as the tag loader, the order
+    // source and the channel report): a return from the payment gateway is not an arrival; an untagged visit with no
+    // referrer is credited to the social app it was opened in, or the network whose own click id it carries.
+    const t = landingTouch({ search: location.search, referrer: document.referrer, ua: navigator.userAgent || '', selfHost: location.host });
+    const clickTypes = t.clickIdTypes;
+    const refHost = t.referrerHost;
+    const hasCampaign = !!(q.get('utm_source') || q.get('utm_medium') || clickTypes.length || refHost);
+    let seen = false;
+    try { seen = sessionStorage.getItem('_gp_touch') === '1'; sessionStorage.setItem('_gp_touch', '1'); } catch { /* storage off */ }
+    if (seen && !hasCampaign) return;
+    // A second tab is a second session but not a second arrival. Without this,
+    // every extra tab opened straight from the address bar filed another
+    // "direct" touch and inflated direct in the attribution models.
+    const signature = [q.get('utm_source') ?? '', q.get('utm_medium') ?? '', q.get('utm_campaign') ?? '', clickTypes.join('+'), refHost ?? ''].join('|');
+    try {
+      const prev = JSON.parse(localStorage.getItem('_gp_touch_last') ?? 'null') as { sig: string; at: number } | null;
+      if (prev && prev.sig === signature && Date.now() - prev.at < 30 * 60 * 1000) return;
+      localStorage.setItem('_gp_touch_last', JSON.stringify({ sig: signature, at: Date.now() }));
+    } catch { /* storage off: record the touch rather than lose it */ }
+    const body = JSON.stringify({
+      batchId: crypto.randomUUID(), schemaVersion: 1,
+      events: [{
+        event_name: 'landing_touch', event_id: crypto.randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'browser',
+        user_data: { fp_client_id: getFpClientId() },
+        touch: { source: t.source, medium: t.medium, campaign: t.campaign,
+          referrer_host: refHost, landing_path: location.pathname.slice(0, 300), click_id_types: clickTypes },
+      }],
+    });
+    const blob = new Blob([body], { type: 'text/plain;charset=UTF-8' });
+    if (!(navigator.sendBeacon && navigator.sendBeacon(`${TELEMETRY_ENDPOINT}/batch`, blob))) {
+      fetch(`${TELEMETRY_ENDPOINT}/batch`, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body, keepalive: true }).catch(() => {});
+    }
+  } catch { /* measurement never breaks a page */ }
 }
