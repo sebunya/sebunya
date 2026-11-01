@@ -217,12 +217,30 @@ describe('deploy-prod.sh and compose hygiene', () => {
 describe('review fixes 2026-10-07', () => {
   it('the deploy gate counts only "(healthy)" replicas, never "(unhealthy)" ones', () => {
     const d = read('scripts/deploy-prod.sh');
-    const m = d.match(/grep -cE "\(\$\(echo \$SERVICES \| tr ' ' '\|'\)\)(-\[12\] [^"]*)"/);
+    const m = d.match(/grep -cE "(\^goldplus-commerce-)\(\$\(echo \$SERVICES \| tr ' ' '\|'\)\)(-\[12\] [^"]*)"/);
     expect(m).not.toBeNull();
-    const re = new RegExp(`(api|web)${m![1]}`);
+    const re = new RegExp(`${m![1]}(api|web)${m![2]}`);
     expect(re.test('goldplus-commerce-api-1 Up 2 minutes (healthy)')).toBe(true);
     expect(re.test('goldplus-commerce-api-1 Up 45 seconds (unhealthy)')).toBe(false);
     expect(re.test('goldplus-commerce-api-1 Up 3 seconds (health: starting)')).toBe(false);
+    // anchored: another service whose name ends in api/web never counts
+    expect(re.test('goldplus-commerce-something-api-1 Up 2 minutes (healthy)')).toBe(false);
+  });
+
+  it('edge and monitoring containers are recreated only after the images built', () => {
+    const d = read('scripts/deploy-prod.sh');
+    const build = d.indexOf('build $SERVICES > "$BUILD_LOG"');
+    expect(build).toBeGreaterThan(0);
+    expect(d.indexOf('--force-recreate --no-deps caddy')).toBeGreaterThan(build);
+    expect(d.indexOf('--force-recreate --no-deps $MON')).toBeGreaterThan(build);
+  });
+
+  it('a timed-out roll names the rollback tag this script really created, and the keep count matches its comment', () => {
+    const d = read('scripts/deploy-prod.sh');
+    expect(d).toMatch(/tag "\$IMG" "goldplus-commerce-\$s:rollback-pre-\$\(git rev-parse --short "\$PREV"\)"/);
+    expect(d).toMatch(/roll back with the rollback-pre-\$\(git rev-parse --short "\$PREV"\) image/);
+    expect(d).toContain('Keep the newest 2 per service');
+    expect(d).toContain('prune-rollback-images.sh 2 ');
   });
 
   it('the admin guard refuses a malformed session cookie and any 4xx', () => {
