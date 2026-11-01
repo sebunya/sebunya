@@ -134,8 +134,9 @@ export class MediaImportUseCases {
     const summary = { applied: 0, skipped: 0, stale: 0, failed: 0, notAttempted: 0 };
     let stop = false;
     for (const p of plans) {
-      if (stop) { await this.repo.markRows(input.id, p.productId, { applyStatus: 'NOT_ATTEMPTED' }); summary.notAttempted += 1; continue; }
+      // Already applied on an earlier run: never overwritten to NOT_ATTEMPTED after a later failure.
       if (doneProducts.has(p.productId)) { summary.skipped += 1; continue; }
+      if (stop) { await this.repo.markRows(input.id, p.productId, { applyStatus: 'NOT_ATTEMPTED' }); summary.notAttempted += 1; continue; }
       try {
         // Re-verify: revision and readiness are checked again inside replaceMap (locked); the plan hash covers the proposed maps.
         const r = await this.gallery.replaceMap({ productId: p.productId, expectedRevision: p.expectedRevision, map: p.proposedMap, actorId: input.actorId, action: `IMPORT:${input.id}` });
