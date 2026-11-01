@@ -14,9 +14,23 @@ interface JwtPayload {
   sub: string;
   email: string;
   iat: number;
+  /**
+   * The issue instant in milliseconds. `iat` is whole seconds (RFC 7519), so on its own a revocation cut-off cannot
+   * tell a token issued just before a password reset from one issued just after it in the same second. Revocation
+   * compares this exact instant; a token without it (signed before this claim existed) falls back to `iat`.
+   */
+  iat_ms?: number;
   exp: number;
   /** The sign-in session (refresh-token family), so a step-up counts for that session only (0187). */
   sid?: string;
+}
+
+/** The exact issue instant: iat_ms when it agrees with iat (same second), else the start of iat's second. */
+function issuedAtMs(payload: JwtPayload): number {
+  const fromSeconds = payload.iat * 1000;
+  const ms = payload.iat_ms;
+  if (typeof ms === 'number' && Number.isFinite(ms) && ms >= fromSeconds && ms < fromSeconds + 1000) return ms;
+  return fromSeconds;
 }
 
 export class Hs256TokenSigner implements ITokenSigner {
@@ -57,11 +71,13 @@ export class Hs256TokenSigner implements ITokenSigner {
     if (!this.secret) {
       throw new Error('JWT_SECRET is not configured (minimum 32 characters).');
     }
-    const now = Math.floor(Date.now() / 1000);
+    const nowMs = Date.now();
+    const now = Math.floor(nowMs / 1000);
     const body: JwtPayload = {
       sub: payload.subject,
       email: payload.email,
       iat: now,
+      iat_ms: nowMs,
       exp: now + payload.ttlSeconds,
       ...(payload.sessionId ? { sid: payload.sessionId } : {}),
     };
@@ -105,7 +121,7 @@ export class Hs256TokenSigner implements ITokenSigner {
       subject: payload.sub,
       email: payload.email,
       expiresAt: new Date(payload.exp * 1000),
-      issuedAt: new Date(payload.iat * 1000),
+      issuedAt: new Date(issuedAtMs(payload)),
       ...(typeof payload.sid === 'string' && payload.sid ? { sessionId: payload.sid } : {}),
     };
   }
