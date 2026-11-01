@@ -47,7 +47,8 @@ interface Trace {
 
 function build(opts: {
   checkout?: IdempotencyRecord | null;
-  order?: { id: string; paymentStatus: string } | null;
+  order?: { id: string; paymentStatus: string; orderStatus?: string; totalUgx?: number; storeCreditAppliedUgx?: number } | null;
+  settleByStoreCredit?: StartOrderPaymentDeps['settleByStoreCredit'];
   attempts?: Array<{ status: string; redirectUrl: string | null; orderTrackingId: string | null; merchantReference: string }>;
   providerThrows?: Error;
 } = {}) {
@@ -57,6 +58,7 @@ function build(opts: {
   };
 
   const deps: StartOrderPaymentDeps = {
+    settleByStoreCredit: opts.settleByStoreCredit,
     idempotency: {
       findByOrderId: async () => (opts.checkout === undefined ? checkoutRecord() : opts.checkout),
       advancePaymentStage: async (orderId, stage, from) => {
@@ -157,6 +159,19 @@ describe('payment is not started for an order that must not be paid', () => {
 
     expect(outcome.kind).toBe('ALREADY_PAID');
     expect(trace.providerCalls).toBe(0);
+  });
+
+  it.each(['cancelled', 'failed'])('refuses a %s order at the server, not only in the storefront', async (orderStatus) => {
+    const { useCase, trace } = build({ order: { id: 'order-1', paymentStatus: 'pending', orderStatus } });
+    const outcome = await useCase.execute(command);
+
+    expect(outcome).toMatchObject({ kind: 'NOT_PAYABLE', reason: 'ORDER_CANCELLED' });
+    expect(trace.providerCalls).toBe(0);
+  });
+
+  it('an open order with an unknown status field is still payable (legacy readers omit it)', async () => {
+    const { useCase } = build({ order: { id: 'order-1', paymentStatus: 'pending', orderStatus: 'received' } });
+    expect((await useCase.execute(command)).kind).toBe('REDIRECT_READY');
   });
 
   it('refuses an offline draft before looking anything up', async () => {
@@ -284,8 +299,11 @@ describe('the payment route is a thin transport adapter', () => {
     join(__dirname, '../../apps/api/src/interfaces/http/routes/commerce.ts'),
     'utf8',
   );
+  // The route delegates its answer to respondToStartOutcome (shared with the
+  // guest pay-by-reference route since 2026-09-12); the adapter under test is
+  // the responder plus the route.
   const handler = route.slice(
-    route.indexOf("routes.post('/payments/pesapal/start'"),
+    route.indexOf('function respondToStartOutcome'),
     route.indexOf("routes.get('/payments/pesapal/callback'"),
   );
 
@@ -316,5 +334,28 @@ describe('the payment route is a thin transport adapter', () => {
   it('no longer calls the unauthorized starter directly', () => {
     expect(handler).not.toContain('startPesaPalPaymentUseCase');
     expect(handler).toContain('startOrderPaymentUseCase.execute');
+  });
+});
+
+describe('0196: an order store credit pays in full', () => {
+  it('"Pay" finishes the credit settlement instead of refusing for good, and never calls Pesapal', async () => {
+    const settled: string[] = [];
+    const { useCase, trace } = build({
+      order: { id: 'order-1', paymentStatus: 'unpaid', orderStatus: 'received', totalUgx: 80_000, storeCreditAppliedUgx: 80_000 },
+      settleByStoreCredit: { execute: async (id) => { settled.push(id); return 'settled'; } },
+    });
+    expect((await useCase.execute(command)).kind).toBe('ALREADY_PAID');
+    expect(settled).toEqual(['order-1']);
+    expect(trace.providerCalls).toBe(0);
+  });
+
+  it('part credit still goes to Pesapal, and a stranger cannot trigger the settlement', async () => {
+    const settled: string[] = [];
+    const settle = { execute: async (id: string) => { settled.push(id); return 'settled' as const; } };
+    const part = build({ order: { id: 'order-1', paymentStatus: 'unpaid', orderStatus: 'received', totalUgx: 80_000, storeCreditAppliedUgx: 30_000 }, settleByStoreCredit: settle });
+    expect((await part.useCase.execute(command)).kind).toBe('REDIRECT_READY');
+    const full = build({ order: { id: 'order-1', paymentStatus: 'unpaid', orderStatus: 'received', totalUgx: 80_000, storeCreditAppliedUgx: 80_000 }, settleByStoreCredit: settle });
+    expect((await full.useCase.execute({ ...command, principalKey: 'g:someone-else' })).kind).toBe('NOT_FOUND');
+    expect(settled).toEqual([]);
   });
 });

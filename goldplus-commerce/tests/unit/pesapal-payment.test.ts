@@ -4,11 +4,23 @@ import { StartPesaPalPaymentUseCase } from '../../apps/api/src/application/use-c
 import { VerifyPesaPalPaymentUseCase } from '../../apps/api/src/application/use-cases/payments/VerifyPesaPalPaymentUseCase';
 import { IPesaPalPaymentRepository, RecordedPaymentAttempt } from '../../apps/api/src/application/ports/IPesaPalPaymentRepository';
 import { ICustomerOrderRepository } from '../../apps/api/src/application/ports/ICustomerOrderRepository';
+import { IOrderTransitionPort } from '../../apps/api/src/application/ports/IOrderTransitionPort';
 import { Order } from '../../apps/api/src/domain/commerce/Order';
+
+// No real network in a unit test: resilientFetch's SSRF guard resolves the
+// provider host first, and a real DNS lookup under a busy parallel run timed
+// out and opened the circuit breaker (flaky "Network error" failures). The
+// address is public, so the guard behaves exactly as in production.
+vi.mock('node:dns', async (orig) => {
+  const real = (await orig()) as typeof import('node:dns');
+  const lookup = (_host: string, ...rest: any[]) => { const cb = rest[rest.length - 1]; cb(null, '93.184.216.34', 4); };
+  return { ...real, default: { ...real, lookup }, lookup };
+});
 
 describe('PesaPal Payment Integration Unit Tests', () => {
   let mockPaymentRepo: IPesaPalPaymentRepository;
   let mockOrderRepo: ICustomerOrderRepository;
+  let mockOrderTransition: IOrderTransitionPort;
   let client: PesaPalClient;
   let config: any;
 
@@ -41,6 +53,15 @@ describe('PesaPal Payment Integration Unit Tests', () => {
     mockOrderRepo = {
       findById: vi.fn(),
       findAll: vi.fn(),
+    } as any;
+
+    // Canonical transition port: default success returning a synthetic event id.
+    mockOrderTransition = {
+      transition: vi.fn().mockResolvedValue({
+        orderId: 'order-123', fromStatus: 'received', toStatus: 'processing',
+        eventId: 'evt-1', idempotentReplay: false,
+      }),
+      history: vi.fn().mockResolvedValue([]),
     } as any;
 
     vi.spyOn(global, 'fetch').mockImplementation(() => Promise.resolve(new Response()));
@@ -176,13 +197,22 @@ describe('PesaPal Payment Integration Unit Tests', () => {
       amount: 50000, currency: 'UGX', status_code: 1, payment_status_description: 'COMPLETED'
     });
 
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
     const output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'callback' });
 
     expect(output.ok).toBe(true);
     expect(output.status).toBe('completed');
     expect(client.getTransactionStatus).toHaveBeenCalledWith('track-123');
-    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'paid', 'processing');
+    // Completed => the ONE canonical transition commits status + payment + event
+    // atomically. Actor is the verified provider, never a request field.
+    expect(mockOrderTransition.transition).toHaveBeenCalledWith('order-123', 'processing', expect.objectContaining({
+      actorType: 'payment_provider',
+      source: 'payment',
+      paymentStatus: 'paid',
+      idempotencyKey: 'pesapal:completed:track-123',
+    }));
+    // No direct payment-only order write on the happy path.
+    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).not.toHaveBeenCalled();
   });
 
   // 9. COMPLETED maps to completed/paid only after amount/currency/reference verification.
@@ -197,7 +227,7 @@ describe('PesaPal Payment Integration Unit Tests', () => {
       createdAt: new Date(), updatedAt: new Date()
     };
 
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
 
     // Map 2 = FAILED
     vi.spyOn(mockPaymentRepo, 'findByTrackingId').mockResolvedValue(attempt);
@@ -207,25 +237,43 @@ describe('PesaPal Payment Integration Unit Tests', () => {
     });
     let output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'ipn' });
     expect(output.status).toBe('failed');
-    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'failed', 'pending_payment');
+    // Failed authorises NO lifecycle move (received -> pending_payment is illegal).
+    // Only the payment status is recorded; no order_event is written.
+    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'failed');
+    expect(mockOrderTransition.transition).not.toHaveBeenCalled();
 
-    // Map 3 = REVERSED
+    // Map 3 = REVERSED => a legal lifecycle move to cancelled, via the ledger.
     vi.spyOn(client, 'getTransactionStatus').mockResolvedValue({
       order_tracking_id: 'track-123', merchant_reference: 'ref-123',
       amount: 50000, currency: 'UGX', status_code: 3, payment_status_description: 'REVERSED'
     });
     output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'ipn' });
     expect(output.status).toBe('reversed');
-    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'reversed', 'cancelled');
+    expect(mockOrderTransition.transition).toHaveBeenCalledWith('order-123', 'cancelled', expect.objectContaining({
+      actorType: 'payment_provider',
+      source: 'payment',
+      paymentStatus: 'reversed',
+      idempotencyKey: 'pesapal:reversed:track-123',
+    }));
 
-    // Map 0 = INVALID
+    // Map 0 = INVALID on a YOUNG attempt => not paid yet: nothing written, the poller asks again.
+    // (Production: PesaPal said INVALID seconds after the page opened, before anyone could pay.)
     vi.spyOn(client, 'getTransactionStatus').mockResolvedValue({
       order_tracking_id: 'track-123', merchant_reference: 'ref-123',
       amount: 50000, currency: 'UGX', status_code: 0, payment_status_description: 'INVALID'
     });
-    output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'ipn' });
+    (mockPaymentRepo.updateOrderPaymentStatusSafely as any).mockClear?.();
+    const young = { ...(await mockPaymentRepo.findByTrackingId('track-123'))!, status: 'pending', createdAt: new Date() };
+    vi.spyOn(mockPaymentRepo, 'findByTrackingId').mockResolvedValue(young);
+    output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'poll' });
+    expect(output.status).toBe('pending');
+    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).not.toHaveBeenCalled();
+
+    // ...and on an attempt past the grace window => final invalid, payment-only, like FAILED.
+    vi.spyOn(mockPaymentRepo, 'findByTrackingId').mockResolvedValue({ ...young, createdAt: new Date(Date.now() - 25 * 3_600_000) });
+    output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'poll' });
     expect(output.status).toBe('invalid');
-    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'failed', 'pending_payment');
+    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'failed');
   });
 
   // 13. amount mismatch does not mark paid.
@@ -244,7 +292,7 @@ describe('PesaPal Payment Integration Unit Tests', () => {
       currency: 'UGX', status_code: 1, payment_status_description: 'COMPLETED'
     });
 
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
     const output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'callback' });
 
     expect(output.ok).toBe(false);
@@ -269,7 +317,7 @@ describe('PesaPal Payment Integration Unit Tests', () => {
       status_code: 1, payment_status_description: 'COMPLETED'
     });
 
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
     const output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'callback' });
 
     expect(output.ok).toBe(false);
@@ -293,7 +341,7 @@ describe('PesaPal Payment Integration Unit Tests', () => {
       amount: 50000, currency: 'UGX', status_code: 1, payment_status_description: 'COMPLETED'
     });
 
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
     const output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'callback' });
 
     expect(output.ok).toBe(false);
@@ -313,7 +361,7 @@ describe('PesaPal Payment Integration Unit Tests', () => {
     vi.spyOn(mockPaymentRepo, 'findByTrackingId').mockResolvedValue(attempt);
     const spyStatus = vi.spyOn(client, 'getTransactionStatus');
 
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
     const output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'ipn' });
 
     expect(output.ok).toBe(true);
@@ -325,7 +373,7 @@ describe('PesaPal Payment Integration Unit Tests', () => {
   // 17. missing OrderTrackingId rejected safely.
   // 18. missing OrderMerchantReference rejected safely.
   it('should fail safely if tracking ID or merchant reference is empty', async () => {
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
     let output = await useCase.execute({ orderTrackingId: '', merchantReference: 'ref-123', source: 'callback' });
     expect(output.ok).toBe(false);
     expect(output.status).toBe('verification_failed');
@@ -356,12 +404,13 @@ describe('PesaPal Payment Integration Unit Tests', () => {
       amount: 50000, currency: 'UGX', status_code: 0, payment_status_description: 'CANCELLED'
     });
 
-    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client);
+    const useCase = new VerifyPesaPalPaymentUseCase(mockPaymentRepo, client, mockOrderTransition);
     const output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'callback' });
 
     expect(output.ok).toBe(false);
     expect(output.status).toBe('invalid');
-    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'failed', 'pending_payment');
+    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'failed');
+    expect(mockOrderTransition.transition).not.toHaveBeenCalled();
   });
 
   // 21. no secrets in frontend responses.
@@ -460,5 +509,107 @@ describe('PesaPal Payment Integration Unit Tests', () => {
         last_name: 'Doe'
       }
     })).rejects.toThrow('PESAPAL_LIVE_GUARD_VIOLATION: Live mode callback URL');
+  });
+});
+
+/* ── A partial refund must not cancel the order (2026-08-07) ─────────────── */
+
+describe('provider reversal is read against the refund ledger', () => {
+  const attempt: RecordedPaymentAttempt = {
+    id: 'attempt-uuid', orderId: 'order-123', merchantReference: 'ref-123',
+    orderTrackingId: 'track-123', amount: 500_000, currency: 'UGX', status: 'completed',
+    redirectUrl: null, provider: 'pesapal', ipnReceivedAt: null, callbackReceivedAt: null,
+    createdAt: new Date(), updatedAt: new Date(),
+  };
+
+  /** Self-contained fixtures: the outer suite's mocks are scoped to its own describe. */
+  const world = (refundedUgx: number) => {
+    const settled: string[] = [];
+    const paymentRepo = {
+      createPaymentAttempt: vi.fn(),
+      findByMerchantReference: vi.fn(),
+      findByTrackingId: vi.fn().mockResolvedValue(attempt),
+      updatePaymentAttemptStatus: vi.fn(),
+      updateOrderPaymentStatusSafely: vi.fn(),
+    } as any;
+    const orderTransition = {
+      transition: vi.fn().mockResolvedValue({
+        orderId: 'order-123', fromStatus: 'processing', toStatus: 'cancelled',
+        eventId: 'evt-1', idempotentReplay: false,
+      }),
+      history: vi.fn().mockResolvedValue([]),
+    } as any;
+    const pesapalClient = {
+      getTransactionStatus: vi.fn().mockResolvedValue({
+        order_tracking_id: 'track-123', merchant_reference: 'ref-123',
+        amount: 500_000, currency: 'UGX', status_code: 3, payment_status_description: 'REVERSED',
+      }),
+    } as any;
+    const ledger = {
+      async getRefundedTotalUgx() { return refundedUgx; },
+      // Outstanding by definition in these scenarios: a refund was requested
+      // and the provider is now reporting on it.
+      async hasOutstandingRefunds() { return refundedUgx > 0; },
+      async settleRefundsForAttempt(id: string) { settled.push(id); return 1; },
+      async reserveRefund() { throw new Error('not used'); },
+      async recordProviderOutcome() { /* not used */ },
+      async listRefundsForOrder() { return []; },
+    } as any;
+    const useCase = new VerifyPesaPalPaymentUseCase(paymentRepo, pesapalClient, orderTransition, ledger);
+    return { useCase, paymentRepo, orderTransition, settled };
+  };
+
+  const runReversal = async (refundedUgx: number) => {
+    const w = world(refundedUgx);
+    const output = await w.useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'ipn' });
+    return { ...w, output };
+  };
+
+  it('a PARTIAL refund leaves the order paid and does NOT cancel it', async () => {
+    // 5,000 back on a 500,000 order — a delivery-fee variance. Reading the
+    // provider's per-transaction REVERSED as total used to cancel the whole
+    // order and erase its revenue.
+    const { output, orderTransition, paymentRepo, settled } = await runReversal(5_000);
+
+    expect(output.status).toBe('completed');
+    expect(orderTransition.transition).not.toHaveBeenCalled();
+    expect(paymentRepo.updateOrderPaymentStatusSafely).not.toHaveBeenCalledWith('order-123', 'reversed');
+    // The provider confirmed it, so the in-flight refund is now settled.
+    expect(settled).toEqual(['attempt-uuid']);
+  });
+
+  it('a FULL refund still reverses and cancels, exactly as before', async () => {
+    const { output, orderTransition, settled } = await runReversal(500_000);
+    expect(output.status).toBe('reversed');
+    expect(orderTransition.transition).toHaveBeenCalledWith('order-123', 'cancelled', expect.objectContaining({
+      paymentStatus: 'reversed',
+    }));
+    expect(settled).toEqual(['attempt-uuid']);
+  });
+
+  it('a completed attempt with NO outstanding refund keeps its idempotent early return', async () => {
+    // The provider must not be re-asked on every duplicate callback; only an
+    // outstanding refund justifies looking again.
+    const { output, orderTransition, settled } = await runReversal(0);
+    expect(output.status).toBe('completed');
+    expect(output.message).toMatch(/ALREADY_COMPLETED/);
+    // The order move is re-asserted under the SAME idempotency key (2026-10-22): free when it already happened,
+    // and what keeps a late payment on a cancelled order in review on every replay. Still no new provider call.
+    expect(orderTransition.transition).toHaveBeenCalledTimes(1);
+    expect(orderTransition.transition).toHaveBeenCalledWith('order-123', 'processing', expect.objectContaining({ idempotencyKey: 'pesapal:completed:track-123' }));
+    expect(settled).toEqual([]);
+  });
+
+  it('with NO ledger rows a reversal on a still-pending attempt is treated as TOTAL', async () => {
+    const w = world(0);
+    w.paymentRepo.findByTrackingId.mockResolvedValue({ ...attempt, status: 'pending' });
+    const output = await w.useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'ipn' });
+    expect(output.status).toBe('reversed');
+    expect(w.orderTransition.transition).toHaveBeenCalledWith('order-123', 'cancelled', expect.anything());
+  });
+
+  it('an over-refund (ledger >= collected) is total, never mistaken for partial', async () => {
+    const { output } = await runReversal(600_000);
+    expect(output.status).toBe('reversed');
   });
 });

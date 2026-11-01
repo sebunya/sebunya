@@ -1,0 +1,237 @@
+import {
+  PaymentSettlementOutcome,
+  ReconcileOrderPaymentUseCase,
+  paymentDidConfirm,
+} from '../commerce/ReconcileOrderPaymentUseCase';
+import { VerifyPesaPalPaymentOutput, VerifyPesaPalPaymentUseCase } from './VerifyPesaPalPaymentUseCase';
+
+/**
+ * THE payment settlement path (payments brief, 2026-08-06).
+ *
+ * Four things can learn a payment's fate: the browser callback, the provider's
+ * IPN, the reconciliation poller, and an operator pressing re-verify. Before
+ * this file the first two each carried their own ~90-line copy of the
+ * post-confirmation effects, and the second two did not exist — which is
+ * exactly how five attempts sat in `pending` from May to August with nobody
+ * asking the provider what had happened.
+ *
+ * Now there is ONE settlement: verify against the provider's own record, decide
+ * once, and run the same downstream effects whichever door the news came in
+ * through. Every effect is individually non-fatal AND individually reported —
+ * the skipped-mirror lesson, applied to money: non-fatal and silent are
+ * different decisions.
+ */
+
+export interface SettlePaymentEffects {
+  /** Section 9.3: flips the fulfilment alert so the order can be prepared. */
+  markFulfilmentPaid(orderId: string): Promise<void>;
+  /** Consumes a loyalty redemption reserved at checkout. */
+  settleLoyalty(orderId: string): Promise<void>;
+  /** Transactional admin email. Enqueued, not sent inline. */
+  enqueueAdminEmail(orderId: string): Promise<void>;
+  /**
+   * Tells whoever prepares orders, on a phone, that money has landed. A paid
+   * order nobody picks up is a customer waiting for goods they have already
+   * paid for, and email cannot carry this today.
+   */
+  notifyFulfilmentOfPaidOrder(orderId: string): Promise<void>;
+  /**
+   * What the CUSTOMER is told. Enqueued through the outbox, never sent
+   * inline, and governed by the same gates as every customer message. The
+   * template names the outcome the settlement actually reached.
+   */
+  enqueueCustomerMessage(orderId: string, template: 'ORDER_PAYMENT_SUCCESS' | 'ORDER_PAYMENT_FAILED' | 'ORDER_PAYMENT_PENDING'): Promise<void>;
+  /** Purchase measurement reconciliation. */
+  recordMeasurement(input: {
+    verification: VerifyPesaPalPaymentOutput;
+    trackingId: string;
+    reference: string;
+  }): Promise<void>;
+  /**
+   * The amount this payment page collected differs from the order's total now: the total moved after the page
+   * was made (a delivery fee the customer agreed to change, or one lowered for them) and the old page was paid.
+   * The payment stands and the order proceeds; a person settles the difference. Optional so older fakes type.
+   */
+  flagPaidAmountMismatch?(orderId: string, paidUgx: number): Promise<void>;
+  /**
+   * 0196: the order's store credit / gift card hold becomes spent, once its payment is confirmed. Idempotent.
+   * Optional so older fakes type.
+   */
+  captureStoreCredit?(orderId: string): Promise<void>;
+  /** Where a failed effect surfaces. Never silent. */
+  onEffectFailed(effect: string, orderId: string, error: unknown): void;
+}
+
+export interface SettlePaymentResult {
+  verification: VerifyPesaPalPaymentOutput;
+  settlement: PaymentSettlementOutcome;
+  confirmed: boolean;
+}
+
+/**
+ * What the CUSTOMER returning from the provider should be told.
+ *
+ * The browser callback settles first, and the return page then asks again
+ * (return-state), and the IPN usually lands before either. By the second ask
+ * the checkout is ORDER_CONFIRMED, so the settlement is ALREADY_SETTLED —
+ * which, read naively, told every customer who had just paid that "this order
+ * was paid earlier; this attempt did not take a second payment".
+ *
+ * ALREADY_SETTLED means "success" when THIS tracking id is the attempt the
+ * provider says completed and nothing conflicted. It stays 'already_settled'
+ * only when a different attempt paid (this one did not complete, or it was
+ * superseded, or its money met an order that could not take it).
+ */
+export function customerReturnKind(
+  result: Pick<SettlePaymentResult, 'verification' | 'settlement'>,
+): { kind: string; code: string } {
+  const { verification, settlement } = result;
+  if (paymentDidConfirm(settlement)) return { kind: 'success', code: settlement.reason };
+  // Charged twice: the order is paid, and this page must say a second payment arrived (never "no second payment").
+  if (settlement.reason === 'SECOND_PAYMENT_TAKEN') return { kind: 'second_payment', code: settlement.reason };
+  if (
+    settlement.kind === 'ALREADY_SETTLED' &&
+    verification.ok &&
+    (verification.status || '').trim().toLowerCase() === 'completed' &&
+    !verification.superseded &&
+    !verification.lifecycleConflict
+  ) {
+    return { kind: 'success', code: settlement.reason };
+  }
+  return { kind: settlement.kind.toLowerCase(), code: settlement.reason };
+}
+
+export class SettlePaymentUseCase {
+  constructor(
+    private readonly verify: VerifyPesaPalPaymentUseCase,
+    private readonly reconcile: ReconcileOrderPaymentUseCase,
+    private readonly effects: SettlePaymentEffects,
+  ) {}
+
+  async execute(input: {
+    orderTrackingId: string;
+    merchantReference: string;
+    source: 'callback' | 'ipn' | 'poll' | 'ops_reverify';
+    traceId: string;
+  }): Promise<SettlePaymentResult> {
+    const verification = await this.verify.execute({
+      orderTrackingId: input.orderTrackingId,
+      merchantReference: input.merchantReference,
+      source: input.source,
+    });
+
+    // Settlement is decided ONCE, whichever door the news arrived through. An
+    // unverified or unrecognised payment progresses nothing at all.
+    const settlement = await this.reconcile.execute({
+      verification: {
+        ok: verification.ok,
+        orderId: verification.orderId,
+        status: verification.status,
+        lifecycleConflict: verification.lifecycleConflict,
+        superseded: verification.superseded,
+      },
+      traceId: input.traceId,
+    });
+
+    if (paymentDidConfirm(settlement)) {
+      // Each effect is isolated: one failing must not stop the others, and none
+      // may undo a confirmed payment. But each failure is REPORTED — an effect
+      // that fails silently is an obligation nobody knows they owe.
+      await this.runEffect('fulfilment_payment_confirmed', verification.orderId, () =>
+        this.effects.markFulfilmentPaid(verification.orderId));
+      await this.runEffect('loyalty_settlement', verification.orderId, () =>
+        this.effects.settleLoyalty(verification.orderId));
+      const capture = this.effects.captureStoreCredit?.bind(this.effects);
+      if (capture) await this.runEffect('store_credit_capture', verification.orderId, () => capture(verification.orderId));
+      await this.runEffect('admin_email', verification.orderId, () =>
+        this.effects.enqueueAdminEmail(verification.orderId));
+      await this.runEffect('fulfilment_alert', verification.orderId, () =>
+        this.effects.notifyFulfilmentOfPaidOrder(verification.orderId));
+      await this.runEffect('measurement', verification.orderId, () =>
+        this.effects.recordMeasurement({ verification, trackingId: input.orderTrackingId, reference: input.merchantReference }));
+      await this.runEffect('customer_message', verification.orderId, () =>
+        this.effects.enqueueCustomerMessage(verification.orderId, 'ORDER_PAYMENT_SUCCESS'));
+      const flagMismatch = this.effects.flagPaidAmountMismatch?.bind(this.effects);
+      if (flagMismatch) {
+        await this.runEffect('paid_amount_check', verification.orderId, () => flagMismatch(verification.orderId, verification.amount));
+      }
+    } else if (settlement.kind === 'FAILED' && settlement.orderId && !verification.superseded) {
+      // A decline or reversal is the moment the customer most needs to hear
+      // from us. Nothing else runs on this branch. Never for a superseded
+      // attempt: that order is paid (reconcile does not return FAILED for it
+      // either; this guard keeps the two decisions from drifting apart).
+      await this.runEffect('customer_message', settlement.orderId, () =>
+        this.effects.enqueueCustomerMessage(settlement.orderId!, 'ORDER_PAYMENT_FAILED'));
+    }
+
+    return { verification, settlement, confirmed: paymentDidConfirm(settlement) };
+  }
+
+  /**
+   * Re-run the confirmed-payment effects that are safe to run twice, for an
+   * order whose payment is already confirmed but whose fulfilment task never
+   * learned it (ReconcilePendingPaymentsUseCase's catch-up).
+   *
+   * Those effects run inline, once. A replayed IPN answers ALREADY_SETTLED
+   * and runs nothing, the confirmation's outbox events are retired as
+   * RECORDED_ONLY, so one DB blip or a container replaced mid-request after
+   * the stage advance left a paid order nobody was told to prepare — for good.
+   * Only effects that are idempotent per order run here: marking the task paid
+   * (no-op when already paid), the paid-order alert (one outbox row per
+   * order and recipient) and the customer's receipt (one per order/template).
+   */
+  /**
+   * 0196: the confirmed-payment effects for an order paid ENTIRELY by store credit / a gift card: there is no
+   * provider verification (so no purchase-measurement reconciliation and no paid-amount check), everything else
+   * is what a confirmed Pesapal payment runs.
+   */
+  async runCreditPaidEffects(orderId: string): Promise<void> {
+    await this.runEffect('fulfilment_payment_confirmed', orderId, () => this.effects.markFulfilmentPaid(orderId));
+    await this.runEffect('loyalty_settlement', orderId, () => this.effects.settleLoyalty(orderId));
+    const capture = this.effects.captureStoreCredit?.bind(this.effects);
+    if (capture) await this.runEffect('store_credit_capture', orderId, () => capture(orderId));
+    await this.runEffect('admin_email', orderId, () => this.effects.enqueueAdminEmail(orderId));
+    await this.runEffect('fulfilment_alert', orderId, () => this.effects.notifyFulfilmentOfPaidOrder(orderId));
+    await this.runEffect('customer_message', orderId, () => this.effects.enqueueCustomerMessage(orderId, 'ORDER_PAYMENT_SUCCESS'));
+  }
+
+  async redoConfirmedEffects(orderId: string): Promise<void> {
+    await this.runEffect('fulfilment_payment_confirmed', orderId, () => this.effects.markFulfilmentPaid(orderId));
+    // The card hold's capture runs once inline; lost (a database blip, a shutdown mid-sweep) it stayed 'held' for good
+    // and the ledger misstated card spend. Capturing is conditional on 'held', so repeating it is harmless (2026-10-22).
+    const capture = this.effects.captureStoreCredit?.bind(this.effects);
+    if (capture) await this.runEffect('store_credit_capture', orderId, () => capture(orderId));
+    await this.runEffect('fulfilment_alert', orderId, () => this.effects.notifyFulfilmentOfPaidOrder(orderId));
+    await this.runEffect('customer_message', orderId, () => this.effects.enqueueCustomerMessage(orderId, 'ORDER_PAYMENT_SUCCESS'));
+  }
+
+  /**
+   * Run one post-settlement effect in isolation.
+   *
+   * `effect().catch(...)` is NOT enough, and the gap is not theoretical: a
+   * `.catch()` only ever handles a REJECTED PROMISE. An effect that throws
+   * SYNCHRONOUSLY — a missing collaborator method, a null dereference while
+   * building a template, a config read that throws before the first await —
+   * never produces a promise to reject, so the handler is never attached and
+   * the error escapes `execute()` altogether. The money is already settled by
+   * then (settlement commits above, deliberately, before any effect runs), so
+   * nothing is lost — but every LATER effect is skipped, the caller sees a
+   * throw instead of a result, and the IPN route answers the provider with a
+   * failure for a payment that in fact succeeded, inviting a pointless retry.
+   *
+   * A try/catch around the invocation captures both shapes. Reporting is
+   * itself guarded: a failing reporter must not become the thing that breaks
+   * the chain it exists to observe.
+   */
+  private async runEffect(name: string, orderId: string, run: () => Promise<void>): Promise<void> {
+    try {
+      await run();
+    } catch (error) {
+      try {
+        this.effects.onEffectFailed(name, orderId, error);
+      } catch {
+        // Deliberately swallowed: there is nowhere left to report to.
+      }
+    }
+  }
+}

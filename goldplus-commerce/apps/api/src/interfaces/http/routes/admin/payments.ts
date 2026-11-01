@@ -1,0 +1,297 @@
+import { Hono } from 'hono';
+import { PERMISSIONS, ApiResponse } from '@goldplus/shared';
+import { Registry } from '../../../../infrastructure/Registry';
+import { authMiddleware } from '../../middleware/auth';
+import { requirePermissions } from '../../middleware/permissions';
+import { requireStepUp } from '../../middleware/requireStepUp';
+import { failureFields, summariseFailureReasons, withAttemptNumbers } from '../../../../domain/payments/PaymentFailureReason';
+
+/**
+ * The ops payment queue (payments brief, 2026-08-06).
+ *
+ * OUR STATUS BESIDE THE PROVIDER'S, so a human can see disagreement. The whole
+ * outage class this brief exists for — five attempts trapped in `pending` for
+ * eleven weeks — was invisible precisely because nobody could see the two
+ * columns next to each other.
+ *
+ * Guard strings from the PERMISSIONS vocabulary: reading is PAYMENTS_READ,
+ * forcing a re-verification is PAYMENTS_CONFIRM (it can settle an order), and
+ * refunding is PAYMENTS_REFUND — its own right, because giving money back is
+ * neither reading nor confirming.
+ */
+// audit-exempt: the writes here are audited inside their use cases — refund in
+// RefundPesaPalPaymentUseCase, settlement in the canonical order transition
+// path. Auditing again at the route would double-log.
+const routes = new Hono();
+routes.use('*', authMiddleware);
+
+/**
+ * Every recent attempt with our status and, live, the provider's.
+ *
+ * The provider column is fetched per row and NEVER cached: the entire point is
+ * to catch our record disagreeing with theirs, and a cached copy of our own
+ * last impression is not their record.
+ */
+routes.get('/queue', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
+  const registry = Registry.getInstance();
+  // Search by the identifiers staff receive (merchant reference, provider
+  // tracking id, order number/id). Exact, indexed lookups; a blank query keeps
+  // the recent listing exactly as before.
+  const q = (c.req.query('q') ?? '').trim().slice(0, 120);
+  const { FindPaymentAttemptsUseCase } = await import('../../../../application/use-cases/payments/FindPaymentAttemptsUseCase');
+  const attempts = q
+    ? await new FindPaymentAttemptsUseCase({
+        findByMerchantReference: (r) => registry.pesapalPaymentRepo.findByMerchantReference(r),
+        findByTrackingId: (t) => registry.pesapalPaymentRepo.findByTrackingId(t),
+        findOrder: (id) => registry.orderRepo.findById(id),
+        findAttemptsByOrderId: (id) => registry.pesapalPaymentRepo.findAttemptsByOrderId(id),
+      }).execute(q)
+    : await registry.pesapalPaymentRepo.listRecent(50);
+  // Attempt N of M per order, computed in SQL at read time (not stored).
+  const numbering = registry.pesapalPaymentRepo.numberAttempts
+    ? await registry.pesapalPaymentRepo.numberAttempts(attempts.map((a) => a.id))
+    : [];
+  const numbered = withAttemptNumbers(attempts, numbering);
+  // At most four lookups in flight, on their OWN breaker: fifty at once on the
+  // shared 'pesapal' breaker meant one page view during a provider slowdown
+  // opened the breaker checkout and payment callbacks use, for 30 seconds.
+  const QUEUE_CONCURRENCY = 4;
+  const describe = async (a: (typeof numbered)[number]) => {
+      let provider: { status: string; code: number | null; method: string | null; confirmation: string | null } | null = null;
+      let providerError: string | null = null;
+      if (a.orderTrackingId) {
+        try {
+          const s = await registry.pesapalClient.getTransactionStatus(a.orderTrackingId, { breakerName: 'pesapal-ops' });
+          provider = {
+            status: s.payment_status_description || 'UNKNOWN',
+            code: Number.isFinite(s.status_code) ? s.status_code : null,
+            method: s.payment_method ?? null,
+            confirmation: s.confirmation_code ?? null,
+          };
+        } catch (e) {
+          providerError = e instanceof Error ? e.message.slice(0, 120) : String(e);
+        }
+      }
+      // Disagreement: the provider says COMPLETED and we do not, or vice versa.
+      // That gap between the columns IS the outage, visible without a log.
+      const providerSaysPaid = provider?.code === 1;
+      const weSayPaid = a.status === 'completed';
+      return {
+        merchantReference: a.merchantReference,
+        orderId: a.orderId,
+        amountUgx: a.amount,
+        ourStatus: a.status,
+        ...failureFields(a),
+        attemptNumber: a.attemptNumber,
+        attemptsForOrder: a.attemptsForOrder,
+        provider,
+        providerError,
+        disagreement: a.orderTrackingId ? providerSaysPaid !== weSayPaid : false,
+        ipnReceivedAt: a.ipnReceivedAt,
+        callbackReceivedAt: a.callbackReceivedAt,
+        createdAt: a.createdAt,
+      };
+  };
+  const rows: Array<Awaited<ReturnType<typeof describe>>> = [];
+  for (let i = 0; i < numbered.length; i += QUEUE_CONCURRENCY) {
+    rows.push(...(await Promise.all(numbered.slice(i, i + QUEUE_CONCURRENCY).map(describe))));
+  }
+  const disagreements = rows.filter((r) => r.disagreement);
+  return c.json({
+    success: true,
+    data: {
+      rows,
+      query: q || null,
+      // The page has no period filter, so this covers the attempts listed.
+      failureReasons: summariseFailureReasons(attempts),
+      counts: { total: rows.length, disagreements: disagreements.length },
+      note:
+        rows.length === 0
+          ? 'No payment attempt has ever been made. This queue fills with the first checkout that chooses online payment.'
+          : disagreements.length > 0
+            ? 'DISAGREEMENT: our record and the provider’s differ on at least one attempt. Re-verify it — if the provider says COMPLETED, a customer has paid and we have not honoured it.'
+            : null,
+    },
+  });
+});
+
+/**
+ * Force a re-verification through the SAME settlement path as the IPN.
+ *
+ * This is the human exit from verification_failed and the impatient exit from
+ * pending — it cannot invent an outcome, only ask the provider again.
+ */
+routes.post('/attempts/:merchantReference/reverify', requirePermissions([PERMISSIONS.PAYMENTS_CONFIRM]), async (c) => {
+  const registry = Registry.getInstance();
+  const reference = String(c.req.param('merchantReference') ?? '');
+  const attempt = await registry.pesapalPaymentRepo.findByMerchantReference(reference);
+  if (!attempt) {
+    return c.json({ success: false, error: { code: 'ATTEMPT_NOT_FOUND', message: 'No attempt matches that reference.' } } satisfies ApiResponse<never>, 404);
+  }
+  if (!attempt.orderTrackingId) {
+    return c.json(
+      { success: false, error: { code: 'NO_PROVIDER_TRANSACTION', message: 'This attempt never reached the provider — there is nothing to re-verify.' } } satisfies ApiResponse<never>,
+      409,
+    );
+  }
+  const result = await registry.settlePaymentUseCase.execute({
+    orderTrackingId: attempt.orderTrackingId,
+    merchantReference: reference,
+    source: 'ops_reverify',
+    traceId: `ops:${(c.get('user') as { id: string }).id}:${reference}`,
+  });
+  return c.json({
+    success: true,
+    data: {
+      providerStatus: result.verification.status,
+      settlement: result.settlement.kind,
+      confirmed: result.confirmed,
+    },
+  });
+});
+
+/** Run the reconciliation sweep on demand rather than waiting for the ticker. */
+routes.post('/reconcile/run', requirePermissions([PERMISSIONS.PAYMENTS_CONFIRM]), async (c) => {
+  const result = await Registry.getInstance().reconcilePendingPaymentsUseCase.execute(new Date());
+  return c.json({ success: true, data: result });
+});
+
+/**
+ * Refund. Its own permission, fully audited, and honest about its state: no
+ * completed payment has ever existed, so this path is UNEXERCISED AGAINST REAL
+ * MONEY and proven synthetically only.
+ */
+routes.post('/attempts/:merchantReference/refund', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), requireStepUp('payment_refund'), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const raw = Number(String(body?.amountUgx ?? '').replace(/[,\s]/g, ''));
+  const user = c.get('user') as { id: string; email?: string };
+
+  // Optional per-line allocation. Omitting it records an order-level refund
+  // (a delivery-fee variance belongs to no product line), which is honest;
+  // spreading it across lines would invent per-product refunds.
+  const rawLines = Array.isArray(body?.lines) ? body.lines : [];
+  const lines = rawLines.map((line: any) => ({
+    orderItemId: String(line?.orderItemId ?? ''),
+    amountUgx: Number(String(line?.amountUgx ?? '').replace(/[,\s]/g, '')),
+  }));
+
+  const result = await Registry.getInstance().refundPesaPalPaymentUseCase.execute({
+    merchantReference: String(c.req.param('merchantReference') ?? ''),
+    amountUgx: Number.isFinite(raw) ? raw : Number.NaN,
+    reason: typeof body?.reason === 'string' ? body.reason : '',
+    actorId: user.id,
+    actorUsername: user.email ?? user.id,
+    idempotencyKey: typeof body?.idempotencyKey === 'string' ? body.idempotencyKey.slice(0, 120) : undefined,
+    lines,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({
+    success: true,
+    data: {
+      refundId: result.refundId,
+      alreadyProcessed: result.alreadyProcessed,
+      providerStatus: result.providerStatus,
+      providerMessage: result.providerMessage,
+    },
+  });
+});
+
+/**
+ * Resolve a refund left 'requested' (the provider call failed, so nobody knows
+ * whether money moved until someone checks the provider). Refund permission,
+ * a written reason, audited in ResolveRefundUseCase.
+ */
+routes.post('/orders/:orderId/refunds/:refundId/resolve', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const { ResolveRefundUseCase } = await import('../../../../application/use-cases/payments/RefundPesaPalPaymentUseCase');
+  const result = await new ResolveRefundUseCase(
+    registry.refundLedgerRepo,
+    registry.auditRepo,
+    registry.pesapalPaymentRepo,
+    registry.refundConsequencesUseCase,
+  ).execute({
+    orderId: String(c.req.param('orderId') ?? ''),
+    refundId: String(c.req.param('refundId') ?? ''),
+    resolution: body?.resolution === 'settled' ? 'settled' : body?.resolution === 'rejected' ? 'rejected' : (String(body?.resolution ?? '') as never),
+    reason: typeof body?.reason === 'string' ? body.reason : '',
+    actorId: (c.get('user') as { id: string }).id,
+  });
+  if (!result.ok) {
+    const status = result.code === 'REFUND_NOT_FOUND' ? 404 : result.code === 'ALREADY_RESOLVED' ? 409 : 400;
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, status);
+  }
+  return c.json({ success: true, data: result });
+});
+
+/** What has already been given back on an order — the ledger, read directly. */
+routes.get('/orders/:orderId/refunds', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
+  const refunds = await Registry.getInstance().refundLedgerRepo.listRefundsForOrder(
+    String(c.req.param('orderId') ?? ''),
+  );
+  return c.json({ success: true, data: { refunds } });
+});
+
+/**
+ * The four counters on one screen. checkout started -> payment requested ->
+ * payment succeeded -> order paid: a gap between any two adjacent numbers IS
+ * the outage, visible without reading a log.
+ */
+routes.get('/funnel', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
+  const registry = Registry.getInstance();
+  const now = Date.now();
+  const [day, week, ever, silence] = await Promise.all([
+    registry.paymentHealthReader.funnel(new Date(now - 24 * 3_600_000)),
+    registry.paymentHealthReader.funnel(new Date(now - 7 * 24 * 3_600_000)),
+    registry.paymentHealthReader.funnel(new Date(0)),
+    registry.checkPaymentSilenceUseCase.execute(new Date()),
+  ]);
+  return c.json({ success: true, data: { day, week, ever, silence } });
+});
+
+/* ── Operational configuration (TTL, abandonment, health alert) ──────────── */
+
+routes.get('/ops-config', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
+  const { PAYMENTS_OPS_CONFIG_REGISTRY } = await import('../../../../domain/payments/PaymentsOpsConfig');
+  const values = await Registry.getInstance().paymentsOpsConfig.values();
+  return c.json({
+    success: true,
+    data: {
+      entries: PAYMENTS_OPS_CONFIG_REGISTRY.map((e) => ({
+        ...e,
+        value: values[e.key] ?? null,
+        set: values[e.key] !== undefined,
+      })),
+      note: 'Every unset value means that mechanism is OFF. Nothing here shipped with a default.',
+    },
+  });
+});
+
+routes.put('/ops-config/:key', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().paymentsOpsConfig.set({
+    key: String(c.req.param('key') ?? ''),
+    value: String(body?.value ?? ''),
+    actorId: (c.get('user') as { id: string }).id,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: 'INVALID_CONFIG', message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: { saved: true } });
+});
+
+/** Unset a setting — which is how that mechanism is switched OFF. Audited. */
+routes.delete('/ops-config/:key', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const result = await Registry.getInstance().paymentsOpsConfig.unset({
+    key: String(c.req.param('key') ?? ''),
+    actorId: (c.get('user') as { id: string }).id,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: 'INVALID_CONFIG', message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: { unset: true, wasSet: result.wasSet } });
+});
+
+export default routes;

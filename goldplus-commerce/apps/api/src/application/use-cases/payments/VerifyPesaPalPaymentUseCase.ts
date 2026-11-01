@@ -1,10 +1,21 @@
+import { failureReasonToRecord } from '../../../domain/payments/PaymentFailureReason';
+import { IRefundLedgerRepository } from '../../ports/IRefundLedgerRepository';
 import { IPesaPalPaymentRepository, RecordedPaymentAttempt } from '../../ports/IPesaPalPaymentRepository';
 import { IPesaPalClient } from '../../ports/IPesaPalClient';
+import { IOrderTransitionPort } from '../../ports/IOrderTransitionPort';
+import { OrderStatus } from '../../../domain/commerce/Order';
+import { DomainError } from '../../../domain/errors/DomainError';
+import { ApplyRefundConsequencesUseCase, RefundFulfilmentPort, RefundLoyaltyPort } from './ApplyRefundConsequencesUseCase';
 
 export interface VerifyPesaPalPaymentInput {
   orderTrackingId: string;
   merchantReference: string;
-  source: 'callback' | 'ipn';
+  /**
+   * `poll` is the reconciliation safety net asking on a schedule;
+   * `ops_reverify` is a human asking from the payment queue. Neither stamps a
+   * callback/IPN receipt time, because neither is one.
+   */
+  source: 'callback' | 'ipn' | 'poll' | 'ops_reverify';
 }
 
 export interface VerifyPesaPalPaymentOutput {
@@ -14,15 +25,65 @@ export interface VerifyPesaPalPaymentOutput {
   currency: string;
   orderId: string;
   message?: string;
+  /**
+   * The provider's answer was established, but the ORDER could not accept it.
+   *
+   * A completed payment against an order that can no longer transition (it was
+   * cancelled, say) is real money on an order that cannot receive it. That needs
+   * a person, not a confirmation: without this flag the caller saw a verified
+   * `completed` and ran every success effect — marking fulfilment paid, settling
+   * loyalty and telling the customer "payment received" — on an order whose own
+   * state machine had just refused the move.
+   */
+  lifecycleConflict?: boolean;
+  /**
+   * This attempt failed, but the ORDER refused to record it: a later fact about
+   * the money already stands (another attempt paid it). A late decline on a
+   * sibling attempt says nothing about the order, so the caller must not release
+   * a review, and must not tell the customer "payment did not go through" for an
+   * order whose money arrived.
+   */
+  superseded?: boolean;
 }
+
+export type { RefundLoyaltyPort };
+
+/** How long an unpaid (PesaPal status 0) attempt stays open before 0 is taken as final. */
+const UNPAID_GRACE_MS = (Number(process.env.PESAPAL_UNPAID_GRACE_HOURS) > 0 ? Number(process.env.PESAPAL_UNPAID_GRACE_HOURS) : 24) * 3_600_000;
 
 export class VerifyPesaPalPaymentUseCase {
   private paymentRepo: IPesaPalPaymentRepository;
   private pesapalClient: IPesaPalClient;
+  private orderTransition: IOrderTransitionPort;
+  private refundLedger?: IRefundLedgerRepository;
+  private refundConsequences: ApplyRefundConsequencesUseCase;
 
-  constructor(paymentRepo: IPesaPalPaymentRepository, pesapalClient: IPesaPalClient) {
+  constructor(
+    paymentRepo: IPesaPalPaymentRepository,
+    pesapalClient: IPesaPalClient,
+    orderTransition: IOrderTransitionPort,
+    /**
+     * Optional so the hermetic unit suites can construct this without a
+     * database. Absent, a provider reversal is treated as TOTAL — the safe
+     * reading, and exactly what happened before the ledger existed.
+     */
+    refundLedger?: IRefundLedgerRepository,
+    /**
+     * Optional. Points earned on (or spent against) refunded money. The order
+     * lifecycle cannot carry this for a delivered order (terminal) or a partial
+     * refund (no transition), so the payment fact does.
+     */
+    refundLoyalty?: RefundLoyaltyPort,
+    /** Optional. Closes the fulfilment task of an order a total reversal cancelled. */
+    refundFulfilment?: RefundFulfilmentPort,
+    /** 0196: what a gift card paid towards the order (ApplyRefundConsequencesUseCase.storeCreditOf). */
+    storeCreditOf?: (orderId: string) => Promise<number>,
+  ) {
     this.paymentRepo = paymentRepo;
     this.pesapalClient = pesapalClient;
+    this.orderTransition = orderTransition;
+    this.refundLedger = refundLedger;
+    this.refundConsequences = new ApplyRefundConsequencesUseCase(paymentRepo, orderTransition, refundLedger, refundLoyalty, refundFulfilment, storeCreditOf);
   }
 
   async execute(input: VerifyPesaPalPaymentInput): Promise<VerifyPesaPalPaymentOutput> {
@@ -55,14 +116,56 @@ export class VerifyPesaPalPaymentUseCase {
 
     // Mark attempt webhook/callback received timestamp
     const now = new Date();
+    // Timestamps only: re-stamping the status read above could write it over a
+    // newer one (the IPN completing the attempt between that read and this).
     await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, {
-      status: attempt.status,
       callbackReceivedAt: input.source === 'callback' ? now : undefined,
       ipnReceivedAt: input.source === 'ipn' ? now : undefined,
     });
 
-    // If already COMPLETED, return immediately (idempotency key protection)
-    if (attempt.status === 'completed') {
+    // If already COMPLETED, return immediately (idempotency key protection).
+    //
+    // EXCEPT when a refund on this attempt is still waiting on the provider.
+    // This early return is correct for a duplicate callback or IPN, but it was
+    // unconditional — so once an attempt reached 'completed' the provider was
+    // never asked again, and the completed→reversed edge the state machine
+    // declares had no reachable writer at all. A refund could be requested and
+    // never observed landing. Looking again costs one provider call, and only
+    // when the ledger says something is genuinely outstanding.
+    const awaitingRefund =
+      attempt.status === 'completed' && this.refundLedger
+        ? await this.refundLedger.hasOutstandingRefunds(attempt.id)
+        : false;
+
+    if (attempt.status === 'completed' && !awaitingRefund) {
+      // The attempt says paid; the ORDER must say so too before a replay is answered "completed". Re-asserting the
+      // same transition with the same idempotency key is free when it already happened (the existing event comes
+      // back), finishes the job when a crash left it undone, and reports the conflict again when the order could
+      // not take it (cancelled before the money came). Answering from the attempt alone turned a reviewed late
+      // payment into "confirmed" on the very next callback, and left a crashed one unpaid until abandonment.
+      try {
+        await this.orderTransition.transition(attempt.orderId, 'processing', {
+          actorType: 'payment_provider',
+          source: 'payment',
+          reasonCode: 'pesapal_payment_completed',
+          paymentStatus: 'paid',
+          idempotencyKey: `pesapal:completed:${trackingId}`,
+          correlationId: reference,
+        });
+      } catch (err) {
+        if (err instanceof DomainError) {
+          return {
+            ok: true,
+            lifecycleConflict: true,
+            status: 'completed',
+            amount: attempt.amount,
+            currency: attempt.currency,
+            orderId: attempt.orderId,
+            message: `LIFECYCLE_CONFLICT: payment already completed but the order could not take it (${err.message}); left for manual review.`,
+          };
+        }
+        throw err;
+      }
       return {
         ok: true,
         status: 'completed',
@@ -89,8 +192,22 @@ export class VerifyPesaPalPaymentUseCase {
     }
 
     // 3. Strict Verification & Integrity Checks
-    // - Verify merchant reference
-    if (statusResponse.merchant_reference !== reference || statusResponse.merchant_reference !== attempt.merchantReference) {
+    // - The CALLER's reference comes from the public callback/return URL. A
+    //   wrong one says nothing about the payment, so it changes nothing: it
+    //   used to mark the attempt verification_failed, letting anyone holding a
+    //   tracking id knock a live payment into review (2026-10-07).
+    if (reference !== attempt.merchantReference) {
+      return {
+        ok: false,
+        status: attempt.status as never,
+        amount: attempt.amount,
+        currency: attempt.currency,
+        orderId: attempt.orderId,
+        message: 'REFERENCE_MISMATCH: the reference supplied does not belong to this payment; nothing was changed.',
+      };
+    }
+    // - Only the PROVIDER disagreeing with our record is an integrity failure.
+    if (statusResponse.merchant_reference !== attempt.merchantReference) {
       await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, { status: 'verification_failed' });
       return {
         ok: false,
@@ -128,59 +245,212 @@ export class VerifyPesaPalPaymentUseCase {
       };
     }
 
-    // 4. Map PesaPal transaction status code to internal model
-    // 0 = INVALID, 1 = COMPLETED, 2 = FAILED, 3 = REVERSED
+    // 4. Map PesaPal transaction status code to internal model.
+    // 0 = INVALID, 1 = COMPLETED, 2 = FAILED, 3 = REVERSED.
+    //
+    // A payment result may authorise a LIFECYCLE transition (completed => order
+    // moves to processing; reversed => cancelled). Those go through the ONE
+    // canonical, transactional, append-only transition path, which commits the
+    // payment status AND the status change AND exactly one order_event together.
+    // A failed/invalid payment authorises NO lifecycle transition: the order
+    // keeps its current status and only its payment status is recorded. There is
+    // deliberately no `received -> pending_payment` move — that is not a legal
+    // state-machine transition, so no synthetic lifecycle event is invented.
     let mappedStatus = 'pending';
     let orderPaymentStatus: 'paid' | 'failed' | 'reversed' | 'unpaid' = 'unpaid';
-    let orderStatus: 'processing' | 'received' | 'pending_payment' | 'cancelled' = 'received';
+    let lifecycleTarget: OrderStatus | null = null;
+    let reasonCode = 'pesapal_verification';
 
     switch (statusResponse.status_code) {
       case 1:
         mappedStatus = 'completed';
         orderPaymentStatus = 'paid';
-        orderStatus = 'processing';
+        lifecycleTarget = 'processing';
+        reasonCode = 'pesapal_payment_completed';
         break;
+      case 3: {
+        // A provider reversal is reported per TRANSACTION, so it says nothing
+        // about how much came back. Ask the refund ledger.
+        //
+        // Treating every reversal as total used to cancel the customer's whole
+        // order and wipe its revenue — so a 5,000 UGX delivery-fee refund
+        // cancelled a 500,000 UGX order that had already been paid and
+        // fulfilled. Only a reversal the ledger PROVES is partial diverges;
+        // with no ledger rows we cannot tell, so the safe total reading stands.
+        //
+        // The status names no refund, so it settles one only when it cannot
+        // be about anything else (see settleRefundsForAttempt); any other
+        // outstanding row waits for a person to resolve it.
+        if (this.refundLedger) {
+          await this.refundLedger.settleRefundsForAttempt(attempt.id);
+        }
+        const refund = await this.refundConsequences.execute(attempt, {
+          actorType: 'payment_provider',
+          source: 'payment',
+          providerConfirmed: true,
+        });
+        if (refund.reading === 'partial') {
+          // Money WAS collected and only part of it returned: the attempt stays
+          // completed and the order stays paid. This is a paid payment, not
+          // an unpaid one — it used to fall through to "PAYMENT_UNPAID" and
+          // the sweep counted it as a failure.
+          return {
+            ok: true,
+            status: 'completed',
+            amount: attempt.amount,
+            currency: attempt.currency,
+            orderId: attempt.orderId,
+            message: `PAYMENT_PARTIALLY_REFUNDED: ${refund.refundedUgx} of ${attempt.amount} ${attempt.currency} returned (PesaPal: ${statusResponse.payment_status_description}).`,
+          };
+        }
+        if (refund.coveredByAnotherPayment) {
+          // The extra payment of a double charge went back; another attempt still pays for the order.
+          return {
+            ok: false,
+            status: 'reversed',
+            amount: attempt.amount,
+            currency: attempt.currency,
+            orderId: attempt.orderId,
+            message: `SECOND_PAYMENT_REFUNDED: this attempt's ${refund.refundedUgx} ${attempt.currency} went back; another payment still covers the order, which stays paid (PesaPal: ${statusResponse.payment_status_description}).`,
+          };
+        }
+        if (refund.lifecycleConflict) {
+          return {
+            ok: false,
+            lifecycleConflict: true,
+            status: 'reversed',
+            amount: attempt.amount,
+            currency: attempt.currency,
+            orderId: attempt.orderId,
+            message: `LIFECYCLE_CONFLICT: payment resolved to "reversed" but the order could not transition (${refund.conflictMessage ?? ''}); payment status recorded for manual review.`,
+          };
+        }
+        return {
+          ok: false,
+          status: 'reversed',
+          amount: attempt.amount,
+          currency: attempt.currency,
+          orderId: attempt.orderId,
+          message: `PAYMENT_REVERSED: Transaction resolved to state "reversed" (PesaPal: ${statusResponse.payment_status_description}).`,
+        };
+      }
       case 2:
         mappedStatus = 'failed';
         orderPaymentStatus = 'failed';
-        orderStatus = 'pending_payment';
-        break;
-      case 3:
-        mappedStatus = 'reversed';
-        orderPaymentStatus = 'reversed';
-        orderStatus = 'cancelled';
         break;
       case 0:
       default:
+        // PesaPal answers 0 / INVALID for a transaction nobody has paid YET:
+        // production recorded it 5–22 seconds after the payment page was
+        // created, on the very first poll, before any customer could have
+        // entered a PIN (14 of 19 attempts, 2026-09-12/13). Written as terminal
+        // `invalid`, that killed the attempt, told the customer "payment
+        // failed" while they were still paying, and left a later payment with
+        // nowhere to land. While the attempt is young it is simply not paid
+        // yet: nothing is written, and the reconciliation poller asks again.
+        // A description that names an outcome (CANCELLED, ...) stays final.
+        if (statusResponse.status_code === 0 && /^(invalid|pending)?$/i.test(String(statusResponse.payment_status_description ?? '').trim()) && Date.now() - new Date(attempt.createdAt).getTime() < UNPAID_GRACE_MS) {
+          return {
+            ok: false,
+            status: 'pending',
+            amount: attempt.amount,
+            currency: attempt.currency,
+            orderId: attempt.orderId,
+            message: `PAYMENT_PENDING: not paid yet (PesaPal: ${statusResponse.payment_status_description}).`,
+          };
+        }
         mappedStatus = 'invalid';
         orderPaymentStatus = 'failed';
-        orderStatus = 'pending_payment';
         break;
     }
 
-    // 5. Persist safe status updates to payment_attempts
-    await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, { status: mappedStatus });
+    // 5. Persist the verification outcome on the payment attempt.
+    // The provider's own answer about the money, so it may record a collection
+    // that followed an earlier decline on the same tracking id (2026-09-20).
+    await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, { status: mappedStatus, providerConfirmed: true });
 
-    // 6. Update order status safely only when verified completed/failed
-    if (mappedStatus === 'completed') {
-      await this.paymentRepo.updateOrderPaymentStatusSafely(attempt.orderId, orderPaymentStatus, orderStatus);
-      return {
-        ok: true,
-        status: 'completed',
-        amount: attempt.amount,
-        currency: attempt.currency,
-        orderId: attempt.orderId,
-      };
-    } else {
-      await this.paymentRepo.updateOrderPaymentStatusSafely(attempt.orderId, orderPaymentStatus, orderStatus);
+    // 5b. Why it failed, as the provider said it (0162). Never on a completed
+    // attempt; the repository's write repeats that guard atomically.
+    const failureReason = failureReasonToRecord({
+      currentStatus: attempt.status,
+      resolvedStatus: mappedStatus,
+      statusCode: statusResponse.status_code,
+      description: statusResponse.payment_status_description,
+    });
+    if (failureReason && this.paymentRepo.recordFailureReason) {
+      await this.paymentRepo.recordFailureReason(attempt.id, failureReason);
+    }
+
+    // 6. Apply the order-side effect.
+    if (lifecycleTarget) {
+      // Legal lifecycle move authorised by the verified payment. The canonical
+      // service commits payment status + status + one event atomically. The
+      // actor is the verified payment provider — never a request field. The
+      // stable idempotency key means a retried callback/IPN writes no duplicate.
+      try {
+        await this.orderTransition.transition(attempt.orderId, lifecycleTarget, {
+          actorType: 'payment_provider',
+          source: 'payment',
+          reasonCode,
+          paymentStatus: orderPaymentStatus,
+          idempotencyKey: `pesapal:${mappedStatus}:${trackingId}`,
+          correlationId: reference,
+        });
+      } catch (err) {
+        // The order is in a state that does not permit this lifecycle move (e.g.
+        // a reversal arriving after the order already completed). Do NOT force an
+        // illegal transition or invent an event; record the payment fact only and
+        // surface it for manual reconciliation.
+        if (err instanceof DomainError) {
+          await this.paymentRepo.updateOrderPaymentStatusSafely(attempt.orderId, orderPaymentStatus);
+          // (A reversal's conflict, and its loyalty, is ApplyRefundConsequencesUseCase's.)
+          return {
+            ok: mappedStatus === 'completed',
+            // Named, not merely described in a message nobody reads. This is what
+            // routes the settlement to REVIEW_REQUIRED instead of CONFIRMED.
+            lifecycleConflict: true,
+            status: mappedStatus,
+            amount: attempt.amount,
+            currency: attempt.currency,
+            orderId: attempt.orderId,
+            message: `LIFECYCLE_CONFLICT: payment resolved to "${mappedStatus}" but the order could not transition (${err.message}); payment status recorded for manual review.`,
+          };
+        }
+        throw err;
+      }
+
+      if (mappedStatus === 'completed') {
+        return {
+          ok: true,
+          status: 'completed',
+          amount: attempt.amount,
+          currency: attempt.currency,
+          orderId: attempt.orderId,
+        };
+      }
       return {
         ok: false,
         status: mappedStatus,
         amount: attempt.amount,
         currency: attempt.currency,
         orderId: attempt.orderId,
-        message: `PAYMENT_UNPAID: Transaction resolved to state "${mappedStatus}" (PesaPal: ${statusResponse.payment_status_description}).`,
+        message: `PAYMENT_${mappedStatus.toUpperCase()}: Transaction resolved to state "${mappedStatus}" (PesaPal: ${statusResponse.payment_status_description}).`,
       };
     }
+
+    // Failed/invalid payment: record the payment status only; the order lifecycle
+    // is unchanged and no order_event is written. A refused write means the
+    // order already holds a later fact about its money (paid by another
+    // attempt): this attempt's failure no longer speaks for the order.
+    const written = await this.paymentRepo.updateOrderPaymentStatusSafely(attempt.orderId, orderPaymentStatus);
+    return {
+      ok: false,
+      ...(written === false ? { superseded: true } : {}),
+      status: mappedStatus,
+      amount: attempt.amount,
+      currency: attempt.currency,
+      orderId: attempt.orderId,
+      message: `PAYMENT_UNPAID: Transaction resolved to state "${mappedStatus}" (PesaPal: ${statusResponse.payment_status_description}).`,
+    };
   }
 }

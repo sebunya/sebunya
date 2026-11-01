@@ -1,0 +1,220 @@
+import { Registry } from '../Registry';
+import { logger } from '../logging/logger';
+import { checkCallbackSilence } from '../../application/use-cases/payments/PaymentSilenceUseCases';
+import { describeSkippedSweeps } from '../../domain/payments/PaymentOpsSilence';
+import { tryAcquireSessionLock, type HeldSessionLock } from '../db/sessionLock';
+
+/**
+ * Both API replicas run this ticker, started together at deploy. The sweeps above
+ * the lock are idempotent; the alerts and the PesaPal synthetic probe are not —
+ * the probe read "last probe" and then submitted a REAL order, so both replicas
+ * submitted one each interval, and every ALERT line appeared twice. Only the
+ * replica holding this lock runs them on a given tick.
+ */
+const PAYMENT_OPS_LOCK_ID = 887_401_311;
+
+/**
+ * Runs the payment reconciliation poller on a schedule.
+ *
+ * Cadence and thresholds are OPERATIONAL numbers, not business ones — they
+ * decide how soon we ask the provider a question whose answer is always the
+ * provider's, never how a payment resolves. Overridable by environment,
+ * defaults recorded in docs/payments/DECISIONS.md:
+ *
+ *   PAYMENT_RECONCILE_INTERVAL_MINUTES  (default 10) — how often the sweep runs
+ *   PAYMENT_RECONCILE_AFTER_MINUTES     (default 10) — how old an attempt must
+ *     be before we ask. Comfortably above the 60–120 seconds a customer needs
+ *     to find their phone and enter a PIN, so the poller never races a payment
+ *     still genuinely in flight.
+ *   PAYMENT_ABANDON_START_FAILURES_HOURS (default 24) — how long a
+ *     no-transaction attempt sits before closing as abandoned.
+ *
+ * Every action inside is idempotent (settlement is replay-tolerant, abandoned
+ * is terminal), so the cadence bounds staleness, never correctness — the same
+ * property the loyalty sweep leans on.
+ */
+
+function envInt(name: string, fallback: number): number {
+  const n = Number(process.env[name]);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
+const INTERVAL_MS = envInt('PAYMENT_RECONCILE_INTERVAL_MINUTES', 10) * 60_000;
+const START_DELAY_MS = 60_000;
+
+let timer: NodeJS.Timeout | null = null;
+let running = false;
+/** Throttle: the silence alert repeats at most hourly while in breach. */
+let lastSilenceAlertAt = 0;
+let lastCallbackAlertAt = 0;
+let lastSweepsOffAlertAt = 0;
+
+async function runOnce(): Promise<void> {
+  if (running) return;
+  running = true;
+  const registry = Registry.getInstance();
+  try {
+    const result = await registry.reconcilePendingPaymentsUseCase.execute(new Date());
+    if (result.polled > 0 || result.abandoned > 0 || result.caughtUp > 0 || result.errors.length > 0) {
+      logger.info({ ...result }, '[payment-reconcile] sweep complete');
+    }
+    if (result.confirmed > 0) {
+      // A payment the callback missed and the poller found. Loud on purpose:
+      // this is the safety net catching real money.
+      logger.warn(
+        { confirmed: result.confirmed },
+        '[payment-reconcile] CONFIRMED payment(s) found by polling that no callback delivered — the safety net caught money',
+      );
+    }
+  } catch (error) {
+    logger.error({ err: error }, '[payment-reconcile] sweep failed');
+  }
+  // Each stage isolated: reconciliation failing must not stop reservations
+  // expiring, and vice versa. Every stage is a no-op-with-reason while its
+  // operator threshold is unset.
+  let reservationsSkipped: 'ttl_not_configured' | null = null;
+  let abandonmentSkipped: 'window_not_configured' | null = null;
+  try {
+    const expired = await registry.expireStaleReservationsUseCase.execute(new Date());
+    reservationsSkipped = expired.skipped;
+    if (expired.released > 0) logger.warn({ ...expired }, '[payment-ops] expired reservations released stock back to sale');
+  } catch (error) {
+    logger.error({ err: error }, '[payment-ops] reservation expiry failed');
+  }
+  try {
+    const abandoned = await registry.abandonStaleUnpaidOrdersUseCase.execute(new Date());
+    abandonmentSkipped = abandoned.skipped;
+    if (abandoned.abandoned > 0 || abandoned.errors.length > 0) {
+      logger.warn({ ...abandoned }, '[payment-ops] stale unpaid orders abandoned');
+    }
+  } catch (error) {
+    logger.error({ err: error }, '[payment-ops] abandonment failed');
+  }
+  try {
+    // 0199: gift cards bought online: payments nobody reported, abandoned pages, and cards due this morning.
+    // Every write is a compare-and-set, so both replicas may run it.
+    const gifts = await registry.giftCardPurchaseUseCases.sweep(new Date());
+    if (gifts.polled > 0 || gifts.abandoned > 0 || gifts.issued > 0) logger.info({ ...gifts }, '[gift-card] sweep complete');
+  } catch (error) {
+    logger.error({ err: error }, '[gift-card] sweep failed');
+  }
+  try {
+    // 0201: gift card photos the retention rules no longer keep (deletes only; both replicas may run it).
+    await registry.giftCardPhotoUseCases.sweep(new Date());
+  } catch (error) {
+    logger.error({ err: error }, '[gift-card-photo] sweep failed');
+  }
+  try {
+    // 0209: review photo uploads nothing attached, and photos of long-rejected reviews. Its own try: a gift-card
+    // error used to skip it, and its failures were logged as the gift-card sweep's.
+    await registry.reviewPhotoUseCases.sweep(new Date());
+  } catch (error) {
+    logger.error({ err: error }, '[review-photo] sweep failed');
+  }
+  let opsLock: HeldSessionLock | null = null;
+  try {
+    opsLock = await tryAcquireSessionLock(PAYMENT_OPS_LOCK_ID);
+  } catch (error) {
+    logger.error({ err: error }, '[payment-ops] could not take the alerts/probe lock');
+  }
+  if (!opsLock) {
+    // The other replica is running the alerts and the probe this tick.
+    running = false;
+    return;
+  }
+  try {
+    await runAlertsAndProbe(registry, reservationsSkipped, abandonmentSkipped);
+  } finally {
+    await opsLock.release().catch((error) => logger.error({ err: error }, '[payment-ops] lock release failed'));
+    running = false;
+  }
+}
+
+async function runAlertsAndProbe(
+  registry: Registry,
+  reservationsSkipped: 'ttl_not_configured' | null,
+  abandonmentSkipped: 'window_not_configured' | null,
+): Promise<void> {
+  // Once an hour, not every ten minutes: loud enough to be seen, quiet enough to be read.
+  const sweepsOff = describeSkippedSweeps({ reservations: { skipped: reservationsSkipped }, abandonment: { skipped: abandonmentSkipped } });
+  if (sweepsOff && Date.now() - lastSweepsOffAlertAt > 3_600_000) {
+    lastSweepsOffAlertAt = Date.now();
+    logger.warn({ reservationsSkipped, abandonmentSkipped }, sweepsOff);
+  }
+  try {
+    await registry.alertOnLedgerMismatchUseCase.execute();
+  } catch (error) {
+    logger.error({ err: error }, '[payment-ops] ledger mismatch scan failed');
+  }
+  try {
+    const silence = await registry.checkPaymentSilenceUseCase.execute(new Date());
+    // An alarm that is switched off looked exactly like an alarm reporting
+    // health: nothing was logged either way. It says so now, and if no payment
+    // has EVER succeeded it says that at error level, because no operator
+    // setting is needed to know that a shop taking no money is broken.
+    if (silence.state === 'off' && Date.now() - lastSilenceAlertAt > 3_600_000) {
+      lastSilenceAlertAt = Date.now();
+      if (silence.neverPaid) {
+        logger.error(
+          { reason: silence.reason },
+          'ALERT PAYMENT_SILENCE — NO PAYMENT HAS EVER SUCCEEDED, and the payment health alarm is not configured. ' +
+            'Set payment_health_alert_hours. Check that the provider can REACH the IPN endpoint: a WAF or bot rule ' +
+            'in front of it blocks server-to-server callbacks silently.',
+        );
+      } else {
+        logger.warn(
+          { reason: silence.reason },
+          '[payment-ops] payment health alarm is OFF — set payment_health_alert_hours, or a revenue outage will pass unnoticed.',
+        );
+      }
+    }
+    if (silence.state === 'SILENT' && Date.now() - lastSilenceAlertAt > 3_600_000) {
+      lastSilenceAlertAt = Date.now();
+      logger.error(
+        { hoursSilent: silence.hoursSilent, windowHours: silence.windowHours, lastPaymentAt: silence.lastPaymentAt },
+        silence.hoursSilent === null
+          ? 'ALERT PAYMENT_SILENCE — NO PAYMENT HAS EVER SUCCEEDED. The shop is taking no money and every system is green.'
+          : 'ALERT PAYMENT_SILENCE — no successful payment inside the configured window during trading hours.',
+      );
+    }
+  } catch (error) {
+    logger.error({ err: error }, '[payment-ops] silence check failed');
+  }
+  try {
+    // The provider was unable to reach us for FOUR MONTHS and nothing said so:
+    // every attempt got a redirect and then silence. This asks the one question
+    // that needed no configuration to answer, so a blocked callback URL is
+    // caught in hours instead of never.
+    const callbacks = await checkCallbackSilence(registry.paymentHealthReader, new Date());
+    if (callbacks.state === 'PROVIDER_NEVER_CALLS_BACK' && Date.now() - lastCallbackAlertAt > 3_600_000) {
+      lastCallbackAlertAt = Date.now();
+      logger.error(
+        { awaiting: callbacks.awaiting, total: callbacks.total },
+        'ALERT PAYMENT_CALLBACK_SILENCE — every recent payment attempt was handed a provider redirect and then heard ' +
+          'NOTHING back: no IPN, no return leg. The callback URL is almost certainly unreachable from the provider ' +
+          '(a WAF or bot rule in front of it, a DNS change, or a stale IPN registration). Customers cannot pay.',
+      );
+    }
+  } catch (error) {
+    logger.error({ err: error }, '[payment-ops] callback silence check failed');
+  }
+  try {
+    const probe = await registry.pesapalSyntheticProbeUseCase.execute(new Date());
+    if (probe.state === 'passed') logger.info({ trackingId: probe.trackingId }, '[payment-ops] synthetic probe passed');
+    // FAILED already alerted inside the use case.
+  } catch (error) {
+    logger.error({ err: error }, '[payment-ops] synthetic probe errored');
+  }
+}
+
+export function startPaymentReconcileTicker(): void {
+  if (timer) return;
+  setTimeout(() => void runOnce(), START_DELAY_MS).unref?.();
+  timer = setInterval(() => void runOnce(), INTERVAL_MS);
+  timer.unref?.();
+}
+
+export function stopPaymentReconcileTicker(): void {
+  if (timer) clearInterval(timer);
+  timer = null;
+}

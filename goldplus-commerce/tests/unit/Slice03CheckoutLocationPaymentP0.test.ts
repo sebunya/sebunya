@@ -19,17 +19,30 @@ describe('Slice 03 checkout location and payment P0 protected contract', () => {
 
   it('uses the server cart subtotal as the displayed checkout total', () => {
     expect(checkout).toContain('{formatUgx(cart.subtotalUgx)}');
-    expect(checkout).toContain('Calculated post-zone');
+    // Delivery wave replaced the static "Calculated post-zone" copy with the
+    // live estimate row. The protected part of the contract is unchanged: only
+    // a CONFIRMED operator-zone fee may join the total the customer commits to.
+    expect(checkout).toContain('id="delivery-estimate-value"');
+    expect(checkout).toMatch(/kind === 'CONFIRMED'[\s\S]*?\? est\.feeUgx : 0|CONFIRMED' \? \(initialDeliveryEstimate\.feeUgx \?\? 0\) : 0|initialDeliveryEstimate\?\.kind === 'CONFIRMED' \? initialDeliveryEstimate\.feeUgx \?\? 0 : 0/);
   });
 
-  it('keeps offline drafts unmistakably separate from submitted orders', () => {
-    expect(checkout).toContain('Local Demo Mode Only');
-    expect(checkout).toContain('Order was not submitted to the server.');
-    expect(checkout).toContain('This order has <strong>not</strong> been submitted');
+  it('offers no "offline draft" that looks like an order', () => {
+    // This contract used to guard the draft's LABELLING ("Local Demo Mode
+    // Only"). The draft itself was the defect: on any refusal it rendered a
+    // green "received" state with a random GP-DRAFT-###### reference that
+    // existed nowhere, could never be paid, and deleted the cart cookie. The
+    // affordance is gone; the guard now keeps it gone.
+    // Comments explaining the removal must not satisfy (or trip) the guard.
+    const code = checkout.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code).not.toMatch(/allowOfflineDraft|GP-DRAFT-|Demo Mode|local demonstration|offline draft/i);
   });
 
   it('does not claim a payment succeeded or an order is paid', () => {
-    expect(checkout).not.toMatch(/payment (?:complete|successful)|order (?:is|was) paid|paid in full/i);
+    // The loyalty preview honestly says points arrive "when this order is paid"
+    // — a conditional future, not a success claim. The guard forbids CLAIMS of
+    // completed payment, so the conditional form is carved out explicitly.
+    expect(checkout).not.toMatch(/payment (?:complete|successful)|paid in full/i);
+    expect(checkout).not.toMatch(/(?<!when (?:the|this) )order (?:is|was) paid/i);
   });
 
   it('tells the customer payment failed via a mapped code, not the API message', () => {

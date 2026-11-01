@@ -70,6 +70,15 @@ export function reconcilePayments(input: {
     list.push(p);
     successByOrder.set(p.orderId, list);
   }
+  // PesaPal settlement never writes a `payments` row; its success record is the
+  // attempt itself. Without this every PesaPal-paid order was reported as
+  // "paid without a success record" and the report was never healthy.
+  for (const a of input.attempts) {
+    if (a.status !== 'completed') continue;
+    const list = successByOrder.get(a.orderId) ?? [];
+    list.push({ orderId: a.orderId, status: 'SUCCESS', amount: a.amount } as ReconcilablePayment);
+    successByOrder.set(a.orderId, list);
+  }
 
   for (const order of input.orders) {
     const successes = successByOrder.get(order.id) ?? [];

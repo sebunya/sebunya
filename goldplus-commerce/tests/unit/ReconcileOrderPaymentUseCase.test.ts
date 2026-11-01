@@ -208,6 +208,38 @@ describe('duplicate callbacks are safe', () => {
     expect((await run(useCase, 'completed')).kind).toBe('ALREADY_SETTLED');
     expect(trace.recorded).toEqual([]);
   });
+
+  it('a repeat of the paying attempt stays quiet: no review, no second-payment reason', async () => {
+    const { useCase, trace } = build({ stage: 'ORDER_CONFIRMED' });
+    const outcome = await run(useCase, 'completed');
+    expect(outcome.reason).toBe('ALREADY_CONFIRMED');
+    expect(trace.reviews).toEqual([]);
+  });
+
+  it('a DIFFERENT attempt paid on an already-paid order is a double charge: reviewed, named, the order left as it is', async () => {
+    // Attempt B's money arrived after attempt A paid: VerifyPesaPal could not move processing -> processing, so it
+    // recorded the payment and returned lifecycleConflict with ok. That used to read as a harmless duplicate.
+    const { useCase, trace } = build({ stage: 'ORDER_CONFIRMED' });
+    const outcome = await useCase.execute({
+      verification: { ok: true, orderId: ORDER, status: 'completed', lifecycleConflict: true },
+      traceId: 't1',
+    });
+    expect(outcome.kind).toBe('ALREADY_SETTLED');
+    expect(outcome.reason).toBe('SECOND_PAYMENT_TAKEN');
+    expect(trace.reviews).toEqual(['SECOND_PAYMENT_TAKEN']);
+    expect(trace.advances).toEqual([]);
+    expect(trace.recorded).toEqual([]);
+  });
+
+  it('a conflict with NO money arriving (e.g. a failed second attempt) is not a double charge', async () => {
+    const { useCase, trace } = build({ stage: 'ORDER_CONFIRMED' });
+    const outcome = await useCase.execute({
+      verification: { ok: false, orderId: ORDER, status: 'failed', lifecycleConflict: true },
+      traceId: 't1',
+    });
+    expect(outcome.reason).toBe('ALREADY_CONFIRMED');
+    expect(trace.reviews).toEqual([]);
+  });
 });
 
 describe('only a checkout that reached payment may be settled', () => {
@@ -241,17 +273,34 @@ describe('both provider paths settle through the same use case', () => {
   );
   const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
-  it('is called by the browser callback AND the IPN', () => {
-    // Two copies of a payment settlement path drift, and the drift is invisible: an
-    // order settled by IPN would quietly differ from one settled by the callback.
-    expect((code.match(/reconcileOrderPaymentUseCase\.execute\(/g) ?? []).length).toBe(2);
+  it('is called by the browser callback AND the IPN — now through ONE settle use case', () => {
+    // UPDATED 2026-08-06: the two routes no longer each call reconcile + carry
+    // their own ~90-line effects copy. Both call settlePaymentUseCase, and
+    // reconcile is invoked exactly once, inside it. Two doors, one path.
+    expect((code.match(/settlePaymentUseCase\.execute\(/g) ?? []).length).toBe(2);
+    expect(code).not.toContain('reconcileOrderPaymentUseCase.execute(');
+    const settleSource = readFileSync(
+      join(__dirname, '../../apps/api/src/application/use-cases/payments/SettlePaymentUseCase.ts'),
+      'utf8',
+    ).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect((settleSource.match(/this\.reconcile\.execute\(/g) ?? []).length).toBe(1);
   });
 
   it('gates downstream work on the settlement, not on the raw provider status', () => {
-    // Three: the callback's downstream work, the IPN's downstream work, and what the
-    // CUSTOMER is told on the callback redirect. That last one mattered — reading the raw
-    // status there could show "success" for a payment the settlement parked for review.
-    expect((code.match(/paymentDidConfirm\(settlement\)/g) ?? []).length).toBe(3);
+    // The downstream effects moved into SettlePaymentUseCase, gated on
+    // paymentDidConfirm there. What remains in the route is what the CUSTOMER
+    // is told on the callback redirect — which mattered: reading the raw status
+    // could show "success" for a payment the settlement parked for review.
+    // UPDATED 2026-09-24: that mapping is customerReturnKind (in
+    // SettlePaymentUseCase), so both doors share it and a customer whose own
+    // attempt paid is told "success", not "already paid earlier".
+    expect(code).toContain('return customerReturnKind(result);');
+    expect(code).not.toMatch(/result\.verification\.status/);
+    const settleSource = readFileSync(
+      join(__dirname, '../../apps/api/src/application/use-cases/payments/SettlePaymentUseCase.ts'),
+      'utf8',
+    ).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect((settleSource.match(/paymentDidConfirm\(settlement\)/g) ?? []).length).toBeGreaterThanOrEqual(1);
     // The old condition trusted the adapter's status string directly.
     expect(code).not.toContain("result.ok && result.status === 'completed'");
   });
@@ -268,7 +317,7 @@ describe('the checkout intent survives the payment handoff', () => {
     // who already has one being paid for.
     const redirectBranch = code.slice(
       code.indexOf('if (payRes.ok)'),
-      code.indexOf('return Astro.redirect(payRes.data.redirectUrl'),
+      code.indexOf('return Astro.redirect(onSitePaymentPath({ redirectUrl: payRes.data.redirectUrl'),
     );
     expect(redirectBranch).not.toContain('clearCheckoutIntent');
   });
@@ -276,8 +325,11 @@ describe('the checkout intent survives the payment handoff', () => {
   it('still clears the cart cookie, because the basket became an order', () => {
     const redirectBranch = code.slice(
       code.indexOf('if (payRes.ok)'),
-      code.indexOf('return Astro.redirect(payRes.data.redirectUrl'),
+      code.indexOf('return Astro.redirect(onSitePaymentPath({ redirectUrl: payRes.data.redirectUrl'),
     );
-    expect(redirectBranch).toContain("Astro.cookies.delete('goldplus_cart_data'");
+    // The cookie delete moved into clearBasketAfterOrder(), which ALSO clears
+    // the server cart — the cookie alone left the basket standing after the
+    // order was placed.
+    expect(redirectBranch).toContain("await clearBasketAfterOrder();");
   });
 });
