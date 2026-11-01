@@ -3,8 +3,13 @@ import { db } from '../client';
 import type { FeaturedProductsStore } from '../../../application/ports/SpotifyRotation';
 
 const rowsOf = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
-const tableExists = async () =>
-  Boolean(rowsOf(await db.execute(sql`select to_regclass('public.ad_featured_products') is not null as ok`))[0]?.ok);
+// Once the table is seen it stays (migrations only add it), so the check runs until then and not on every call.
+let tableSeen = false;
+const tableExists = async () => {
+  if (tableSeen) return true;
+  tableSeen = Boolean(rowsOf(await db.execute(sql`select to_regclass('public.ad_featured_products') is not null as ok`))[0]?.ok);
+  return tableSeen;
+};
 
 /** ad_featured_products (0170). Before the migration: none featured, and saving refuses. */
 export class DrizzleFeaturedProductsStore implements FeaturedProductsStore {

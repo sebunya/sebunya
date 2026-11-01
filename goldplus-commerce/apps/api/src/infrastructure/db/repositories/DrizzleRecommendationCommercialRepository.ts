@@ -78,6 +78,28 @@ const LINE_REFUNDS = sql`
 /** Net line revenue after any explicit per-line refund, never below zero. */
 const NET_AFTER_REFUND = sql`greatest(oi.final_line_total - coalesce(lr.refunded_ugx, 0), 0)`;
 
+type MediaCostFactInput = {
+  spendDate: string; channel: string; platform: string; account: string; campaign: string;
+  adSetOrGroup?: string | null; adOrCreative?: string | null; currency: string; spendMinor: number;
+  taxOrFeeMinor: number; source: string; sourceReference?: string | null; ingestedBy: string;
+};
+
+/** The one media_cost_facts insert, shared by the single and the all-or-nothing file path. */
+function mediaCostFactInsertSql(input: MediaCostFactInput) {
+  return sql`
+      insert into media_cost_facts
+        (spend_date, channel, platform, account, campaign, ad_set_or_group, ad_or_creative,
+         currency, spend_minor, tax_or_fee_minor, source, source_reference, ingested_by)
+      values
+        (${input.spendDate}::date, ${input.channel}, ${input.platform}, ${input.account},
+         ${input.campaign}, ${input.adSetOrGroup ?? null}, ${input.adOrCreative ?? null},
+         ${input.currency}, ${input.spendMinor}, ${input.taxOrFeeMinor}, ${input.source},
+         ${input.sourceReference ?? null}, ${input.ingestedBy}::uuid)
+      on conflict do nothing
+      returning id
+  `;
+}
+
 export class DrizzleRecommendationCommercialRepository implements IRecommendationCommercialRepository {
   /**
    * Per-line primary attribution over the window. The DISTINCT ON keeps
@@ -311,8 +333,8 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
       orders_by_stage as (
         select
           count(distinct o.id) filter (where o.payment_status = 'paid' and o.status <> 'cancelled')::int as paid,
-          count(distinct o.id) filter (where o.payment_status = 'paid' and o.status in ('dispatched', 'completed'))::int as fulfilled,
-          count(distinct o.id) filter (where o.payment_status = 'paid' and o.status = 'completed')::int as completed
+          count(distinct o.id) filter (where o.payment_status = 'paid' and o.status in ('dispatched', 'delivered', 'completed'))::int as fulfilled,
+          count(distinct o.id) filter (where o.payment_status = 'paid' and o.status in ('delivered', 'completed'))::int as completed
         from orders o
         join touched t on t.profile_id = o.profile_id
         where o.created_at >= now() - make_interval(days => ${windowDays})
@@ -678,18 +700,7 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
     sourceReference?: string | null;
     ingestedBy: string;
   }): Promise<{ inserted: boolean }> {
-    const rows = (await db.execute(sql`
-      insert into media_cost_facts
-        (spend_date, channel, platform, account, campaign, ad_set_or_group, ad_or_creative,
-         currency, spend_minor, tax_or_fee_minor, source, source_reference, ingested_by)
-      values
-        (${input.spendDate}::date, ${input.channel}, ${input.platform}, ${input.account},
-         ${input.campaign}, ${input.adSetOrGroup ?? null}, ${input.adOrCreative ?? null},
-         ${input.currency}, ${input.spendMinor}, ${input.taxOrFeeMinor}, ${input.source},
-         ${input.sourceReference ?? null}, ${input.ingestedBy}::uuid)
-      on conflict do nothing
-      returning id
-    `)) as unknown as Array<{ id: string }>;
+    const rows = (await db.execute(mediaCostFactInsertSql(input))) as unknown as Array<{ id: string }>;
     return { inserted: rows.length > 0 };
   }
 
@@ -708,18 +719,7 @@ export class DrizzleRecommendationCommercialRepository implements IRecommendatio
     return db.transaction(async (tx) => {
       let inserted = 0;
       for (const input of facts) {
-        const rows = (await tx.execute(sql`
-          insert into media_cost_facts
-            (spend_date, channel, platform, account, campaign, ad_set_or_group, ad_or_creative,
-             currency, spend_minor, tax_or_fee_minor, source, source_reference, ingested_by)
-          values
-            (${input.spendDate}::date, ${input.channel}, ${input.platform}, ${input.account},
-             ${input.campaign}, ${input.adSetOrGroup ?? null}, ${input.adOrCreative ?? null},
-             ${input.currency}, ${input.spendMinor}, ${input.taxOrFeeMinor}, ${input.source},
-             ${input.sourceReference ?? null}, ${input.ingestedBy}::uuid)
-          on conflict do nothing
-          returning id
-        `)) as unknown as Array<{ id: string }>;
+        const rows = (await tx.execute(mediaCostFactInsertSql(input))) as unknown as Array<{ id: string }>;
         if (rows.length > 0) inserted += 1;
       }
       return { inserted, duplicates: facts.length - inserted };

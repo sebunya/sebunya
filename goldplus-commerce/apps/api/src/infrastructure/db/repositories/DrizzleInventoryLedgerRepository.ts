@@ -159,12 +159,20 @@ export class DrizzleInventoryLedgerRepository implements IInventoryLedgerReposit
   }
 
   async updateReceiptLines(id: string, lines: Parameters<IInventoryLedgerRepository['updateReceiptLines']>[1]) {
-    await db.transaction(async (tx) => {
+    // Only an unclaimed DRAFT: replacing the lines of a receipt being applied (applied_by set) or already
+    // applied lost the movement links and let markReceipt stamp ids onto lines that no longer exist.
+    const edited = await db.transaction(async (tx) => {
+      const [held] = await tx
+        .update(stockReceipts)
+        .set({ updatedAt: new Date() })
+        .where(and(eq(stockReceipts.id, id), eq(stockReceipts.status, 'DRAFT'), isNull(stockReceipts.appliedBy)))
+        .returning({ id: stockReceipts.id });
+      if (!held) return false;
       await tx.delete(stockReceiptLines).where(eq(stockReceiptLines.receiptId, id));
       if (lines.length) await tx.insert(stockReceiptLines).values(lines.map(({ id: _i, ...l }) => ({ receiptId: id, ...l })));
-      await tx.update(stockReceipts).set({ updatedAt: new Date() }).where(eq(stockReceipts.id, id));
+      return true;
     });
-    return this.receiptById(id);
+    return edited ? this.receiptById(id) : null;
   }
 
   /**

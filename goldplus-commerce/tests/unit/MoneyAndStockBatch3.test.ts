@@ -384,7 +384,7 @@ describe('stock copy and stock labels tell the truth', () => {
     expect(hero).toMatch(/and p\.stock_quantity - p\.reserved_quantity > 0/);
     expect(hero).not.toMatch(/stock_status = 'in_stock'/);
     expect(read('apps/api/src/infrastructure/db/repositories/DrizzleProductRepository.ts'))
-      .toMatch(/conditions\.push\(sql`\$\{products\.stockQuantity\} - \$\{products\.reservedQuantity\} > 0`\)/);
+      .toMatch(/conditions\.push\(sql`\(\$\{products\.stockQuantity\} - \$\{products\.reservedQuantity\} > 0 or \$\{products\.inventoryPolicy\} = 'NON_STOCK_ITEM'\)`\)/);
   });
 });
 

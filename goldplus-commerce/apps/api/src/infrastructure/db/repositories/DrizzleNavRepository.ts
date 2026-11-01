@@ -25,15 +25,18 @@ export class DrizzleNavRepository implements INavRepository {
     // NEVER JSON.stringify first (postgres-js serializes the bound object once).
     // Optimistic concurrency: when expectedVersion is given, the WHERE also pins
     // the version, so a stale-based save matches 0 rows and returns null.
-    const guard = expectedVersion != null ? sql`and version = ${expectedVersion}` : sql``;
+    // Upsert: with no seeded row the UPDATE matched nothing and the save was silently lost.
+    const guard = expectedVersion != null ? sql`where nav_config.version = ${expectedVersion}` : sql``;
     const rows = rowsOf(
       await db.execute(sql`
-        update nav_config
-           set config = ${pgJsonb(config)},
-               version = version + 1,
-               updated_by = ${actorId}::uuid,
+        insert into nav_config (id, config, version, updated_by, updated_at)
+        values (true, ${pgJsonb(config)}, 1, ${actorId}::uuid, now())
+        on conflict (id) do update
+           set config = excluded.config,
+               version = nav_config.version + 1,
+               updated_by = excluded.updated_by,
                updated_at = now()
-         where id = true ${guard}
+         ${guard}
          returning config, version, updated_at
       `),
     );

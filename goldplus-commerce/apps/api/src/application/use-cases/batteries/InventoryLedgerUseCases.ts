@@ -159,6 +159,8 @@ export class InventoryLedgerUseCases {
       resolved.push({ id: l.id, productId, scannedCode: l.scannedCode, matchKind, quantity: l.quantity, unitCostUgx: canRecordCost ? l.unitCostUgx : null, notes: l.notes });
     }
     const updated = await this.repo.updateReceiptLines(id, resolved);
+    // null: the receipt left DRAFT or was claimed for apply after the read above.
+    if (!updated) throw unprocessable('RECEIPT_NOT_DRAFT', 'Only a draft receipt that is not being applied can be edited.');
     await this.audit.execute({ actorId, action: 'STOCK_RECEIPT_UPDATED', entity: 'stock_receipt', entityId: id, newState: { lines: resolved.length } });
     return updated;
   }

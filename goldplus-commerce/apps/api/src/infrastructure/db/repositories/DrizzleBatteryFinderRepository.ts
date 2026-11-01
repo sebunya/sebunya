@@ -63,6 +63,11 @@ const publicProduct = {
   nominalVoltageMv: batteryProfiles.nominalVoltageMv,
 };
 
+/** Whether a merged device's target may be followed: not already visited, and at most 8 hops. */
+export function followMerge(seen: ReadonlySet<string>, fromId: string, toId: string): boolean {
+  return !seen.has(toId) && toId !== fromId && seen.size < 8;
+}
+
 export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository {
   // ---------------------------------------------------------------- config
   async getConfig() {
@@ -120,7 +125,7 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
     };
   }
 
-  private async deviceWhere(where: ReturnType<typeof eq>): Promise<FinderDeviceDto | null> {
+  private async deviceWhere(where: ReturnType<typeof eq>, seen: ReadonlySet<string> = new Set()): Promise<FinderDeviceDto | null> {
     const [row] = await db.select({
       d: devices,
       seriesName: deviceSeries.name,
@@ -129,7 +134,11 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
     }).from(devices).leftJoin(deviceSeries, eq(deviceSeries.id, devices.seriesId)).where(where).limit(1);
     if (!row) return null;
     // A merged device answers as its target so old links keep working.
-    if (row.d.status === 'MERGED' && row.d.mergedIntoDeviceId) return this.deviceById(row.d.mergedIntoDeviceId);
+    // Cycle guard: a merge loop (A -> B -> A) or a very long chain answers "not found" instead of recursing forever.
+    if (row.d.status === 'MERGED' && row.d.mergedIntoDeviceId) {
+      if (!followMerge(seen, row.d.id, row.d.mergedIntoDeviceId)) return null;
+      return this.deviceWhere(eq(devices.id, row.d.mergedIntoDeviceId), new Set([...seen, row.d.id]));
+    }
     if (row.d.status !== 'ACTIVE') return null;
     return deviceDto(row.d, row.seriesName, row.verifiedFits, row.listedFits);
   }

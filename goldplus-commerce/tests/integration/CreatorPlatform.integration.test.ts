@@ -104,6 +104,17 @@ suite('creator platform (real PostgreSQL, U4)', () => {
     expect((await raw`select was_reversed from coupon_redemptions where coupon_id = ${couponId} and order_id = ${orderId}`)[0].was_reversed).toBe(true);
   });
 
+  it('refund of an attribution-only order still reverses its creator coupon', async () => {
+    const orderId = await mkOrder();
+    const couponId = await mkCoupon();
+    await raw`insert into coupon_redemptions (coupon_id, order_id, customer_identity_hash, discount_amount_ugx) values (${couponId}, ${orderId}, 'h', 5000)`;
+    await raw`update coupon_codes set redemption_count = 1 where id = ${couponId}`;
+    await repo.recordAttributionAndCommission({ orderId, creatorId, mechanism: 'code', confidence: 'high', attributedRevenueUgx: 100_000, commission: null });
+    const res = await repo.reverseForRefund({ orderId, creatorId, couponId, reason: 'refund', now: new Date() });
+    expect(res.reversed).toBe(true);
+    expect((await raw`select redemption_count from coupon_codes where id = ${couponId}`)[0].redemption_count).toBe(0);
+  });
+
   it('AC3: an uncollected COD order produces no commission', async () => {
     const orderId = await mkOrder();
     // COD not collected → caller passes commission: null (attribution only).
@@ -124,8 +135,11 @@ suite('creator platform (real PostgreSQL, U4)', () => {
     // Two approved commissions for the creator.
     const o1 = await mkOrder();
     const o2 = await mkOrder();
-    await raw`insert into creator_commissions (creator_id, order_id, gross_revenue_ugx, commissionable_revenue_ugx, commission_rate_bps, commission_amount_ugx, status) values (${creatorId}, ${o1}, 100000, 100000, 1000, 6000, 'approved')`;
-    await raw`insert into creator_commissions (creator_id, order_id, gross_revenue_ugx, commissionable_revenue_ugx, commission_rate_bps, commission_amount_ugx, status) values (${creatorId}, ${o2}, 100000, 100000, 1000, 4000, 'approved')`;
+    await raw`insert into creator_commissions (creator_id, order_id, gross_revenue_ugx, commissionable_revenue_ugx, commission_rate_bps, commission_amount_ugx, status, created_at) values (${creatorId}, ${o1}, 100000, 100000, 1000, 6000, 'approved', '2026-08-10T10:00:00Z')`;
+    await raw`insert into creator_commissions (creator_id, order_id, gross_revenue_ugx, commissionable_revenue_ugx, commission_rate_bps, commission_amount_ugx, status, created_at) values (${creatorId}, ${o2}, 100000, 100000, 1000, 4000, 'approved', '2026-08-31T20:00:00Z')`;
+    // Outside the run's period (September): it waits for its own run.
+    const o3 = await mkOrder();
+    await raw`insert into creator_commissions (creator_id, order_id, gross_revenue_ugx, commissionable_revenue_ugx, commission_rate_bps, commission_amount_ugx, status, created_at) values (${creatorId}, ${o3}, 100000, 100000, 1000, 9000, 'approved', '2026-09-02T10:00:00Z')`;
 
     const key = `payout-${Date.now()}`;
     const run = await repo.createPayoutRun({ creatorId, periodStart: '2026-08-01', periodEnd: '2026-08-31', withholdingRateBps: 600, createdBy: ADMIN_A, method: 'mtn_momo', idempotencyKey: key, now: new Date() });

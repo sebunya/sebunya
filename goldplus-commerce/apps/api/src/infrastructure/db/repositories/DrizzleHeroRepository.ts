@@ -88,8 +88,14 @@ export class DrizzleHeroRepository implements IHeroRepository {
     if (patch.autoplay !== undefined) sets.push(sql`autoplay = ${patch.autoplay}`);
     sets.push(sql`updated_by = ${actorId}::uuid`);
     sets.push(sql`updated_at = now()`);
+    // Upsert: with no seeded row the UPDATE matched nothing and the save returned null.
+    // A missing row starts from the table defaults (4 slides, 6000 ms, autoplay on).
     const rows = rowsOf(
-      await db.execute(sql`update hero_settings set ${sql.join(sets, sql`, `)} where id = true returning *`),
+      await db.execute(sql`
+        insert into hero_settings (id, slides_shown, dwell_ms, autoplay, updated_by, updated_at)
+        values (true, ${patch.slidesShown ?? 4}, ${patch.dwellMs ?? 6000}, ${patch.autoplay ?? true}, ${actorId}::uuid, now())
+        on conflict (id) do update set ${sql.join(sets, sql`, `)}
+        returning *`),
     );
     return toSettings(rows[0]);
   }

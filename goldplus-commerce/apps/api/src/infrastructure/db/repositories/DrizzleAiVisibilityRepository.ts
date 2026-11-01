@@ -1,5 +1,6 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../client';
+import { isUniqueViolation } from '../pgErrors';
 import { pgJsonb, pgUuidArray } from '../PgParams';
 import type {
   AiVisibilityRepository, AivAction, AivCitationRow, AivCompetitor, AivMentionRow, AivObservationRow, AivProject,
@@ -167,8 +168,11 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
     try {
       const r = rowsOf(await db.execute(sql`update aiv_queries set ${sql.join([...parts, sql`updated_at = now()`], sql`, `)} where id = ${id}::uuid and project_id = ${projectId}::uuid returning *`))[0];
       return r ? query(r) : null;
-    } catch {
-      return null; // unique (project, text) violation: the new text duplicates another query
+    } catch (err) {
+      // Only the unique (project, text) violation means "the new text duplicates another query".
+      // Every other error used to become null too, so a real failure read as a duplicate.
+      if (isUniqueViolation(err)) return null;
+      throw err;
     }
   }
 

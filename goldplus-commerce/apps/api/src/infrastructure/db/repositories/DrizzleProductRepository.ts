@@ -118,6 +118,8 @@ export class DrizzleProductRepository implements IProductRepository {
    *    every one of those silently discarded. Everything the caller supplies is
    *    now written.
    *
+   * `imageUrl`/`hasImage` are absent from the update for the same reason (the gallery owns them).
+   *
    * `stockQuantity` remains deliberately absent from the update: on-hand stock is
    * owned by setStockQuantity, whose conditional UPDATE carries the
    * reserved <= stock invariant in its WHERE clause. Rewriting it from a property
@@ -169,7 +171,9 @@ export class DrizzleProductRepository implements IProductRepository {
         compareAtPriceUgx: product.compareAtPriceUgx,
         // Against the live quantity, not the request's earlier read of it.
         stockStatus: stockStatusForLabel(product.stockStatus),
-        imageUrl: product.imageUrl,
+        // imageUrl/hasImage are not rewritten here: they are the gallery's projection, owned by
+        // ProductMediaUseCases. This entity was read at the start of the admin request, so writing
+        // them back overwrote a gallery change made in between.
         features: product.features,
         warrantyPeriod: product.warrantyPeriod,
         verificationEligible: product.verificationEligible,
@@ -178,7 +182,6 @@ export class DrizzleProductRepository implements IProductRepository {
         approvalStatus: product.approvalStatus,
         isPreOrderEnabled: product.isPreOrderEnabled,
         hasRetailPrice: product.hasRetailPrice,
-        hasImage: product.hasImage,
       }
     });
   }
@@ -360,8 +363,8 @@ export class DrizzleProductRepository implements IProductRepository {
     }
 
     if (opts.inStock) {
-      // Available units, as the product page and the feed count them.
-      conditions.push(sql`${products.stockQuantity} - ${products.reservedQuantity} > 0`);
+      // Available units, as the product page and the feed count them. A NON_STOCK_ITEM tracks no quantity.
+      conditions.push(sql`(${products.stockQuantity} - ${products.reservedQuantity} > 0 or ${products.inventoryPolicy} = 'NON_STOCK_ITEM')`);
     }
 
     if (opts.search || opts.searchGroups?.length) {
