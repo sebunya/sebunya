@@ -8,7 +8,7 @@ import {
   friendlyError, fieldControlOf, durationOf,
   SYNC_FREQUENCIES,
   type ProviderRow, type ConnectionRow, type CredentialRow,
-  type SyncJobRow, type AuditRow, type TestResult, type ManifestField,
+  type SyncJobRow, type AuditRow, type TestResult, type ManifestField, mergeNewest,
 } from "../../../../lib/adminSeoIntegrations";
 
 /** Integration detail — one provider: its manifest, every connection, the
@@ -31,7 +31,7 @@ if (Astro.request.method === "POST") {
   const connectionId = String(form.get("connectionId") ?? "");
 
   if (intent === "test") {
-    const res = await intPost<TestResult>(token, `${INTEGRATIONS_API}/connections/${connectionId}/test`, {});
+    const res = await intPost<TestResult>(token, `${INTEGRATIONS_API}/connections/${encodeURIComponent(connectionId)}/test`, {});
     if (res.ok) {
       testResult = res.data;
       notice = res.data.ok
@@ -40,18 +40,18 @@ if (Astro.request.method === "POST") {
       if (!res.data.ok) formError = friendlyError(res.data.errorCode, res.data.errorMessage);
     } else formError = res.message;
   } else if (intent === "discover") {
-    const res = await intPost<Record<string, unknown>>(token, `${INTEGRATIONS_API}/connections/${connectionId}/discover`, {});
+    const res = await intPost<Record<string, unknown>>(token, `${INTEGRATIONS_API}/connections/${encodeURIComponent(connectionId)}/discover`, {});
     if (res.ok) { discovered = res.data; notice = "Discovery completed — pick the account/property below."; }
     else formError = res.message;
   } else if (intent === "select-resource") {
-    const res = await intPost(token, `${INTEGRATIONS_API}/connections/${connectionId}/select-resource`, {
+    const res = await intPost(token, `${INTEGRATIONS_API}/connections/${encodeURIComponent(connectionId)}/select-resource`, {
       accountRef: String(form.get("accountRef") ?? "").trim() || undefined,
       propertyRef: String(form.get("propertyRef") ?? "").trim() || undefined,
     });
     if (res.ok) notice = "Resource selection saved. Run Test connection to confirm access.";
     else formError = res.message;
   } else if (intent === "sync") {
-    const res = await intPost(token, `${INTEGRATIONS_API}/connections/${connectionId}/sync`, {
+    const res = await intPost(token, `${INTEGRATIONS_API}/connections/${encodeURIComponent(connectionId)}/sync`, {
       jobType: String(form.get("jobType") ?? "MANUAL"),
     });
     if (res.ok) notice = "Sync queued. Progress appears in the sync history below and in Sync Operations.";
@@ -70,17 +70,17 @@ if (Astro.request.method === "POST") {
     if (Object.keys(secret).length === 0) formError = "Nothing was entered, so no credential was stored.";
     else {
       const res = await intPost<{ mask?: string; version?: number; connectionStatus?: string }>(
-        token, `${INTEGRATIONS_API}/connections/${connectionId}/credentials`, { authType, secret },
+        token, `${INTEGRATIONS_API}/connections/${encodeURIComponent(connectionId)}/credentials`, { authType, secret },
       );
       if (res.ok) notice = `Credential v${res.data.version} stored (${res.data.mask}). It is never shown again. Connection is now ${res.data.connectionStatus} — run Test connection.`;
       else formError = res.message;
     }
   } else if (intent === "revoke-credential") {
-    const res = await intPost(token, `${INTEGRATIONS_API}/credentials/${String(form.get("credentialId") ?? "")}/revoke`, {});
+    const res = await intPost(token, `${INTEGRATIONS_API}/credentials/${encodeURIComponent(String(form.get("credentialId") ?? ""))}/revoke`, {});
     if (res.ok) notice = "Credential revoked. Add a replacement before the next sync.";
     else formError = res.message;
   } else if (intent === "disable" || intent === "enable") {
-    const res = await intPatch(token, `${INTEGRATIONS_API}/connections/${connectionId}`, {
+    const res = await intPatch(token, `${INTEGRATIONS_API}/connections/${encodeURIComponent(connectionId)}`, {
       status: intent === "disable" ? "DISABLED" : "NOT_CONFIGURED",
     });
     if (res.ok) notice = intent === "disable"
@@ -88,7 +88,7 @@ if (Astro.request.method === "POST") {
       : "Connection re-enabled. It must pass a test again before it is READY.";
     else formError = res.message;
   } else if (intent === "settings") {
-    const res = await intPatch(token, `${INTEGRATIONS_API}/connections/${connectionId}`, {
+    const res = await intPatch(token, `${INTEGRATIONS_API}/connections/${encodeURIComponent(connectionId)}`, {
       name: String(form.get("name") ?? "").trim() || undefined,
       syncFrequency: String(form.get("syncFrequency") ?? "").trim() || undefined,
       backfillWindowDays: String(form.get("backfillWindowDays") ?? "").trim() || undefined,
@@ -96,7 +96,7 @@ if (Astro.request.method === "POST") {
     if (res.ok) notice = "Connection settings saved.";
     else formError = res.message;
   } else if (intent === "delete") {
-    const res = await intDelete(token, `${INTEGRATIONS_API}/connections/${connectionId}`);
+    const res = await intDelete(token, `${INTEGRATIONS_API}/connections/${encodeURIComponent(connectionId)}`);
     if (res.ok) notice = "Connection deleted, together with its vault credentials.";
     else formError = res.message;
   } else if (intent === "oauth") {
@@ -107,10 +107,10 @@ if (Astro.request.method === "POST") {
 }
 
 // Loaded after any mutation so the page always reflects post-action truth.
-const [providersRes, connectionsRes, jobsRes, auditRes, usageRes] = await Promise.all([
+const [providersRes, connectionsRes, providerAuditRes, usageRes] = await Promise.all([
   intGet(token, `${INTEGRATIONS_API}/providers`),
   intGet(token, `${INTEGRATIONS_API}/connections?providerId=${encodeURIComponent(providerId)}`),
-  intGet(token, `${INTEGRATIONS_API}/sync-jobs?limit=25`),
+  // Provider-level rows that name no connection (e.g. a deleted one) still come from the recent list.
   intGet(token, `${INTEGRATIONS_API}/audit?limit=25`),
   intGet<{ usage?: unknown[]; dailyCaps?: Record<string, number | null> }>(token, `${INTEGRATIONS_API}/usage?providerId=${encodeURIComponent(providerId)}&days=14`),
 ]);
@@ -121,8 +121,23 @@ const manifest = provider?.manifest ?? {};
 const supports = provider?.supports ?? {};
 const connections = rowsOf<ConnectionRow>(connectionsRes);
 const connectionIds = new Set(connections.map((c) => String(c.id)));
-const jobs = rowsOf<SyncJobRow>(jobsRes).filter((j) => connectionIds.has(String(j.connection_id)));
-const audit = rowsOf<AuditRow>(auditRes).filter((a) => String(a.provider_id ?? "") === providerId || connectionIds.has(String(a.connection_id ?? "")));
+// History is asked for PER CONNECTION (the API filters by connectionId), so
+// another provider's activity can never push this provider's rows off the list.
+const [jobLists, auditLists] = await Promise.all([
+  Promise.all(connections.map((c) => intGet(token, `${INTEGRATIONS_API}/sync-jobs?connectionId=${encodeURIComponent(String(c.id))}&limit=25`))),
+  Promise.all(connections.map((c) => intGet(token, `${INTEGRATIONS_API}/audit?connectionId=${encodeURIComponent(String(c.id))}&limit=25`))),
+]);
+const jobs = mergeNewest(
+  jobLists.map((r) => rowsOf<SyncJobRow>(r).filter((j) => connectionIds.has(String(j.connection_id)))),
+  (j) => j.requested_at ?? j.started_at,
+);
+const audit = mergeNewest(
+  [
+    ...auditLists.map((r) => rowsOf<AuditRow>(r)),
+    rowsOf<AuditRow>(providerAuditRes).filter((a) => String(a.provider_id ?? "") === providerId),
+  ],
+  (a) => a.created_at,
+);
 const usage = usageRes.ok ? ((usageRes.data as any)?.usage ?? []) : [];
 const dailyCap = usageRes.ok ? ((usageRes.data as any)?.dailyCaps?.[providerId] ?? null) : null;
 const providerReason = emptyReason(providersRes, "The provider registry could not be loaded");
@@ -131,7 +146,7 @@ const derivedStatus = deriveProviderStatus(connections);
 // Credentials are fetched per connection (a more restricted permission than
 // viewing) — a denial here is shown honestly rather than as "none".
 const credentialResults = await Promise.all(
-  connections.map((c) => intGet<CredentialRow[]>(token, `${INTEGRATIONS_API}/connections/${c.id}/credentials`)),
+  connections.map((c) => intGet<CredentialRow[]>(token, `${INTEGRATIONS_API}/connections/${encodeURIComponent(c.id)}/credentials`)),
 );
 const credentialsFor = (i: number) => rowsOf<CredentialRow>(credentialResults[i]);
 const credentialDenied = (i: number) => credentialResults[i].ok === false && (credentialResults[i] as any).denied === true;
