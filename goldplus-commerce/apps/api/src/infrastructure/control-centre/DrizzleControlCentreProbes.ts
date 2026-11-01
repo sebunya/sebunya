@@ -1,9 +1,21 @@
 import { sql } from 'drizzle-orm';
+
+/**
+ * postgres-js returns the row ARRAY from db.execute() directly; node-postgres
+ * shapes it as {rows}. Reading only `.rows` here made EVERY table probe report
+ * DOWN ("dependency postgres.X did not respond"), every approval read as
+ * absent (all programmes DORMANT), and the approvals ledger render empty —
+ * one driver-shape bug, three symptoms across the whole Trust Centre.
+ */
+const rowsOf = (r: unknown): Record<string, unknown>[] =>
+  Array.isArray(r) ? (r as Record<string, unknown>[]) : ((r as { rows?: Record<string, unknown>[] })?.rows ?? []);
 import { db } from '../db/client';
 import { logger } from '../logging/logger';
+import { EVENT_TYPE_TELEMETRY } from '../telemetry/TelemetryDispatchService';
 import type {
   ApprovalProbe,
   DependencyProbe,
+  HealthProbe,
   ProviderConfigProbe,
   RouteMountProbe,
 } from '../../application/use-cases/control-centre/EvaluateModuleReadinessUseCase';
@@ -28,7 +40,7 @@ export const drizzleDependencyProbe: DependencyProbe = {
         // to_regclass returns NULL rather than throwing for an absent relation, so a
         // missing table is a clean false instead of a caught exception.
         const result = await db.execute(sql`select to_regclass(${`public.${table}`}) as relation`);
-        const rows = (result as unknown as { rows?: { relation: string | null }[] }).rows ?? [];
+        const rows = rowsOf(result);
         return Boolean(rows[0]?.relation);
       }
       await db.execute(sql`select 1`);
@@ -55,8 +67,7 @@ export const drizzleApprovalProbe: ApprovalProbe = {
         sql`select 1 from module_activation_approvals
             where module_key = ${moduleKey} and revoked_at is null limit 1`,
       );
-      const rows = (result as unknown as { rows?: unknown[] }).rows ?? [];
-      return rows.length > 0;
+      return rowsOf(result).length > 0;
     } catch {
       return false;
     }
@@ -70,10 +81,55 @@ export const envProviderConfigProbe: ProviderConfigProbe = {
       meta: ['META_CAPI_ACCESS_TOKEN'],
       google: ['GOOGLE_ADS_DEVELOPER_TOKEN', 'GOOGLE_OAUTH_CLIENT_ID'],
       tiktok: ['TIKTOK_EVENTS_ACCESS_TOKEN'],
-      whatsapp: ['WHATSAPP_ACCESS_TOKEN'],
+      whatsapp: ['GOLDIE_WHATSAPP_PHONE_NUMBER_ID', 'ZOHO_WHATSAPP_API_KEY'], // Meta direct (primary) or Zoho (fallback)
+      // Customer and admin messaging. Absent from this map, an unknown provider
+      // fell through to "not configured" by accident rather than by
+      // measurement, and notifications had no module asking the question at all.
+      email: ['ZEPTOMAIL_API_TOKEN'],
+      sms: ['SMS_API_KEY'],
     };
     const keys = envKeys[provider] ?? [];
     return keys.length > 0 && keys.some((key) => Boolean(process.env[key]));
+  },
+};
+
+/**
+ * Outcome checks: is the capability achieving anything?
+ *
+ * `notification_delivery` reads the outbox's own verdict. A dead letter is a
+ * message the system tried up to exhaustion and gave up on, so recent dead
+ * letters mean messages are not arriving however healthy the credentials look.
+ * Notifications reported LIVE for three weeks while every admin order email
+ * died at the provider; this is what makes that visible in the console.
+ */
+const DELIVERY_WINDOW_DAYS = 7;
+
+export const drizzleHealthProbe: HealthProbe = {
+  async check(name: string): Promise<{ healthy: boolean; detail?: string }> {
+    if (name !== 'notification_delivery') {
+      // An unknown check must not silently pass as healthy.
+      return { healthy: false, detail: `unknown health check "${name}"` };
+    }
+    const rows = rowsOf(await db.execute(sql`
+      select count(*)::int as dead, max(created_at) as newest
+      from outbox_events
+      where status in ('dead_letter', 'dead_lettered')
+        -- Telemetry shares this table but has its own dispatcher, its own
+        -- backoff and its own dead-letter meaning. Counting it here would blame
+        -- messaging for an analytics fault: harmless while email is also
+        -- failing, and a false alarm the moment it is fixed.
+        and event_type <> ${EVENT_TYPE_TELEMETRY}
+        -- make_interval takes a typed int. Concatenating a bare parameter onto
+        -- a string before an interval cast leaves Postgres unable to infer that
+        -- parameter's type, and the whole query fails.
+        and created_at > now() - make_interval(days => ${DELIVERY_WINDOW_DAYS})
+    `));
+    const dead = Number(rows[0]?.dead ?? 0);
+    if (dead === 0) return { healthy: true };
+    return {
+      healthy: false,
+      detail: `${dead} message${dead === 1 ? '' : 's'} dead-lettered in the last ${DELIVERY_WINDOW_DAYS} days; see /admin/notifications`,
+    };
   },
 };
 
@@ -152,7 +208,7 @@ export const drizzleModuleApprovalRepository: IModuleApprovalRepository = {
 };
 
 function toRecords(result: unknown): ModuleApprovalRecord[] {
-  const rows = (result as { rows?: Record<string, unknown>[] }).rows ?? [];
+  const rows = rowsOf(result);
   return rows.map((row) => ({
     id: String(row.id),
     moduleKey: String(row.module_key),

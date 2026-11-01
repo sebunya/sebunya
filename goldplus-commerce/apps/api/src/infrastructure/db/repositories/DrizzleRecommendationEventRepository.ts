@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { RecommendationEvent } from "../../../domain/recommendations/RecommendationEvent";
 import type {
   IRecommendationEventRepository,
@@ -7,15 +7,26 @@ import type {
 } from "../../../application/ports/IRecommendationEventRepository";
 import { recommendationEvents } from "../schema/recommendations";
 import { db } from "../client";
+import { pgJsonb } from '../PgParams';
+import { fitColumn } from './RecommendationEventColumnWidths';
 
 export class DrizzleRecommendationEventRepository implements IRecommendationEventRepository {
-  async save(event: RecommendationEvent): Promise<void> {
-    await db.insert(recommendationEvents).values([{
+  /**
+   * Contract v2 (R1): the insert is idempotent at the database. A row with a
+   * dedupe_key that already exists is silently absorbed by the partial UNIQUE
+   * index (`onConflictDoNothing`), so a beacon retry or replay produces one
+   * event even when two replicas race — the app-level window check in the use
+   * case is a fast-path, not the guarantee. Returns false when absorbed.
+   */
+  async save(event: RecommendationEvent): Promise<boolean> {
+    const inserted = await db.insert(recommendationEvents).values([{
       id: event.id,
       eventType: event.eventType,
-      anonymousId: event.anonymousId,
-      browserId: event.browserId,
-      sessionId: event.sessionId,
+      // Every browser-supplied string is cut to its column (fitColumn): one
+      // over-long value used to fail the whole insert and lose the event.
+      anonymousId: fitColumn('anonymousId', event.anonymousId),
+      browserId: fitColumn('browserId', event.browserId),
+      sessionId: fitColumn('sessionId', event.sessionId),
       cartId: event.cartId,
       customerId: event.customerId,
       leadId: event.leadId,
@@ -26,7 +37,9 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
       impressionId: event.impressionId,
       railRenderId: event.railRenderId,
       reasonCode: event.reasonCode,
-      appliedRuleIds: event.appliedRuleIds,
+      // R3.1 (M3): same canonical-jsonb treatment as metadata — the drizzle
+      // mapping double-encoded this array on every historic row.
+      appliedRuleIds: (event.appliedRuleIds ? sql`${pgJsonb(event.appliedRuleIds)}` : null) as never,
 
       // Context
       productId: event.productId,
@@ -35,38 +48,52 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
       placement: event.placement,
       recommendationProductId: event.recommendationProductId,
       sourceProductId: event.sourceProductId,
-      source: event.source,
-      pagePath: event.pagePath,
-      referrer: event.referrer,
+      source: fitColumn('source', event.source),
+      pagePath: fitColumn('pagePath', event.pagePath),
+      referrer: fitColumn('referrer', event.referrer),
 
       // Flatten UTM
-      utmSource: event.utm?.source,
-      utmMedium: event.utm?.medium,
-      utmCampaign: event.utm?.campaign,
-      utmContent: event.utm?.content,
-      utmTerm: event.utm?.term,
+      utmSource: fitColumn('utmSource', event.utm?.source),
+      utmMedium: fitColumn('utmMedium', event.utm?.medium),
+      utmCampaign: fitColumn('utmCampaign', event.utm?.campaign),
+      utmContent: fitColumn('utmContent', event.utm?.content),
+      utmTerm: fitColumn('utmTerm', event.utm?.term),
 
       // Flatten Device
-      deviceType: event.device?.deviceType,
-      browserFamily: event.device?.browserFamily,
-      osFamily: event.device?.osFamily,
+      deviceType: fitColumn('deviceType', event.device?.deviceType),
+      browserFamily: fitColumn('browserFamily', event.device?.browserFamily),
+      osFamily: fitColumn('osFamily', event.device?.osFamily),
       screenWidth: event.device?.screenWidth,
       screenHeight: event.device?.screenHeight,
       viewportWidth: event.device?.viewportWidth,
       viewportHeight: event.device?.viewportHeight,
-      language: event.device?.language,
-      timezone: event.device?.timezone,
+      language: fitColumn('language', event.device?.language),
+      timezone: fitColumn('timezone', event.device?.timezone),
 
       // Flatten Location
-      locationSource: event.location?.locationSource,
-      district: event.location?.district,
-      town: event.location?.town,
-      gpsGeohash: event.location?.gpsGeohash,
+      locationSource: fitColumn('locationSource', event.location?.locationSource),
+      district: fitColumn('district', event.location?.district),
+      town: fitColumn('town', event.location?.town),
+      gpsGeohash: fitColumn('gpsGeohash', event.location?.gpsGeohash),
       gpsAccuracyMeters: event.location?.gpsAccuracyMeters,
 
-      metadata: event.metadata,
+      // R3.1 (AC21): canonical JSONB at the serialization boundary. Drizzle
+      // stringifies jsonb values and postgres.js then JSON-serializes the
+      // param AGAIN — the double encoding. An SQL fragment carrying the RAW
+      // OBJECT bypasses drizzle's mapping, so postgres.js serializes exactly
+      // once and a real jsonb object lands (proven by driver probe + the
+      // real-PG round-trip test). Readers keep their transition tolerance for
+      // historic string-typed rows (AC22).
+      metadata: sql`${event.metadata ?? {}}::jsonb` as never,
       createdAt: event.createdAt,
-    }]);
+
+      // Contract v2 (0099)
+      dedupeKey: event.dedupeKey,
+      schemaVersion: event.schemaVersion,
+      producer: event.producer,
+      profileId: event.profileId,
+    }]).onConflictDoNothing().returning({ id: recommendationEvents.id });
+    return inserted.length > 0;
   }
 
   async existsRecentSimilarEvent(query: RecentEventQuery): Promise<boolean> {
@@ -78,6 +105,7 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
     if (query.placement) conditions.push(eq(recommendationEvents.placement, query.placement));
     if (query.anonymousId) conditions.push(eq(recommendationEvents.anonymousId, query.anonymousId));
     if (query.customerId) conditions.push(eq(recommendationEvents.customerId, query.customerId));
+    if (query.profileId) conditions.push(eq(recommendationEvents.profileId, query.profileId));
 
     if (query.withinMinutes) {
       const since = new Date(Date.now() - query.withinMinutes * 60_000);
@@ -142,20 +170,98 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
     return deduped;
   }
 
+  async findRecentlyShownProductIds(input: {
+    profileId: string;
+    withinHours: number;
+    limit: number;
+  }): Promise<string[]> {
+    const rows = await db
+      .selectDistinct({ productId: recommendationEvents.recommendationProductId })
+      .from(recommendationEvents)
+      .where(
+        and(
+          eq(recommendationEvents.profileId, input.profileId),
+          inArray(recommendationEvents.eventType, ["RECOMMENDATION_IMPRESSION", "RECOMMENDATION_CLICKED"]),
+          gte(recommendationEvents.createdAt, sql`now() - make_interval(hours => ${input.withinHours})`),
+        ),
+      )
+      .limit(input.limit);
+    return rows.map((r) => r.productId).filter((id): id is string => typeof id === "string");
+  }
+
+  async findRecentSearchQueries(input: { profileId: string; withinDays: number; limit: number }): Promise<string[]> {
+    const rows = await db
+      .select({ searchQuery: recommendationEvents.searchQuery, createdAt: recommendationEvents.createdAt })
+      .from(recommendationEvents)
+      .where(
+        and(
+          eq(recommendationEvents.profileId, input.profileId),
+          eq(recommendationEvents.eventType, "PRODUCT_SEARCHED"),
+          gte(recommendationEvents.createdAt, sql`now() - make_interval(days => ${input.withinDays})`),
+        ),
+      )
+      .orderBy(desc(recommendationEvents.createdAt))
+      .limit(input.limit * 3);
+    const seen = new Set<string>();
+    const queries: string[] = [];
+    for (const row of rows) {
+      const q = row.searchQuery?.trim();
+      if (!q || seen.has(q)) continue;
+      seen.add(q);
+      queries.push(q);
+      if (queries.length >= input.limit) break;
+    }
+    return queries;
+  }
+
   async getTrendingEvents(input: {
     since: Date;
     limit?: number;
   }): Promise<TrendingEventAggregate[]> {
+    // R9 fixes: (1) engagement counts ONLY real engagement types — the old
+    // catch-all let the engine's own RECOMMENDATION_RESPONSE rows (and any
+    // junk type at weight 0.1) push "trending" across its evidence gate;
+    // (2) clicks/attributed ATCs write recommendation_product_id with a NULL
+    // product_id, so grouping on bare product_id silently dropped exactly the
+    // engagement the copy claims — the aggregate groups on the coalesce.
+    const productKey = sql<string>`coalesce(${recommendationEvents.recommendationProductId}, ${recommendationEvents.productId})`;
+    // (3) 2026-09-24: counts DISTINCT server-resolved visitors, not rows. The
+    // public route takes a caller-chosen anonymousId, so 7 unauthenticated
+    // POSTs with fresh ids made any product "Popular right now". profile_id
+    // comes from the HttpOnly visit token and customer_id from the verified
+    // session, never from the body; an event with neither does not count.
+    const visitors = sql`count(distinct coalesce(${recommendationEvents.profileId}::text, 'c:' || ${recommendationEvents.customerId}::text))`;
     const rows = await db
       .select({
-        productId: recommendationEvents.productId,
+        productId: productKey,
         eventType: recommendationEvents.eventType,
-        count: sql<number>`count(*)::int`,
+        count: sql<number>`${visitors}::int`,
         lastSeenAt: sql<Date>`max(${recommendationEvents.createdAt})`,
       })
       .from(recommendationEvents)
-      .where(gte(recommendationEvents.createdAt, input.since))
-      .groupBy(recommendationEvents.productId, recommendationEvents.eventType)
+      .where(
+        and(
+          gte(recommendationEvents.createdAt, input.since),
+          inArray(recommendationEvents.eventType, [
+            "PRODUCT_VIEWED",
+            "PRODUCT_ADDED_TO_CART",
+            "PRODUCT_PURCHASED",
+            "RECOMMENDATION_CLICKED",
+            "RECOMMENDATION_ADD_TO_CART",
+          ]),
+          sql`(${recommendationEvents.profileId} is not null or ${recommendationEvents.customerId} is not null)`,
+        ),
+      )
+      .groupBy(productKey, recommendationEvents.eventType)
+      // R3: LIMIT without ORDER BY made trending truncation arbitrary — which
+      // (product, type) groups survived depended on the planner.
+      //
+      // 2026-08-07: the tiebreak must order by the SAME expression the query
+      // groups on. It ordered by the bare product_id column, which is not in
+      // the GROUP BY, so Postgres rejected the statement outright — every call
+      // threw and the engine logged RECOMMENDATION_ENGINE_DEGRADED and fell
+      // down the ladder. The trending rung had not returned a row since.
+      .orderBy(desc(visitors), asc(productKey), asc(recommendationEvents.eventType))
       .limit(input.limit ?? 500);
 
     return rows

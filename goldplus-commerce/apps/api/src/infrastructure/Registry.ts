@@ -1,28 +1,200 @@
-import { createHmac } from 'node:crypto';
+import { GoldieOrderActionsUseCases } from '../application/use-cases/assistant/GoldieOrderActionsUseCases';
+import { verifyOrderByContact } from '../application/services/OrderContactVerification';
+import { GOLDIE_ACTOR_ID } from '../domain/assistant/CareDesk';
+import { DeliveryProofPhotoUseCases } from '../application/use-cases/fulfilment/DeliveryProofPhotoUseCases';
+import { DrizzleDeliveryProofPhotoRepository } from './fulfilment/DrizzleDeliveryProofPhotoRepository';
+import { LowStockAlertUseCase } from '../application/use-cases/inventory/LowStockAlertUseCase';
+import { RedisFailureLockout } from './security/RedisFailureLockout';
+import { ReholdStockOnLatePaymentUseCase } from '../application/use-cases/payments/ReholdStockOnLatePaymentUseCase';
+import { cancelRefundUpdate } from '../application/notifications/CustomerMessages';
+import './logging/appLoggerBinding';
+import { PERMISSIONS as SHARED_PERMISSIONS, toEatParts, DEFAULT_BUSINESS_INFO, tagShopUrl } from '@goldplus/shared';
+import { MeasurementOperationsUseCases } from '../application/use-cases/measurement/MeasurementOperationsUseCases';
+import { CollectBrowserBatchUseCase } from '../application/use-cases/telemetry/CollectBrowserBatchUseCase';
+import { DrizzleCollectorStore } from './db/repositories/DrizzleCollectorStore';
+import { alertRecipient, alertRecipients, validateFulfilmentAlertValue } from '../domain/fulfilment/FulfilmentAlertConfig';
+import { PgAttributionPort } from './measurement/AttributionJob';
+import { DrizzleMeasurementOperationsRepository } from './db/repositories/DrizzleMeasurementOperationsRepository';
+import { AdDestinationUseCases } from '../application/use-cases/advertising/AdDestinationUseCases';
+import { DrizzleAdDestinationRepository } from './db/repositories/DrizzleAdDestinationRepository';
+import { AD_PLATFORMS } from './advertising/AdPlatforms';
+import { SpotifyRotationPreviewUseCase } from '../application/use-cases/advertising/SpotifyRotationPreview';
+import { DrizzleSpotifyRotationReader } from './db/repositories/DrizzleSpotifyRotationReader';
+import { DrizzleFeaturedProductsStore } from './db/repositories/DrizzleFeaturedProductsStore';
+import { createAdvertisingOperations } from './advertising/AdvertisingWiring';
+import { vaultCipher } from './ai-visibility/AiVisibilityWiring';
+import { createHmac, randomInt as nodeRandomInt } from 'node:crypto';
 import { db } from './db/client';
+import { createAiVisibility } from './ai-visibility/AiVisibilityWiring';
+import { channelAttribution } from './measurement/createChannelAttribution';
+import { DrizzleMeasurementConfig } from './measurement/DrizzleMeasurementConfig';
+import { DrizzleHoldoutStore } from './measurement/DrizzleHoldoutStore';
+import { HoldoutGate } from '../application/use-cases/measurement/HoldoutGate';
+import { MmmDataset } from './measurement/MmmDataset';
+import { MarketingCostDerivation } from './measurement/MarketingCostDerivation';
+import { ControlFeeds } from './measurement/ControlFeeds';
+import { Ga4DataApi } from './measurement/Ga4DataApi';
+import { Ga4DailyPull } from './measurement/Ga4DailyPull';
+import { DrizzleMediaPlacementStore } from './measurement/DrizzleMediaPlacementStore';
+import { RecordBouFxReadingUseCase } from '../application/use-cases/measurement/RecordBouFxReadingUseCase';
+import { YouTubeViewsPull } from './measurement/YouTubeViewsPull';
+import { ClarityInsightsPull } from './measurement/ClarityInsightsPull';
+import { DrizzleCreatorCostStore } from './measurement/DrizzleCreatorCostStore';
 import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
 import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRepository';
 import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository';
+import { DrizzleOrderAttributionRepository } from './db/repositories/DrizzleOrderAttributionRepository';
 import { DrizzleProductRepository } from './db/repositories/DrizzleProductRepository';
+import { SavedProductsUseCases } from '../application/use-cases/account/SavedProductsUseCases';
+import { DrizzleWishlistRepository } from './db/repositories/DrizzleWishlistRepository';
+import { DrizzleBlogRepository } from './db/repositories/DrizzleBlogRepository';
+import { DrizzleDeviceRepository } from './db/repositories/DrizzleDeviceRepository';
+import { DrizzleBatteryCatalogueRepository } from './db/repositories/DrizzleBatteryCatalogueRepository';
+import { DrizzleDeviceCatalogueRepository } from './db/repositories/DrizzleDeviceCatalogueRepository';
+import { DrizzleBatteryCompatibilityRepository } from './db/repositories/DrizzleBatteryCompatibilityRepository';
+import { DrizzleInventoryLedgerRepository } from './db/repositories/DrizzleInventoryLedgerRepository';
+import { DrizzleBatteryFinderRepository } from './db/repositories/DrizzleBatteryFinderRepository';
+import { DrizzleBatteryImportRepository } from './db/repositories/DrizzleBatteryImportRepository';
+import { DrizzleUnlistedProductReader } from './db/repositories/DrizzleUnlistedProductReader';
+import { DrizzleAssistantConfigRepository, DrizzleAssistantLedgerRepository } from './db/repositories/DrizzleAssistantRepository';
+import { AssistantCounterStore } from './security/AssistantCounterStore';
+import { AssistantAdmissionUseCases } from '../application/use-cases/assistant/AssistantAdmissionUseCases';
+import { AssistantConversationUseCases } from '../application/use-cases/assistant/AssistantConversationUseCases';
+import { ConversationArchiveUseCases } from '../application/use-cases/assistant/ConversationArchiveUseCases';
+import { DrizzleAssistantConversationStore } from './assistant/DrizzleAssistantConversationStore';
+import { renderTeamReplyMail } from '../domain/assistant/ChatTranscript';
+import { QualityReviewUseCases } from '../application/use-cases/assistant/QualityReviewUseCases';
+import { DrizzleQualityReviewRepository } from './assistant/DrizzleQualityReviewRepository';
+import { GoldieChannelUseCases } from '../application/use-cases/assistant/GoldieChannelUseCases';
+import { CareAlertChannels, HttpGoldieBrain, MetaSocialMessenger, WhatsAppCloudMessenger, goldieSocialSettings, goldieWhatsAppSettings } from './assistant/GoldieChannelAdapters';
+import { whatsAppDeliveryStore } from './notifications/whatsapp/WhatsAppDeliveryStore';
+import { CareDeskUseCases } from '../application/use-cases/assistant/CareDeskUseCases';
+import { DrizzleCareDeskRepository } from './assistant/DrizzleCareDeskRepository';
+import { NextBestActionAdvisor } from './assistant/NextBestActionAdvisor';
+import { goldieMetrics } from './assistant/GoldieMetrics';
+import { GoldieSocialUseCases } from '../application/use-cases/assistant/GoldieSocialUseCases';
+import { AnswerMemoryUseCases } from '../application/use-cases/assistant/AnswerMemoryUseCases';
+import { DrizzleAnswerMemoryRepository } from './assistant/DrizzleAnswerMemoryRepository';
+import { PhoneCareReader } from './assistant/PhoneCareReader';
+import { DrizzleAssistantContextReader, DrizzleAssistantMailOutbox, ZeroPartyAssistantInterestSink, insertOutboxObject } from './assistant/AssistantConversationAdapters';
+import { XlsxSpreadsheetParser } from './batteries/XlsxSpreadsheetParser';
+import { BatteryCatalogueUseCases } from '../application/use-cases/batteries/BatteryCatalogueUseCases';
+import { DeviceCatalogueUseCases } from '../application/use-cases/batteries/DeviceCatalogueUseCases';
+import { BatteryCompatibilityUseCases } from '../application/use-cases/batteries/BatteryCompatibilityUseCases';
+import { InventoryLedgerUseCases } from '../application/use-cases/batteries/InventoryLedgerUseCases';
+import { BatteryFinderUseCases } from '../application/use-cases/batteries/BatteryFinderUseCases';
+import { BatteryImportUseCases } from '../application/use-cases/batteries/BatteryImportUseCases';
 import { DrizzlePricingRepository } from './db/repositories/DrizzlePricingRepository';
 import { DrizzlePricingQuoteRepository } from './db/repositories/DrizzlePricingQuoteRepository';
 import { DrizzlePricingCapacityRepository } from './db/repositories/DrizzlePricingCapacityRepository';
+import { DrizzleCouponRepository } from './db/repositories/DrizzleCouponRepository';
+import { DrizzleReviewRepository } from './db/repositories/DrizzleReviewRepository';
+import { SubmitReviewUseCase } from '../application/use-cases/reviews/SubmitReviewUseCase';
+import { GetOrderReviewEligibilityUseCase, GetProductReviewsUseCase, SubmitOrderReviewUseCase, VoteOnReviewUseCase } from '../application/use-cases/reviews/OrderReviewUseCases';
+import { SendReviewRemindersUseCase } from '../application/use-cases/reviews/SendReviewRemindersUseCase';
+import { ReviewPhotoUseCases } from '../application/use-cases/reviews/ReviewPhotoUseCases';
+import { DrizzleReviewPhotoRepository } from './reviews/DrizzleReviewPhotoRepository';
+import { GetSalesFunnelUseCase } from '../application/use-cases/analytics/GetSalesFunnelUseCase';
+import { DrizzleSalesFunnelReader } from './db/repositories/DrizzleSalesFunnelReader';
+import { RequestReturnUseCase } from '../application/use-cases/commerce/RequestReturnUseCase';
+import { publicBaseUrl } from '../application/notifications/CustomerMessages';
+import { BasketReminderConsentUseCases } from '../application/use-cases/first-party/BasketReminderConsentUseCases';
+import { SendBasketRemindersUseCase, basketItemsWords } from '../application/use-cases/abandonment/SendBasketRemindersUseCase';
+import { AskProductQuestionUseCase, AnswerProductQuestionUseCase } from '../application/use-cases/questions/ProductQuestionUseCases';
+import { DrizzleProductQuestionRepository } from './questions/DrizzleProductQuestionRepository';
+import { DrizzleOrderDeliveredAt } from './commerce/DrizzleOrderDeliveredAt';
+import { CreditExpiryRemindersUseCase, IssueCreditUseCase, ManageCreditUseCases, NotifyCardUsedUseCase } from '../application/use-cases/credit/CreditUseCases';
+import { creditCodeHash, creditRandomIndexes } from './credit/CreditCodeCrypto';
+import { DrizzleCreditRepository } from './credit/DrizzleCreditRepository';
+import { DrizzleGiftCardPurchaseRepository } from './credit/DrizzleGiftCardPurchaseRepository';
+import { SharpGiftCardPhotoProcessor } from './credit/SharpGiftCardPhotoProcessor';
+import { DrizzleGiftCardPhotoRepository } from './credit/DrizzleGiftCardPhotoRepository';
+import { piiHasher } from './security/PiiHashingService';
+import { GiftCardPhotoUseCases } from '../application/use-cases/credit/GiftCardPhotoUseCases';
+import { GiftCardPurchaseUseCases } from '../application/use-cases/credit/GiftCardPurchaseUseCases';
+import { GiftCardOccasionUseCases } from '../application/use-cases/credit/GiftCardOccasionUseCases';
+import { DrizzleOccasionSettingsRepository } from './credit/DrizzleOccasionSettingsRepository';
+import { storefrontOrigin } from './config/storefrontOrigin';
+import { deliveryMapUrl } from '../domain/fulfilment/PaidOrderAlert';
+import { normalizePhone } from '../application/services/validationHelpers';
+import { SettleByStoreCreditUseCase } from '../application/use-cases/payments/SettleByStoreCreditUseCase';
+import { ProductBundlesUseCase } from '../application/use-cases/pricing/ProductBundlesUseCase';
+import { DrizzleReviewReminderCandidates } from './reviews/DrizzleReviewReminderCandidates';
+import { SendUnpaidOrderRemindersUseCase } from '../application/use-cases/commerce/SendUnpaidOrderRemindersUseCase';
+import { DrizzleUnpaidOrderReminderCandidates } from './commerce/DrizzleUnpaidOrderReminderCandidates';
+import { DrizzleCreatorRepository } from './db/repositories/DrizzleCreatorRepository';
+import { DrizzleFlashSaleRepository } from './db/repositories/DrizzleFlashSaleRepository';
+import { DrizzleSeoRepository } from './db/repositories/DrizzleSeoRepository';
+import { DrizzleSeoGrowthRepository } from './db/repositories/DrizzleSeoGrowthRepository';
+import { DrizzleSeoIntegrationRepository } from './db/repositories/DrizzleSeoIntegrationRepository';
+import { DrizzleSeoCatalogueRepository } from './db/repositories/DrizzleSeoCatalogueRepository';
+import { DrizzleSeoWorkQueueRepository } from './db/repositories/DrizzleSeoWorkQueueRepository';
+import { DrizzleSeoObservabilityRepository } from './db/repositories/DrizzleSeoObservabilityRepository';
+import { DrizzleSeoTechnicalRepository } from './db/repositories/DrizzleSeoTechnicalRepository';
+import { NoSendMobileMoneyDisbursement } from '../application/ports/IMobileMoneyDisbursement';
 import { DrizzlePricingOperationsRepository } from './db/repositories/DrizzlePricingOperationsRepository';
 import { DrizzleDealerRepository } from './db/repositories/DrizzleDealerRepository';
 import { DrizzleSupportRepository } from './db/repositories/DrizzleSupportRepository';
 import { DrizzleQuoteRepository } from './db/repositories/DrizzleQuoteRepository';
+import { DrizzleBulkQuoteRepository } from './db/repositories/DrizzleBulkQuoteRepository';
+import {
+  GetQuoteRequestUseCase,
+  ListQuoteRequestsUseCase,
+  LookupBulkQuoteUseCase,
+  SubmitBulkQuoteUseCase,
+  UpdateQuoteRequestStatusUseCase,
+} from '../application/use-cases/quotes/BulkQuoteUseCases';
+import { DrizzleBulkTermsRepository } from './db/repositories/DrizzleBulkTermsRepository';
+import { DrizzleBulkPriceAccessRepository } from './db/repositories/DrizzleBulkPriceAccessRepository';
+import { StartDealerSignInUseCase, VerifyDealerSignInUseCase, GetDealerAccountUseCase } from '../application/use-cases/dealers/DealerPortalUseCases';
+import { DrizzleDealerPortalReader } from './dealers/DrizzleDealerPortalReader';
+import { bulkPriceAccessCrypto } from './quotes/BulkPriceAccessCrypto';
+import {
+  GetBulkTermsUseCase,
+  ListBulkPriceLeadsUseCase,
+  StartBulkPriceAccessUseCase,
+  VerifyBulkPriceAccessUseCase,
+} from '../application/use-cases/quotes/BulkPriceAccessUseCases';
+import { ImportBulkTermsUseCase, ListBulkTermsUseCase, UpdateBulkTermsUseCase } from '../application/use-cases/quotes/BulkTermsAdminUseCases';
 import { DrizzleVerificationRepository } from './db/repositories/DrizzleVerificationRepository';
 import { DrizzleAuditRepository } from './db/repositories/DrizzleAuditRepository';
 import { DrizzlePaymentRepository } from './db/repositories/DrizzlePaymentRepository';
 import { DrizzleUserRepository } from './db/repositories/DrizzleUserRepository';
 import { LocalProductImageStorage } from './storage/LocalProductImageStorage';
+import { DrizzleMediaLibraryRepository } from './db/repositories/DrizzleMediaLibraryRepository';
+import { DrizzleLegalCmsRepository } from './db/repositories/DrizzleLegalCmsRepository';
+import { LegalCmsUseCase } from '../application/use-cases/legal/LegalCmsUseCase';
+import { DrizzleAbandonmentRepository } from './db/repositories/DrizzleAbandonmentRepository';
+import { DrizzleStockAdjustmentRepository } from './db/repositories/DrizzleStockAdjustmentRepository';
+import { DrizzleNotificationTemplateRepository } from './db/repositories/DrizzleNotificationTemplateRepository';
+import { DrizzleCampaignRepository } from './db/repositories/DrizzleCampaignRepository';
+import { DrizzleCampaignSendRepository } from './db/repositories/DrizzleCampaignSendRepository';
+import { DrizzleGamificationRepository } from './db/repositories/DrizzleGamificationRepository';
+import { DrizzleAdminUserWriteRepository } from './db/repositories/DrizzleAdminUserWriteRepository';
+import { AdminUserManagementUseCase } from '../application/use-cases/identity/AdminUserManagementUseCase';
+import { CampaignSendEngineUseCase } from '../application/use-cases/campaigns/CampaignSendEngineUseCase';
+import { AdjustStockUseCase } from '../application/use-cases/inventory/AdjustStockUseCase';
+import { AbandonmentUseCase } from '../application/use-cases/abandonment/AbandonmentUseCase';
+import { QueueService, QUEUES } from './queues/QueueService';
+import { MediaLibraryUseCase } from '../application/use-cases/media/MediaLibraryUseCase';
+import { SharpVariantGenerator } from './media/SharpVariantGenerator';
 import * as path from 'path';
 import { DrizzleAddressRepository } from './db/repositories/DrizzleAddressRepository';
 import { DrizzleRoleRepository } from './db/repositories/DrizzleRoleRepository';
 import { DrizzleFakeReportRepository } from './db/repositories/DrizzleFakeReportRepository';
 import { DrizzleAdminRoleReadRepository } from './db/repositories/DrizzleAdminRoleReadRepository';
+import { DrizzleAdminRoleWriteRepository } from './db/repositories/DrizzleAdminRoleWriteRepository';
+import { RoleManagementUseCase } from '../application/use-cases/admin/RoleManagementUseCase';
+import { RecordLighthouseReportUseCase } from '../application/use-cases/seo-growth/LighthouseWatchUseCases';
+import { GetPerformanceAuditOverviewUseCase, GetPerformanceAuditRunUseCase, RequestPerformanceAuditRunUseCase } from '../application/use-cases/seo-growth/PerformanceAuditUseCases';
+import { FilesystemPerformanceAuditStore } from './performance-audit/FilesystemPerformanceAuditStore';
+import { GetPerformanceAuditSettingsUseCase, ResetPerformanceAuditSettingsUseCase, UpdatePerformanceAuditSettingsUseCase } from '../application/use-cases/seo-growth/PerformanceAuditSettingsUseCases';
 import { DrizzleAdminUserReadRepository } from './db/repositories/DrizzleAdminUserReadRepository';
 import { DrizzleProductImageRepository } from './db/repositories/DrizzleProductImageRepository';
+import { DrizzleProductMediaRepository } from './db/repositories/DrizzleProductMediaRepository';
+import { ProductMediaUseCases } from '../application/use-cases/media/ProductMediaUseCases';
+import { DrizzleMediaImportRepository } from './db/repositories/DrizzleMediaImportRepository';
+import { MediaImportUseCases } from '../application/use-cases/media/MediaImportUseCases';
 import { DrizzleAttributeRepository } from './db/repositories/DrizzleAttributeRepository';
 import { DrizzleNotificationAttemptRepository } from './db/repositories/DrizzleNotificationAttemptRepository';
 import { DrizzleOutboxRepository } from './db/repositories/DrizzleOutboxRepository';
@@ -32,6 +204,11 @@ import { DrizzleRecommendationRuleRepository } from './db/repositories/DrizzleRe
 import { RecommendationRuleConflictService } from '../application/recommendations/RecommendationRuleConflictService';
 import { RecommendationRuleApplicationService } from '../application/recommendations/RecommendationRuleApplicationService';
 import { DrizzleRecommendationAnalyticsRepository } from './db/repositories/DrizzleRecommendationAnalyticsRepository';
+import { providerCallbackUrl } from '../application/use-cases/payments/StartPesaPalPaymentUseCase';
+import { DrizzleExperienceProfileRepository } from './db/repositories/DrizzleExperienceProfileRepository';
+import { DrizzleSearchAffinityReader } from './db/repositories/DrizzleSearchAffinityReader';
+import { DrizzleRecommendationCommercialRepository } from './db/repositories/DrizzleRecommendationCommercialRepository';
+import { RecommendationCommercialService } from '../application/recommendations/RecommendationCommercialService';
 import { RecommendationAnalyticsService } from '../application/recommendations/RecommendationAnalyticsService';
 
 import { DrizzleProductRecommendationReader } from './db/repositories/DrizzleProductRecommendationReader';
@@ -39,6 +216,43 @@ import { ScryptPasswordHasher } from './security/ScryptPasswordHasher';
 import { Hs256TokenSigner } from './security/Hs256TokenSigner';
 
 import { DrizzlePaymentAttemptRepository } from './db/repositories/DrizzlePaymentAttemptRepository';
+import { SettlePaymentUseCase } from '../application/use-cases/payments/SettlePaymentUseCase';
+import { ReconcilePendingPaymentsUseCase } from '../application/use-cases/payments/ReconcilePendingPaymentsUseCase';
+import { RefundPesaPalPaymentUseCase } from '../application/use-cases/payments/RefundPesaPalPaymentUseCase';
+import { DrizzleRefundLedgerRepository } from './db/repositories/DrizzleRefundLedgerRepository';
+import { DrizzleAccountRecoveryRepository } from './db/repositories/DrizzleAccountRecoveryRepository';
+import { DrizzleSocialIdentityRepository } from './db/repositories/DrizzleSocialIdentityRepository';
+import { NotificationResetDelivery } from './identity/NotificationResetDelivery';
+import { RequestPasswordResetUseCase, ResetPasswordUseCase } from '../application/use-cases/identity/PasswordResetUseCases';
+import { ChangePasswordUseCase } from '../application/use-cases/identity/ChangePasswordUseCase';
+import { SmsResetCodeDelivery } from './identity/SmsResetCodeDelivery';
+import { RequestSmsPasswordResetUseCase, ResetPasswordWithSmsCodeUseCase } from '../application/use-cases/identity/SmsPasswordResetUseCases';
+import { DrizzleProductCostRepository } from './db/repositories/DrizzleProductCostRepository';
+import { ImportProductCostsUseCase, RefreshCurrentProductCostsUseCase } from '../application/use-cases/products/ProductCostUseCases';
+import { DrizzleHeroRepository } from './db/repositories/DrizzleHeroRepository';
+import { HeroContentService } from '../application/hero/HeroContentService';
+import { HeroSignalsService } from './hero/HeroSignalsService';
+import { HeroTelemetryService } from './hero/HeroTelemetryService';
+import { DrizzleNavRepository } from './db/repositories/DrizzleNavRepository';
+import { NavContentService } from '../application/nav/NavContentService';
+import { resolveStorefrontDiscount, storefrontPricingView } from '../application/pricing/StorefrontDiscountQuery';
+import { DrizzleBusinessInfoRepository } from './db/repositories/DrizzleBusinessInfoRepository';
+import { BusinessInfoService } from '../application/business/BusinessInfoService';
+import { DrizzleTaxonomyRepository } from './db/repositories/DrizzleTaxonomyRepository';
+import { TaxonomyService } from '../application/taxonomy/TaxonomyService';
+import { DrizzleHomepageContentRepository } from './db/repositories/DrizzleHomepageContentRepository';
+import { HomepageContentService } from '../application/homepage/HomepageContentService';
+import { DrizzleAmbassadorMedia } from './homepage/DrizzleAmbassadorMedia';
+import { DrizzleStorefrontCopyRepository } from './db/repositories/DrizzleStorefrontCopyRepository';
+import { StorefrontCopyService } from '../application/storefront-copy/StorefrontCopyService';
+import { NavTelemetryService } from './nav/NavTelemetryService';
+import {
+  AbandonStaleUnpaidOrdersUseCase,
+  AlertOnLedgerMismatchUseCase,
+  ExpireStaleReservationsUseCase,
+} from '../application/use-cases/payments/PaymentOpsSweepUseCases';
+import { isPaymentsOpsConfigKey, validatePaymentsOpsValue } from '../domain/payments/PaymentsOpsConfig';
+import { CheckPaymentSilenceUseCase, PesapalSyntheticProbeUseCase } from '../application/use-cases/payments/PaymentSilenceUseCases';
 import { PesaPalClient } from './payments/pesapal/PesaPalClient';
 import { IPesaPalClient } from '../application/ports/IPesaPalClient';
 import { StartPesaPalPaymentUseCase } from '../application/use-cases/payments/StartPesaPalPaymentUseCase';
@@ -75,24 +289,38 @@ import {
   GetSearchInsightsUseCase,
   UpdateSearchDemandStatusUseCase,
 } from '../application/use-cases/products/SearchUseCases';
+import {
+  ListPublishedPostsUseCase,
+  GetPublishedPostUseCase,
+  GetPostForAdminUseCase,
+  CreatePostUseCase,
+  UpdatePostUseCase,
+  PublishPostUseCase,
+  UnpublishPostUseCase,
+  DeletePostUseCase,
+} from '../application/use-cases/blog/BlogUseCases';
 import { VerifyPesaPalPaymentUseCase } from '../application/use-cases/payments/VerifyPesaPalPaymentUseCase';
+import { ApplyRefundConsequencesUseCase } from '../application/use-cases/payments/ApplyRefundConsequencesUseCase';
+import { confirmationForPlacedOrder, customerMessageForTransition } from '../application/notifications/OrderLifecycleMessages';
+import { ApplyFulfilmentStockEffectUseCase } from '../application/use-cases/inventory/ApplyFulfilmentStockEffectUseCase';
 import { env } from '../config/env';
 import { DrizzleSystemHealthRepository } from './db/repositories/DrizzleSystemHealthRepository';
 import { CheckSystemHealthUseCase } from '../application/use-cases/system/CheckSystemHealthUseCase';
 import { SyntheticMonitor } from './scheduler/SyntheticMonitor';
 import { RecommendationMaterializer } from './scheduler/RecommendationMaterializer';
 
-import { WhatsAppAdapter } from './notifications/whatsapp/WhatsAppAdapter';
+import { ZohoWhatsAppAdapter } from './notifications/whatsapp/ZohoWhatsAppAdapter';
+import { FailoverWhatsAppProvider, MetaWhatsAppAdapter } from './notifications/whatsapp/MetaWhatsAppAdapter';
+import { MetaWhatsAppTemplateCatalog, markWhatsAppDeliveryFailed } from './notifications/whatsapp/MetaWhatsAppTemplateCatalog';
 import { ZeptoMailAdapter } from './notifications/zeptomail/ZeptoMailAdapter';
 import { DisabledSmsAdapter } from './notifications/sms/DisabledSmsAdapter';
 import { PahappaCommsSmsAdapter } from './notifications/sms/PahappaCommsSmsAdapter';
-import { DefaultNotificationRouter } from './notifications/NotificationRouter';
+import { DefaultNotificationRouter, basketRemindersEnabled } from './notifications/NotificationRouter';
 
 import { ProductSignalExtractor } from '../application/recommendations/ProductSignalExtractor';
 import { CompatibilityRuleService } from '../application/recommendations/CompatibilityRuleService';
 import { RecommendationScoringService } from '../application/recommendations/RecommendationScoringService';
 import { TrendingScoreService } from '../application/recommendations/TrendingScoreService';
-import { RecommendationFallbackService } from '../application/recommendations/RecommendationFallbackService';
 import { RecommendationEligibilityService } from '../application/recommendations/RecommendationEligibilityService';
 import { RecommendationDeduplicationService } from '../application/recommendations/RecommendationDeduplicationService';
 import { RecommendationDiversityService } from '../application/recommendations/RecommendationDiversityService';
@@ -102,9 +330,123 @@ import { GetCartByIdUseCase } from '../application/use-cases/commerce/GetCartByI
 import { CheckoutUseCase } from '../application/use-cases/commerce/CheckoutUseCase';
 import { EvaluateCartPricingUseCase } from '../application/use-cases/pricing/EvaluateCartPricingUseCase';
 import { ManagePromotionCapacityUseCase } from '../application/use-cases/pricing/ManagePromotionCapacityUseCase';
+import { RedeemCouponUseCase } from '../application/use-cases/pricing/RedeemCouponUseCase';
+import { FirstOrderEligibilityUseCase } from '../application/use-cases/pricing/FirstOrderEligibilityUseCase';
 import { PricingGovernanceUseCase } from '../application/use-cases/pricing/PricingGovernanceUseCase';
 import { PricingOperationsUseCase } from '../application/use-cases/pricing/PricingOperationsUseCase';
 import { DrizzleDeliveryZoneRepository } from './db/repositories/DrizzleDeliveryZoneRepository';
+import {
+  DrizzleDeliveryPricingPolicyRepository,
+  DrizzleDeliveryFeeObservationReader,
+} from './db/repositories/DrizzleDeliveryIntelligenceRepositories';
+import {
+  GetDeliveryEstimateUseCase,
+  GetDeliveryIntelligenceUseCase,
+  SaveDeliveryPricingPolicyUseCase,
+} from '../application/use-cases/commerce/DeliveryIntelligenceUseCases';
+import { LocationSearchService } from '../application/services/locations/LocationSearchService';
+import { SearchLocationsUseCase, RecordLocationSearchEventUseCase, ResolveMapLinkUseCase } from '../application/use-cases/locations/LocationUseCases';
+import { DrizzleAddressAuditRepository } from './db/repositories/DrizzleAddressAuditRepository';
+import { DrizzleLocationSearchRepository, DrizzleLocationOrderDensityReader, DrizzleSearchMissRecorder, DrizzleCustomerLocationContextReader } from './db/repositories/DrizzleLocationSearchRepository';
+import { HttpShortLinkResolver } from './locations/HttpShortLinkResolver';
+import { DrizzleLocationAdminRepository } from './db/repositories/DrizzleLocationAdminRepository';
+import { CodPolicyReader, CheckoutVelocitySignal } from './locations/CodPolicyReader';
+import { DrizzleLoyaltyCompletionRepository } from './db/repositories/DrizzleLoyaltyCompletionRepository';
+import { LoyaltyOutboxNotifier } from './loyalty/LoyaltyOutboxNotifier';
+import { CustomerOutboxNotifier } from './notifications/CustomerOutboxNotifier';
+import { CancelFulfilmentTaskForCancelledOrderUseCase } from '../application/use-cases/fulfilment/CancelFulfilmentTaskForCancelledOrderUseCase';
+import { MerchantFeedCache } from '../application/use-cases/seo-growth/MerchantFeedCache';
+import { DrizzleFeedInventoryVersion } from './db/repositories/DrizzleFeedInventoryVersion';
+import { DrizzleFraudSourceDirectory } from './db/repositories/DrizzleFraudSourceDirectory';
+import { DrizzleAcknowledgementLedger } from './notifications/DrizzleAcknowledgementLedger';
+import { SendPublicFormAcknowledgementUseCase } from '../application/use-cases/notifications/SendPublicFormAcknowledgementUseCase';
+import { RequestPhoneVerificationUseCase, VerifyPhoneUseCase, GetPhoneVerificationStateUseCase, BackfillGuestOrdersUseCase, MergeLoyaltyAccountsUseCase } from '../application/use-cases/loyalty/LoyaltyIdentityUseCases';
+import { EarnForVerificationScanUseCase, ManualAdjustLoyaltyUseCase, EvaluateTiersUseCase } from '../application/use-cases/loyalty/LoyaltyProgrammeUseCases';
+import {
+  AwardBirthdayPointsUseCase,
+  EarnForCounterfeitConfirmationUseCase,
+  EarnForPhoneVerificationUseCase,
+  EvaluateGamificationForUserUseCase,
+  CatchUpMissionAwardsUseCase,
+  QualifyReferralOnDeliveryUseCase,
+  RecordReferralUseCase,
+  DecideHeldReferralUseCase,
+} from '../application/use-cases/loyalty/LoyaltyGamificationUseCases';
+import { DrizzleBirthdayUserSource, DrizzleLoyaltyReferralRepository } from './db/repositories/DrizzleLoyaltyReferralRepository';
+import {
+  GetDrawStateUseCase,
+  GrantDrawTokenUseCase,
+  PlayDrawTokenUseCase,
+  ReverseDrawOnRefundUseCase,
+} from '../application/use-cases/loyalty/LoyaltyDrawUseCases';
+import { DrizzleLoyaltyDrawRepository } from './db/repositories/DrizzleLoyaltyDrawRepository';
+import { DrizzleDeliveryCaptureRepository } from './db/repositories/DrizzleDeliveryCaptureRepository';
+import { DeliveryConfigReader } from './delivery/DeliveryConfigReader';
+import {
+  CaptureQuoteUseCase,
+  ListDeliveriesAwaitingCostUseCase,
+  RecordActualRiderCostUseCase,
+} from '../application/use-cases/delivery/DeliveryCaptureUseCases';
+import { DeliveryAreaResolver, DeliveryWizardAreaReader } from './delivery/DeliveryAreaResolver';
+import { GooglePlacesProvider } from './places/GooglePlacesProvider';
+import { DrizzlePlaceMemoryReader } from './db/repositories/DrizzlePlaceMemoryReader';
+import { DrizzleLocationSignalStore } from './db/repositories/DrizzleLocationSignalStore';
+import { DrizzleNearbyDemandReader } from './db/repositories/DrizzleNearbyDemandReader';
+import { PopularNearYouUseCase } from '../application/recommendations/PopularNearYouUseCase';
+import { GetDeliverToUseCase, LocationDemandReportUseCase, RecordLocationSignalUseCase } from '../application/use-cases/locations/LocationSignalUseCases';
+import { GetPlaceMemoryUseCase } from '../application/use-cases/delivery/GetPlaceMemoryUseCase';
+import { RedisPlaceLocationCache, RedisPlaceProviderHealth, RedisPlaceRequestBudget } from './places/RedisPlaceStores';
+import { DeepPlaceSearchUseCase } from '../application/use-cases/locations/DeepPlaceSearchUseCases';
+import { DrizzleDeliveryQuotingRepository } from './db/repositories/DrizzleDeliveryQuotingRepository';
+import { DrizzleDeliveryVarianceRepository } from './db/repositories/DrizzleDeliveryVarianceRepository';
+import { DrizzleDeliveryCalibrationRepository } from './db/repositories/DrizzleDeliveryCalibrationRepository';
+import { ApplyCorridorCsvUseCase, DryRunCorridorCsvUseCase, RevertCorridorBatchUseCase } from '../application/use-cases/delivery/DeliveryCorridorCsvUseCase';
+import { LocationPinUseCases } from '../application/use-cases/delivery/LocationPinUseCases';
+import { DrizzleLocationPinRepository } from './db/repositories/DrizzleLocationPinRepository';
+import { RiderUseCases } from '../application/use-cases/delivery/RiderUseCases';
+import { isShopCollectionOperator } from '../domain/locations/CollectionPoints';
+import { CorridorSummaryUseCase, LadderDryRunUseCase, LadderMarginReportUseCase } from '../application/use-cases/delivery/FeeLadderUseCases';
+import { BusRateCardAdminUseCases } from '../application/use-cases/delivery/BusRateCardAdminUseCases';
+import { DrizzleBusRateCardAdminRepository } from './db/repositories/DrizzleBusRateCardAdminRepository';
+import { DrizzleRiderRepository } from './db/repositories/DrizzleRiderRepository';
+import {
+  AcceptCalibrationProposalUseCase,
+  RejectCalibrationProposalUseCase,
+  RunNightlyCalibrationUseCase,
+} from '../application/use-cases/delivery/DeliveryCalibrationUseCases';
+import {
+  DeliveryFallbackRateUseCase,
+  DeliveryLocationAccuracyReportUseCase,
+  DeliveryMarginReportUseCase,
+  DeliveryVarianceReportUseCase,
+} from '../application/use-cases/delivery/DeliveryReportUseCases';
+import { BAND_EDGES_KM } from '../domain/delivery/DeliveryModel';
+import { orderChargeBeforeFreeDeliveryUgx, orderChargeUgx } from '../domain/delivery/DeliveryQuoteService';
+import {
+  ApplyDeliveryVarianceUseCase,
+  ListOrderVariancesUseCase,
+  ListPendingVarianceAgreementsUseCase,
+  RecordVarianceAgreementUseCase,
+} from '../application/use-cases/delivery/DeliveryVarianceUseCases';
+import { DeliveryQuotingUseCase } from '../application/use-cases/delivery/DeliveryQuotingUseCase';
+import { DrizzleDeliveryConfigRepository } from './db/repositories/DrizzleDeliveryConfigRepository';
+import {
+  DraftConfigVersionUseCase,
+  PreviewConfigVersionUseCase,
+  PublishConfigVersionUseCase,
+  RevertConfigVersionUseCase,
+} from '../application/use-cases/delivery/DeliveryConfigUseCases';
+import {
+  DeriveLaunchValuesUseCase,
+  DraftLaunchValuesUseCase,
+} from '../application/use-cases/delivery/DeliveryWizardUseCases';
+import { DrizzleLoyaltyIdentityRepository, DrizzleLoyaltyTierRepository, LoyaltyProgrammeConfigWriter, OutboxOtpSender, otpHash, otpRandom } from './loyalty/LoyaltyIdentityInfrastructure';
+import { SaveLoyaltyProgrammeConfigUseCase } from '../application/use-cases/loyalty/SaveLoyaltyProgrammeConfigUseCase';
+import { ReconcileLoyaltyControlTotalsUseCase } from '../application/use-cases/loyalty/ReconcileLoyaltyControlTotalsUseCase';
+import { DrizzleLoyaltyControlTotalsRepository } from './db/repositories/DrizzleLoyaltyControlTotalsRepository';
+import { VestLoyaltyOnDeliveryUseCase, ClawbackOrderEarnUseCase, ReserveRedemptionUseCase, ConsumeRedemptionUseCase, ReleaseRedemptionUseCase, ReverseRedemptionUseCase, RunLoyaltyDailySweepUseCase, ApplyRefundToLoyaltyUseCase,
+  ReverseReferralOnRefundUseCase, guardLoyaltyIssuance } from '../application/use-cases/loyalty/LoyaltyCompletionUseCases';
+import { ListSearchMissesUseCase, PromoteSearchMissToAliasUseCase, ListAddressReviewQueueUseCase, ResolveAddressUseCase, ManageLandmarksUseCase, ManagePickupPointsUseCase, GetZonePoliciesUseCase, SaveZonePolicyUseCase, ListDataExceptionsUseCase } from '../application/use-cases/locations/LocationAdminUseCases';
 import {
   ListDeliveryZonesUseCase,
   UpsertDeliveryZoneUseCase,
@@ -125,6 +467,10 @@ import { EnqueueAdminOrderEmailUseCase } from '../application/use-cases/notifica
 import { ReplayAdminOrderEmailUseCase } from '../application/use-cases/notifications/ReplayAdminOrderEmailUseCase';
 import { UploadProductImagesUseCase } from '../application/use-cases/products/UploadProductImagesUseCase';
 import { TrackRecommendationEventUseCase } from '../application/recommendations/TrackRecommendationEventUseCase';
+import { RecommendationServingStats } from './recommendations/RecommendationServingStats';
+import { ResolveExperienceProfileUseCase, LinkExperienceProfileUseCase } from '../application/use-cases/identity/ExperienceProfileUseCases';
+import { AssignRecommendationExperimentUseCase } from '../application/recommendations/AssignRecommendationExperimentUseCase';
+import { RecommendationModelReadinessUseCase } from '../application/recommendations/RecommendationModelReadiness';
 import { GetRecommendationsUseCase } from '../application/recommendations/GetRecommendationsUseCase';
 import { GetRecentlyViewedUseCase } from '../application/recommendations/GetRecentlyViewedUseCase';
 
@@ -139,6 +485,7 @@ import { DrizzleConsentRepository } from './measurement/DrizzleConsentRepository
 import { GetMeasurementOverviewUseCase } from '../application/use-cases/measurement/GetMeasurementOverviewUseCase';
 import { ListMeasurementDlqUseCase } from '../application/use-cases/measurement/ListMeasurementDlqUseCase';
 import { ReplayMeasurementDlqUseCase } from '../application/use-cases/measurement/ReplayMeasurementDlqUseCase';
+import { DismissMeasurementDlqUseCase } from '../application/use-cases/measurement/DismissMeasurementDlqUseCase';
 import { ListConsentAuditUseCase } from '../application/use-cases/measurement/ListConsentAuditUseCase';
 import { GetMatchQualitySummaryUseCase } from '../application/use-cases/measurement/GetMatchQualitySummaryUseCase';
 import { AttributionService } from '../application/use-cases/measurement/AttributionService';
@@ -317,6 +664,7 @@ import { DrizzleFulfilmentRepository } from './db/repositories/DrizzleFulfilment
 import { CreateFulfilmentTaskOnOrderPlacedUseCase } from '../application/use-cases/fulfilment/CreateFulfilmentTaskOnOrderPlacedUseCase';
 import { MarkFulfilmentPaymentConfirmedUseCase } from '../application/use-cases/fulfilment/MarkFulfilmentPaymentConfirmedUseCase';
 import { TransitionFulfilmentTaskUseCase } from '../application/use-cases/fulfilment/TransitionFulfilmentTaskUseCase';
+import { ReinstateFulfilmentTaskUseCase } from '../application/use-cases/fulfilment/ReinstateFulfilmentTaskUseCase';
 import { ListFulfilmentQueueUseCase } from '../application/use-cases/fulfilment/ListFulfilmentQueueUseCase';
 import { GetFulfilmentOverviewUseCase } from '../application/use-cases/fulfilment/GetFulfilmentOverviewUseCase';
 import { AssignFulfilmentTaskUseCase } from '../application/use-cases/fulfilment/AssignFulfilmentTaskUseCase';
@@ -344,18 +692,34 @@ import {
 } from '../application/use-cases/fulfilment/PackingUseCases';
 import { logger } from './logging/logger';
 import { RedisLoginAttemptStore } from './security/RedisLoginAttemptStore';
+import { DrizzleSessionRepository } from './db/repositories/DrizzleSessionRepository';
+import { SessionService } from './security/SessionService';
+import { DrizzleMfaRepository } from './db/repositories/DrizzleMfaRepository';
+import { MfaService } from './security/MfaService';
+import { DrizzleCommerceReconciliationRepository } from './db/repositories/DrizzleCommerceReconciliationRepository';
+import { ScanCommerceIntegrityUseCase } from '../application/use-cases/commerce/ScanCommerceIntegrityUseCase';
+import { OrderTransitionService } from './orders/OrderTransitionService';
+import { DrizzleProductQualityRepository } from './db/repositories/DrizzleProductQualityRepository';
+import { ScoreProductQualityUseCase } from '../application/use-cases/products/ScoreProductQualityUseCase';
+import { DrizzleCustomerRfmRepository } from './db/repositories/DrizzleCustomerRfmRepository';
+import { ScoreCustomerRfmUseCase } from '../application/use-cases/customer-dna/ScoreCustomerRfmUseCase';
+import { DrizzleExplorerQueryRepository } from './db/repositories/DrizzleExplorerQueryRepository';
+import { RunExplorerQueryUseCase } from '../application/use-cases/analytics/RunExplorerQueryUseCase';
 import { DrizzleInventoryRepository } from './db/repositories/DrizzleInventoryRepository';
 import { DrizzleOrderReservationState } from './db/repositories/DrizzleOrderReservationState';
 import { DrizzleCheckoutIdempotencyRepository } from './db/repositories/DrizzleCheckoutIdempotencyRepository';
 import { DrizzleCheckoutSideEffectRecorder } from './db/repositories/DrizzleCheckoutSideEffectRecorder';
 import {
+  DrizzleAccountCartRepository,
   DrizzleAuthorizedCartRepository,
   DrizzleCartProductReader,
 } from './db/repositories/DrizzleAuthorizedCartRepository';
 import { MutateCartUseCase } from '../application/use-cases/commerce/MutateCartUseCase';
+import { ResolveAccountCartUseCase } from '../application/use-cases/commerce/ResolveAccountCartUseCase';
 import { ExecuteCheckoutIntentUseCase } from '../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
 import { StartOrderPaymentUseCase } from '../application/use-cases/commerce/StartOrderPaymentUseCase';
 import { ReconcileOrderPaymentUseCase } from '../application/use-cases/commerce/ReconcileOrderPaymentUseCase';
+import { ReleaseCancelledOrderHoldsUseCase } from '../application/use-cases/commerce/ReleaseCancelledOrderHoldsUseCase';
 import { ProcessCheckoutSideEffectBatchUseCase } from '../application/use-cases/outbox/ProcessCheckoutSideEffectBatchUseCase';
 import { SetProductStockUseCase } from '../application/use-cases/inventory/SetProductStockUseCase';
 import {
@@ -375,6 +739,7 @@ import { DrizzleFulfilmentDeliveryRepository } from './db/repositories/DrizzleFu
 import { DrizzleFulfilmentReportRepository } from './db/repositories/DrizzleFulfilmentReportRepository';
 import {
   GetDeliveryHistoryUseCase,
+  CompleteOrderForDeliveredTaskUseCase,
   RecordDeliveryUseCase,
   GetFulfilmentReportUseCase,
 } from '../application/use-cases/fulfilment/DeliveryUseCases';
@@ -389,11 +754,33 @@ import { DrizzleCustomerSignalReader } from './db/repositories/DrizzleCustomerSi
 import {
   ResolveCustomerIdentityUseCase,
   ProjectCustomerProfileUseCase,
+  ReprojectStaleProfilesUseCase,
   GenerateNextBestActionUseCase,
   GetCustomerDnaUseCase,
 } from '../application/use-cases/customer-dna/CustomerDnaUseCases';
 import { DrizzleDecisionEvidenceReader } from './db/repositories/DrizzleDecisionEvidenceReader';
 import { DrizzleDecisionInsightRepository } from './db/repositories/DrizzleDecisionInsightRepository';
+import { DrizzleAnalyticsReadRepository } from './db/repositories/DrizzleAnalyticsReadRepository';
+import {
+  DrizzleAnalyticsAlertRuleRepository,
+  DrizzleAnalyticsSavedViewRepository,
+} from './db/repositories/DrizzleAnalyticsConfigRepositories';
+import {
+  GetAnalyticsBreakdownUseCase,
+  GetAnalyticsExceptionDrilldownUseCase,
+  GetPaymentIntelligenceUseCase,
+} from '../application/use-cases/analytics/PaymentIntelligenceUseCases';
+import {
+  EvaluateAnalyticsAlertRulesUseCase,
+  ExportAnalyticsUseCase,
+  ManageAnalyticsAlertRulesUseCase,
+  ManageAnalyticsSavedViewsUseCase,
+} from '../application/use-cases/analytics/AnalyticsConfigUseCases';
+import {
+  GetAnalyticsDataQualityUseCase,
+  GetAnalyticsMetricSeriesUseCase,
+  GetAnalyticsOverviewUseCase,
+} from '../application/use-cases/analytics/CommerceAnalyticsUseCases';
 import {
   EvaluateDecisionSignalsBatchUseCase,
   GetDecisionInsightUseCase,
@@ -413,6 +800,46 @@ import { ReconcileAutomationOutcomeUseCase } from '../application/use-cases/auto
 import { AutomationInternalActionExecutor } from './automation/AutomationInternalActionExecutor';
 import { DrizzleAutomationOperationsRepository } from './db/repositories/DrizzleAutomationOperationsRepository';
 import { AutomationOperationsUseCase } from '../application/use-cases/automation/AutomationOperationsUseCase';
+// First-party data (0155): identity stitching, segments, LTV, WhatsApp marketing consent.
+import { StitchCustomerIdentityUseCase } from '../application/use-cases/first-party/StitchCustomerIdentityUseCase';
+import { ListIdentityConflictsUseCase, ResolveIdentityConflictUseCase } from '../application/use-cases/first-party/IdentityConflictUseCases';
+import { ManageSegmentsUseCase, MaterialiseSegmentsUseCase } from '../application/use-cases/first-party/SegmentUseCases';
+import { GetCustomerValueReportUseCase } from '../application/use-cases/first-party/GetCustomerValueReportUseCase';
+import { SegmentAudienceService } from '../application/use-cases/first-party/SegmentAudienceService';
+import { WhatsAppMarketingConsentUseCases } from '../application/use-cases/first-party/WhatsAppMarketingConsentUseCases';
+import { HmacIdentifierHasher, DrizzleAccountIdentityReader, PersonalisationConsentReader, AdvertisingRefusalReader, DrizzleConsentEvidenceRepository } from './first-party/FirstPartyAdapters';
+import { DrizzleIdentityConflictRepository, DrizzleIdentityMergeRepository, DrizzleOrderIdentityBackfillReader, orderLinkCoverage } from './first-party/DrizzleIdentityRepositories';
+import { DrizzleCustomerFactsReader, DrizzleCustomerContactReader } from './first-party/DrizzleCustomerFactsReader';
+import { DrizzleSegmentRepository } from './first-party/DrizzleSegmentRepository';
+import { TrafficExclusionStore } from './first-party/TrafficExclusionStore';
+// First-party data, part two (0157): Customer 360, next-best action from the real profile, privacy requests.
+import { GetCustomer360UseCase } from '../application/use-cases/first-party/Customer360UseCases';
+import { DecideNextBestActionUseCase } from '../application/use-cases/first-party/DecideNextBestActionUseCase';
+import { PrivacyRequestUseCases } from '../application/use-cases/first-party/PrivacyRequestUseCases';
+import { DrizzleCustomer360Reader } from './first-party/DrizzleCustomer360Reader';
+import { DrizzleNbaContextReader } from './first-party/DrizzleNbaContextReader';
+import { DrizzleConsentAnchorRepository, DrizzlePersonalDataEraser, DrizzlePersonalDataExporter, DrizzlePrivacyRequestRepository } from './first-party/DrizzlePrivacyRepositories';
+import { DrizzleConsentOperatingRepository as FirstPartyConsentRepository } from './consent/DrizzleConsentOperatingRepository';
+import { outboundGovernance } from './notifications/OutboundGovernanceService';
+import { DrizzleCapabilityHubReader } from './db/repositories/DrizzleCapabilityHubReader';
+import { buildMarketingSuppressionReader } from './notifications/marketingSuppressionReader';
+
+/**
+ * Payment-attempt statuses the provider has already given a final answer for.
+ *
+ * `pending` and `verification_pending` are the only ones still worth asking
+ * about. Everything here is settled — and time never moves an attempt into this
+ * set on its own, only the provider's own answer does.
+ */
+const TERMINAL_PAYMENT_ATTEMPT_STATUSES = new Set([
+  'completed',
+  'failed',
+  'invalid',
+  'reversed',
+  'cancelled',
+  'abandoned',
+  'verification_failed',
+]);
 
 export class Registry {
 
@@ -422,10 +849,56 @@ export class Registry {
   public readonly cartRepo = new DrizzleCartRepository();
   public readonly cartQueryRepo = new DrizzleCartQueryRepository();
   public readonly orderRepo = new DrizzleOrderRepository();
+  public readonly orderAttributionRepo = new DrizzleOrderAttributionRepository();
   public readonly productRepo = new DrizzleProductRepository();
+  /** 0196: store credit and gift cards (gap analysis #17). */
+  public readonly creditRepo = new DrizzleCreditRepository();
+  public readonly manageCreditUseCases = new ManageCreditUseCases(this.creditRepo, { hash: creditCodeHash, randomIndexes: creditRandomIndexes }, {
+    // Resolved at call time: the loyalty use cases are constructed further down this class.
+    execute: (input) => new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase).execute(input),
+  });
+  /** Save for later (gap analysis #6). */
+  public readonly savedProductsUseCases = new SavedProductsUseCases(new DrizzleWishlistRepository(), this.productRepo);
+  /** Once-published products that are off sale: the product page's honest 404 (no price, stock or images). */
+  public readonly unlistedProductReader = new DrizzleUnlistedProductReader();
+  public readonly blogRepo = new DrizzleBlogRepository();
+  public readonly deviceRepo = new DrizzleDeviceRepository();
   public readonly pricingRepo = new DrizzlePricingRepository();
   public readonly pricingQuoteRepo = new DrizzlePricingQuoteRepository();
   public readonly pricingCapacityRepo = new DrizzlePricingCapacityRepository();
+  public readonly couponRepo = new DrizzleCouponRepository();
+  /** What the storefront may advertise: active promotions minus used-up and code-only ones (as checkout charges). */
+  public readonly storefrontPricingRepo = storefrontPricingView(this.pricingRepo, this.pricingCapacityRepo, this.couponRepo);
+  public readonly reviewRepo = new DrizzleReviewRepository();
+  public readonly creatorRepo = new DrizzleCreatorRepository();
+  public readonly flashSaleRepo = new DrizzleFlashSaleRepository();
+  public readonly seoRepo = new DrizzleSeoRepository();
+  public readonly seoGrowthRepo = new DrizzleSeoGrowthRepository();
+  public readonly seoIntegrationRepo = new DrizzleSeoIntegrationRepository();
+  public readonly seoCatalogueRepo = new DrizzleSeoCatalogueRepository();
+  public readonly seoWorkQueueRepo = new DrizzleSeoWorkQueueRepository();
+  public readonly seoObservabilityRepo = new DrizzleSeoObservabilityRepository();
+  public readonly seoTechnicalRepo = new DrizzleSeoTechnicalRepository();
+  // Lighthouse Watch: stores lab runs as Web Vitals rows and keeps one SEO alert per shortfall.
+  public readonly recordLighthouseReportUseCase = new RecordLighthouseReportUseCase(this.seoTechnicalRepo, this.seoGrowthRepo);
+  // Continuous Performance Assurance: the API reads the host audit's data directory and queues run requests; it never runs a probe.
+  public readonly performanceAuditStore = new FilesystemPerformanceAuditStore();
+  public readonly getPerformanceAuditOverviewUseCase = new GetPerformanceAuditOverviewUseCase(this.performanceAuditStore);
+  public readonly getPerformanceAuditRunUseCase = new GetPerformanceAuditRunUseCase(this.performanceAuditStore);
+  public readonly requestPerformanceAuditRunUseCase = new RequestPerformanceAuditRunUseCase(this.performanceAuditStore);
+  public readonly getPerformanceAuditSettingsUseCase = new GetPerformanceAuditSettingsUseCase(this.performanceAuditStore);
+  public readonly updatePerformanceAuditSettingsUseCase = new UpdatePerformanceAuditSettingsUseCase(this.performanceAuditStore);
+  public readonly resetPerformanceAuditSettingsUseCase = new ResetPerformanceAuditSettingsUseCase(this.performanceAuditStore);
+  public readonly mobileMoneyDisbursement = new NoSendMobileMoneyDisbursement();
+  public readonly submitReviewUseCase = new SubmitReviewUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
+  public readonly orderReviewEligibilityUseCase = new GetOrderReviewEligibilityUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
+  /** 0209: photos on reviews, through the gift-card photo pipeline. */
+  /** 0212: photos as proof of delivery (staff-only), the review photo pipeline. */
+  public readonly deliveryProofPhotoUseCases = new DeliveryProofPhotoUseCases(new DrizzleDeliveryProofPhotoRepository(), new SharpGiftCardPhotoProcessor());
+  public readonly reviewPhotoUseCases = new ReviewPhotoUseCases(new DrizzleReviewPhotoRepository(), new SharpGiftCardPhotoProcessor(), (raw) => piiHasher.hashName(raw), (event, detail) => logger.info({ event, ...detail }, `[review-photo] ${event}`));
+  public readonly submitOrderReviewUseCase = new SubmitOrderReviewUseCase(this.reviewRepo, this.submitReviewUseCase, (reviewId, ids) => this.reviewPhotoUseCases.attach(reviewId, ids));
+  public readonly productReviewsUseCase = new GetProductReviewsUseCase(this.reviewRepo);
+  public readonly voteOnReviewUseCase = new VoteOnReviewUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
   public readonly pricingOperationsRepo = new DrizzlePricingOperationsRepository();
   public readonly dealerRepo = new DrizzleDealerRepository();
   public readonly supportRepo = new DrizzleSupportRepository();
@@ -433,25 +906,244 @@ export class Registry {
   public readonly verificationRepo = new DrizzleVerificationRepository();
   public readonly auditRepo = new DrizzleAuditRepository();
   public readonly createAuditLogUseCase = new CreateAuditLogUseCase(this.auditRepo);
+  // Shop assistant (mandate 2026-10-12): admission, fairness tiers and the month spend ledger.
+  public readonly assistantLedgerRepo = new DrizzleAssistantLedgerRepository();
+  public readonly assistantConfigRepo = new DrizzleAssistantConfigRepository();
+  public readonly assistantAdmissionUseCases = new AssistantAdmissionUseCases(this.assistantLedgerRepo, this.assistantConfigRepo, new AssistantCounterStore());
+  /** AI Search Visibility (AEO/GEO) — migration 0131; see docs/ai-visibility/README.md. */
+  public readonly aiVisibility = createAiVisibility(this.createAuditLogUseCase);
+  /** Attribution module (0156): order ↔ visit links, per-order channel credit, weekly channel report. */
+  public get channelAttribution() { return channelAttribution(); }
+  // ── Measurement settings, holdouts, MMM dataset (0203, 2026-10-23) ────────
+  public readonly measurementConfig = new DrizzleMeasurementConfig((e) => this.createAuditLogUseCase.execute(e));
+  public readonly holdoutStore = new DrizzleHoldoutStore();
+  public readonly holdoutGate = new HoldoutGate(this.measurementConfig, this.holdoutStore);
+  public readonly controlFeeds = new ControlFeeds();
+  public readonly mmmDataset = new MmmDataset(this.measurementConfig, this.controlFeeds);
+  public readonly marketingCostDerivation = new MarketingCostDerivation(this.measurementConfig, this.controlFeeds);
+  public readonly creatorCostStore = new DrizzleCreatorCostStore();
+  /** GA4 Data API (service account) shared by the reconciliation and the daily series pull (0205). */
+  public readonly ga4DataApi = new Ga4DataApi(this.seoIntegrationRepo);
+  public readonly ga4DailyPull = new Ga4DailyPull(this.ga4DataApi);
+  /** Paid placements on YouTube channels, radio, TV (0206) and the nightly YouTube view counts (API key). */
+  public readonly mediaPlacementStore = new DrizzleMediaPlacementStore();
+  /** Bank of Uganda rate posted by the 1 pm job; kept in control_series via ControlFeeds. */
+  public readonly recordBouFxReadingUseCase = new RecordBouFxReadingUseCase(this.controlFeeds);
+  public readonly youtubeViewsPull = new YouTubeViewsPull(process.env.YOUTUBE_API_KEY);
+  public readonly clarityInsightsPull = new ClarityInsightsPull(process.env.CLARITY_EXPORT_TOKEN);
+  // Advertising destinations (0138): server-side conversion APIs, token vault-encrypted.
+  // Measurement delivery operations (0140/0141): queue, replay, quarantine, kill switch.
+  /** Collector contract v2 (0141); the per-event durable write is the caller's tracking path. */
+  public collectBrowserBatch(trackEvent: (event: unknown) => Promise<void>) { return new CollectBrowserBatchUseCase(new DrizzleCollectorStore(), trackEvent); }
+  /**
+   * Fulfilment alerts (0143). Who is told, on a phone, that an order is paid.
+   * Closed registry, validated in the domain, audited on every change.
+   */
+  public readonly fulfilmentAlertConfig = {
+    values: async (): Promise<Record<string, string>> => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const rows = (await db.execute(sql`select config_key, config_value from fulfilment_alert_config`)) as unknown as Array<{
+        config_key: string; config_value: string;
+      }>;
+      const list = Array.isArray(rows) ? rows : ((rows as { rows?: typeof rows }).rows ?? []);
+      return Object.fromEntries(list.map((r) => [r.config_key, r.config_value]));
+    },
+    set: async (input: { key: string; value: string; actorId: string | null }) => {
+      const check = validateFulfilmentAlertValue(input.key, input.value);
+      if (!check.ok) return { ok: false as const, message: check.message };
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const before = await this.fulfilmentAlertConfig.values();
+      await db.execute(sql`
+        insert into fulfilment_alert_config (config_key, config_value, updated_by, updated_at)
+        values (${input.key}, ${check.value}, ${input.actorId}, now())
+        on conflict (config_key) do update set config_value = excluded.config_value,
+          updated_by = excluded.updated_by, updated_at = now()`);
+      await this.createAuditLogUseCase.execute({
+        actorId: input.actorId,
+        action: 'FULFILMENT_ALERT_CONFIG_SET',
+        entity: 'fulfilment_alert_config',
+        entityId: input.key,
+        previousState: { value: before[input.key] ?? null },
+        newState: { value: check.value },
+      } as never);
+      return { ok: true as const };
+    },
+    /** Queues the paid-order alert. Returns why nothing was queued, never silently. */
+    enqueuePaidOrderAlert: async (orderId: string, opts?: { test?: boolean }): Promise<{ queued: boolean; reason: string }> => {
+      const values = await this.fulfilmentAlertConfig.values();
+      const recipients = alertRecipients(values);
+      if (!recipients.length) return { queued: false, reason: 'NO_RECIPIENT_OR_DISABLED' };
+      const order = await this.orderRepo.findById(orderId);
+      if (!order) return { queued: false, reason: 'ORDER_NOT_FOUND' };
+      const { db } = await import('./db/client');
+      const { outboxEvents } = await import('./db/schema');
+      // One event per person, each with its own idempotency key: a failure to
+      // reach one phone must not stop the others, and a retry must not send the
+      // same person the same order twice.
+      const stamp = opts?.test ? Date.now() : 0;
+      for (const recipient of recipients) {
+      await db.insert(outboxEvents).values({
+        eventType: 'FULFILMENT_PAID_ORDER_ALERT',
+        payload: {
+          recipient,
+          orderNumber: order.orderNumber,
+          totalUgx: order.totalUgx,
+          deliveryArea: order.deliveryArea ?? '',
+          // 2026-10-21: what to pack, where it goes and who to call, so the text can be acted on as it is read.
+          // Customer fields use the names an erasure removes (customerName, customerPhone, deliveryPlace).
+          deliveryFeeUgx: order.deliveryFeeUgx,
+          items: order.items.map((it) => ({ name: it.name, sku: it.sku, quantity: it.quantity })),
+          customerName: order.customerName,
+          customerPhone: order.customerPhone,
+          deliveryPlace: order.deliveryAddress ?? '',
+          placeLabel: (order.deliveryLocation as { displayLabel?: string } | null)?.displayLabel ?? null,
+          mapUrl: deliveryMapUrl(order.deliveryLocation),
+          storeCreditUgx: order.storeCreditAppliedUgx ?? 0,
+          orderUrl: `${storefrontOrigin() ?? 'https://shopgoldplus.com'}/admin/orders/${order.id}`,
+          test: opts?.test === true,
+        } as never,
+        idempotencyKey: opts?.test
+          ? `fulfilment-alert-test:${orderId}:${recipient}:${stamp}`
+          : `fulfilment-alert:${orderId}:${recipient}`,
+        status: 'pending',
+        channel: 'sms',
+        template: 'FULFILMENT_PAID_ORDER_ALERT',
+        relatedEntity: 'order',
+        relatedEntityId: orderId,
+      } as never).onConflictDoNothing({ target: outboxEvents.idempotencyKey });
+      }
+      return { queued: true, reason: `QUEUED_FOR_${recipients.length}` };
+    },
+  };
+
+  public readonly measurementOperations = new MeasurementOperationsUseCases(new DrizzleMeasurementOperationsRepository(), this.createAuditLogUseCase, new PgAttributionPort());
+  /** Spotify ad rotation preview (phase 2): read-only, no Spotify call, no spend. */
+  public readonly spotifyRotation = new SpotifyRotationPreviewUseCase(() => this.seoGrowthRepo.feedProducts(), new DrizzleSpotifyRotationReader(), new DrizzleFeaturedProductsStore(), this.createAuditLogUseCase);
+  public readonly advertising = new AdDestinationUseCases(new DrizzleAdDestinationRepository(), AD_PLATFORMS, vaultCipher(), this.createAuditLogUseCase);
+  // Advertising operations (0154): audiences, spend import, offline conversions, catalogue feeds, checklist.
+  public readonly advertisingOps = createAdvertisingOperations({
+    audit: this.createAuditLogUseCase, destinations: this.advertising, feedProducts: () => this.seoGrowthRepo.feedProducts(),
+    pricingRepo: this.storefrontPricingRepo, publicApiOrigin: env.publicApiBaseUrl,
+    // Owner-defined segments reach ad platforms only through the first-party port (consent per member, hashes only).
+    customSegments: () => ({ source: this.segmentAudienceSource, list: () => this.segmentRepo.list(false) }),
+  });
   public readonly paymentRepo = new DrizzlePaymentRepository();
   public readonly userRepo = new DrizzleUserRepository();
   public readonly addressRepo = new DrizzleAddressRepository();
+  public readonly addressAuditRepo = new DrizzleAddressAuditRepository();
   public readonly roleRepo = new DrizzleRoleRepository();
   public readonly fakeReportRepo = new DrizzleFakeReportRepository();
   public readonly adminRoleReadRepo = new DrizzleAdminRoleReadRepository();
+  public readonly adminRoleWriteRepo = new DrizzleAdminRoleWriteRepository();
+  public readonly roleManagementUseCase = new RoleManagementUseCase(this.adminRoleWriteRepo);
   public readonly recommendationEventRepo = new DrizzleRecommendationEventRepository();
   public readonly recommendationRuleRepo = new DrizzleRecommendationRuleRepository();
   public readonly recommendationRuleAuditRepo = new DrizzleRecommendationRuleAuditRepository();
   public readonly productRecommendationReader = new DrizzleProductRecommendationReader();
+  /** 0193: "Popular in <area>" — paid orders by delivery place, server-side, the same for everyone in an area. */
+  public readonly popularNearYouUseCase = new PopularNearYouUseCase(new DrizzleNearbyDemandReader(), this.productRecommendationReader);
   public readonly recommendationAnalyticsRepo = new DrizzleRecommendationAnalyticsRepository();
+  public readonly experienceProfileRepo = new DrizzleExperienceProfileRepository();
+  public readonly searchAffinityReader = new DrizzleSearchAffinityReader();
+  public readonly recommendationCommercialRepo = new DrizzleRecommendationCommercialRepository();
+  public readonly recommendationCommercialService = new RecommendationCommercialService(this.recommendationCommercialRepo);
   public readonly pesapalPaymentRepo = new DrizzlePaymentAttemptRepository();
   public readonly pesapalClient: IPesaPalClient = new PesaPalClient(env);
   public readonly systemHealthRepo = new DrizzleSystemHealthRepository();
 
-  // Storage
+  // Storage. In production MEDIA_STORAGE_ROOT points at the shared media volume the
+  // edge serves (/uploads/* -> volume); the dev fallback keeps writing into
+  // web/public so local Astro serves the same URLs.
   private readonly productImageStorage = new LocalProductImageStorage(
-    path.join(process.cwd().endsWith('apps/api') ? process.cwd() : path.join(process.cwd(), 'apps', 'api'), '..', 'web', 'public')
+    process.env.MEDIA_STORAGE_ROOT ||
+      path.join(process.cwd().endsWith('apps/api') ? process.cwd() : path.join(process.cwd(), 'apps', 'api'), '..', 'web', 'public')
   );
+
+  // Wave 2C — legal policy CMS.
+  public readonly legalCmsRepo = new DrizzleLegalCmsRepository();
+  public readonly legalCmsUseCase = new LegalCmsUseCase(this.legalCmsRepo);
+
+  // Wave 2F — campaign scaffold (no-send): first owner of campaigns/utm_links.
+  public readonly campaignRepo = new DrizzleCampaignRepository();
+  public readonly campaignSendRepo = new DrizzleCampaignSendRepository();
+  public readonly gamificationRepo = new DrizzleGamificationRepository();
+  public readonly adminUserWriteRepo = new DrizzleAdminUserWriteRepository();
+  // Stateless hasher constructed inline: the shared field is declared later in the
+  // class and TS rightly refuses use-before-initialization.
+  public readonly adminUserManagementUseCase = new AdminUserManagementUseCase(this.adminUserWriteRepo, new ScryptPasswordHasher(), {
+    // Deactivation revokes every refresh token as well as setting the cut-off, so reactivating the account later
+    // cannot revive a token taken before.
+    invalidateSessionsAfter: async (userId: string, at: Date) => { await this.sessionService.logoutAll(userId, 'account_disabled', at); },
+  });
+  public readonly campaignSendEngine = new CampaignSendEngineUseCase(this.campaignSendRepo, this.campaignSendRepo);
+
+  // Wave 2E-3 — notification wording overrides.
+  public readonly notificationTemplateRepo = new DrizzleNotificationTemplateRepository();
+
+  // Wave 2E-2 — governed manual stock adjustments.
+  public readonly adjustStockUseCase = new AdjustStockUseCase(new DrizzleStockAdjustmentRepository());
+
+  // Wave 2E-1 — abandonment pipeline: hourly evaluator + queue announcement.
+  public readonly abandonmentRepo = new DrizzleAbandonmentRepository();
+  public readonly abandonmentUseCase = new AbandonmentUseCase(this.abandonmentRepo, {
+    publish: async (record) => {
+      const queue = QueueService.getInstance().getQueue(QUEUES.ABANDONED_CART_EVENTS);
+      if (!queue) return; // queue backend absent (dev without Redis): classification still recorded
+      await queue.add('abandonment-classified', {
+        recordId: record.id,
+        cartId: record.cartId,
+        itemCount: record.itemCount,
+        subtotalUgx: record.subtotalUgx,
+        classifiedAt: record.classifiedAt.toISOString(),
+      });
+    },
+  });
+
+  // Focus 4 — the ONE write path for product gallery slots (cover = slot 1).
+  public readonly productMediaRepo = new DrizzleProductMediaRepository();
+  public readonly productMediaUseCases = new ProductMediaUseCases(this.productMediaRepo);
+
+  // Wave 2B — media library (DAM) on the same storage owner.
+  public readonly mediaLibraryRepo = new DrizzleMediaLibraryRepository();
+  public readonly mediaLibraryUseCase = new MediaLibraryUseCase(
+    this.mediaLibraryRepo,
+    this.productImageStorage,
+    new SharpVariantGenerator(),
+    this.productMediaUseCases,
+  );
+
+  // Battery catalogue, device hierarchy, compatibility workflow, inventory
+  // ledger, staged imports and the public finder (0125, 2026-08-26). One
+  // contiguous block; every mutation audits through CreateAuditLogUseCase.
+  public readonly batteryCatalogueRepo = new DrizzleBatteryCatalogueRepository();
+  public readonly deviceCatalogueRepo = new DrizzleDeviceCatalogueRepository();
+  public readonly batteryCompatibilityRepo = new DrizzleBatteryCompatibilityRepository();
+  public readonly inventoryLedgerRepo = new DrizzleInventoryLedgerRepository();
+  public readonly batteryFinderRepo = new DrizzleBatteryFinderRepository();
+  public readonly batteryImportRepo = new DrizzleBatteryImportRepository();
+  public readonly batteryCatalogueUseCases = new BatteryCatalogueUseCases(this.batteryCatalogueRepo, this.batteryCompatibilityRepo, this.inventoryLedgerRepo, this.mediaLibraryUseCase, this.mediaLibraryRepo, this.auditRepo);
+  public readonly deviceCatalogueUseCases = new DeviceCatalogueUseCases(this.deviceCatalogueRepo, this.auditRepo);
+  public readonly batteryCompatibilityUseCases = new BatteryCompatibilityUseCases(this.batteryCompatibilityRepo, this.batteryCatalogueRepo, this.deviceCatalogueRepo, this.auditRepo);
+  public readonly inventoryLedgerUseCases = new InventoryLedgerUseCases(this.inventoryLedgerRepo, this.batteryCatalogueRepo, this.auditRepo);
+  public readonly batteryFinderUseCases = new BatteryFinderUseCases(this.batteryFinderRepo, this.batteryCatalogueRepo, this.auditRepo, process.env.IDENTITY_HASH_PEPPER ?? '', this.storefrontPricingRepo);
+  public readonly batteryImportUseCases = new BatteryImportUseCases(
+    this.batteryImportRepo,
+    new XlsxSpreadsheetParser(),
+    this.batteryCatalogueRepo,
+    this.batteryCompatibilityRepo,
+    this.deviceCatalogueRepo,
+    this.inventoryLedgerRepo,
+    this.batteryCatalogueUseCases,
+    this.batteryCompatibilityUseCases,
+    this.deviceCatalogueUseCases,
+    this.inventoryLedgerUseCases,
+  );
+
+  // Focus 4 — reviewed bulk image import (stage → four-eyes approval → per-product apply with a ledger).
+  public readonly mediaImportRepo = new DrizzleMediaImportRepository();
+  public readonly mediaImportUseCases = new MediaImportUseCases(this.mediaImportRepo, this.mediaLibraryUseCase, this.productRepo, this.productMediaRepo, this.productMediaUseCases);
 
   public readonly adminUserReadRepo = new DrizzleAdminUserReadRepository();
   public readonly productImageRepo = new DrizzleProductImageRepository();
@@ -496,7 +1188,59 @@ export class Registry {
   public readonly pesapalMeasurementMapper = new PesapalMeasurementMapper(this.paymentMeasurementRedactor);
 
   // Infrastructure Adapters
-  public readonly whatsappAdapter = new WhatsAppAdapter();
+  // WhatsApp: Meta's Cloud API directly (the same number and token as Goldie), Zoho CPaaS if Meta fails, SMS last.
+  public readonly whatsappTemplateCatalog = new MetaWhatsAppTemplateCatalog(() => this.advertisingOps.whatsappAds.messagingAccount());
+  public readonly zohoWhatsAppAdapter = new ZohoWhatsAppAdapter();
+  public readonly whatsappAdapter = new FailoverWhatsAppProvider(
+    new MetaWhatsAppAdapter(this.whatsappTemplateCatalog, () => this.advertisingOps.whatsappAds.messagingToken(), fetch, {
+      blockReason: (phone) => whatsAppDeliveryStore.blockReason(phone),
+      onSent: (messageId, payload) => { void whatsAppDeliveryStore.rememberSent(messageId, payload).catch(() => undefined); },
+      onUndeliverable: (phone, ref) => { void whatsAppDeliveryStore.markNotOnWhatsApp(phone, ref).catch(() => undefined); },
+      onOutcome: (outcome, cls) => {
+        goldieMetrics.templateSends.inc({ outcome, class: cls ?? 'none' });
+        // A refused token or a blocked account stops every customer WhatsApp message: page the team.
+        if (cls === 'auth_rejected' || cls === 'account_blocked') this.whatsappNeedsAttention(cls === 'auth_rejected' ? 'token' : 'account', cls === 'auth_rejected' ? 'Meta refused the WhatsApp token (expired or permission removed). Customer updates are going by SMS. Generate a new system-user token and save it in Advertising > Offline sales > WhatsApp.' : 'Meta says the WhatsApp account is blocked or has a payment problem. Customer updates are going by SMS. Check WhatsApp Manager > Account quality and Billing.');
+      },
+    }),
+    this.zohoWhatsAppAdapter,
+    (phone) => whatsAppDeliveryStore.blockReason(phone),
+  );
+  private readonly whatsappAlertedAt = new Map<string, number>();
+  /**
+   * One urgent Care Desk task per WhatsApp problem per hour (it pages the alert lines by SMS). Checked in memory
+   * first, then against the desk itself, so two api replicas or a restart do not page twice.
+   */
+  whatsappNeedsAttention(key: string, text: string): void {
+    const now = Date.now();
+    if (now - (this.whatsappAlertedAt.get(key) ?? 0) < 3600_000) return;
+    this.whatsappAlertedAt.set(key, now);
+    const title = `WhatsApp needs attention: ${text}`.slice(0, 200);
+    void (async () => {
+      // One task while it is open (both replicas), then an hour's quiet: not one per replica per hour.
+      const last = await this.careDeskUseCases.lastTitled(title);
+      if (last && (last.status === 'open' || now - last.createdAt.getTime() < 3600_000)) return;
+      await this.careDeskUseCases.openTask({ kind: 'urgent', title, openedBy: 'whatsapp-monitor', urgent: true });
+    })().catch(() => undefined);
+  }
+
+  /**
+   * Meta could not deliver a customer update (failed receipt): recorded as FAILED, and the same update goes by SMS
+   * once (within 24 hours of sending). "Not on WhatsApp" also skips WhatsApp for that number for 30 days.
+   */
+  private async whatsappDeliveryFailed(r: { messageId: string; errorCode: number | null; errorTitle: string | null; recipientId?: string | null }): Promise<void> {
+    const why = `WhatsApp delivery failed (Meta${r.errorCode !== null ? ` ${r.errorCode}` : ''}${r.errorTitle ? `: ${r.errorTitle}` : ''})`;
+    // Not on WhatsApp: the receipt names the number, so the 30-day skip holds whether or not we kept the message.
+    if (r.errorCode === 131026 && r.recipientId) await whatsAppDeliveryStore.markNotOnWhatsApp(`+${r.recipientId}`, r.messageId).catch(() => undefined);
+    const payload = await whatsAppDeliveryStore.takeForSmsFallback(r.messageId);
+    if (!payload) { await markWhatsAppDeliveryFailed(r.messageId, `${why}; no SMS sent (too old, a phone code past 10 minutes, or already sent).`); return; }
+    const digits = payload.recipient.replace(/\D/g, '');
+    const e164 = `+${digits.startsWith('0') ? `256${digits.slice(1)}` : digits}`;
+    if (r.errorCode === 131026 && !r.recipientId) await whatsAppDeliveryStore.markNotOnWhatsApp(e164, r.messageId).catch(() => undefined);
+    const result = await this.smsAdapter.dispatch(payload);
+    await markWhatsAppDeliveryFailed(r.messageId, `${why}; ${result.status === 'SENT' ? 'sent by SMS instead' : `SMS also not sent (${result.providerCode})`}.`);
+    await this.recordNotificationAttemptUseCase.execute({ channel: 'sms', recipient: payload.recipient, template: payload.template, status: result.status, providerCode: result.providerCode, providerMessage: `${result.providerMessage} (after WhatsApp could not deliver)`.slice(0, 1000), relatedEntity: payload.relatedEntity, relatedEntityId: payload.relatedEntityId });
+    goldieMetrics.deliveryReceipts.inc({ status: 'sms_fallback' });
+  }
   public readonly zeptoMailAdapter = new ZeptoMailAdapter();
   public readonly smsAdapter = process.env.SMS_PROVIDER === 'pahappa_comms'
     ? new PahappaCommsSmsAdapter()
@@ -515,7 +1259,6 @@ export class Registry {
   private readonly recommendationCompatibility = new CompatibilityRuleService();
   private readonly recommendationScoring = new RecommendationScoringService(this.recommendationCompatibility);
   private readonly recommendationTrending = new TrendingScoreService(this.recommendationEventRepo);
-  private readonly recommendationFallback = new RecommendationFallbackService(this.productRecommendationReader);
   private readonly recommendationEligibility = new RecommendationEligibilityService();
   public readonly recommendationDedupe = new RecommendationDeduplicationService();
   public readonly recommendationDiversity = new RecommendationDiversityService();
@@ -532,7 +1275,15 @@ export class Registry {
   public readonly deliveryZoneRepo = new DrizzleDeliveryZoneRepository();
   public readonly getPaymentReconciliationUseCase = new GetPaymentReconciliationUseCase(this.orderRepo, this.paymentRepo, this.pesapalPaymentRepo);
   public readonly searchDemandRepo = new DrizzleSearchDemandRepository();
-  public readonly suggestProductsUseCase = new SuggestProductsUseCase(this.productRepo);
+  public readonly suggestProductsUseCase = new SuggestProductsUseCase(this.productRepo, this.storefrontPricingRepo, () => this.taxonomyService.getPublicConfig());
+  public readonly listPublishedPostsUseCase = new ListPublishedPostsUseCase(this.blogRepo);
+  public readonly getPublishedPostUseCase = new GetPublishedPostUseCase(this.blogRepo);
+  public readonly getPostForAdminUseCase = new GetPostForAdminUseCase(this.blogRepo);
+  public readonly createPostUseCase = new CreatePostUseCase(this.blogRepo);
+  public readonly updatePostUseCase = new UpdatePostUseCase(this.blogRepo);
+  public readonly publishPostUseCase = new PublishPostUseCase(this.blogRepo);
+  public readonly unpublishPostUseCase = new UnpublishPostUseCase(this.blogRepo);
+  public readonly deletePostUseCase = new DeletePostUseCase(this.blogRepo);
   public readonly recordSearchEventUseCase = new RecordSearchEventUseCase(this.searchDemandRepo);
   public readonly recordSearchInteractionUseCase = new RecordSearchInteractionUseCase(this.searchDemandRepo);
   public readonly listSearchDemandUseCase = new ListSearchDemandUseCase(this.searchDemandRepo);
@@ -558,13 +1309,46 @@ export class Registry {
   public readonly lifecycleReadRepo = new DrizzleLifecycleReadRepository();
   public readonly getLifecycleSegmentsUseCase = new GetLifecycleSegmentsUseCase(this.lifecycleReadRepo);
   public readonly loginAttemptStore = new RedisLoginAttemptStore();
+  // Slice 3B: durable, revocable sessions (PostgreSQL source of truth).
+  public readonly sessionRepository = new DrizzleSessionRepository();
+  public readonly sessionService = new SessionService(this.sessionRepository, this.userRepo);
+  // Slice 3C: privileged MFA + step-up.
+  public readonly mfaRepository = new DrizzleMfaRepository();
+  public readonly mfaService = new MfaService(this.mfaRepository);
+  // Slice 4: commerce data-integrity reconciliation (money + inventory).
+  public readonly commerceReconciliationRepository = new DrizzleCommerceReconciliationRepository();
+  public readonly scanCommerceIntegrityUseCase = new ScanCommerceIntegrityUseCase(this.commerceReconciliationRepository);
+  // P0-2: canonical transactional order-status transition + append-only ledger.
+  public readonly orderTransitionService = new OrderTransitionService();
+  // Slice 5: product data-quality scoring.
+  public readonly productQualityRepository = new DrizzleProductQualityRepository();
+  public readonly scoreProductQualityUseCase = new ScoreProductQualityUseCase(this.productQualityRepository);
+  // Slice 6: customer RFM scoring + segmentation.
+  public readonly customerRfmRepository = new DrizzleCustomerRfmRepository();
+  public readonly scoreCustomerRfmUseCase = new ScoreCustomerRfmUseCase(this.customerRfmRepository);
+  // Slice 7: self-service explorer (catalogue-approved query compiler).
+  public readonly explorerQueryRepository = new DrizzleExplorerQueryRepository();
+  public readonly runExplorerQueryUseCase = new RunExplorerQueryUseCase(this.explorerQueryRepository);
   public readonly evaluateCartPricingUseCase = new EvaluateCartPricingUseCase(
     this.productRepo,
     this.pricingRepo,
     this.pricingQuoteRepo,
+    this.pricingCapacityRepo,
+    this.couponRepo,
   );
+  /** Bundles on the product page (gap analysis #9): approved PRODUCT_INCLUDED promotions, priced by the evaluator. */
+  public readonly productBundlesUseCase = new ProductBundlesUseCase(this.pricingRepo, async (items) => {
+    const q = await this.evaluateCartPricingUseCase.execute({ items, couponCode: null, persist: false });
+    return { goodsUgx: q.finalTotalUgx - q.shippingUgx - q.taxUgx };
+  });
   public readonly managePromotionCapacityUseCase = new ManagePromotionCapacityUseCase(this.pricingCapacityRepo);
-  public readonly pricingGovernanceUseCase = new PricingGovernanceUseCase(this.pricingRepo, this.createAuditLogUseCase);
+  public readonly redeemCouponUseCase = new RedeemCouponUseCase(this.couponRepo);
+  public readonly firstOrderEligibilityUseCase = new FirstOrderEligibilityUseCase(this.couponRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
+  public readonly pricingGovernanceUseCase = new PricingGovernanceUseCase(this.pricingRepo, this.createAuditLogUseCase, {
+    // AC10 — configurable (not hidden constants); each activation audits which threshold applied.
+    percentBpsThreshold: Number(process.env.PROMOTION_APPROVAL_PERCENT_BPS_THRESHOLD ?? 2000),
+    fixedUgxThreshold: Number(process.env.PROMOTION_APPROVAL_FIXED_UGX_THRESHOLD ?? 100_000),
+  });
   public readonly pricingOperationsUseCase = new PricingOperationsUseCase(
     this.pricingGovernanceUseCase,
     this.evaluateCartPricingUseCase,
@@ -581,12 +1365,76 @@ export class Registry {
       quotes: this.pricingQuoteRepo,
       orders: this.orderRepo,
     },
+    new CodPolicyReader(),
+    new CheckoutVelocitySignal(),
+    // Lazy closures: the loyalty completion services are constructed later in
+    // this class body; resolving through the singleton avoids field-order
+    // coupling while keeping the use case pure against its port shape.
+    {
+      reserve: (input) => Registry.getInstance().reserveRedemptionUseCase.execute(input),
+      attach: (reservationId, orderId) => Registry.getInstance().loyaltyCompletionRepo.attachReservationToOrder(reservationId, orderId),
+      release: (input) => Registry.getInstance().releaseRedemptionUseCase.execute({ reservationId: input.reservationId }),
+    },
+    // THE quoting service answers first; the legacy zone path above is the
+    // CONFIG_INCOMPLETE-only fallback. Lazy for the same field-order reason.
+    {
+      quote: (input) => Registry.getInstance().checkoutDeliveryQuoting.quote(input),
+      recordQuote: (orderId, capture) => Registry.getInstance().checkoutDeliveryQuoting.recordQuote(orderId, capture),
+    },
+    // Optional retail owner-review threshold (payments ops config); unset = OFF.
+    {
+      thresholdUgx: async () => {
+        const raw = (await Registry.getInstance().paymentsOpsConfig.values())['owner_review_threshold_ugx'];
+        const n = raw === undefined ? NaN : Number(raw);
+        return Number.isInteger(n) && n > 0 ? n : null;
+      },
+    },
+    // A batch code is counted once its order exists. A version's own single code is not a batch code (not found).
+    {
+      redeemForOrder: async ({ code, orderId, customerScopeKey, quote }) => {
+        const { normalizeCouponCode } = await import('../domain/pricing/Pricing');
+        let normalised: string | null = null;
+        try { normalised = normalizeCouponCode(code); } catch { return; }
+        if (!normalised) return;
+        const coupon = await this.couponRepo.findByNormalisedCode(normalised);
+        if (!coupon) return;
+        const discountUgx = quote.adjustments
+          .filter((a) => a.promotionDefinitionId === coupon.promotionDefinitionId)
+          .reduce((n, a) => n + a.amountUgx, 0);
+        if (discountUgx <= 0) return; // the code did not apply to this basket
+        const { createHash } = await import('node:crypto');
+        const result = await Registry.getInstance().redeemCouponUseCase.execute({
+          code: normalised,
+          orderId,
+          customerIdentityHash: createHash('sha256').update(customerScopeKey).digest('hex'),
+          discountAmountUgx: discountUgx,
+        });
+        if (!result.ok) logger.warn({ orderId, reason: result.reason }, 'COUPON_REDEMPTION_REFUSED_AFTER_ORDER');
+      },
+    },
+    // Owner decision 2026-10-16: storefront orders pay online. STOREFRONT_PAY_ON_DELIVERY=on brings it back, no deploy.
+    { allowed: () => (process.env.STOREFRONT_PAY_ON_DELIVERY || '').trim().toLowerCase() === 'on' },
   );
   // Launch Phase 1 (Section 9.3): order-to-admin fulfilment alerts.
   public readonly fulfilmentRepo = new DrizzleFulfilmentRepository();
+  /** Row counts for the admin capability hub. */
+  public readonly capabilityHubReader = new DrizzleCapabilityHubReader();
   public readonly createFulfilmentTaskOnOrderPlacedUseCase = new CreateFulfilmentTaskOnOrderPlacedUseCase(this.fulfilmentRepo);
   public readonly markFulfilmentPaymentConfirmedUseCase = new MarkFulfilmentPaymentConfirmedUseCase(this.fulfilmentRepo);
-  public readonly transitionFulfilmentTaskUseCase = new TransitionFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo);
+  public readonly transitionFulfilmentTaskUseCase = new TransitionFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo, this.orderTransitionService, {
+    // Closures: both repositories are declared later in this class, and a
+    // class field initialiser may not read a field that has not run yet.
+    dispatches: { getByTask: (taskId: string) => this.fulfilmentDispatchRepo.getByTask(taskId) },
+    packingSessions: { getByTask: (taskId: string) => this.packingSessionRepo.getByTask(taskId) },
+    deliveries: { listByTask: (taskId: string) => this.fulfilmentDeliveryRepo.listByTask(taskId) },
+  }, {
+    // The task's order: forward moves are refused once the order is terminal.
+    findById: (id: string) => this.orderRepo.findById(id),
+  });
+  /** Recovery for a task cancelled against a still-open order (see the use case). */
+  public readonly reinstateFulfilmentTaskUseCase = new ReinstateFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo, {
+    findById: (id: string) => this.orderRepo.findById(id),
+  });
   public readonly listFulfilmentQueueUseCase = new ListFulfilmentQueueUseCase(this.fulfilmentRepo);
   public readonly fulfilmentSlaEventRepo = new DrizzleFulfilmentSlaEventRepository();
   public readonly getFulfilmentOverviewUseCase = new GetFulfilmentOverviewUseCase(this.fulfilmentRepo, this.fulfilmentSlaEventRepo);
@@ -614,6 +1462,7 @@ export class Registry {
   public readonly recordPackingExceptionUseCase = new RecordPackingExceptionUseCase(this.packingSessionRepo, this.auditRepo);
   // Inventory ledger (Section 12): reservation, release, consumption, availability.
   public readonly inventoryRepo = new DrizzleInventoryRepository();
+  public readonly reholdStockOnLatePaymentUseCase = new ReholdStockOnLatePaymentUseCase(this.inventoryRepo, this.auditRepo);
   public readonly orderReservationState = new DrizzleOrderReservationState();
   public readonly checkoutIdempotencyRepo = new DrizzleCheckoutIdempotencyRepository();
 
@@ -648,11 +1497,19 @@ export class Registry {
     },
   });
 
+  /** The account basket a signed-in customer's new cart credential names, with any guest basket merged in. */
+  public readonly resolveAccountCartUseCase = new ResolveAccountCartUseCase({
+    carts: this.authorizedCartRepo,
+    accounts: new DrizzleAccountCartRepository(),
+    products: this.cartProductReader,
+  });
+
   public readonly executeCheckoutIntentUseCase = new ExecuteCheckoutIntentUseCase({
     idempotency: this.checkoutIdempotencyRepo,
     sideEffectRecorder: this.checkoutSideEffectRecorder,
     // Derived through a labelled HMAC so the digest key is unrelated to the session,
     // checkout-intent and cart-credential key streams even from one root secret.
+    // nosemgrep: javascript.lang.security.audit.hardcoded-hmac-key.hardcoded-hmac-key -- a public derivation label; the secret is the HMAC message (CHECKOUT_INTENT_SECRET / JWT_SECRET)
     fingerprintDigestKey: createHmac('sha256', 'goldplus-checkout-fingerprint-v1')
       .update((process.env.CHECKOUT_INTENT_SECRET || process.env.JWT_SECRET || '').trim())
       .digest('hex'),
@@ -702,20 +1559,84 @@ export class Registry {
   });
   public readonly releaseInventoryForOrderUseCase = new ReleaseInventoryForOrderUseCase(this.inventoryRepo);
   public readonly consumeInventoryForOrderUseCase = new ConsumeInventoryForOrderUseCase(this.inventoryRepo);
+  /** Stock effects of fulfilment moves and closed orders — reported, never silent. */
+  public readonly applyFulfilmentStockEffectUseCase = new ApplyFulfilmentStockEffectUseCase({
+    inventory: this.inventoryRepo,
+    orders: { findStatus: async (orderId) => (await this.orderRepo.findById(orderId))?.orderStatus ?? null },
+    // Lazy: the email use case is declared further down this class.
+    notifyCancelled: async (orderId) => {
+      const cancelledOrder = await this.orderRepo.findById(orderId);
+      if (cancelledOrder) {
+        await this.enqueueAdminOrderEmailUseCase.execute({ order: cancelledOrder, event: 'cancelled', stockConfirmed: false });
+      }
+    },
+    report: async ({ orderId, effect, error }) => {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error({ orderId, effect, err: message }, 'INVENTORY_EFFECT_FAILED — stock for this order did not move; the integrity scan will flag it');
+      await new CreateAuditLogUseCase(this.auditRepo)
+        .execute({ actorId: null, action: 'INVENTORY_EFFECT_FAILED', entity: 'order', entityId: orderId, newState: { effect, error: message.slice(0, 300) } })
+        .catch(() => undefined);
+    },
+  });
   public readonly getInventoryAvailabilityUseCase = new GetInventoryAvailabilityUseCase(this.inventoryRepo);
   public readonly listLowStockUseCase = new ListLowStockUseCase(this.inventoryRepo);
 
   // Fulfilment F4: dispatch tracking (stock consumed once at READY_FOR_DISPATCH).
   public readonly fulfilmentDispatchRepo = new DrizzleFulfilmentDispatchRepository();
   public readonly getDispatchUseCase = new GetDispatchUseCase(this.fulfilmentRepo, this.fulfilmentDispatchRepo);
-  public readonly recordDispatchUseCase = new RecordDispatchUseCase(this.fulfilmentRepo, this.fulfilmentDispatchRepo, this.inventoryRepo, this.auditRepo);
+  public readonly recordDispatchUseCase = new RecordDispatchUseCase(this.fulfilmentRepo, this.fulfilmentDispatchRepo, this.inventoryRepo, this.auditRepo, this.orderTransitionService, { listForOrder: (orderId: string) => this.deliveryVarianceRepo.listForOrder(orderId) });
   public readonly updateDispatchTrackingUseCase = new UpdateDispatchTrackingUseCase(this.fulfilmentDispatchRepo, this.auditRepo);
 
   // Fulfilment F5: delivery confirmation and pipeline reporting.
   public readonly fulfilmentDeliveryRepo = new DrizzleFulfilmentDeliveryRepository();
   public readonly fulfilmentReportRepo = new DrizzleFulfilmentReportRepository();
   public readonly getDeliveryHistoryUseCase = new GetDeliveryHistoryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo);
-  public readonly recordDeliveryUseCase = new RecordDeliveryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo);
+  public readonly completeOrderForDeliveredTaskUseCase = new CompleteOrderForDeliveredTaskUseCase(
+    this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo, this.orderTransitionService, { findById: (id: string) => this.orderRepo.findById(id) },
+  );
+  public readonly recordDeliveryUseCase = new RecordDeliveryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo, this.orderTransitionService, {
+    // 0189: the quote capture learns the outcome. actual_minutes is dispatch → handover (one outbound leg + last
+    // mile), which is the only duration the shop observes; MODEL.md PART 4 states the comparison basis.
+    recordAttempt: async (input) => {
+      const dispatch = await this.fulfilmentDispatchRepo.getByTask(input.taskId);
+      const dispatchedAt = dispatch?.dispatchTime ?? null;
+      const actualMinutes =
+        input.deliveredAt && dispatchedAt ? Math.round(((input.deliveredAt.getTime() - dispatchedAt.getTime()) / 60_000) * 100) / 100 : null;
+      await this.deliveryCaptureRepo.upsert({
+        orderId: input.orderId,
+        ...(dispatchedAt ? { dispatchedAt } : {}),
+        ...(input.completed ? { deliveredAt: input.deliveredAt, firstAttemptSuccess: input.attempt === 1 } : {}),
+        ...(input.failedFirstAttempt ? { firstAttemptSuccess: false } : {}),
+        ...(actualMinutes !== null && actualMinutes >= 0 ? { actualMinutes } : {}),
+      });
+      // Owner's rule (2026-10-16): with nothing on top of cost, the whole fee is the rider's pay. So on a completed
+      // delivery under margin 1.0 the rider cost IS the fee the order charged, and the "deliveries waiting for a cost"
+      // queue would only ask a person to retype it. Recorded automatically, audited as such; a person can still
+      // overwrite it (a tip, a second trip) through the queue, and a margin above 1.0 leaves the queue as it was.
+      if (input.completed) {
+        try {
+          const numeric = await this.deliveryConfigReader.numericValues();
+          if (numeric.margin_multiplier === 1) {
+            const row = await this.deliveryCaptureRepo.findByOrderId(input.orderId);
+            const fee = row?.finalFeeUgx ?? row?.quotedFeeUgx ?? null;
+            if (row && row.actualRiderCostUgx === null && fee !== null && Number.isFinite(fee) && fee >= 0) {
+              await this.deliveryCaptureRepo.upsert({ orderId: input.orderId, actualRiderCostUgx: Math.round(fee) });
+              await new CreateAuditLogUseCase(this.auditRepo).execute({
+                actorId: null,
+                action: 'DELIVERY_ACTUAL_COST_RECORDED',
+                entity: 'delivery_quote_capture',
+                entityId: input.orderId,
+                previousState: { actualRiderCostUgx: null },
+                newState: { actualRiderCostUgx: Math.round(fee), note: 'Automatic: margin is 1.0, so the rider is paid the delivery fee.' },
+              });
+            }
+          }
+        } catch {
+          // The observation is best-effort; the queue still shows the order if this did not land.
+        }
+      }
+    },
+  });
   public readonly getFulfilmentReportUseCase = new GetFulfilmentReportUseCase(this.fulfilmentReportRepo);
 
   // Customer DNA & NBA: canonical profile projection + next-best action.
@@ -725,10 +1646,48 @@ export class Registry {
   public readonly customerLifecycleRepo = new DrizzleCustomerLifecycleRepository();
   public readonly nbaDecisionRepo = new DrizzleNbaDecisionRepository();
   public readonly customerSignalReader = new DrizzleCustomerSignalReader();
-  public readonly resolveCustomerIdentityUseCase = new ResolveCustomerIdentityUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.auditRepo);
-  public readonly projectCustomerProfileUseCase = new ProjectCustomerProfileUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.customerSignalReader, this.auditRepo);
+  public readonly identityConflictRepo = new DrizzleIdentityConflictRepository();
+  public readonly resolveCustomerIdentityUseCase = new ResolveCustomerIdentityUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.auditRepo, this.identityConflictRepo);
+  public readonly projectCustomerProfileUseCase = new ProjectCustomerProfileUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.customerSignalReader, this.auditRepo, this.lifecycleReadRepo);
+  public readonly reprojectStaleProfilesUseCase = new ReprojectStaleProfilesUseCase(this.customerProfileRepo, this.projectCustomerProfileUseCase);
   public readonly generateNextBestActionUseCase = new GenerateNextBestActionUseCase(this.customerProfileRepo, this.nbaDecisionRepo, this.auditRepo);
   public readonly getCustomerDnaUseCase = new GetCustomerDnaUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.nbaDecisionRepo);
+
+  // First-party data (0155, docs/first-party/README.md). Identity resolution is
+  // switched ON: sign-in, registration, checkout and the nightly backfill call
+  // stitchCustomerIdentityUseCase (best-effort; never fails the caller).
+  public readonly identifierHasher = new HmacIdentifierHasher(env.identityHashPepper);
+  public readonly accountIdentityReader = new DrizzleAccountIdentityReader();
+  public readonly identityMergeRepo = new DrizzleIdentityMergeRepository();
+  public readonly stitchCustomerIdentityUseCase = new StitchCustomerIdentityUseCase(
+    this.resolveCustomerIdentityUseCase, this.customerProfileRepo, this.customerIdentityRepo, this.identityMergeRepo,
+    this.accountIdentityReader, this.identifierHasher, new PersonalisationConsentReader(), this.auditRepo,
+    new DrizzleConsentAnchorRepository(),
+  );
+  public readonly listIdentityConflictsUseCase = new ListIdentityConflictsUseCase(this.identityConflictRepo);
+  public readonly resolveIdentityConflictUseCase = new ResolveIdentityConflictUseCase(this.identityConflictRepo, this.customerIdentityRepo, this.identityMergeRepo, this.auditRepo);
+  public readonly segmentRepo = new DrizzleSegmentRepository();
+  public readonly customerFactsReader = new DrizzleCustomerFactsReader(this.identifierHasher);
+  public readonly manageSegmentsUseCase = new ManageSegmentsUseCase(this.segmentRepo, this.customerFactsReader, this.auditRepo);
+  public readonly materialiseSegmentsUseCase = new MaterialiseSegmentsUseCase(this.segmentRepo, this.customerFactsReader, new DrizzleOrderIdentityBackfillReader(), this.stitchCustomerIdentityUseCase);
+  public readonly getCustomerValueReportUseCase = new GetCustomerValueReportUseCase(this.customerFactsReader, this.segmentRepo, { orderLinkCoverage });
+  public readonly whatsAppMarketingConsentUseCases = new WhatsAppMarketingConsentUseCases(new FirstPartyConsentRepository(), new DrizzleConsentEvidenceRepository(), this.accountIdentityReader, this.identifierHasher);
+  /** 0210: basket reminders by text, the customer's own tick (sign-up or preference centre), and the gate the reminder reads. */
+  public readonly basketReminderConsentUseCases = new BasketReminderConsentUseCases(new FirstPartyConsentRepository(), new DrizzleConsentEvidenceRepository(), this.accountIdentityReader, this.identifierHasher);
+  /** THE segment → audience port (advertising audience sync, future messaging). */
+  public readonly segmentAudienceSource = new SegmentAudienceService(this.segmentRepo, new DrizzleCustomerContactReader(), new AdvertisingRefusalReader(), this.whatsAppMarketingConsentUseCases);
+  public readonly trafficExclusionStore = new TrafficExclusionStore();
+  /** 0157: ONE customer's unified profile (audited on every view). */
+  public readonly getCustomer360UseCase = new GetCustomer360UseCase(new DrizzleCustomer360Reader(this.identifierHasher), this.customerFactsReader, this.auditRepo);
+  /** 0157: next-best action from the real profile (replaces the placeholder context). */
+  public readonly decideNextBestActionUseCase = new DecideNextBestActionUseCase(
+    this.customerProfileRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.projectCustomerProfileUseCase,
+    new DrizzleNbaContextReader(this.whatsAppMarketingConsentUseCases), this.generateNextBestActionUseCase,
+  );
+  /** 0157: a customer's export / anonymise / delete requests. */
+  public readonly privacyRequestUseCases = new PrivacyRequestUseCases(
+    new DrizzlePrivacyRequestRepository(), new DrizzlePersonalDataExporter(this.identifierHasher), new DrizzlePersonalDataEraser(this.identifierHasher), this.auditRepo,
+  );
 
   // Decision Intelligence: evidence-first explainable operational insights.
   public readonly decisionEvidenceReader = new DrizzleDecisionEvidenceReader();
@@ -739,6 +1698,31 @@ export class Registry {
   public readonly getDecisionOverviewUseCase = new GetDecisionOverviewUseCase(this.decisionInsightRepo);
   public readonly transitionDecisionInsightUseCase = new TransitionDecisionInsightUseCase(this.decisionInsightRepo, this.auditRepo);
   public readonly recomputeDecisionInsightUseCase = new RecomputeDecisionInsightUseCase(this.decisionInsightRepo, this.evaluateDecisionSignalsBatchUseCase);
+
+  // Commerce Analytics: bounded server-side aggregation behind analytics.read.
+  public readonly analyticsReadRepo = new DrizzleAnalyticsReadRepository();
+  public readonly getAnalyticsOverviewUseCase = new GetAnalyticsOverviewUseCase(
+    this.analyticsReadRepo,
+    () => this.getDecisionOverviewUseCase.execute(),
+  );
+  public readonly getAnalyticsMetricSeriesUseCase = new GetAnalyticsMetricSeriesUseCase(this.analyticsReadRepo);
+  public readonly getAnalyticsDataQualityUseCase = new GetAnalyticsDataQualityUseCase(this.analyticsReadRepo);
+  // Operator configuration. Alert evaluation raises internal actions only —
+  // there is no destination column and no delivery path.
+  public readonly analyticsSavedViewRepo = new DrizzleAnalyticsSavedViewRepository();
+  public readonly analyticsAlertRuleRepo = new DrizzleAnalyticsAlertRuleRepository();
+  public readonly manageAnalyticsSavedViewsUseCase = new ManageAnalyticsSavedViewsUseCase(this.analyticsSavedViewRepo);
+  public readonly manageAnalyticsAlertRulesUseCase = new ManageAnalyticsAlertRulesUseCase(this.analyticsAlertRuleRepo);
+  public readonly evaluateAnalyticsAlertRulesUseCase = new EvaluateAnalyticsAlertRulesUseCase(
+    this.analyticsAlertRuleRepo,
+    this.getAnalyticsOverviewUseCase,
+  );
+  public readonly exportAnalyticsUseCase = new ExportAnalyticsUseCase(this.getAnalyticsOverviewUseCase);
+  public readonly getPaymentIntelligenceUseCase = new GetPaymentIntelligenceUseCase(this.analyticsReadRepo);
+  /** Gap analysis #3: product page to paid order, with the money that stopped at each step. */
+  public readonly getSalesFunnelUseCase = new GetSalesFunnelUseCase(new DrizzleSalesFunnelReader());
+  public readonly getAnalyticsBreakdownUseCase = new GetAnalyticsBreakdownUseCase(this.analyticsReadRepo);
+  public readonly getAnalyticsExceptionDrilldownUseCase = new GetAnalyticsExceptionDrilldownUseCase(this.analyticsReadRepo);
 
   // Automation A2/A3: planning, deterministic gates, native internal effects,
   // and atomic existing-outbox intents. Providers remain behind the outbox.
@@ -761,7 +1745,13 @@ export class Registry {
     this.createAuditLogUseCase,
   );
   public readonly experimentOperationsUseCase = new ExperimentOperationsUseCase(this.experimentRepo, this.createAuditLogUseCase);
-  public readonly fraudTriageOperationsUseCase = new FraudTriageOperationsUseCase(this.fraudTriageRepo);
+  public readonly fraudTriageOperationsUseCase = new FraudTriageOperationsUseCase(this.fraudTriageRepo, {
+    isEligibleReviewer: async (userId: string) => {
+      const user = await this.adminUserWriteRepo.findUserById(userId);
+      if (!user?.isActive) return false;
+      return (await this.roleRepo.findPermissionsForUser(userId)).includes(SHARED_PERMISSIONS.FRAUD_READ);
+    },
+  }, new DrizzleFraudSourceDirectory());
   public readonly pimImportOperationsUseCase = new PimImportOperationsUseCase(this.pimImportRepo);
   public readonly surveyOperationsUseCase = new SurveyOperationsUseCase(this.surveyRepo);
   public readonly getCopyQualityReportUseCase = new GetCopyQualityReportUseCase(this.copyQualityCatalog);
@@ -769,6 +1759,673 @@ export class Registry {
   public readonly listDeliveryZonesUseCase = new ListDeliveryZonesUseCase(this.deliveryZoneRepo);
   public readonly upsertDeliveryZoneUseCase = new UpsertDeliveryZoneUseCase(this.deliveryZoneRepo);
   public readonly deleteDeliveryZoneUseCase = new DeleteDeliveryZoneUseCase(this.deliveryZoneRepo);
+
+  // ── Location module (brief PART F) ──────────────────────────────────────
+  public readonly locationSearchRepo = new DrizzleLocationSearchRepository();
+  public readonly locationOrderDensityReader = new DrizzleLocationOrderDensityReader();
+  public readonly searchMissRecorder = new DrizzleSearchMissRecorder();
+  public readonly customerLocationContextReader = new DrizzleCustomerLocationContextReader();
+  public readonly locationSearchService = new LocationSearchService(this.locationSearchRepo, this.locationOrderDensityReader);
+  public readonly searchLocationsUseCase = new SearchLocationsUseCase(this.locationSearchService, this.searchMissRecorder);
+  /** Buildings and places under our gazetteer, via Google Places (New), under a shared monthly budget (2026-10-16). */
+  /** What earlier deliveries to the same customer and area taught our riders (2026-10-16). */
+  public readonly getPlaceMemoryUseCase = new GetPlaceMemoryUseCase(new DrizzlePlaceMemoryReader());
+  /** 0193: location signals — what customers tell us about where they want delivery (no coordinates). */
+  public readonly locationSignalStore = new DrizzleLocationSignalStore();
+  public readonly recordLocationSignalUseCase = new RecordLocationSignalUseCase(this.locationSignalStore);
+  public readonly getDeliverToUseCase = new GetDeliverToUseCase(this.locationSignalStore);
+  public readonly locationDemandReportUseCase = new LocationDemandReportUseCase(this.locationSignalStore);
+  public readonly deepPlaceSearchUseCase = new DeepPlaceSearchUseCase(
+    new GooglePlacesProvider(),
+    new RedisPlaceRequestBudget(),
+    new RedisPlaceLocationCache(),
+    undefined,
+    new RedisPlaceProviderHealth(),
+    (fault, pausedMs) => logger.warn({ ...fault, pausedMs }, 'PLACES_PROVIDER_FAULT'),
+  );
+  public readonly recordLocationSearchEventUseCase = new RecordLocationSearchEventUseCase(this.searchMissRecorder);
+  public readonly resolveMapLinkUseCase = new ResolveMapLinkUseCase(new HttpShortLinkResolver());
+  public readonly locationAdminRepo = new DrizzleLocationAdminRepository();
+  public readonly listSearchMissesUseCase = new ListSearchMissesUseCase(this.locationAdminRepo);
+  public readonly promoteSearchMissToAliasUseCase = new PromoteSearchMissToAliasUseCase(this.locationAdminRepo);
+  public readonly listAddressReviewQueueUseCase = new ListAddressReviewQueueUseCase(this.locationAdminRepo, this.addressAuditRepo);
+  public readonly resolveAddressUseCase = new ResolveAddressUseCase(this.locationAdminRepo, this.addressAuditRepo);
+  public readonly manageLandmarksUseCase = new ManageLandmarksUseCase(this.locationAdminRepo);
+  public readonly managePickupPointsUseCase = new ManagePickupPointsUseCase(this.locationAdminRepo);
+  public readonly getZonePoliciesUseCase = new GetZonePoliciesUseCase(this.locationAdminRepo);
+  public readonly saveZonePolicyUseCase = new SaveZonePolicyUseCase(this.locationAdminRepo);
+  public readonly listDataExceptionsUseCase = new ListDataExceptionsUseCase(this.locationAdminRepo);
+
+  // ── Loyalty completion (loyalty brief stages 2–4) ───────────────────────
+  public readonly loyaltyCompletionRepo = new DrizzleLoyaltyCompletionRepository();
+  public readonly loyaltyOutboxNotifier = new LoyaltyOutboxNotifier();
+  /** Every non-loyalty, non-OTP customer message goes through this. */
+  public readonly customerOutboxNotifier = new CustomerOutboxNotifier();
+  /** The Merchant feed's in-process cache; an inventory change rebuilds it (#10). */
+  public readonly merchantFeedCache = new MerchantFeedCache(new DrizzleFeedInventoryVersion());
+  /** Public-form acknowledgements: one per recipient per hour, three a day (SMS and email). */
+  public readonly sendPublicFormAcknowledgementUseCase = new SendPublicFormAcknowledgementUseCase(
+    this.customerOutboxNotifier,
+    new DrizzleAcknowledgementLedger(),
+  );
+  /** Bulk quote requests (0153, docs/bulk-buying/DESIGN.md). */
+  public readonly bulkQuoteRepo = new DrizzleBulkQuoteRepository();
+  /** Bulk by the carton at dealer price, behind a phone verified by SMS code (0195, DESIGN.md §12). */
+  public readonly bulkTermsRepo = new DrizzleBulkTermsRepository();
+  public readonly bulkPriceAccessRepo = new DrizzleBulkPriceAccessRepository();
+  public readonly getBulkTermsUseCase = new GetBulkTermsUseCase(this.bulkTermsRepo, bulkPriceAccessCrypto);
+  public readonly startBulkPriceAccessUseCase = new StartBulkPriceAccessUseCase(this.bulkPriceAccessRepo, new OutboxOtpSender(), bulkPriceAccessCrypto);
+  public readonly verifyBulkPriceAccessUseCase = new VerifyBulkPriceAccessUseCase(this.bulkPriceAccessRepo, bulkPriceAccessCrypto);
+  /** Dealer portal (gap analysis #16): always an SMS code; its own token; the phone's own records only. */
+  public readonly startDealerSignInUseCase = new StartDealerSignInUseCase(this.bulkPriceAccessRepo, new OutboxOtpSender(), bulkPriceAccessCrypto);
+  public readonly verifyDealerSignInUseCase = new VerifyDealerSignInUseCase(this.bulkPriceAccessRepo, bulkPriceAccessCrypto);
+  public readonly getDealerAccountUseCase = new GetDealerAccountUseCase(new DrizzleDealerPortalReader(), bulkPriceAccessCrypto);
+  public readonly listBulkPriceLeadsUseCase = new ListBulkPriceLeadsUseCase(this.bulkPriceAccessRepo);
+  public readonly listBulkTermsUseCase = new ListBulkTermsUseCase(this.bulkTermsRepo);
+  public readonly updateBulkTermsUseCase = new UpdateBulkTermsUseCase(this.bulkTermsRepo);
+  public readonly importBulkTermsUseCase = new ImportBulkTermsUseCase(this.bulkTermsRepo);
+  public readonly submitBulkQuoteUseCase = new SubmitBulkQuoteUseCase(
+    this.bulkQuoteRepo,
+    this.productRepo,
+    this.bulkTermsRepo,
+    this.sendPublicFormAcknowledgementUseCase,
+    (token) => this.getBulkTermsUseCase.phoneFor(token),
+  );
+  public readonly lookupBulkQuoteUseCase = new LookupBulkQuoteUseCase(this.bulkQuoteRepo);
+  public readonly listQuoteRequestsUseCase = new ListQuoteRequestsUseCase(this.bulkQuoteRepo);
+  public readonly getQuoteRequestUseCase = new GetQuoteRequestUseCase(this.bulkQuoteRepo);
+  public readonly updateQuoteRequestStatusUseCase = new UpdateQuoteRequestStatusUseCase(this.bulkQuoteRepo);
+  public readonly vestLoyaltyOnDeliveryUseCase = new VestLoyaltyOnDeliveryUseCase(
+    this.earnLoyaltyPointsUseCase,
+    this.orderRepo,
+    this.loyaltyCompletionRepo,
+    // Lazy: both are declared further down this class.
+    { getRefundedShareBpsForOrder: (orderId) => this.refundLedgerRepo.getRefundedShareBpsForOrder(orderId) },
+    { execute: (input) => new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase).execute(input) },
+  );
+  public readonly clawbackOrderEarnUseCase = new ClawbackOrderEarnUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo, this.auditRepo);
+  public readonly reserveRedemptionUseCase = new ReserveRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo, this.loyaltyGate);
+  public readonly consumeRedemptionUseCase = new ConsumeRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo, this.loyaltyGate);
+  public readonly releaseRedemptionUseCase = new ReleaseRedemptionUseCase(this.loyaltyCompletionRepo);
+  // A lifecycle cancel (admin order page, provider reversal) gives back the
+  // stock AND the points. Only the fulfilment route and the sweeps released
+  // stock before, so an order cancelled from the order page held its units forever.
+  public readonly releaseCancelledOrderHoldsUseCase = new ReleaseCancelledOrderHoldsUseCase({
+    releaseInventory: this.releaseInventoryForOrderUseCase,
+    releaseRedemption: this.releaseRedemptionUseCase,
+    // An APPLIED redemption (points already spent) cannot be released; a
+    // cancelled order gives them back instead, with their original expiry.
+    reverseRedemption: { execute: (input) => this.reverseRedemptionUseCase.execute(input) },
+    storeCredit: this.creditRepo,
+    onFailed: (hold, orderId, error) =>
+      logger.error(
+        { orderId, hold, err: error instanceof Error ? error.message : String(error) },
+        'ORDER_CANCEL_HOLD_RELEASE_FAILED',
+      ),
+    reservations: this.inventoryRepo,
+    onStockAlreadyTaken: async (orderId, consumedLines) => {
+      logger.warn({ orderId, consumedLines }, 'INVENTORY_RETURN_NEEDED — a cancelled order had already had its stock taken off; record the return with a stock adjustment once the goods are back');
+      await new CreateAuditLogUseCase(this.auditRepo)
+        .execute({ actorId: null, action: 'INVENTORY_RETURN_NEEDED', entity: 'order', entityId: orderId, newState: { consumedLines } })
+        .catch(() => undefined);
+    },
+  });
+  public readonly reverseRedemptionUseCase = new ReverseRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo);
+  public readonly loyaltyIdentityRepo = new DrizzleLoyaltyIdentityRepository();
+  public readonly loyaltyTierRepo = new DrizzleLoyaltyTierRepository();
+  public readonly loyaltyProgrammeConfigWriter = new LoyaltyProgrammeConfigWriter();
+  /** DoD #1: frozen daily control totals, re-derived and compared by the daily sweep. */
+  public readonly reconcileLoyaltyControlTotalsUseCase = new ReconcileLoyaltyControlTotalsUseCase(new DrizzleLoyaltyControlTotalsRepository());
+  public readonly saveLoyaltyProgrammeConfigUseCase = new SaveLoyaltyProgrammeConfigUseCase(
+    this.loyaltyProgrammeConfigWriter,
+    () => this.loyaltyCompletionRepo.getProgrammeConfig(),
+    this.auditRepo,
+  );
+  /** Non-order credits share one gate: deployment key + kill switch + budget cap. */
+  public readonly loyaltyIssuanceCompletion = guardLoyaltyIssuance(this.loyaltyCompletionRepo, this.loyaltyGate);
+  public readonly backfillGuestOrdersUseCase = new BackfillGuestOrdersUseCase(
+    this.loyaltyIdentityRepo,
+    this.loyaltyRepo,
+    this.loyaltyIssuanceCompletion,
+    this.auditRepo,
+  );
+  public readonly requestPhoneVerificationUseCase = new RequestPhoneVerificationUseCase(
+    this.loyaltyIdentityRepo,
+    new OutboxOtpSender(),
+    otpHash,
+    otpRandom,
+  );
+  public readonly getPhoneVerificationStateUseCase = new GetPhoneVerificationStateUseCase(
+    this.loyaltyIdentityRepo,
+  );
+  public readonly verifyPhoneUseCase = new VerifyPhoneUseCase(
+    this.loyaltyIdentityRepo,
+    otpHash,
+    this.backfillGuestOrdersUseCase,
+    this.auditRepo,
+  );
+  public readonly mergeLoyaltyAccountsUseCase = new MergeLoyaltyAccountsUseCase(this.loyaltyIdentityRepo, this.auditRepo);
+  public readonly earnForVerificationScanUseCase = new EarnForVerificationScanUseCase(this.loyaltyRepo, this.loyaltyIssuanceCompletion);
+  public readonly manualAdjustLoyaltyUseCase = new ManualAdjustLoyaltyUseCase(this.loyaltyRepo, this.auditRepo);
+
+  // ── Gamification LIVE (0087, activated 2026-08-05) ────────────────────────
+  public readonly loyaltyReferralRepo = new DrizzleLoyaltyReferralRepository();
+  public readonly reverseReferralOnRefundUseCase = new ReverseReferralOnRefundUseCase(this.loyaltyReferralRepo, this.loyaltyRepo);
+  public readonly birthdayUserSource = new DrizzleBirthdayUserSource();
+  public readonly evaluateGamificationForUserUseCase = new EvaluateGamificationForUserUseCase(
+    this.loyaltyRepo,
+    this.loyaltyIssuanceCompletion,
+    this.gamificationRepo,
+    async ({ userId, missionKey, missionTitle, points }) => {
+      // Holdout (2026-10-23): a share of customers are not told by message; the points are theirs all the same.
+      if ((await this.holdoutGate.decide({ programme: 'loyalty_mission', subjectRef: `${missionKey}:${userId}`, userId, channel: 'sms' })) === 'hold') return 'skipped' as const;
+      return this.loyaltyOutboxNotifier.enqueue({
+        userId,
+        eventType: 'LOYALTY_POINTS_EARNED',
+        idempotencyKey: `mission-notify:${missionKey}:${userId}`, // a mission pays once ever, so it is told once
+        data: { points, source: 'mission', missionTitle },
+      });
+    },
+  );
+  public readonly catchUpMissionAwardsUseCase = new CatchUpMissionAwardsUseCase(this.gamificationRepo, this.evaluateGamificationForUserUseCase, this.loyaltyIssuanceCompletion);
+  public readonly recordReferralUseCase = new RecordReferralUseCase(this.loyaltyCompletionRepo, this.loyaltyReferralRepo);
+  public readonly qualifyReferralOnDeliveryUseCase = new QualifyReferralOnDeliveryUseCase(
+    this.loyaltyRepo,
+    this.loyaltyIssuanceCompletion,
+    this.loyaltyReferralRepo,
+    this.gamificationRepo,
+    async ({ userId, points, kind, referralId }) =>
+      this.loyaltyOutboxNotifier.enqueue({
+        userId,
+        eventType: 'LOYALTY_POINTS_EARNED',
+        // Per referral: keyed per user, a referrer heard about their first
+        // friend only, and never about the second or third.
+        idempotencyKey: `referral-notify:${referralId}:${kind}`,
+        data: { points, source: kind === 'referrer' ? 'referral' : 'referral_welcome' },
+      }),
+  );
+  /** 0202: a person releases or refuses a held referral. */
+  public readonly decideHeldReferralUseCase = new DecideHeldReferralUseCase(this.loyaltyIssuanceCompletion, this.loyaltyReferralRepo, this.qualifyReferralOnDeliveryUseCase);
+  public readonly awardBirthdayPointsUseCase = new AwardBirthdayPointsUseCase(
+    this.loyaltyRepo,
+    this.loyaltyIssuanceCompletion,
+    this.birthdayUserSource,
+  );
+  public readonly earnForCounterfeitConfirmationUseCase = new EarnForCounterfeitConfirmationUseCase(
+    this.loyaltyRepo,
+    this.loyaltyIssuanceCompletion,
+    this.gamificationRepo,
+  );
+  public readonly earnForPhoneVerificationUseCase = new EarnForPhoneVerificationUseCase(
+    this.loyaltyRepo,
+    this.loyaltyIssuanceCompletion,
+    this.gamificationRepo,
+  );
+
+  // ── Reward draw / chance mechanic (0088) ─────────────────────────────────
+  // The roll is cryptographic and server-side. randomInt is imported from
+  // node:crypto — Math.random must never appear in a prize path.
+  // ── Delivery estimation (brief v7, stages A–B) ───────────────────────────
+  // The capture path exists from day one because a model cannot fit margin
+  // against a cost it never saw, and rider cost was recorded nowhere at all.
+  public readonly deliveryCaptureRepo = new DrizzleDeliveryCaptureRepository();
+  public readonly deliveryConfigReader = new DeliveryConfigReader();
+  public readonly recordActualRiderCostUseCase = new RecordActualRiderCostUseCase(
+    this.deliveryCaptureRepo,
+    this.auditRepo,
+    async () => {
+      const v = (await this.deliveryConfigReader.numericValues()).implausible_rider_cost_ugx;
+      // The registry ships a value, so this fallback is unreachable in practice
+      // — but a missing ceiling must never mean "accept anything".
+      return Number.isFinite(v) ? v : 0;
+    },
+  );
+  public readonly captureQuoteUseCase = new CaptureQuoteUseCase(this.deliveryCaptureRepo);
+  public readonly listDeliveriesAwaitingCostUseCase = new ListDeliveriesAwaitingCostUseCase(this.deliveryCaptureRepo);
+
+  // Configuration: draft → mandatory preview → publish → revert. The launch
+  // wizard is an input surface onto this path, never a way around it.
+  public readonly deliveryAreaResolver = new DeliveryAreaResolver();
+  public readonly deliveryWizardAreaReader = new DeliveryWizardAreaReader();
+  public readonly deliveryConfigRepo = new DrizzleDeliveryConfigRepository(this.deliveryAreaResolver);
+  public readonly draftDeliveryConfigUseCase = new DraftConfigVersionUseCase(this.deliveryConfigRepo, this.auditRepo);
+  public readonly previewDeliveryConfigUseCase = new PreviewConfigVersionUseCase(this.deliveryConfigRepo, () =>
+    this.deliveryConfigReader.currentValues(),
+  );
+  public readonly publishDeliveryConfigUseCase = new PublishConfigVersionUseCase(this.deliveryConfigRepo, this.auditRepo);
+  public readonly revertDeliveryConfigUseCase = new RevertConfigVersionUseCase(this.deliveryConfigRepo, this.auditRepo);
+  public readonly deriveLaunchValuesUseCase = new DeriveLaunchValuesUseCase(this.deliveryWizardAreaReader, () =>
+    this.deliveryConfigReader.currentValues(),
+  );
+  public readonly draftLaunchValuesUseCase = new DraftLaunchValuesUseCase(
+    this.draftDeliveryConfigUseCase,
+    this.deliveryConfigRepo,
+  );
+
+  // CSV round trip for the corridor table, with a mandatory dry run, and (0189)
+  // the apply half: one transaction, one audit row, refused without the digest
+  // of the dry run it was shown.
+  private readonly corridorCsvRepo = {
+    // Compare-and-set per field under the corridor write lock (the parish import takes the same lock): a row that
+    // no longer carries its `from` value aborts the whole batch, so the audit row is always true.
+    applyChanges: async (changes: Array<{ areaSlug: string; field: string; from: string; to: string }>) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const { CorridorChangedError } = await import('../application/use-cases/delivery/DeliveryCorridorCsvUseCase');
+      const rowCount = (r: unknown) => Number((r as { count?: number })?.count ?? 0);
+      const areas = new Set<string>();
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('delivery_corridor_apply'))`);
+        for (const ch of changes) {
+          const slug = ch.areaSlug;
+          let r: unknown;
+          switch (ch.field) {
+            case 'corridor':
+              r = await tx.execute(sql`update delivery_corridor set corridor = ${ch.to}, data_version = data_version + 1, updated_at = now()
+                where area_slug = ${slug} and corridor = ${ch.from}`);
+              break;
+            case 'distance_band':
+              r = await tx.execute(sql`update delivery_corridor set distance_band = ${ch.to}, data_version = data_version + 1, updated_at = now()
+                where area_slug = ${slug} and distance_band = ${ch.from}`);
+              break;
+            case 'access_mode':
+              r = await tx.execute(sql`update delivery_corridor set access_mode = ${ch.to}, data_version = data_version + 1, updated_at = now()
+                where area_slug = ${slug} and access_mode = ${ch.from}`);
+              break;
+            case 'serviceable':
+              r = await tx.execute(sql`update delivery_corridor set serviceable = ${ch.to === 'true'}, data_version = data_version + 1, updated_at = now()
+                where area_slug = ${slug} and serviceable = ${ch.from === 'true'}`);
+              break;
+            case 'fulfilment_mode': {
+              const to = ch.to === '(derived)' ? null : ch.to;
+              const from = ch.from === '(derived)' ? null : ch.from;
+              r = await tx.execute(sql`update delivery_corridor set fulfilment_mode = ${to}, data_version = data_version + 1, updated_at = now()
+                where area_slug = ${slug} and fulfilment_mode is not distinct from ${from}`);
+              break;
+            }
+            default:
+              throw new Error(`corridor apply: unknown field ${ch.field}`);
+          }
+          if (rowCount(r) !== 1) throw new CorridorChangedError(slug);
+          areas.add(slug);
+        }
+      });
+      return areas.size;
+    },
+    findBatch: async (batchId: string) => {
+      const rows = await this.auditRepo.findByEntity('delivery_corridor_batch', batchId);
+      const applied = rows.find((r) => r.action === 'DELIVERY_CORRIDORS_APPLIED');
+      const state = (applied as { newState?: { changes?: Array<{ areaSlug: string; field: string; from: string; to: string }>; reason?: string } } | undefined)?.newState;
+      if (!state?.changes) return null;
+      return { changes: state.changes, reason: state.reason ?? null };
+    },
+    currentCorridors: async () => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const rows = (await db.execute(sql`
+        select area_slug, corridor, distance_band, access_mode, serviceable, fulfilment_mode
+        from delivery_corridor`)) as unknown as Array<Record<string, unknown>>;
+      return new Map(
+        rows.map((r) => [
+          String(r.area_slug),
+          {
+            areaSlug: String(r.area_slug),
+            corridor: String(r.corridor),
+            distanceBand: String(r.distance_band),
+            accessMode: String(r.access_mode),
+            serviceable: Boolean(r.serviceable),
+            fulfilmentMode: r.fulfilment_mode === null ? null : String(r.fulfilment_mode),
+          },
+        ]),
+      );
+    },
+  };
+  public readonly dryRunCorridorCsvUseCase = new DryRunCorridorCsvUseCase(this.corridorCsvRepo);
+  public readonly applyCorridorCsvUseCase = new ApplyCorridorCsvUseCase(this.corridorCsvRepo, this.auditRepo);
+  public readonly revertCorridorBatchUseCase = new RevertCorridorBatchUseCase(this.corridorCsvRepo, this.auditRepo);
+
+  // The learning loop (PART 4). Proposes, never applies.
+  public readonly deliveryCalibrationRepo = new DrizzleDeliveryCalibrationRepository();
+  public readonly runNightlyCalibrationUseCase = new RunNightlyCalibrationUseCase(
+    this.deliveryCalibrationRepo,
+    this.auditRepo,
+    () => this.deliveryConfigReader.numericValues(),
+    // Band edges are Tier 3 — code only. A reband flag is a suggestion checked
+    // against the published edges, never a new band anyone invented.
+    (km: number) => {
+      for (const [band, [low, high]] of Object.entries(BAND_EDGES_KM)) {
+        if (km > low && km <= high) return band;
+      }
+      return km <= 0 ? 'B0' : null;
+    },
+    null,
+  );
+  public readonly acceptCalibrationProposalUseCase = new AcceptCalibrationProposalUseCase(
+    this.deliveryCalibrationRepo,
+    this.auditRepo,
+    () => this.deliveryConfigReader.numericValues(),
+  );
+  public readonly rejectCalibrationProposalUseCase = new RejectCalibrationProposalUseCase(
+    this.deliveryCalibrationRepo,
+    this.auditRepo,
+  );
+  public readonly deliveryMarginReportUseCase = new DeliveryMarginReportUseCase(
+    this.deliveryCalibrationRepo,
+    () => this.deliveryConfigReader.numericValues(),
+  );
+  public readonly deliveryVarianceReportUseCase = new DeliveryVarianceReportUseCase(
+    this.deliveryCalibrationRepo,
+    () => this.deliveryConfigReader.numericValues(),
+  );
+  public readonly deliveryFallbackRateUseCase = new DeliveryFallbackRateUseCase(this.deliveryCalibrationRepo);
+  // 0189: how well we knew where orders were going, from the capture's own columns.
+  public readonly deliveryLocationAccuracyReportUseCase = new DeliveryLocationAccuracyReportUseCase(this.deliveryCalibrationRepo);
+
+  // 0190: WhatsApp location pins → orders (customer) and handovers (rider). Deterministic replies, no model call.
+  public readonly riderUseCases = new RiderUseCases(new DrizzleRiderRepository());
+  /** Bus rate cards and parcel offices: the write path for everything beyond the rider ring (2026-10-16). */
+  public readonly busRateCardAdminUseCases = new BusRateCardAdminUseCases(new DrizzleBusRateCardAdminRepository());
+  public readonly locationPinRepo = new DrizzleLocationPinRepository(this.deliveryConfigReader);
+  public readonly locationPinUseCases = new LocationPinUseCases(this.locationPinRepo, {
+    record: async (input) => {
+      const task = await this.fulfilmentRepo.findById(input.taskId);
+      if (!task) return { ok: false, message: 'that stop is no longer open' };
+      const common = {
+        taskId: input.taskId,
+        actorId: null as unknown as string, // a system actor: the rider is named in the notes, never as an account
+        handover: input.point ? { ...input.point, accuracyM: null } : null,
+        recordedVia: 'rider_whatsapp' as const,
+        notes: 'Recorded by the rider on WhatsApp',
+      };
+      const r =
+        input.outcome === 'delivered'
+          ? await this.recordDeliveryUseCase.execute({ ...common, outcome: 'DELIVERED', deliveredQuantity: task.itemCount, returnedQuantity: 0 })
+          : await this.recordDeliveryUseCase.execute({
+              ...common,
+              outcome: 'DELIVERY_FAILED',
+              failedReason: input.outcome === 'absent' ? 'Customer not there (rider, WhatsApp)' : 'Could not find the address (rider, WhatsApp)',
+              deliveredQuantity: 0,
+              returnedQuantity: 0,
+            });
+      return r.ok ? { ok: true } : { ok: false, message: r.message };
+    },
+    setFindDifficulty: async (taskId, difficulty) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      await db.execute(sql`update fulfilment_deliveries set find_difficulty = ${difficulty}
+        where id = (select id from fulfilment_deliveries where fulfilment_task_id = ${taskId} order by attempt desc limit 1)`);
+    },
+  });
+
+  // The variance write path (PART 5). decideVariance decides; these apply.
+  public readonly deliveryVarianceRepo = new DrizzleDeliveryVarianceRepository();
+  public readonly applyDeliveryVarianceUseCase = new ApplyDeliveryVarianceUseCase(
+    this.deliveryVarianceRepo,
+    this.auditRepo,
+    async () => {
+      const n = await this.deliveryConfigReader.numericValues();
+      // Unset stays UNSET. decideVariance then refuses with
+      // THRESHOLD_NOT_CONFIGURED rather than absorbing an unbounded amount.
+      return {
+        absoluteUgx: Number.isFinite(n.variance_absorption_threshold_ugx) ? n.variance_absorption_threshold_ugx : null,
+        shareBps: Number.isFinite(n.variance_absorption_threshold_bps) ? n.variance_absorption_threshold_bps : null,
+      };
+    },
+    this.deliveryCaptureRepo,
+  );
+  public readonly recordVarianceAgreementUseCase = new RecordVarianceAgreementUseCase(
+    this.deliveryVarianceRepo,
+    this.auditRepo,
+    this.deliveryCaptureRepo,
+    // Cancelling without penalty goes through the real order state machine, so
+    // the cancellation is a proper transition with its own audit rather than a
+    // status field being overwritten.
+    async (input) => {
+      await Registry.getInstance().orderTransitionService.transition(input.orderId, 'cancelled', {
+        actorId: input.actorId,
+        actorType: 'administrator',
+        source: 'admin_api',
+        reasonCode: 'DELIVERY_VARIANCE_DECLINED',
+        note: input.reason,
+      });
+    },
+  );
+  public readonly listPendingVarianceAgreementsUseCase = new ListPendingVarianceAgreementsUseCase(this.deliveryVarianceRepo);
+  public readonly listOrderVariancesUseCase = new ListOrderVariancesUseCase(this.deliveryVarianceRepo);
+
+  // THE quoting service (contract #1). Everything else is its internals.
+  public readonly deliveryQuotingRepo = new DrizzleDeliveryQuotingRepository();
+  public readonly deliveryQuotingUseCase = new DeliveryQuotingUseCase(
+    this.deliveryQuotingRepo,
+    this.deliveryAreaResolver,
+    this.deliveryConfigReader,
+  );
+  // §4.5: the ladder's dry run and margin alarm. Writes nothing; publishing goes through config draft → publish.
+  public readonly ladderDryRunUseCase = new LadderDryRunUseCase(this.deliveryQuotingRepo, this.deliveryQuotingUseCase);
+  public readonly ladderMarginReportUseCase = new LadderMarginReportUseCase(this.deliveryQuotingRepo, this.deliveryConfigReader);
+  public readonly corridorSummaryUseCase = new CorridorSummaryUseCase(this.deliveryQuotingRepo);
+
+  /**
+   * The adapter checkout holds. Deliberately narrow: checkout needs a fee, a
+   * confirmed flag, and whether it may fall back — not the whole quote shape.
+   */
+  public readonly checkoutDeliveryQuoting = {
+    quote: async (input: {
+      areaSlug?: string | null;
+      deliveryArea?: string | null;
+      district?: string | null;
+      items: ReadonlyArray<{ productId: string; quantity: number }>;
+      point?: { lat: number; lng: number } | null;
+      pickupPointId?: string | null;
+    }) => {
+      // Collect from one of our own shops: nothing travels, so nothing is charged and nothing is quoted.
+      // Only an ACTIVE point that is one of OUR collection points qualifies; a carrier's stage or office upcountry
+      // is a shipment destination, priced by its card, never a free pickup.
+      if (input.pickupPointId) {
+        const point = (await this.managePickupPointsUseCase.list()).find((p) => p.id === input.pickupPointId);
+        if (!point || !point.active || !isShopCollectionOperator(point.operator)) {
+          throw new Error('PICKUP_POINT_UNAVAILABLE: That collection point is not available. Choose another, or ask for delivery.');
+        }
+        return {
+          feeUgx: 0,
+          freeDeliveryThresholdUgx: null,
+          feeBeforeFreeDeliveryUgx: 0,
+          confirmed: true,
+          pricedBy: 'manual' as const,
+          mayFallBackToLegacy: false,
+          capture: { fulfilmentMode: 'pickup_only', pricedBy: 'manual', quotedFeeUgx: 0 },
+        };
+      }
+      // One instant for the quote AND its capture, so the recorded hour of week is
+      // the one the hour factor was applied at (the use case derives it the same way).
+      const at = new Date();
+      const eatParts = toEatParts(at);
+      const outcome = await this.deliveryQuotingUseCase.execute({ ...input, at });
+      const q = outcome.quote;
+      // What the ORDER charges: a pay-on-collection rate card is paid to the
+      // carrier at the parcel office, never in the order as well.
+      const charge = orderChargeUgx(q);
+      return {
+        feeUgx: charge,
+        // Paid to the carrier at the parcel office: the order charges 0, and the page says what is paid there.
+        paidAtCollectionUgx: q.kind === 'bus_shipment' && q.shipment.chargedAt === 'collection' ? q.feeUgx : null,
+        // Checkout re-decides the free-delivery waiver on the post-promotion
+        // goods total, which it only knows after pricing; these let it do that
+        // without a second quote.
+        freeDeliveryThresholdUgx: outcome.freeDeliveryThresholdUgx,
+        feeBeforeFreeDeliveryUgx: orderChargeBeforeFreeDeliveryUgx(q),
+        // A quote we produced is CONFIRMED. A refusal is not a zero fee that
+        // happens to be right — it is an unconfirmed fee the team will settle.
+        confirmed: q.kind !== 'unavailable',
+        pricedBy: outcome.pricedBy,
+        mayFallBackToLegacy: outcome.mayFallBackToLegacy,
+        // Why it refused, so a caller without a basket can tell a destination we
+        // cannot serve from a question it did not ask properly.
+        unavailableReason: q.kind === 'unavailable' ? q.reason : null,
+        capture: {
+          // A district-only resolution carries an EMPTY slug, which is not a
+          // slug. Stored as null so "no area" reads as absence rather than as
+          // an area whose name is nothing.
+          areaSlug: q.explanation.areaSlug || null,
+          corridor: q.explanation.corridor,
+          distanceBand: q.explanation.band,
+          quotedFeeUgx: charge,
+          expectedMinutes: q.kind === 'rider_delivery' ? q.expectedMinutes : null,
+          centroidSource: q.explanation.centroidSource,
+          // 0189: how well the location was known, and the point distance the
+          // quote could have used, whether or not distance_source let it.
+          accuracyTier: q.explanation.accuracyTier,
+          centroidKm: q.explanation.centroidKm,
+          centroidExpectedErrorM: q.explanation.centroidExpectedErrorM,
+          distanceSource: q.explanation.distanceSource,
+          configVersionId: q.explanation.configVersionId,
+          aliasUsed: outcome.resolved?.aliasUsed ?? null,
+          // 0152: what the hour and detour fits learn from. The straight line is
+          // the round trip before detour, comparable to the distance a rider records.
+          eatHourOfWeek: eatParts.weekday * 24 + eatParts.hour,
+          straightLineKm: q.explanation.oneWayKm !== null ? q.explanation.oneWayKm * 2 : null,
+          fulfilmentMode: q.mode ?? null,
+          carrier: q.kind === 'bus_shipment' ? q.shipment.carrier : null,
+          rateCardId: q.kind === 'bus_shipment' ? q.shipment.rateCardId : null,
+          rateCardVersion: q.kind === 'bus_shipment' ? q.shipment.rateCardVersion : null,
+          parcelClass: q.kind === 'bus_shipment' ? q.shipment.parcelClass : null,
+          parcelCount: q.kind === 'bus_shipment' ? q.parcelCount : null,
+          perParcelFeeUgx: q.kind === 'bus_shipment' ? q.perParcelFeeUgx : null,
+          unavailableReason: q.kind === 'unavailable' ? q.reason : null,
+        },
+      };
+    },
+    recordQuote: async (orderId: string, capture: Record<string, unknown>) => {
+      await this.deliveryCaptureRepo.upsert({ orderId, ...(capture as Record<string, never>) });
+    },
+    /**
+     * A capture that fails is an observation the model will never get. It must
+     * not void the order — but it must not vanish either, which is the whole
+     * lesson of the skipped lifecycle mirrors.
+     */
+    onCaptureFailed: (orderId: string, error: unknown) => {
+      logger.error(
+        { orderId, err: error },
+        '[delivery] capture write FAILED for a placed order — the model loses this observation permanently',
+      );
+    },
+  };
+
+  public readonly loyaltyDrawRepo = new DrizzleLoyaltyDrawRepository();
+  public readonly grantDrawTokenUseCase = new GrantDrawTokenUseCase(
+    this.loyaltyCompletionRepo,
+    this.loyaltyDrawRepo,
+    this.loyaltyRepo,
+  );
+  public readonly playDrawTokenUseCase = new PlayDrawTokenUseCase(
+    this.loyaltyIssuanceCompletion,
+    this.loyaltyDrawRepo,
+    this.loyaltyRepo,
+    (maxExclusive: number) => nodeRandomInt(maxExclusive),
+    async ({ userId, points, label }) =>
+      this.loyaltyOutboxNotifier.enqueue({
+        userId,
+        eventType: 'LOYALTY_POINTS_EARNED',
+        idempotencyKey: `draw-notify:${userId}:${label}:${points}`,
+        data: { points, source: 'reward_draw', label },
+      }),
+  );
+  public readonly getDrawStateUseCase = new GetDrawStateUseCase(this.loyaltyCompletionRepo, this.loyaltyDrawRepo);
+  /** A fully refunded order takes its scratch card with it (owner, 2026-10-15). */
+  public readonly reverseDrawOnRefundUseCase = new ReverseDrawOnRefundUseCase(this.loyaltyDrawRepo, this.loyaltyRepo);
+  public readonly evaluateTiersUseCase = new EvaluateTiersUseCase(
+    this.loyaltyRepo,
+    this.loyaltyCompletionRepo,
+    this.loyaltyTierRepo,
+    async ({ userId, tierCode, tierName, direction }) =>
+      this.loyaltyOutboxNotifier.enqueue({
+        userId,
+        eventType: 'LOYALTY_TIER_CHANGED',
+        // A welcome is once per tier, ever (unchanged key). A move down is
+        // once per tier per day, so a later move down is still told.
+        idempotencyKey: direction === 'up' ? `tier:${userId}:${tierCode}` : `tier-down:${userId}:${tierCode}:${new Date().toISOString().slice(0, 10)}`,
+        data: { tierCode, tierName, direction },
+      }),
+  );
+  /** The one payment reminder for an online order placed and never paid (gap analysis #2). */
+  public readonly sendUnpaidOrderRemindersUseCase = new SendUnpaidOrderRemindersUseCase(
+    new DrizzleUnpaidOrderReminderCandidates(),
+    (orderId) => this.enqueueCustomerOrderMessage(orderId, 'ORDER_PAYMENT_REMINDER'),
+    () => (process.env.ORDER_PAYMENT_REMINDERS || '').trim().toLowerCase() !== 'off',
+  );
+  /** 0210: the one text about a basket left behind, to a signed-in shopper who asked for such texts. */
+  public readonly sendBasketRemindersUseCase = new SendBasketRemindersUseCase(
+    this.abandonmentRepo,
+    this.basketReminderConsentUseCases,
+    async (c, phoneE164, sendBy) => {
+      await this.customerOutboxNotifier.enqueue({
+        eventType: 'BASKET_REMINDER',
+        template: 'BASKET_REMINDER',
+        customerPhone: phoneE164,
+        // The basket link is tagged here, always (ch=s.basket: GA4 and our touches file the visit as a basket reminder,
+        // not "sms / link"; the SMS adapter tags links only when the tag costs no extra part). The cart page also reads
+        // it: a signed-out phone is told its basket is saved on the account and asked to sign in, not shown "empty".
+        // notAfter: the router drops a reminder not out by then (NotificationRouter, basketReminderSendRefusal); userId:
+        // the router reads the consent again at send time.
+        data: { basketItems: basketItemsWords(c.itemNames, c.itemCount), basketUrl: tagShopUrl(`${publicBaseUrl()}/cart`, 's', 'basket'), preferencesUrl: `${publicBaseUrl()}/account/preferences`, notAfter: sendBy.toISOString(), userId: c.userId },
+        idempotencyKey: `basket-reminder:${c.abandonmentId}`,
+        relatedEntity: 'cart',
+        relatedEntityId: c.cartId,
+        consent: { purpose: 'basket_reminders', granted: true },
+      });
+    },
+    () => basketRemindersEnabled(),
+    // The abandoned-basket programme's holdout (MeasurementConfig: 10% by default), as review and mission messages.
+    async (c) => this.holdoutGate.decide({ programme: 'abandoned_basket', subjectRef: c.abandonmentId, userId: c.userId, channel: 'sms' }),
+    (event, detail) => logger.warn(detail, `[basket-reminders] ${event}`),
+  );
+  /** The one review reminder per order, a few days after delivery or collection. */
+  public readonly sendReviewRemindersUseCase = new SendReviewRemindersUseCase(
+    new DrizzleReviewReminderCandidates(),
+    async (orderId) => {
+      // Holdout (2026-10-23): a share of due orders get no reminder; the candidates query skips held orders after.
+      const who = await this.reviewReminderSubject(orderId);
+      if (who && (await this.holdoutGate.decide({ programme: 'review_reminder', subjectRef: orderId, userId: who.userId, phone: who.phone, channel: 'sms' })) === 'hold') return;
+      await this.enqueueCustomerOrderMessage(orderId, 'ORDER_REVIEW_REMINDER');
+    },
+  );
+  private async reviewReminderSubject(orderId: string): Promise<{ userId: string | null; phone: string | null } | null> {
+    const { db } = await import('./db/client');
+    const { sql } = await import('drizzle-orm');
+    const r = (await db.execute(sql`select user_id, customer_phone from orders where id = ${orderId}::uuid`)) as unknown;
+    const row = (Array.isArray(r) ? r : ((r as { rows?: any[] }).rows ?? []))[0] as { user_id: string | null; customer_phone: string | null } | undefined;
+    return row ? { userId: row.user_id ?? null, phone: row.customer_phone ?? null } : null;
+  }
+    public readonly runLoyaltyDailySweepUseCase = new RunLoyaltyDailySweepUseCase(
+    this.loyaltyRepo,
+    this.loyaltyCompletionRepo,
+    async ({ userId, earnEntryId, kind, pointsExpiring, expiresAt }) =>
+      this.loyaltyOutboxNotifier.enqueue({
+        userId,
+        eventType: 'LOYALTY_EXPIRY_WARNING',
+        idempotencyKey: `loyexp:${earnEntryId}:${kind}`,
+        data: { kind, pointsExpiring, expiresAt: expiresAt.toISOString() },
+      }),
+    this.loyaltyGate,
+  );
+  // Delivery intelligence: geography prior + order-book posterior; zones stay
+  // the only source of CONFIRMED fees.
+  public readonly deliveryPricingPolicyRepo = new DrizzleDeliveryPricingPolicyRepository();
+  public readonly deliveryFeeObservationReader = new DrizzleDeliveryFeeObservationReader();
+  public readonly getDeliveryEstimateUseCase = new GetDeliveryEstimateUseCase({
+    zones: this.deliveryZoneRepo,
+    policy: this.deliveryPricingPolicyRepo,
+    observations: this.deliveryFeeObservationReader,
+    // The same adapter checkout charges through, so the figure the page shows
+    // is the figure the order is charged.
+    quoting: this.checkoutDeliveryQuoting,
+  });
+  public readonly getDeliveryIntelligenceUseCase = new GetDeliveryIntelligenceUseCase({
+    zones: this.deliveryZoneRepo,
+    policy: this.deliveryPricingPolicyRepo,
+    observations: this.deliveryFeeObservationReader,
+  });
+  public readonly saveDeliveryPricingPolicyUseCase = new SaveDeliveryPricingPolicyUseCase(this.deliveryPricingPolicyRepo);
   public readonly getProductListUseCase = new GetProductListUseCase(this.productRepo);
   public readonly getOrderListUseCase = new GetOrderListUseCase(this.orderRepo);
   public readonly getOrderByIdUseCase = new GetOrderByIdUseCase(this.orderRepo);
@@ -780,9 +2437,15 @@ export class Registry {
   public readonly listRecentNotificationsUseCase = new ListRecentNotificationsUseCase(this.notificationAttemptRepo);
   public readonly listOrderNotificationsUseCase = new ListOrderNotificationsUseCase(this.outboxRepo, this.notificationAttemptRepo);
   // Transactional admin order email (reuses the outbox + ProcessOutboxBatch + ZeptoMail).
-  public readonly enqueueAdminOrderEmailUseCase = new EnqueueAdminOrderEmailUseCase(this.outboxRepo);
+  public readonly enqueueAdminOrderEmailUseCase = new EnqueueAdminOrderEmailUseCase(
+    this.outboxRepo,
+    (orderId, error) => logger.error(
+      { orderId, err: error instanceof Error ? error.message : String(error) },
+      '[ADMIN_ORDER_EMAIL] the reviewed template did not render; the fallback body was sent',
+    ),
+  );
   public readonly replayAdminOrderEmailUseCase = new ReplayAdminOrderEmailUseCase(this.outboxRepo, this.auditRepo);
-  public readonly uploadProductImagesUseCase = new UploadProductImagesUseCase(this.productImageStorage, this.productImageRepo);
+  public readonly uploadProductImagesUseCase = new UploadProductImagesUseCase(this.mediaLibraryUseCase, this.productMediaUseCases);
   public readonly processOutboxBatchUseCase = new ProcessOutboxBatchUseCase(
     this.outboxRepo,
     this.notificationRouter,
@@ -816,6 +2479,7 @@ export class Registry {
                 ? (event.payload.warnings as string[])
                 : [],
               hold: event.payload.hold === true,
+              paymentMethod: await this.orderRepo.findPaymentMethod(order.id),
             });
             return { status: 'HANDLED' };
           },
@@ -829,6 +2493,78 @@ export class Registry {
               event: 'placed',
               stockConfirmed: event.payload.stockConfirmed === true,
             });
+            // The customer's own copy of a pay-on-delivery order: its reference
+            // is what /track-order needs. Online payers are told when the money
+            // lands (ORDER_PAYMENT_SUCCESS). Once per order (outbox key).
+            const confirmation = confirmationForPlacedOrder(await this.orderRepo.findPaymentMethod(order.id));
+            if (confirmation) await this.enqueueCustomerOrderMessage(order.id, confirmation);
+            return { status: 'HANDLED' };
+          },
+        },
+        /**
+         * The safety net, finally hung up.
+         *
+         * `StartOrderPaymentUseCase` has always recorded this event for the case
+         * the callback design cannot cover — the customer who pays and never
+         * comes back. Nothing consumed it, so two real events sat pending for ten
+         * days at 339 and 279 attempts.
+         *
+         * It delegates. `SettlePaymentUseCase` is THE settlement path, shared with
+         * the IPN, the browser callback and the reconciliation poller, so this
+         * handler adds a fourth door onto the same room rather than a second
+         * payment engine. Consequences that matter here:
+         *
+         *   - It VERIFIES, never charges. There is no code path from here that
+         *     creates a provider transaction or moves money.
+         *   - Only the provider's own answer is written. This handler cannot
+         *     express "assume paid".
+         *   - Replay is safe by construction: settlement advances the stage with a
+         *     compare-and-set against SETTLEABLE_STAGES, so a second delivery of
+         *     the same event finds the stage already advanced and performs no
+         *     effect at all.
+         */
+        ORDER_PAYMENT_VERIFICATION_REQUIRED: {
+          handle: async (event) => {
+            const attempts = await this.pesapalPaymentRepo.findAttemptsByOrderId(event.orderId);
+            if (attempts.length === 0) {
+              // No attempt row means payment never started. No amount of waiting
+              // creates one, and there is nothing to ask the provider about.
+              return { status: 'FINAL', error: 'NO_PAYMENT_ATTEMPT_FOR_ORDER' };
+            }
+
+            // Only attempts the provider actually knows about can be verified. An
+            // attempt with no tracking id means SubmitOrderRequest never succeeded:
+            // no payment page existed, so no money is possible by construction.
+            const askable = attempts.filter((attempt) => attempt.orderTrackingId);
+            if (askable.length === 0) {
+              return { status: 'FINAL', error: 'NO_PROVIDER_TRANSACTION_TO_VERIFY' };
+            }
+
+            // An attempt the provider has already answered needs no second
+            // question. Both production events were like this: the provider said
+            // `invalid` days ago and the order has sat at payment_status=failed
+            // ever since. Re-asking would change nothing, and a verification call
+            // against a long-dead transaction is a way to get a surprising answer
+            // about a settled matter.
+            const unresolved = askable.filter(
+              (attempt) => !TERMINAL_PAYMENT_ATTEMPT_STATUSES.has(attempt.status),
+            );
+            if (unresolved.length === 0) {
+              return { status: 'HANDLED' };
+            }
+
+            for (const attempt of unresolved) {
+              await this.settlePaymentUseCase.execute({
+                orderTrackingId: attempt.orderTrackingId as string,
+                merchantReference: attempt.merchantReference,
+                source: 'poll',
+                traceId: `outbox:${event.id}`,
+              });
+            }
+
+            // HANDLED means "we asked and recorded the answer", not "the payment
+            // succeeded". A payment still pending at the provider is a truthful
+            // outcome for this event; the reconciliation ticker keeps asking.
             return { status: 'HANDLED' };
           },
         },
@@ -843,6 +2579,21 @@ export class Registry {
       },
     );
 
+  public readonly assignRecommendationExperimentUseCase = new AssignRecommendationExperimentUseCase(
+    this.experimentRepo,
+    this.experimentOperationsUseCase,
+  );
+
+  public readonly recommendationModelReadinessUseCase = new RecommendationModelReadinessUseCase(
+    this.recommendationAnalyticsRepo,
+    this.productRecommendationReader,
+    this.experimentRepo,
+  );
+
+  public readonly resolveExperienceProfileUseCase = new ResolveExperienceProfileUseCase(this.experienceProfileRepo, { readsArePure: process.env.PROFILE_READ_PURE !== 'false' });
+
+  public readonly linkExperienceProfileUseCase = new LinkExperienceProfileUseCase(this.experienceProfileRepo);
+
   public readonly trackRecommendationEventUseCase = new TrackRecommendationEventUseCase(
     this.recommendationEventRepo
   );
@@ -854,16 +2605,27 @@ export class Registry {
       this.recommendationRuleConflictService,
     );
     
+  /** Null = RESPONSE_EVENT_TO_METRIC=false: rendered rails go back to being event rows. */
+  public readonly recommendationServingStats: RecommendationServingStats | null =
+    process.env.RESPONSE_EVENT_TO_METRIC === 'false'
+      ? null
+      : new RecommendationServingStats((error, held) =>
+          logger.error({ err: error instanceof Error ? error.message : String(error), ...held }, 'RECOMMENDATION_SERVING_STATS_FLUSH_FAILED'));
+
     public readonly getRecommendationsUseCase = new GetRecommendationsUseCase(
       this.productRecommendationReader,
       this.recommendationSignalExtractor,
       this.recommendationScoring,
       this.recommendationTrending,
-      this.recommendationFallback,
       this.recommendationEligibility,
       this.recommendationDedupe,
       this.recommendationDiversity,
       this.recommendationRuleApplicationService,
+      this.recommendationEventRepo,
+      this.searchAffinityReader,
+      (stage, placement, error) =>
+        logger.error({ stage, placement, err: error instanceof Error ? error.message : String(error) }, 'RECOMMENDATION_ENGINE_DEGRADED'),
+      this.recommendationServingStats ?? undefined,
     );
 
   public readonly getRecentlyViewedUseCase = new GetRecentlyViewedUseCase(
@@ -879,9 +2641,135 @@ export class Registry {
     this.pesapalClient
   );
 
+  /** Account recovery (0106): reset tokens, stored only as hashes. */
+  public readonly accountRecoveryRepo = new DrizzleAccountRecoveryRepository();
+
+  /** Social identity (0106): one row per (provider, subject). */
+  public readonly socialIdentityRepo = new DrizzleSocialIdentityRepository();
+
+  /**
+   * Password reset. Delivery rides the ONE canonical notification provider, so
+   * when no mail transport is configured it reports NOT_CONFIGURED instead of
+   * pretending a link is on its way.
+   */
+  public readonly requestPasswordResetUseCase = new RequestPasswordResetUseCase(
+    this.userRepo,
+    this.accountRecoveryRepo,
+    new NotificationResetDelivery(
+      this.zeptoMailAdapter,
+      process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com',
+      this.recordNotificationAttemptUseCase,
+    ),
+  );
+
+  public readonly resetPasswordUseCase = new ResetPasswordUseCase(
+    this.accountRecoveryRepo,
+    this.passwordHasher,
+  );
+  /** A signed-in customer changing their own password (current password required). */
+  public readonly changePasswordUseCase = new ChangePasswordUseCase(
+    this.userRepo,
+    this.passwordHasher,
+    this.userRepo,
+    this.loginAttemptStore,
+  );
+
+  // Reset by SMS code: the channel that actually reaches customers. The code
+  // shares the phone verification table and bounds, with a domain-separated
+  // hash, and is delivered synchronously so it is never persisted in the clear.
+  public readonly requestSmsPasswordResetUseCase = new RequestSmsPasswordResetUseCase(
+    this.userRepo,
+    this.loyaltyIdentityRepo,
+    new SmsResetCodeDelivery(this.smsAdapter, this.recordNotificationAttemptUseCase),
+    otpHash,
+    otpRandom,
+    undefined,
+    // Shared by both replicas: one place's share of a customer's daily reset codes.
+    new RedisFailureLockout('sms-reset-place'),
+  );
+  public readonly resetPasswordWithSmsCodeUseCase = new ResetPasswordWithSmsCodeUseCase(
+    this.userRepo,
+    this.loyaltyIdentityRepo,
+    this.accountRecoveryRepo,
+    this.passwordHasher,
+    otpHash,
+  );
+
+  /** Homepage hero content (0107): the 12-slide library and its settings. */
+  public readonly heroRepo = new DrizzleHeroRepository();
+  // The hero's sale slide reads the SAME live promotion as the header and the
+  // card prices — never a hand-typed deadline or figure in the slide row.
+  public readonly heroContentService = new HeroContentService(
+    this.heroRepo,
+    () => resolveStorefrontDiscount(this.storefrontPricingRepo),
+    // Same-day cutoff and closed days: business_info, the one authority the nav
+    // and checkout read. Lazy, so declaration order does not matter.
+    async () => {
+      const biz = await this.businessInfoService.getPublicConfig();
+      return { cutoffHour: biz.sameDayCutoffHour, closedDays: biz.closedDays };
+    },
+    // The points slides only run while the programme can honour them — the
+    // same terms /commerce/loyalty-programme publishes.
+    async () => {
+      const [active, programme] = await Promise.all([
+        this.loyaltyGate.isActive(),
+        this.loyaltyCompletionRepo.getProgrammeConfig(),
+      ]);
+      return {
+        loyaltyActive: active,
+        referralEarns: active && !programme.killSwitch && programme.referralReferrerPoints !== null && programme.referralRefereePoints !== null,
+      };
+    },
+  );
+  public readonly heroSignalsService = new HeroSignalsService((profileId) => this.getDeliverToUseCase.execute({ profileId, customerId: null }));
+  public readonly heroTelemetryService = new HeroTelemetryService();
+
+  /** Header/nav CMS (0109/0110): the editable header document + its telemetry. */
+  public readonly navRepo = new DrizzleNavRepository();
+  public readonly navContentService = new NavContentService(this.navRepo);
+  public readonly businessInfoRepo = new DrizzleBusinessInfoRepository();
+  public readonly businessInfoService = new BusinessInfoService(this.businessInfoRepo);
+  public readonly taxonomyRepo = new DrizzleTaxonomyRepository();
+  public readonly taxonomyService = new TaxonomyService(this.taxonomyRepo);
+  public readonly homepageContentRepo = new DrizzleHomepageContentRepository();
+  public readonly homepageContentService = new HomepageContentService(this.homepageContentRepo, new DrizzleAmbassadorMedia());
+  public readonly storefrontCopyRepo = new DrizzleStorefrontCopyRepository();
+  public readonly storefrontCopyService = new StorefrontCopyService(this.storefrontCopyRepo);
+  public readonly navTelemetryService = new NavTelemetryService();
+
+  /** The ONE product-cost owner: what a product cost, from when, on whose authority. */
+  public readonly productCostRepo = new DrizzleProductCostRepository();
+  public readonly importProductCostsUseCase = new ImportProductCostsUseCase(this.productCostRepo);
+  public readonly refreshCurrentProductCostsUseCase = new RefreshCurrentProductCostsUseCase(this.productCostRepo);
+
+  /** The ONE refund ledger: how much of a payment has already been given back. */
+  public readonly refundLedgerRepo = new DrizzleRefundLedgerRepository();
+
   public readonly verifyPesaPalPaymentUseCase = new VerifyPesaPalPaymentUseCase(
     this.pesapalPaymentRepo,
-    this.pesapalClient
+    this.pesapalClient,
+    this.orderTransitionService,
+    // The ledger decides whether a provider reversal was total or partial.
+    this.refundLedgerRepo,
+    // Points follow the money back even when the order cannot move (delivered, partial refund).
+    new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase),
+    // A total refund cancels the order; its fulfilment task leaves the work queue with it.
+    new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
+    async (orderId: string) => (await this.orderRepo.findById(orderId))?.storeCreditAppliedUgx ?? 0,
+  );
+
+  /**
+   * What a refund that landed means for the order, for the one path the
+   * provider poll cannot see: an operator confirming a refund by hand.
+   */
+  public readonly refundConsequencesUseCase = new ApplyRefundConsequencesUseCase(
+    this.pesapalPaymentRepo,
+    this.orderTransitionService,
+    this.refundLedgerRepo,
+    new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase),
+    // A total refund cancels the order; its fulfilment task leaves the work queue with it.
+    new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
+    async (orderId: string) => (await this.orderRepo.findById(orderId))?.storeCreditAppliedUgx ?? 0,
   );
 
   /**
@@ -899,10 +2787,467 @@ export class Registry {
       // lines outlive the request; no customer or payment detail belongs in them.
       onSettled: (orderId, kind, traceId) =>
         logger.info({ orderId, kind, traceId }, 'PAYMENT_SETTLED'),
-      onReviewRequired: (orderId, traceId, reason) =>
-        logger.error({ orderId, traceId, reason }, 'PAYMENT_REVIEW_REQUIRED'),
+      onReviewRequired: (orderId, traceId, reason) => {
+        logger.error({ orderId, traceId, reason }, 'PAYMENT_REVIEW_REQUIRED');
+        // A double charge must reach a person, not only a log line: an urgent Care Desk task pages the team.
+        if (reason === 'SECOND_PAYMENT_TAKEN') {
+          void this.openPaymentReviewTask(orderId, (ref) => ({
+            title: `Second payment received on order ${ref}: check PesaPal and return the extra payment`,
+            detail: `A second PesaPal payment completed on an order that was already paid (trace ${traceId}). The order itself is paid and unchanged. Confirm both payments in PesaPal, then refund the extra one from the payments admin and tell the customer.`,
+          }));
+        }
+      },
     },
   });
+  /**
+   * A payment fact a person must act on (a double charge, a page paid at an old total): one urgent Care Desk task
+   * per order while it is open, since the callback, the IPN and the poller can all report the same payment.
+   * Never throws: the money path has already been decided.
+   */
+  private async openPaymentReviewTask(orderId: string, text: (ref: string) => { title: string; detail: string }): Promise<void> {
+    try {
+      const order = await this.orderRepo.findById(orderId).catch(() => null);
+      const { title, detail } = text(order?.orderNumber ?? orderId);
+      const last = await this.careDeskUseCases.lastTitled(title);
+      if (last?.status === 'open') return;
+      await this.careDeskUseCases.openTask({
+        kind: 'urgent', urgent: true, openedBy: 'payments', title, detail,
+        orderNumber: order?.orderNumber ?? null,
+        customerName: order?.customerName ?? null,
+        customerPhone: order?.customerPhone ?? null,
+      });
+    } catch (err) {
+      logger.error({ err: (err as Error).message, orderId }, 'PAYMENT_REVIEW_TASK_FAILED');
+    }
+  }
+
+  /**
+   * ONE settlement for all four doors: callback, IPN, poller, ops re-verify.
+   *
+   * The effects each report their own failure — the skipped-mirror lesson
+   * applied to money. Non-fatal and silent are different decisions.
+   */
+  public readonly settlePaymentUseCase = new SettlePaymentUseCase(
+    this.verifyPesaPalPaymentUseCase,
+    this.reconcileOrderPaymentUseCase,
+    {
+      markFulfilmentPaid: async (orderId) => {
+        await this.markFulfilmentPaymentConfirmedUseCase.execute(orderId, 'paid');
+      },
+      settleLoyalty: async (orderId) => {
+        const result = await Registry.getInstance().consumeRedemptionUseCase.execute({ orderId });
+        if (!result.ok && result.code !== 'NOT_FOUND') {
+          throw new Error(`redemption consume failed: ${result.code}`);
+        }
+      },
+      // 0196: the gift card / store credit hold becomes spent with the payment.
+      captureStoreCredit: async (orderId) => {
+        const spent = await this.creditRepo.captureForOrder(orderId, new Date());
+        // The card's holder hears when someone else's order spent it (isolated: never fails the payment effects).
+        if (spent > 0) await this.notifyCardUsedUseCase.execute(orderId).catch(() => undefined);
+      },
+      enqueueCustomerMessage: (orderId, template) => this.enqueueCustomerOrderMessage(orderId, template),
+      notifyFulfilmentOfPaidOrder: async (orderId: string) => {
+        const r = await this.fulfilmentAlertConfig.enqueuePaidOrderAlert(orderId);
+        if (!r.queued && r.reason !== 'NO_RECIPIENT_OR_DISABLED') {
+          logger.warn({ orderId, reason: r.reason }, '[fulfilment] paid-order alert was not queued');
+        }
+      },
+      enqueueAdminEmail: async (orderId) => {
+        const paidOrder = await this.orderRepo.findById(orderId);
+        const task = await this.getFulfilmentOverviewUseCase.byOrderId(orderId);
+        if (paidOrder) {
+          await this.enqueueAdminOrderEmailUseCase.execute({
+            order: paidOrder,
+            event: 'payment-confirmed',
+            // Payment confirmation never clears an inventory hold: stockConfirmed
+            // is derived from the fulfilment task's ON_HOLD state, not payment.
+            stockConfirmed: task ? task.status !== 'ON_HOLD' : true,
+          });
+        }
+      },
+      recordMeasurement: async ({ verification, trackingId, reference }) => {
+        const order = await this.orderRepo.findById(verification.orderId);
+        // GA4/ad purchases are no longer sent from here: the verified payment's
+        // order transition appends an authoritative order_confirmed event in the
+        // same transaction (0140), and durable delivery intents carry it out.
+        const mapped = this.pesapalMeasurementMapper.map({
+          verifiedPayment: verification,
+          trackingId,
+          reference,
+          customerEmail: order?.customerEmail,
+          customerPhone: order?.customerPhone,
+        });
+        await this.reconcilePesapalOrderMeasurementUseCase.execute(mapped).catch(async (err) => {
+          // The fallback the routes carried: an explicit FAILED reconciliation
+          // row, so a measurement gap is a queryable fact rather than a log line.
+          await this.paymentMeasurementRepo.createReconciliation({
+            orderId: verification.orderId || 'UNKNOWN',
+            paymentReference: reference,
+            pesapalTrackingId: trackingId,
+            status: 'FAILED',
+            amount: 0,
+            currency: 'UGX',
+          });
+          throw err;
+        });
+      },
+      flagPaidAmountMismatch: async (orderId, paidUgx) => {
+        const order = await this.orderRepo.findById(orderId);
+        // 0196: Pesapal is asked for the amount DUE (total less store credit), so that is what it must match.
+        if (!order || order.amountDueUgx === paidUgx) return;
+        const gap = order.amountDueUgx - paidUgx;
+        logger.error({ orderId, paidUgx, orderTotalUgx: order.totalUgx }, 'PAYMENT_REVIEW_REQUIRED PAID_AMOUNT_DIFFERS_FROM_ORDER_TOTAL');
+        await this.openPaymentReviewTask(orderId, (ref) => ({
+          title: `Order ${ref} was paid UGX ${paidUgx.toLocaleString('en-US')} but its total is now UGX ${order.totalUgx.toLocaleString('en-US')}`,
+          detail: gap > 0
+            ? `The customer paid an older payment page made before the total went up by UGX ${gap.toLocaleString('en-US')} (a delivery fee change). The order is paid and proceeding. Collect the difference or absorb it, and tell the customer.`
+            : `The customer paid an older payment page made before the total went down by UGX ${(-gap).toLocaleString('en-US')}. The order is paid and proceeding. Refund the difference from the payments admin and tell the customer.`,
+        }));
+      },
+      onEffectFailed: (effect, orderId, error) =>
+        logger.error(
+          { effect, orderId, err: error },
+          'PAYMENT_SETTLEMENT_EFFECT_FAILED — the payment is confirmed; this downstream effect is owed and did not run',
+        ),
+    },
+  );
+  /** 0196: staff issue a gift card or store credit; the code is texted once to the recipient when spendable. */
+  public readonly issueCreditUseCase = new IssueCreditUseCase(this.creditRepo, { hash: creditCodeHash, randomIndexes: creditRandomIndexes }, {
+    send: async ({ instrumentId, phone, kind, valueUgx, code, recipientName }) => {
+      await this.customerOutboxNotifier.enqueue({
+        // The router sends customer messages it knows by this event type; the template names the wording.
+        eventType: 'CUSTOMER_ORDER_MESSAGE', template: 'CREDIT_ISSUED', customerPhone: phone, customerEmail: null,
+        data: { template: 'CREDIT_ISSUED', creditKind: kind, creditCode: code, valueUgx, customerName: recipientName },
+        idempotencyKey: `credit-issued:${instrumentId}`, relatedEntity: 'credit_instrument', relatedEntityId: instrumentId,
+      });
+    },
+  }, {
+    // A refund as credit claws back the order's points by its running refunded share, as a cash refund does.
+    execute: (input) => new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase).execute(input),
+  });
+  /** 0196: card messages that never carry the code (card used by someone else's order; a week before expiry). */
+  private readonly creditNoticeSender = {
+    send: async (input: { template: 'CREDIT_USED' | 'CREDIT_EXPIRING'; instrumentId: string; phone: string; idempotencyKey: string; data: Record<string, unknown> }) => {
+      await this.customerOutboxNotifier.enqueue({
+        eventType: 'CUSTOMER_ORDER_MESSAGE', template: input.template, customerPhone: input.phone, customerEmail: null, data: input.data,
+        idempotencyKey: input.idempotencyKey, relatedEntity: 'credit_instrument', relatedEntityId: input.instrumentId,
+      });
+    },
+  };
+  public readonly notifyCardUsedUseCase = new NotifyCardUsedUseCase(this.creditRepo, this.creditNoticeSender);
+  public readonly creditExpiryRemindersUseCase = new CreditExpiryRemindersUseCase(this.creditRepo, this.creditNoticeSender);
+  /** 0200: which gift card occasions come first today (calendar + the owner's time-boxed adjustments). */
+  public readonly giftCardOccasionUseCases = new GiftCardOccasionUseCases(new DrizzleOccasionSettingsRepository());
+  /** 0199: customers buy a gift card online for someone else; paid through Pesapal under its own GC- reference. */
+  public readonly giftCardPurchaseUseCases = new GiftCardPurchaseUseCases(
+    new DrizzleGiftCardPurchaseRepository(),
+    this.creditRepo,
+    this.pesapalClient,
+    { hash: creditCodeHash, randomIndexes: creditRandomIndexes, referenceIndexes: creditRandomIndexes, normalizePhone },
+    () => ({
+      ipnId: process.env.PESAPAL_IPN_ID || null,
+      callbackUrl: providerCallbackUrl(),
+      resultPageUrl: `${storefrontOrigin() ?? 'http://localhost:4321'}/gift-card/bought`,
+      dailyShopCapUgx: Number(process.env.GIFT_CARD_DAILY_SHOP_CAP_UGX) > 0 ? Number(process.env.GIFT_CARD_DAILY_SHOP_CAP_UGX) : 5_000_000,
+    }),
+    (event, detail) => logger.info({ event, ...detail }, `[gift-card] ${event}`),
+  );
+  /** 0201: the optional photo on a gift card bought online (upload, serving, removal, retention). */
+  public readonly giftCardPhotoUseCases = new GiftCardPhotoUseCases(
+    new DrizzleGiftCardPhotoRepository(),
+    new SharpGiftCardPhotoProcessor(),
+    { hashCode: creditCodeHash, visitorKey: (raw) => piiHasher.hashName(raw) },
+    (event, detail) => logger.info({ event, ...detail }, `[gift-card-photo] ${event}`),
+  );
+  /** 0196: an order paid entirely by store credit / a gift card, settled through the same doors as Pesapal. */
+  public readonly settleByStoreCreditUseCase = new SettleByStoreCreditUseCase(this.orderRepo, this.orderTransitionService, this.reconcileOrderPaymentUseCase, this.settlePaymentUseCase);
+
+  /**
+   * The safety net. Asks the provider about every attempt still non-terminal
+   * after the threshold; writes only the provider's own answer, through the
+   * same settlement as the IPN. Time never marks a payment failed.
+   */
+  public readonly reconcilePendingPaymentsUseCase = new ReconcilePendingPaymentsUseCase(
+    this.pesapalPaymentRepo,
+    this.settlePaymentUseCase,
+    {
+      pollAfterMinutes: Number(process.env.PAYMENT_RECONCILE_AFTER_MINUTES) > 0 ? Number(process.env.PAYMENT_RECONCILE_AFTER_MINUTES) : 10,
+      abandonStartFailuresAfterHours: Number(process.env.PAYMENT_ABANDON_START_FAILURES_HOURS) > 0 ? Number(process.env.PAYMENT_ABANDON_START_FAILURES_HOURS) : 24,
+      batchLimit: 100,
+    },
+    {
+      // Paid orders still owed the task update, the receipt or a paid-order alert (PaidOrdersOwedEffects).
+      // Idempotent effects only; see SettlePaymentUseCase.redoConfirmedEffects.
+      windowHours: 48,
+      listPaidOrdersAwaitingFulfilmentPayment: async (since: Date, limit: number) => {
+        const { listPaidOrdersOwedConfirmedEffects } = await import('./payments/PaidOrdersOwedEffects');
+        return listPaidOrdersOwedConfirmedEffects(since, limit, alertRecipients(await this.fulfilmentAlertConfig.values()));
+      },
+    },
+  );
+
+  /** Payments ops config: closed registry, ships empty, audited writes. */
+  public readonly paymentsOpsConfig = {
+    values: async (): Promise<Record<string, string>> => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const rows = (await db.execute(sql`select config_key, config_value from payments_ops_config`)) as unknown as Array<{
+        config_key: string;
+        config_value: string;
+      }>;
+      return Object.fromEntries(rows.map((r) => [r.config_key, r.config_value]));
+    },
+    set: async (input: { key: string; value: string; actorId: string }) => {
+      if (!isPaymentsOpsConfigKey(input.key)) {
+        return { ok: false as const, message: `"${input.key}" is not a payments operational setting.` };
+      }
+      const check = validatePaymentsOpsValue(input.key, input.value);
+      if (!check.ok) return { ok: false as const, message: check.message };
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const before = await this.paymentsOpsConfig.values();
+      await db.execute(sql`
+        insert into payments_ops_config (config_key, config_value, updated_by, updated_at)
+        values (${input.key}, ${String(check.value)}, ${input.actorId}, now())
+        on conflict (config_key) do update set config_value = excluded.config_value,
+          updated_by = excluded.updated_by, updated_at = now()`);
+      await this.createAuditLogUseCase.execute({
+        actorId: input.actorId,
+        action: 'PAYMENTS_OPS_CONFIG_SET',
+        entity: 'payments_ops_config',
+        entityId: input.key,
+        previousState: { value: before[input.key] ?? null },
+        newState: { value: String(check.value) },
+      });
+      return { ok: true as const };
+    },
+    /**
+     * Unset — the documented way each mechanism is switched OFF. There was no
+     * way to do it from the admin: a blank value fails validation (it reads as
+     * 0, below the minimum), so once the synthetic probe or abandonment was on
+     * it could only be turned off in SQL.
+     */
+    unset: async (input: { key: string; actorId: string }) => {
+      if (!isPaymentsOpsConfigKey(input.key)) {
+        return { ok: false as const, message: `"${input.key}" is not a payments operational setting.` };
+      }
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const before = await this.paymentsOpsConfig.values();
+      await db.execute(sql`delete from payments_ops_config where config_key = ${input.key}`);
+      await this.createAuditLogUseCase.execute({
+        actorId: input.actorId,
+        action: 'PAYMENTS_OPS_CONFIG_UNSET',
+        entity: 'payments_ops_config',
+        entityId: input.key,
+        previousState: { value: before[input.key] ?? null },
+        newState: { value: null },
+      });
+      return { ok: true as const, wasSet: before[input.key] !== undefined };
+    },
+  };
+
+  /** Stale-order reads for the sweep. The pending-attempt exclusion is the rule. */
+  private readonly staleOrderReader = {
+    listStaleUnpaidOrders: async (olderThan: Date, limit: number) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      return (await db.execute(sql`
+        select o.id, o.order_number as "orderNumber", o.status, o.created_at as "createdAt"
+        from orders o
+        where o.payment_status in ('unpaid', 'failed')
+          and o.status in ('received', 'pending_payment')
+          and o.created_at < ${olderThan}
+          -- Only online-prepaid orders are abandoned by time. A pay-on-delivery
+          -- ('offline') or legacy/admin (NULL) order is unpaid by design and must
+          -- never be auto-cancelled. payment_method is recorded at checkout
+          -- (migration 0130) and backfilled to 'pesapal' for historical orders
+          -- that have a payment attempt.
+          and o.payment_method = 'pesapal'
+          and not exists (
+            select 1 from payment_attempts a
+            where a.order_id = o.id
+              -- 'completed': money the provider confirmed. Even if the order never moved (a crash between the
+              -- attempt write and the order transition), it is never cancelled or released by time.
+              and a.status in ('pending', 'verification_pending', 'verification_failed', 'completed')
+          )
+        order by o.created_at limit ${limit}`)) as unknown as Array<{
+        id: string; orderNumber: string; status: string; createdAt: Date;
+      }>;
+    },
+    listReservedUnpaidOrders: async (olderThan: Date, limit: number) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      return (await db.execute(sql`
+        select distinct o.id, o.order_number as "orderNumber", o.created_at as "createdAt"
+        from orders o join inventory_reservations r on r.order_id = o.id and r.status = 'reserved'
+        where o.payment_status in ('unpaid', 'failed')
+          and o.status in ('received', 'pending_payment')
+          and o.created_at < ${olderThan}
+          -- Same COD safety as listStaleUnpaidOrders: a pay-on-delivery order
+          -- holds a reservation and is unpaid by design; its stock must not be
+          -- returned to sale by the TTL sweep. Only online-prepaid orders qualify.
+          and o.payment_method = 'pesapal'
+          and not exists (
+            select 1 from payment_attempts a
+            where a.order_id = o.id
+              -- 'completed': money the provider confirmed. Even if the order never moved (a crash between the
+              -- attempt write and the order transition), it is never cancelled or released by time.
+              and a.status in ('pending', 'verification_pending', 'verification_failed', 'completed')
+          )
+        order by o.created_at limit ${limit}`)) as unknown as Array<{
+        id: string; orderNumber: string; createdAt: Date;
+      }>;
+    },
+  };
+
+  public readonly expireStaleReservationsUseCase = new ExpireStaleReservationsUseCase(
+    this.paymentsOpsConfig,
+    this.staleOrderReader,
+    { releaseForOrder: (orderId) => this.inventoryRepo.releaseForOrder(orderId) },
+    this.auditRepo,
+  );
+
+  public readonly abandonStaleUnpaidOrdersUseCase = new AbandonStaleUnpaidOrdersUseCase(
+    this.paymentsOpsConfig,
+    this.staleOrderReader,
+    {
+      transition: (orderId, to, ctx) =>
+        Registry.getInstance().orderTransitionService.transition(orderId, to, ctx),
+    },
+    { releaseForOrder: (orderId) => this.inventoryRepo.releaseForOrder(orderId) },
+    this.auditRepo,
+    // The abandoned order's task leaves the work queue with it.
+    new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
+    // Last word from Pesapal before cancelling: each failed/invalid attempt with a tracking id is settled once.
+    async (orderId) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const attempts = (await db.execute(sql`
+        select order_tracking_id as "trackingId", merchant_reference as "reference" from payment_attempts
+        where order_id = ${orderId} and status in ('failed', 'invalid') and order_tracking_id is not null`)) as unknown as Array<{ trackingId: string; reference: string }>;
+      for (const a of attempts) {
+        const outcome = await Registry.getInstance().settlePaymentUseCase.execute({
+          orderTrackingId: a.trackingId, merchantReference: a.reference, source: 'poll', traceId: `abandon-recheck:${a.reference}`,
+        });
+        if (outcome.confirmed || outcome.verification.status === 'completed') return true;
+        if (outcome.verification.status === 'verification_pending') throw new Error('PROVIDER_UNREACHABLE');
+      }
+      return false;
+    },
+  );
+
+  public readonly alertOnLedgerMismatchUseCase = new AlertOnLedgerMismatchUseCase(
+    { execute: (limit) => Registry.getInstance().scanCommerceIntegrityUseCase.execute(limit) },
+    ({ count, entityIds, types }) =>
+      logger.error(
+        { count, entityIds, types },
+        'ALERT STOCK INTEGRITY — the reservation ledger disagrees with stock or with where the order is (RESERVED_LEDGER_MISMATCH / DISPATCHED_WITH_RESERVATION / CANCELLED_AFTER_CONSUME). This was a report line nobody read; now it shouts.',
+      ),
+  );
+
+  /** The four funnel counters. A gap between adjacent numbers IS the outage. */
+  public readonly paymentHealthReader = {
+    lastSuccessfulPaymentAt: async (): Promise<Date | null> => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const rows = (await db.execute(sql`
+        select max(updated_at) as t from payment_attempts where status = 'completed'`)) as unknown as Array<{ t: string | null }>;
+      return rows[0]?.t ? new Date(rows[0].t) : null;
+    },
+    callbackSilence: async (olderThan: Date, since: Date) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const [row] = (await db.execute(sql`
+        select
+          count(*)::int as total,
+          count(*) filter (
+            where ipn_received_at is null and callback_received_at is null
+          )::int as awaiting
+        from payment_attempts
+        where created_at >= ${since}
+          and created_at <= ${olderThan}
+          and order_tracking_id is not null`)) as unknown as Array<{ total: number; awaiting: number }>;
+      return { awaiting: row?.awaiting ?? 0, total: row?.total ?? 0 };
+    },
+    funnel: async (since: Date) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const [row] = (await db.execute(sql`
+        select
+          (select count(*) from checkout_idempotency where created_at >= ${since})::int as started,
+          (select count(*) from payment_attempts where created_at >= ${since})::int as requested,
+          (select count(*) from payment_attempts where status = 'completed' and updated_at >= ${since})::int as succeeded,
+          (select count(*) from orders where payment_status = 'paid' and updated_at >= ${since})::int as paid`)) as unknown as Array<{
+        started: number; requested: number; succeeded: number; paid: number;
+      }>;
+      return {
+        checkoutStarted: row?.started ?? 0,
+        paymentRequested: row?.requested ?? 0,
+        paymentSucceeded: row?.succeeded ?? 0,
+        orderPaid: row?.paid ?? 0,
+      };
+    },
+  };
+
+  public readonly checkPaymentSilenceUseCase = new CheckPaymentSilenceUseCase(
+    this.paymentsOpsConfig,
+    this.paymentHealthReader,
+  );
+
+  public readonly pesapalSyntheticProbeUseCase = new PesapalSyntheticProbeUseCase(
+    this.paymentsOpsConfig,
+    {
+      submitOrderRequest: (input) =>
+        this.pesapalClient.submitOrderRequest({
+          ...input,
+          billing_address: {
+            email_address: input.billing_address.email_address ?? '',
+            phone_number: input.billing_address.phone_number ?? '',
+            first_name: input.billing_address.first_name ?? '',
+            last_name: input.billing_address.last_name ?? '',
+          },
+        }),
+    },
+    {
+      getStatus: async (url) => (await fetch(url, { signal: AbortSignal.timeout(10_000) })).status,
+      postStatus: async (url, body) =>
+        (
+          await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(10_000),
+          })
+        ).status,
+    },
+    {
+      // The provider's destination, which is our API, not the storefront page.
+      callbackUrl: providerCallbackUrl(),
+      cancellationUrl: process.env.PESAPAL_CANCELLATION_URL ?? '',
+      ipnId: process.env.PESAPAL_IPN_ID ?? '',
+      ipnUrl: process.env.PESAPAL_IPN_URL ?? '',
+    },
+    this.auditRepo,
+    async () => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const rows = (await db.execute(sql`
+        select max(created_at) as t from audit_logs where action = 'PAYMENT_SYNTHETIC_PROBE'`)) as unknown as Array<{ t: string | null }>;
+      return rows[0]?.t ? new Date(rows[0].t) : null;
+    },
+    (message, detail) => logger.error({ ...detail }, `ALERT ${message}`),
+  );
+
+  /** The refund path. Exists BEFORE it is needed; unexercised against real money. */
+  public readonly refundPesaPalPaymentUseCase = new RefundPesaPalPaymentUseCase(
+    this.pesapalPaymentRepo,
+    this.pesapalClient,
+    this.auditRepo,
+    this.refundLedgerRepo,
+  );
+
   /**
    * Authorized, idempotent payment start.
    *
@@ -913,11 +3258,12 @@ export class Registry {
    * returning internal error text on a blanket 400.
    */
   public readonly startOrderPaymentUseCase = new StartOrderPaymentUseCase({
+    settleByStoreCredit: this.settleByStoreCreditUseCase,
     idempotency: this.checkoutIdempotencyRepo,
     orders: {
       findById: async (orderId) => {
         const order = await this.orderRepo.findById(orderId);
-        return order ? { id: order.id, paymentStatus: order.paymentStatus } : null;
+        return order ? { id: order.id, paymentStatus: order.paymentStatus, totalUgx: order.totalUgx, orderStatus: order.orderStatus } : null;
       },
     },
     attempts: {
@@ -927,6 +3273,7 @@ export class Registry {
       execute: (input) => this.startPesaPalPaymentUseCase.execute(input),
     },
     sideEffectRecorder: this.checkoutSideEffectRecorder,
+    reservationState: this.orderReservationState,
     observer: {
       // Order ids and codes only. A refused payment start is a security-relevant
       // event and these lines outlive the request; no customer data belongs in them.
@@ -957,8 +3304,11 @@ export class Registry {
   public readonly replayMeasurementDlqUseCase = new ReplayMeasurementDlqUseCase(
     this.dlqRepo,
     this.measurementAdminRepo,
-    this.measurementLogger,
-    this.auditRepo
+    this.measurementLogger
+  );
+  public readonly dismissMeasurementDlqUseCase = new DismissMeasurementDlqUseCase(
+    this.dlqRepo,
+    this.measurementLogger
   );
   public readonly listConsentAuditUseCase = new ListConsentAuditUseCase(this.consentReadRepo);
   public readonly getMatchQualitySummaryUseCase = new GetMatchQualitySummaryUseCase(this.attributionRepo);
@@ -966,6 +3316,143 @@ export class Registry {
   public readonly consentService = new ConsentService(this.consentRepo, this.measurementLogger);
   public readonly consentAwareMeasurementPolicy = new ConsentAwareMeasurementPolicy(this.consentService);
   public readonly captureZeroPartyDataUseCase = new CaptureZeroPartyDataUseCase(this.zpdRepo, this.measurementLogger, this.consentService);
+  /** Goldie's conversation archive (0177): every channel, every message, for the admin inbox and meetings. */
+  public readonly conversationArchiveUseCases = new ConversationArchiveUseCases(new DrizzleAssistantConversationStore());
+  /** The weekly human quality review of Goldie's chats (0181). */
+  public readonly qualityReviewUseCases = new QualityReviewUseCases(new DrizzleQualityReviewRepository());
+  /** Goldie's answer memory (0179): paid answers reused at no model cost while their facts still hold. */
+  public readonly answerMemoryUseCases = new AnswerMemoryUseCases(new DrizzleAnswerMemoryRepository());
+  private readonly whatsappMessenger = new WhatsAppCloudMessenger(() => this.advertisingOps.whatsappAds.messagingToken());
+  /** The Care Desk (0178): tasks for people, urgent alerts to the on-duty team, ratings. */
+  public readonly careDeskUseCases = new CareDeskUseCases(
+    new DrizzleCareDeskRepository(),
+    new CareAlertChannels(this.whatsappMessenger, () => goldieWhatsAppSettings(), (name) => this.whatsappTemplateCatalog.approved(name)),
+    { deskUrl: `${(process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/+$/, '')}/admin/care`, alertsPerHour: Math.max(1, Number(process.env.CARE_ALERTS_PER_HOUR ?? 12) || 12),
+      // Before the team is set up, urgent customers page the shop's own order inboxes and phone.
+      fallback: { emails: String(process.env.ADMIN_ORDER_NOTIFICATION_EMAILS ?? '').split(',').map((e) => e.trim()).filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)).slice(0, 5), phone: `+${DEFAULT_BUSINESS_INFO.whatsappNumber}` } },
+  );
+  /** The daily stock alert (2026-10-31): products to reorder, as one Care Desk task. */
+  public readonly lowStockAlertUseCase = new LowStockAlertUseCase(this.inventoryRepo, this.careDeskUseCases);
+  /**
+   * Goldie acting on an order herself (owner, 2026-10-13; wired 2026-10-31): the same order proof and lockout as Track
+   * my order, the real state machine for the cancel, the Pesapal refund ledger for the money (up to
+   * GOLDIE_REFUND_CAP_UGX, default UGX 300,000), an audited note for rider instructions. Goldie is the actor.
+   */
+  public readonly goldieOrderActionsUseCases = new GoldieOrderActionsUseCases({
+    verify: async (reference, contact) => {
+      const v = await verifyOrderByContact({ reference, contact, now: Date.now() }, { lockout: new RedisFailureLockout('lockout:order-contact'), findOrder: (r: string) => this.getOrderByIdUseCase.execute(r) });
+      if (!v.ok) return v;
+      const o = v.order as unknown as { id: string; orderNumber: string; orderStatus: string; paymentStatus: string; totalUgx: number; customerName: string; customerPhone: string };
+      return { ok: true, order: { id: o.id, orderNumber: o.orderNumber, orderStatus: String(o.orderStatus), paymentStatus: String(o.paymentStatus), totalUgx: Number(o.totalUgx), customerName: o.customerName, customerPhone: o.customerPhone } };
+    },
+    cancel: async (orderId, note, idempotencyKey) => {
+      await this.orderTransitionService.transition(orderId, 'cancelled', { actorId: GOLDIE_ACTOR_ID, actorType: 'customer', source: 'customer', reasonCode: 'CUSTOMER_CANCELLED_VIA_GOLDIE', note, idempotencyKey });
+    },
+    completedPayments: async (orderId) => (await this.pesapalPaymentRepo.findAttemptsByOrderId(orderId))
+      .filter((a) => a.status === 'completed').map((a) => ({ merchantReference: a.merchantReference, amount: Number(a.amount) })),
+    refund: async (input) => {
+      const r = await this.refundPesaPalPaymentUseCase.execute({ ...input, actorId: GOLDIE_ACTOR_ID, actorUsername: 'Goldie (shop assistant)' });
+      return r.ok ? { ok: true as const, refundId: r.refundId } : { ok: false as const, code: r.code, message: r.message };
+    },
+    note: async (orderId, note) => {
+      await new CreateAuditLogUseCase(this.auditRepo).execute({ actorId: GOLDIE_ACTOR_ID, action: 'ORDER_NOTE_ADDED', entity: 'order', entityId: orderId, newState: { note } });
+    },
+    openTask: (input) => this.careDeskUseCases.openTask({ ...input, openedBy: 'goldie' }),
+  }, { refundCapUgx: Math.max(0, Number(process.env.GOLDIE_REFUND_CAP_UGX ?? 300_000) || 300_000) });
+  /** Self-service returns (gap analysis #8): a verified order's return request becomes a Care Desk task. */
+  public readonly requestReturnUseCase = new RequestReturnUseCase(new DrizzleOrderDeliveredAt(), this.careDeskUseCases);
+  /** Questions and answers on product pages (0208, gap analysis #14). */
+  public readonly productQuestionRepo = new DrizzleProductQuestionRepository();
+  public readonly askProductQuestionUseCase = new AskProductQuestionUseCase(
+    this.productQuestionRepo,
+    this.careDeskUseCases,
+    (q) => this.sendPublicFormAcknowledgementUseCase.execute({
+      kind: 'product_question', eventType: 'PRODUCT_QUESTION_RECEIVED', template: 'PRODUCT_QUESTION_RECEIVED', phone: q.phone, email: q.email,
+      data: { customerName: q.name, productName: q.productName }, entityId: q.id, relatedEntity: 'product_question',
+    }),
+  );
+  public readonly answerProductQuestionUseCase = new AnswerProductQuestionUseCase(
+    this.productQuestionRepo,
+    (q) => this.customerOutboxNotifier.enqueue({
+      eventType: 'PRODUCT_QUESTION_ANSWERED', template: 'PRODUCT_QUESTION_ANSWERED', customerPhone: q.askerPhone, customerEmail: q.askerEmail,
+      data: { customerName: q.askerName, productName: q.productName ?? null, productUrl: q.productSlug ? `${publicBaseUrl()}/products/${q.productSlug}#questions` : null, questionAnswer: q.answer },
+      idempotencyKey: `product-question:${q.id}:answered`, relatedEntity: 'product_question', relatedEntityId: q.id,
+    }),
+    () => new Date(),
+    (questionId, outcome, by) => this.careDeskUseCases.resolveByAction('questionId', questionId, outcome, by,
+      outcome === 'done' ? 'Answered in Platform modules.' : 'Rejected in Platform modules.'),
+  );
+  /** Goldie on WhatsApp (and the admin inbox's team replies). Off until GOLDIE_WHATSAPP_ENABLED=true. */
+  public readonly goldieChannelUseCases = new GoldieChannelUseCases(
+    this.conversationArchiveUseCases,
+    new HttpGoldieBrain(),
+    this.whatsappMessenger,
+    () => goldieWhatsAppSettings(),
+    (event, detail) => logger.warn(detail, event),
+    () => new Date(),
+    () => this.careDeskUseCases.staffNumbers(),
+    (input) => this.careDeskUseCases.openTask(input),
+    (digits) => new PhoneCareReader().verifiedUserId(digits),
+    async (input) => {
+      const site = (process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/+$/, '');
+      const m = renderTeamReplyMail({ firstName: input.firstName, text: input.text, whatsappUrl: `https://wa.me/${DEFAULT_BUSINESS_INFO.whatsappNumber}`, siteUrl: site });
+      const id = await insertOutboxObject({ eventType: 'CARE_REPLY_EMAIL', template: 'CARE_REPLY_EMAIL', channel: 'email', idempotencyKey: `care-reply:${input.conversationId}:${Date.now()}`, relatedEntity: 'assistant_chat', relatedEntityId: input.conversationId, payload: { recipient: input.to, ...m, relatedEntity: 'assistant_chat', relatedEntityId: input.conversationId } });
+      return id !== null;
+    },
+    (conversation, text) => this.goldieSocialUseCases.teamReply(conversation, text),
+    whatsAppDeliveryStore,
+    Math.min(Math.max(Number(process.env.GOLDIE_BURST_WAIT_MS ?? 2000) || 0, 0), 10_000),
+    this.locationPinUseCases,
+  );
+  /** Goldie on Facebook Messenger and Instagram Direct. Off until GOLDIE_MESSENGER_ENABLED / GOLDIE_INSTAGRAM_ENABLED and a page token. */
+  public readonly goldieSocialUseCases = new GoldieSocialUseCases(
+    this.conversationArchiveUseCases,
+    new HttpGoldieBrain(),
+    new MetaSocialMessenger(),
+    () => goldieSocialSettings(),
+    () => this.advertisingOps.whatsappAds.appSecrets(),
+    (input) => this.careDeskUseCases.openTask(input),
+    (event, detail) => logger.warn(detail, event),
+    () => new Date(),
+    (platform, outcome) => goldieMetrics.socialMessages.inc({ platform, outcome }),
+  );
+  private readonly goldieListensToWhatsApp = (() => {
+    // Each customer message is handled on its own, after Meta has been answered.
+    this.advertisingOps.whatsappAds.onInboundText((messages) => {
+      for (const m of messages) void this.goldieChannelUseCases.handleWhatsApp(m).then((outcome) => goldieMetrics.whatsappMessages.inc({ outcome }));
+    });
+    // A customer message Meta accepted but could not deliver (not on WhatsApp, blocked, expired) is recorded as
+    // FAILED on its notification attempt, so the log never shows it as sent.
+    this.advertisingOps.whatsappAds.onAccountEvents((events) => {
+      // Something about templates or the number changed at Meta: re-read approvals now, not in 10 minutes.
+      this.whatsappTemplateCatalog.invalidate();
+      for (const e of events) {
+        goldieMetrics.accountEvents.inc({ field: e.field, event: e.event });
+        if (e.bad) this.whatsappNeedsAttention(`${e.field}:${e.subject ?? ''}:${e.event}`, `${e.field.replace(/_/g, ' ')}: ${e.subject ? `${e.subject} ` : ''}${e.event.toLowerCase().replace(/_/g, ' ')}${e.detail ? ` (${e.detail})` : ''}. Messages that need it go by SMS meanwhile. See Notifications > WhatsApp templates and WhatsApp Manager.`);
+      }
+    });
+    this.advertisingOps.whatsappAds.onDeliveryReceipts((receipts) => {
+      for (const r of receipts) {
+        goldieMetrics.deliveryReceipts.inc({ status: r.status });
+        if (r.status === 'failed') void this.whatsappDeliveryFailed(r).catch(() => undefined);
+      }
+    });
+    return true;
+  })();
+  /** Goldie beyond the answer: shopper context, Customer DNA interests, and chats passed on by email. */
+  public readonly assistantConversationUseCases = new AssistantConversationUseCases(
+    this.supportRepo,
+    new DrizzleAssistantMailOutbox(),
+    new DrizzleAssistantContextReader(this.heroSignalsService),
+    new ZeroPartyAssistantInterestSink(this.captureZeroPartyDataUseCase),
+    (() => {
+      const site = (process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/+$/, '');
+      return { siteUrl: site, whatsappUrl: `https://wa.me/${DEFAULT_BUSINESS_INFO.whatsappNumber}`, supportInboxUrl: `${site}/admin/support` };
+    })(),
+    () => new Date(),
+    new NextBestActionAdvisor((input) => this.decideNextBestActionUseCase.execute(input) as never),
+    (phone) => new PhoneCareReader().verifiedUserId(phone),
+  );
 
   public readonly planGtmMeasurementChangesUseCase = new PlanGtmMeasurementChangesUseCase(this.gtmRepo, this.gtmPlanRepo, this.gtmPlanBuilder);
   public readonly listGtmWorkspacesUseCase = new ListGtmWorkspacesUseCase(this.gtmRepo);
@@ -1214,7 +3701,193 @@ export class Registry {
   public static getInstance(): Registry {
     if (!Registry._instance) {
       Registry._instance = new Registry();
+      Registry._instance.registerOrderTransitionSubscribers();
+      Registry._instance.registerMarketingSuppressionReader();
+      Registry._instance.registerBasketReminderRecheck();
     }
     return Registry._instance;
+  }
+
+  /**
+   * One customer order message through the outbox: at most once per order and
+   * template (the idempotency key), governed by the TRANSACTIONAL gates, and
+   * stopped without a deploy by CUSTOMER_ORDER_MESSAGES_LIVE=false.
+   */
+  private async enqueueCustomerOrderMessage(orderId: string, template: string): Promise<void> {
+    const order = await this.orderRepo.findById(orderId);
+    if (!order) return;
+    await this.customerOutboxNotifier.enqueue({
+      eventType: 'CUSTOMER_ORDER_MESSAGE',
+      template,
+      customerPhone: order.customerPhone,
+      customerEmail: order.customerEmail ?? null,
+      data: {
+        template,
+        customerName: order.customerName,
+        orderNumber: order.orderNumber,
+        totalUgx: order.totalUgx,
+        // What is still to pay (the total less any gift card / store credit): the payment reminder asks for this.
+        amountDueUgx: order.amountDueUgx,
+        // 0196: the gift card / store credit part, so payment messages and the receipt name the split.
+        ...(order.storeCreditAppliedUgx > 0 ? {
+          storeCreditAppliedUgx: order.storeCreditAppliedUgx,
+          ...(template === 'ORDER_CANCELLED_BY_SHOP' ? {
+            refundUpdate: cancelRefundUpdate({ totalUgx: order.totalUgx, storeCreditAppliedUgx: order.storeCreditAppliedUgx, paymentStatus: order.paymentStatus }),
+          } : {}),
+          paymentMethod: order.amountDueUgx > 0
+            ? `Gift card or store credit ${order.storeCreditAppliedUgx.toLocaleString('en-US')} + Mobile Money or card ${order.amountDueUgx.toLocaleString('en-US')} (UGX)`
+            : 'Gift card or store credit',
+        } : {}),
+        // What the reviewed email templates need to render a real receipt:
+        // the lines, the money and where it is going. Without these the
+        // adapter cannot fill the design and falls back to the older body.
+        orderCreatedAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
+        deliveryFeeUgx: order.deliveryFeeUgx ?? 0,
+        deliveryLocation: order.deliveryLocation?.displayLabel || order.deliveryArea || '',
+        paymentStatus: order.paymentStatus,
+        // Track Order, pre-filled: it works for guests (no account) and takes
+        // an order NUMBER. /orders/{number} could never resolve — that page
+        // reads /account/orders/:id, which answers only a UUID, behind a login.
+        orderUrl: `${(process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/$/, '')}/track-order?reference=${encodeURIComponent(order.orderNumber)}`,
+        items: (order.items ?? []).map((i) => ({
+          name: i.name,
+          quantity: i.quantity,
+          unitPriceUgx: i.price,
+          lineTotalUgx: i.finalLineTotal ?? i.price * i.quantity,
+        })),
+      },
+      idempotencyKey: `customer-order-message:${orderId}:${template}`,
+      relatedEntity: 'order',
+      relatedEntityId: orderId,
+      // These messages have been reaching customers all along: the router
+      // never consulted this flag, so "deferred until the owner switches it
+      // on" was not true — a payment-success SMS went to a real customer on
+      // 2026-09-20 while the switch was unset. The flag is now honoured, so
+      // the default states what actually happens: customer order messages
+      // are LIVE, and CUSTOMER_ORDER_MESSAGES_LIVE=false stops them.
+      dryRunOnly: process.env.CUSTOMER_ORDER_MESSAGES_LIVE === 'false',
+    });
+  }
+
+  /**
+   * Loyalty ↔ order lifecycle wiring (loyalty brief PARTs F–G), registered
+   * once at construction. Post-commit, isolated, idempotent:
+   *  - delivered/completed → vest points (signed-in retail orders paid online or cash on delivery —
+   *    domain/loyalty/LoyaltyEarnEligibility) and
+   *    consume any COD redemption reservation attached to the order
+   *  - cancelled → release any open points reservation (points never eaten)
+   *    and any stock the order still holds
+   *  - payment reversed (chargeback/refund) → claw back the earn in full and
+   *    reverse an applied redemption, points returning with original expiry.
+   */
+  /**
+   * A STOP or unsubscribe recorded against a phone number or email address
+   * blocks MARKETING on that channel at the one outbound decision every
+   * adapter shares. Transactional messages never reach this read.
+   */
+  private registerMarketingSuppressionReader(): void {
+    outboundGovernance.setMarketingSuppressionReader(buildMarketingSuppressionReader(new FirstPartyConsentRepository()));
+  }
+
+  /**
+   * 0210: a queued basket reminder is sent only if the customer's consent still covers that number when it goes out
+   * (they may have switched reminders off, changed number or sent STOP since it was queued).
+   */
+  private registerBasketReminderRecheck(): void {
+    this.notificationRouter.setBasketReminderRecheck(async (userId, phoneE164) => {
+      const gate = await this.basketReminderConsentUseCases.mayRemind(userId);
+      return gate.allowed && gate.phoneE164 === phoneE164;
+    });
+  }
+
+  private registerOrderTransitionSubscribers(): void {
+    // GA4 refunds / ad withdrawals for a cancelled order: the order_cancelled
+    // business event routes them (0140), in the delivery layer.
+    this.orderTransitionService.onTransition(async ({ orderId, toStatus, ctx }) => {
+      if (toStatus === 'delivered' || toStatus === 'completed') {
+        // Isolated like every step after it. Un-caught, one transient DB error
+        // here skipped redemption settlement, the earned SMS, badges, referral
+        // qualification and the scratch card for this order, permanently —
+        // this subscriber runs once, after commit, and nothing re-runs it.
+        await this.vestLoyaltyOnDeliveryUseCase.execute(orderId).catch((err: unknown) =>
+          logger.error({ orderId, err }, 'LOYALTY_VEST_FAILED — points for this delivered order did not vest'));
+        // A failure is reported and the stuck reservation released (settleOnDelivery).
+        await this.consumeRedemptionUseCase.settleOnDelivery(orderId).catch(() => undefined);
+        // PART M: earn confirmation when points VEST, not when the order is
+        // placed. Enqueued only when an earn actually landed for this order.
+        const earn = await this.loyaltyCompletionRepo.findEarnEntryForOrder(orderId).catch(() => null);
+        // A paid retail order by a customer, whether or not it earned points (a paused budget, a zero earn).
+        const orderSource = await this.orderRepo.findLoyaltyEarnSource(orderId).catch(() => null);
+        const source = earn ? orderSource : null;
+        if (earn && source) {
+          await this.loyaltyOutboxNotifier
+            .enqueue({
+              userId: source.userId,
+              eventType: 'LOYALTY_POINTS_EARNED',
+              idempotencyKey: `earned:${earn.id}`,
+              data: { points: earn.points, orderId },
+            })
+            .catch(() => undefined);
+        }
+        // Gamification (0087): a delivery is the verified completion event —
+        // first-order badge, mission progress, referral qualification. Every
+        // award inside is idempotent; a gamification failure never fails the
+        // order transition.
+        if (source) {
+          await this.gamificationRepo.awardBadgeByKey(source.userId, 'first_order').catch(() => undefined);
+          await this.evaluateGamificationForUserUseCase.execute({ userId: source.userId }).catch(() => undefined);
+
+          // 0088: a delivered order grants ONE scratch card. Idempotent on the
+          // order id, so a replayed transition never mints a second card.
+          await this.grantDrawTokenUseCase
+            .execute({ trigger: 'order_delivered', userId: source.userId, sourceType: 'order', sourceId: orderId })
+            .catch(() => undefined);
+        }
+        // Referral qualification on EVERY paid retail delivery, not only one that earned points (2026-10-22): a
+        // friend's first delivery that earned nothing used to skip it, and the referral then stayed pending forever.
+        if (orderSource) {
+          const referral = await this.qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: orderSource.userId })
+            .catch((err: unknown) => { logger.error({ orderId, err: err instanceof Error ? err.message : String(err) }, 'referral qualification failed'); return undefined; });
+          // An awarded referral is the referrer's completion event (REFERRAL_COUNT, 0174).
+          if (referral?.ok && referral.status === 'awarded' && referral.referrerUserId) {
+            await this.evaluateGamificationForUserUseCase.execute({ userId: referral.referrerUserId }).catch(() => undefined);
+          }
+        }
+      }
+      if (toStatus === 'processing' && ctx.paymentStatus === 'paid') {
+        // Paid after the stock hold expired: hold it again, or flag it.
+        await this.reholdStockOnLatePaymentUseCase.execute(orderId)
+          .catch((err: unknown) => logger.error({ orderId, err: err instanceof Error ? err.message : String(err) }, 'late-payment stock re-hold failed'));
+      }
+      if (toStatus === 'delivered' || toStatus === 'completed') {
+        // Goods that left the shop use up their reservation. Dispatch consumes
+        // at READY_FOR_DISPATCH, but an order closed without dispatch (a
+        // counter collection, processing → completed) never did: its units
+        // stayed reserved for good, and cancelling the stranded task later
+        // put goods already gone back on sale. A no-op once consumed.
+        await this.applyFulfilmentStockEffectUseCase.consumeForClosedOrder(orderId);
+      }
+      if (toStatus === 'cancelled') {
+        // Stock as well as points: idempotent, isolated, never fails the transition.
+        await this.releaseCancelledOrderHoldsUseCase.execute(orderId);
+      }
+      // The customer hears about the moves that change what they should
+      // expect (owner, 2026-09-24): dispatched, delivered, cancelled.
+      const lifecycleMessage = customerMessageForTransition(toStatus, ctx.actorType);
+      if (lifecycleMessage) {
+        await this.enqueueCustomerOrderMessage(orderId, lifecycleMessage).catch((err: unknown) =>
+          logger.error({ orderId, template: lifecycleMessage, err: err instanceof Error ? err.message : String(err) }, 'CUSTOMER_ORDER_MESSAGE_ENQUEUE_FAILED'));
+      }
+      if (ctx.paymentStatus === 'reversed') {
+        await this.clawbackOrderEarnUseCase
+          .execute({ orderId, actorId: null, actorType: 'system', reason: 'Payment reversed by provider' })
+          .catch(() => undefined);
+        await this.reverseRedemptionUseCase.execute({ orderId, reason: 'Payment reversed by provider' }).catch(() => undefined);
+        await this.reverseReferralOnRefundUseCase.execute({ orderId, reason: 'Payment reversed by provider' })
+          .catch((err: unknown) => logger.error({ orderId, err: err instanceof Error ? err.message : String(err) }, 'loyalty referral reversal failed'));
+        await this.reverseDrawOnRefundUseCase.execute({ orderId, reason: 'Payment reversed by provider' })
+          .catch((err: unknown) => logger.error({ orderId, err: err instanceof Error ? err.message : String(err) }, 'loyalty scratch card reversal failed'));
+      }
+    });
   }
 }

@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, notInArray, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { attributes, productAttributeValues } from '../schema/phase11';
 import { IAttributeRepository, PersistedAttribute, PersistedAttributeValue } from '../../../application/ports/IAttributeRepository';
@@ -72,6 +72,14 @@ export class DrizzleAttributeRepository implements IAttributeRepository {
       where: eq(productAttributeValues.productId, productId),
     });
     return rows.map(rowToValue);
+  }
+
+  async removeValuesExcept(productId: string, keepAttributeIds: string[]): Promise<number> {
+    const removed = await db
+      .delete(productAttributeValues)
+      .where(and(eq(productAttributeValues.productId, productId), keepAttributeIds.length ? notInArray(productAttributeValues.attributeId, keepAttributeIds) : sql`true`))
+      .returning({ id: productAttributeValues.attributeId });
+    return removed.length;
   }
 
   async setValue(input: {

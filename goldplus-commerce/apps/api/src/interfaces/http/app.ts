@@ -1,6 +1,9 @@
+import { floorPriceRedaction } from './middleware/floorPriceRedaction';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { rateLimiter } from './middleware/rateLimiter';
+import { publicAbuseControl } from './middleware/publicAbuseControl';
+import { csrf } from './middleware/csrf';
+import { mapErrorToHttp } from './errorMapping';
 import { logger as pinoLogger } from 'hono-pino';
 import { ApiResponse } from '@goldplus/shared';
 import { logger } from '../../infrastructure/logging/logger';
@@ -11,25 +14,75 @@ import authRoutes from './routes/auth';
 import productRoutes from './routes/products';
 import commerceRoutes from './routes/commerce';
 import governanceRoutes from './routes/governance';
+import quoteRoutes from './routes/quotes';
+import adminQuoteRequestRoutes from './routes/admin/quote-requests';
 import webhookRoutes from './routes/webhooks';
+import internalLighthouseRoutes from './routes/internal/lighthouse';
+import internalFxRoutes from './routes/internal/fx';
+import internalAssistantRoutes from './routes/internal/assistant';
+import adminAssistantRoutes from './routes/admin/assistant';
+import adminCareRoutes from './routes/admin/care';
 import accountRoutes from './routes/account';
+import referralRoutes from './routes/referrals';
 import adminAuditRoutes from './routes/admin/audit';
 import adminUsersRoutes from './routes/admin/users';
+import adminCustomersRoutes from './routes/admin/customers';
 import adminRolesRoutes from './routes/admin/roles';
 import adminProductsRoutes from './routes/admin/products';
+import adminMediaImportsRoutes from './routes/admin/media-imports';
+import adminProductCostsRoutes from './routes/admin/product-costs';
+import adminAiVisibilityRoutes from './routes/admin/ai-visibility';
+import adminAdvertisingRoutes from './routes/admin/advertising';
+import adminAttributionRoutes from './routes/admin/attribution';
+import adminMeasurementDeliveryRoutes from './routes/admin/measurement-delivery';
+import advertisingRoutes from './routes/advertising';
+import adminHeroRoutes from './routes/admin/hero';
+import heroPublicRoutes from './routes/hero';
+import adminNavRoutes from './routes/admin/nav';
+import navPublicRoutes from './routes/nav';
+import seoPublicRoutes from './routes/seo';
+import adminSeoGrowthRoutes from './routes/admin/seo-growth';
+import adminPerformanceAuditRoutes from './routes/admin/performance-audit';
+import adminSeoIntegrationRoutes from './routes/admin/seo-integrations';
+import adminSeoCatalogueRoutes from './routes/admin/seo-catalogue';
+import adminSeoWorkQueueRoutes from './routes/admin/seo-workqueue';
+import adminSeoObservabilityRoutes from './routes/admin/seo-observability';
+import adminSeoRobotsRoutes from './routes/admin/seo-robots';
+import adminSeoVitalsRoutes from './routes/admin/seo-vitals';
+import adminBusinessInfoRoutes from './routes/admin/business-info';
+import adminTaxonomyRoutes from './routes/admin/taxonomy';
+import blogRoutes from './routes/blog';
+import adminBlogRoutes from './routes/admin/blog';
+import adminHomepageRoutes from './routes/admin/homepage';
+import adminStorefrontCopyRoutes from './routes/admin/storefront-copy';
+import authSocialRoutes from './routes/auth-social';
 import adminNotificationsRoutes from './routes/admin/notifications';
 import adminRecommendationsRoutes from './routes/admin/recommendations';
 import adminCustomerDnaRoutes from './routes/admin/customer-dna';
+import adminFirstPartyRoutes from './routes/admin/first-party';
+import accountMarketingConsentRoutes from './routes/account-marketing-consent';
+import accountPrivacyRoutes from './routes/account-privacy';
 import adminDecisionIntelligenceRoutes from './routes/admin/decision-intelligence';
 import adminQueuesRoutes from './routes/admin/queues';
 import adminDeploymentRoutes from './routes/admin/deployment';
 import adminDeliveryZonesRoutes from './routes/admin/delivery-zones';
 import adminSearchDemandRoutes from './routes/admin/search-demand';
+import adminAnalyticsRoutes from './routes/admin/analytics';
 import adminCompatibilityRoutes from './routes/admin/compatibility';
+import adminNewModulesRoutes from './routes/admin/new-modules';
+import adminMediaRoutes from './routes/admin/media';
+import adminLegalRoutes from './routes/admin/legal';
+import adminCartsRoutes from './routes/admin/carts';
+import adminOrdersActionRoutes from './routes/admin/orders';
+import adminCampaignsRoutes from './routes/admin/campaigns';
+import publicLegalRoutes from './routes/legal';
 import adminLoyaltyRoutes from './routes/admin/loyalty';
 import adminFulfilmentRoutes from './routes/admin/fulfilment';
 import adminControlCentreRoutes, { registerMountedPrefixes } from './routes/admin/control-centre';
 import adminInventoryRoutes from './routes/admin/inventory';
+import adminBatteriesRoutes from './routes/admin/batteries';
+import adminBatteryImportsRoutes from './routes/admin/battery-imports';
+import batteriesPublicRoutes from './routes/batteries';
 import recommendationRoutes from './routes/recommendations';
 import telemetryRoutes from './routes/telemetry';
 import healthRoutes from './routes/health';
@@ -37,6 +90,7 @@ import metricsRoutes from './routes/metrics';
 import consentRoutes from './routes/consent';
 import measurementRoutes from './routes/measurement';
 import adminMeasurementRoutes from './routes/admin/measurement';
+import adminMeasurementMmmRoutes from './routes/admin/measurement-mmm';
 import { measurementGtmRoutes } from './routes/admin/measurement-gtm';
 import { controlledActivationRoutes } from './routes/admin/controlled-activation';
 import measurementPaidSocialRoutes from './routes/admin/measurement-paid-social';
@@ -44,8 +98,14 @@ import measurementPaymentsRoutes from './routes/admin/measurement-payments';
 import measurementControlTowerRoutes from './routes/admin/measurement-control-tower';
 import { releaseReadinessAdminRouter } from './routes/admin/release-readiness';
 import { productFinderRoutes } from './routes/product-finder';
+import locationRoutes from './routes/locations';
+import adminLocationRoutes from './routes/admin/locations';
+import adminDeliveryRoutes from './routes/admin/delivery';
+import adminCreditRoutes from './routes/admin/credit';
+import adminPaymentsRoutes from './routes/admin/payments';
+import deliveryQuoteRoutes from './routes/delivery';
 import { maintenanceMode } from './middleware/maintenance';
-import { deploymentService } from '../../infrastructure/deployment/DeploymentService';
+import { deploymentService, isShadowablePath } from '../../infrastructure/deployment/DeploymentService';
 import { controlledActivationDryRunRouter } from '../../presentation/routes/controlled-activation-dry-run.js';
 import { liveReview } from '../../presentation/routes/controlled-activation-live-review';
 import { controlledLiveCanaryRouter } from '../../presentation/routes/controlled-live-canary.js';
@@ -76,8 +136,27 @@ function createRequestId(): string {
   return randomUUID ? randomUUID() : Math.random().toString(36).substring(2, 15);
 }
 
-// Global Middleware
-app.use('*', cors());
+// Global Middleware.
+//
+// CORS honours CORS_ORIGIN (the deployment already sets it) instead of the
+// wide-open default: the API was replying `Access-Control-Allow-Origin: *` to
+// every origin while the operator's configured allowlist sat unread — a config
+// that lies. Requests without an Origin header (server-to-server, provider
+// webhooks, curl) are unaffected; the www. counterpart of each configured origin
+// is accepted so an edge redirect cannot strand the storefront. With no
+// CORS_ORIGIN set, no cross-origin browser access is granted.
+const CORS_ALLOWLIST: string[] = (process.env.CORS_ORIGIN ?? '')
+  .split(',')
+  .map((o) => o.trim().replace(/\/+$/, ''))
+  .filter(Boolean)
+  .flatMap((o) => (/^https?:\/\/www\./.test(o) ? [o] : [o, o.replace(/^(https?:\/\/)/, '$1www.')]));
+
+app.use(
+  '*',
+  cors({
+    origin: (origin) => (CORS_ALLOWLIST.includes(origin) ? origin : null),
+  }),
+);
 
 // Request ID & Tracing Context Middleware
 app.use('*', async (c, next) => {
@@ -90,12 +169,15 @@ app.use('*', async (c, next) => {
   c.header('X-Correlation-Id', reqId);
   c.header('X-Request-Id', reqId);
 
-  const userId = c.req.header('x-user-id') || undefined;
-
-  return traceLocalStorage.run({ traceId: reqId, userId }, async () => {
+  // userId is set by authMiddleware from the verified session. It came from a
+  // caller-supplied x-user-id header, so anyone could sign log lines as anyone.
+  return traceLocalStorage.run({ traceId: reqId, userId: undefined }, async () => {
     await next();
   });
 });
+
+// Product floors (Price A) leave the API only to the storefront's own SSR.
+app.use('*', floorPriceRedaction());
 
 // Use Pino for structured request logging
 app.use('*', pinoLogger({
@@ -105,49 +187,38 @@ app.use('*', pinoLogger({
   },
 }));
 
-app.use('/telemetry/collect', rateLimiter({ limit: 100, windowMs: 1000 }));
-app.use('*', rateLimiter({ limit: 1000, windowMs: 60 * 1000 }));
-// Slice 1B: credential endpoints get a much tighter per-IP budget than the
-// global limiter — brute force is bounded even before the account lockout.
-// Basket mutations are cheap for a caller and not free for us: each one reads the
-// catalogue and writes two tables. The global 1000/min ceiling above is far too loose
-// to bound a script hammering add-to-basket, and the previous routes had no per-path
-// limit at all. Generous enough for real shopping — a customer adjusting quantities
-// clicks a few times a second at most.
-app.use('/commerce/cart', rateLimiter({ limit: 120, windowMs: 60 * 1000 }));
-app.use('/commerce/cart/*', rateLimiter({ limit: 120, windowMs: 60 * 1000 }));
-app.use('/auth/login', rateLimiter({ limit: 10, windowMs: 60 * 1000 }));
-app.use('/auth/admin/login', rateLimiter({ limit: 10, windowMs: 60 * 1000 }));
+// Slice 3A: one authoritative Redis-backed abuse-control layer for every public
+// endpoint family. It classifies each request into a stable route family and
+// keys the counter on that family — never the raw path — so attacker path
+// variation cannot mint unbounded budgets, which the previous per-path `global`
+// limiter allowed. Per-family limits (login 10/min, cart 120/min, telemetry
+// 100/s, the public forms, provider webhooks, and a single shared global) live
+// in domain/security/PublicEndpointPolicy.ts, along with each family's Redis-
+// outage risk policy and a correct Retry-After.
+app.use('*', publicAbuseControl());
+// Slice 3B: CSRF defence for cookie-authenticated mutations. No-ops for safe
+// methods, Bearer/no-cookie requests and provider webhooks; blocks a
+// state-changing cookie-authenticated request whose Origin/Referer is not an
+// allowlisted web origin. See domain/security/CsrfPolicy.ts.
+app.use('*', csrf());
 app.use('*', maintenanceMode);
 
 // Shadow Traffic Middleware
 app.use('*', async (c, next) => {
   const shadowRatio = deploymentService.getShadowTrafficRatio();
-  if (shadowRatio > 0 && c.req.header('X-Shadow-Request') !== 'true') {
-    const method = c.req.method.toUpperCase();
-    const isExempted =
-      c.req.path.startsWith('/health') ||
-      c.req.path.startsWith('/metrics') ||
-      c.req.path.includes('/admin/deployment') ||
-      c.req.path.includes('/admin/queues');
-
-    if (!isExempted) {
+  // Reads only, never money/auth/admin/webhook paths, never credentials
+  // (DeploymentService.mirrorTrafficIfSelected): mirroring used to replay every
+  // checkout, IPN and admin write, with the caller's session, to the shadow.
+  const method = c.req.method.toUpperCase();
+  if (shadowRatio > 0 && c.req.header('X-Shadow-Request') !== 'true' && (method === 'GET' || method === 'HEAD')) {
+    if (isShadowablePath(c.req.path)) {
       try {
-        const bodyStr = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
-          ? await c.req.raw.clone().text()
-          : null;
-
         const headers: Record<string, string> = {};
         c.req.raw.headers.forEach((value, key) => {
           headers[key] = value;
         });
 
-        deploymentService.mirrorTrafficIfSelected(
-          c.req.url,
-          c.req.method,
-          headers,
-          bodyStr
-        );
+        void deploymentService.mirrorTrafficIfSelected(c.req.url, c.req.method, headers, null);
       } catch (err) {
         logger.debug({ err }, '[ShadowTraffic] Failed to clone request for mirroring');
       }
@@ -158,34 +229,86 @@ app.use('*', async (c, next) => {
 
 // Routes
 app.route('/auth', authRoutes);
+app.route('/auth/social', authSocialRoutes);
 app.route('/products', productRoutes);
 app.route('/commerce', commerceRoutes);
 app.route('/governance', governanceRoutes);
+app.route('/quotes', quoteRoutes);
+app.route('/admin/quote-requests', adminQuoteRequestRoutes);
 app.route('/webhooks', webhookRoutes);
+// Lighthouse Watch ingest: machine token, not an admin session (see the route file).
+app.route('/internal/lighthouse', internalLighthouseRoutes);
+app.route('/internal/fx', internalFxRoutes);
+// Shop assistant: admission + spend ledger for the web container (internal key), and its admin surface.
+app.route('/internal/assistant', internalAssistantRoutes);
+app.route('/admin/assistant', adminAssistantRoutes);
+app.route('/admin/care', adminCareRoutes);
 app.route('/account', accountRoutes);
+app.route('/referrals', referralRoutes);
 app.route('/admin/audit', adminAuditRoutes);
 app.route('/admin/users', adminUsersRoutes);
+app.route('/admin/customers', adminCustomersRoutes);
 app.route('/admin/roles', adminRolesRoutes);
+app.route('/admin/performance-audit', adminPerformanceAuditRoutes);
 app.route('/admin/products', adminProductsRoutes);
+app.route('/admin/media-imports', adminMediaImportsRoutes);
+app.route('/admin/product-costs', adminProductCostsRoutes);
+app.route('/admin/ai-visibility', adminAiVisibilityRoutes);
+app.route('/admin/advertising', adminAdvertisingRoutes);
+app.route('/admin/attribution', adminAttributionRoutes);
+app.route('/admin/measurement-delivery', adminMeasurementDeliveryRoutes);
+app.route('/advertising', advertisingRoutes);
+app.route('/admin/hero', adminHeroRoutes);
+app.route('/admin/nav', adminNavRoutes);
+app.route('/admin/business-info', adminBusinessInfoRoutes);
+app.route('/admin/taxonomy', adminTaxonomyRoutes);
+app.route('/blog', blogRoutes);
+app.route('/admin/blog', adminBlogRoutes);
+app.route('/admin/homepage', adminHomepageRoutes);
+app.route('/admin/storefront-copy', adminStorefrontCopyRoutes);
 app.route('/admin/notifications', adminNotificationsRoutes);
 app.route('/admin/recommendations', adminRecommendationsRoutes);
 app.route('/admin/customer-dna', adminCustomerDnaRoutes);
+app.route('/admin/first-party', adminFirstPartyRoutes);
 app.route('/admin/decision-intelligence', adminDecisionIntelligenceRoutes);
 app.route('/admin/queues', adminQueuesRoutes);
 app.route('/admin/deployment', adminDeploymentRoutes);
 app.route('/admin/delivery-zones', adminDeliveryZonesRoutes);
 app.route('/admin/search-demand', adminSearchDemandRoutes);
+app.route('/admin/analytics', adminAnalyticsRoutes);
 app.route('/admin/compatibility', adminCompatibilityRoutes);
+app.route('/admin/modules', adminNewModulesRoutes);
+app.route('/admin/media', adminMediaRoutes);
+app.route('/admin/legal', adminLegalRoutes);
+app.route('/admin/carts', adminCartsRoutes);
+app.route('/admin/orders', adminOrdersActionRoutes);
+app.route('/admin/campaigns', adminCampaignsRoutes);
+app.route('/legal', publicLegalRoutes);
 app.route('/admin/loyalty', adminLoyaltyRoutes);
 app.route('/admin/fulfilment', adminFulfilmentRoutes);
 app.route('/admin/inventory', adminInventoryRoutes);
+// Imports are mounted before the catalogue so the more specific prefix keeps priority.
+app.route('/admin/batteries/imports', adminBatteryImportsRoutes);
+app.route('/admin/batteries', adminBatteriesRoutes);
+app.route('/batteries', batteriesPublicRoutes);
 app.route('/admin/control-centre', adminControlCentreRoutes);
 app.route('/recommendations', recommendationRoutes);
+app.route('/hero', heroPublicRoutes);
+app.route('/nav', navPublicRoutes);
+app.route('/seo', seoPublicRoutes);
+app.route('/admin/seo/integrations', adminSeoIntegrationRoutes);
+app.route('/admin/seo/catalogue', adminSeoCatalogueRoutes);
+app.route('/admin/seo/workqueue', adminSeoWorkQueueRoutes);
+app.route('/admin/seo/observability', adminSeoObservabilityRoutes);
+app.route('/admin/seo/robots', adminSeoRobotsRoutes);
+app.route('/admin/seo/vitals', adminSeoVitalsRoutes);
+app.route('/admin/seo', adminSeoGrowthRoutes);
 app.route('/telemetry', telemetryRoutes);
 app.route('/health', healthRoutes);
 app.route('/metrics', metricsRoutes);
 app.route('/consent', consentRoutes);
 app.route('/measurement', measurementRoutes);
+app.route('/admin/measurement/mmm', adminMeasurementMmmRoutes);
 app.route('/admin/measurement', adminMeasurementRoutes);
 app.route('/admin/measurement/gtm', measurementGtmRoutes);
 app.route('/admin/measurement/paid-social', measurementPaidSocialRoutes);
@@ -198,7 +321,15 @@ app.route('/admin/controlled-activation/live-canaries', controlledLiveCanaryRout
 // Registered after /live-canaries so the more specific mount keeps priority.
 app.route('/admin/controlled-activation', controlledActivationRoutes);
 app.route('/product-finder', productFinderRoutes);
+app.route('/locations', locationRoutes);
+app.route('/delivery', deliveryQuoteRoutes);
+app.route('/admin/locations', adminLocationRoutes);
+app.route('/admin/delivery', adminDeliveryRoutes);
+app.route('/admin/payments', adminPaymentsRoutes);
+app.route('/admin/credit', adminCreditRoutes);
 app.route('/account/consent-operating', consentOperatingRoutes);
+app.route('/account/marketing-consent', accountMarketingConsentRoutes);
+app.route('/account/privacy', accountPrivacyRoutes);
 app.route('/admin/consent-operating', adminConsentOperatingRoutes);
 app.route('/api/admin/consent/operations', adminConsentOperationsRoutes);
 app.route('/admin/automation', adminAutomationRoutes);
@@ -217,37 +348,15 @@ app.route('/account/behavioural-interventions', behaviouralInterventionRoutes);
 
 // Error Handling
 app.onError((err, c) => {
-  logger.error({ err }, `[ERROR] ${err.message}`);
+  // Server-side: keep the full error for diagnosis (the logger redacts PII/
+  // secrets). Client-side: the central mapper decides the status and a SAFE
+  // message — an unexpected error never returns err.message, and DB failures are
+  // classified by SQLSTATE code, not by matching the message string.
+  const requestId = c.get('requestId') as string | undefined;
+  logger.error({ err, requestId }, '[ERROR] request failed');
   Sentry.captureException(err);
-  
-  // Detect database connection issues to deliver typed fallback requirement
-  const isDbError = err.message?.includes('ECONNREFUSED') || err.message?.includes('DATABASE_URL') || !process.env.DATABASE_URL;
-  
-  if (isDbError) {
-    const dbRes: ApiResponse<never> = {
-      success: false,
-      error: {
-        code: 'DB_NOT_CONFIGURED',
-        message: 'Service temporarily offline: The persistent layer is unconfigured.',
-      },
-      meta: {
-        requestId: c.get('requestId') as string,
-      }
-    };
-    return c.json(dbRes, 503);
-  }
-
-  const res: ApiResponse<never> = {
-    success: false,
-    error: {
-      code: 'INTERNAL_SERVER_ERROR',
-      message: 'An unexpected error occurred.',
-    },
-    meta: {
-      requestId: c.get('requestId') as string,
-    }
-  };
-  return c.json(res, 500);
+  const mapped = mapErrorToHttp(err, requestId);
+  return c.json(mapped.body as ApiResponse<never>, mapped.status);
 });
 
 // Not Found
@@ -277,13 +386,34 @@ export default app;
 
 /** Every API prefix mounted below. Kept in step by tests/architecture/control-centre-route-coverage.test.ts. */
 export const MOUNTED_API_PREFIXES: readonly string[] = [
+  '/admin/hero',
+  '/hero',
+  '/admin/nav',
+  '/admin/business-info',
+  '/admin/taxonomy',
+  '/blog',
+  '/admin/blog',
+  '/admin/homepage',
+  '/admin/storefront-copy',
+  '/nav',
+  '/auth/social',
+  '/admin/product-costs',
+  '/admin/ai-visibility',
+  '/admin/advertising',
+  '/admin/attribution',
+  '/admin/measurement-delivery',
+  '/advertising',
   '/account',
+  '/referrals',
   '/account/behavioural-interventions',
   '/account/consent-operating',
   '/account/surveys',
+  '/admin/analytics',
   '/admin/audit',
   '/admin/automation',
   '/admin/behavioural-interventions',
+  '/admin/campaigns',
+  '/admin/carts',
   '/admin/compatibility',
   '/admin/consent-operating',
   '/admin/control-centre',
@@ -293,6 +423,9 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/controlled-activation/live-canaries',
   '/admin/copy-quality',
   '/admin/customer-dna',
+  '/admin/first-party',
+  '/account/marketing-consent',
+  '/account/privacy',
   '/admin/decision-intelligence',
   '/admin/delivery-zones',
   '/admin/deployment',
@@ -300,13 +433,22 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/fraud',
   '/admin/fulfilment',
   '/admin/inventory',
+  '/admin/batteries',
+  '/admin/batteries/imports',
+  '/batteries',
+  '/admin/legal',
   '/admin/loyalty',
   '/admin/measurement',
+  '/admin/measurement/mmm',
   '/admin/measurement-control-tower',
   '/admin/measurement/gtm',
   '/admin/measurement/paid-social',
   '/admin/measurement/payments',
+  '/admin/media',
+  '/admin/media-imports',
+  '/admin/modules',
   '/admin/notifications',
+  '/admin/orders',
   '/admin/pim-imports',
   '/admin/pricing',
   '/admin/products',
@@ -314,22 +456,46 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/recommendations',
   '/admin/release-readiness',
   '/admin/roles',
+  '/admin/performance-audit',
   '/admin/search-demand',
+  '/admin/seo',
+  '/admin/seo/integrations',
+  '/admin/seo/catalogue',
+  '/admin/seo/workqueue',
+  '/admin/seo/observability',
+  '/admin/seo/robots',
+  '/admin/seo/vitals',
+  '/seo',
   '/admin/surveys',
   '/admin/users',
+  '/admin/customers',
   '/api/admin/consent/operations',
   '/auth',
   '/commerce',
   '/consent',
   '/governance',
+  '/quotes',
+  '/admin/quote-requests',
   '/health',
+  '/legal',
   '/measurement',
   '/metrics',
   '/product-finder',
+  '/locations',
+  '/delivery',
+  '/admin/locations',
+  '/admin/delivery',
+  '/admin/payments',
+  '/admin/credit',
   '/products',
   '/recommendations',
   '/telemetry',
   '/webhooks',
+  '/internal/lighthouse',
+  '/internal/fx',
+  '/internal/assistant',
+  '/admin/assistant',
+  '/admin/care',
 ] as const;
 
 registerMountedPrefixes(MOUNTED_API_PREFIXES);

@@ -1,9 +1,29 @@
 import { db } from '../client';
+import { stockStatusForLabel } from '../StockStatusSql';
 import { products, productPrices, categories } from '../schema/products';
 import { productImages, productAttributeValues, attributes as attributesTable } from '../schema/phase11';
-import { eq, inArray, and, or, ilike, SQL, asc } from 'drizzle-orm';
+import { eq, inArray, and, or, ilike, gt, SQL, asc, desc, sql, type AnyColumn } from 'drizzle-orm';
+import { buildSearchVocabulary, expandSearchQuery, numericSearchTermPattern } from '@goldplus/shared';
 import { ProductEntity, StockStatus } from '../../../domain/products/ProductEntity';
 import { IProductRepository, ProductWithPrice } from '../../../application/ports/IProductRepository';
+import { likeContains } from '../like';
+import { searchTerms } from '../../../domain/products/ProductSearchService';
+import { displayUrlMap } from '../mediaDisplayUrl';
+
+type PriceTierPatch = { floorPriceUgx?: number | null; tierBPriceUgx?: number | null; tierCPriceUgx?: number | null };
+/** Only the tiers the caller supplied; an omitted tier is left as it was. */
+function tierColumns(t: PriceTierPatch): Partial<typeof productPrices.$inferInsert> {
+  const out: Partial<typeof productPrices.$inferInsert> = {};
+  if (t.floorPriceUgx !== undefined) out.floorPrice = t.floorPriceUgx;
+  if (t.tierBPriceUgx !== undefined) out.tierBPrice = t.tierBPriceUgx;
+  if (t.tierCPriceUgx !== undefined) out.tierCPrice = t.tierCPriceUgx;
+  return out;
+}
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const VOCABULARY_TTL_MS = 5 * 60 * 1000;
+let vocabularyCache: { at: number; vocab: Map<string, number> } | null = null;
 
 export class DrizzleProductRepository implements IProductRepository {
   async findBySlug(slug: string): Promise<ProductEntity | null> {
@@ -36,7 +56,8 @@ export class DrizzleProductRepository implements IProductRepository {
       result.hasRetailPrice,
       result.hasImage,
       result.stockQuantity,
-      result.specifications as Record<string, string | number>
+      result.specifications as Record<string, string | number>,
+      result.reservedQuantity ?? 0
     );
   }
 
@@ -70,18 +91,48 @@ export class DrizzleProductRepository implements IProductRepository {
       result.hasRetailPrice,
       result.hasImage,
       result.stockQuantity,
-      result.specifications as Record<string, string | number>
+      result.specifications as Record<string, string | number>,
+      result.reservedQuantity ?? 0
     );
   }
 
-  async save(product: ProductEntity): Promise<void> {
+  /**
+   * Write a product, insert or update.
+   *
+   * TWO DEFECTS THIS CLOSES
+   *
+   * 1. The INSERT wrote a placeholder categoryId of all zeroes and relied on a
+   *    follow-up UPDATE to put the real one in. `products.category_id` is NOT
+   *    NULL with a NON-DEFERRABLE foreign key to `categories`, and no migration,
+   *    baseline or seed ever creates a category with that id (confirmed against
+   *    production: zero such rows). So the INSERT always raised a foreign-key
+   *    violation and POST /admin/products answered 500: a product could not be
+   *    created through the admin at all. The real category id is now written by
+   *    the INSERT itself, which is also what makes the row valid at every instant
+   *    rather than only after a second statement.
+   *
+   * 2. The conflict branch updated six columns. An operator editing a product
+   *    could change its slug, its descriptions, its subcategory, its compare-at
+   *    price, its stock status, its image, its features, its warranty, its
+   *    specifications or its active flag, be told "Product updated", and have
+   *    every one of those silently discarded. Everything the caller supplies is
+   *    now written.
+   *
+   * `stockQuantity` remains deliberately absent from the update: on-hand stock is
+   * owned by setStockQuantity, whose conditional UPDATE carries the
+   * reserved <= stock invariant in its WHERE clause. Rewriting it from a property
+   * save would reopen the read-then-write window that exists to close, and could
+   * trip the database constraint as a raw 500. The INSERT still sets the initial
+   * value when the product is created.
+   */
+  async save(product: ProductEntity, categoryId: string): Promise<void> {
     await db.insert(products).values({
       id: product.id,
       sku: product.sku,
       modelNumber: product.modelNumber,
       name: product.name,
       slug: product.slug,
-      categoryId: '00000000-0000-0000-0000-000000000000', // Generic Category placeholder
+      categoryId,
       categoryName: product.category,
       subcategory: product.subcategory,
       shortDescription: product.shortDescription,
@@ -102,19 +153,32 @@ export class DrizzleProductRepository implements IProductRepository {
       stockQuantity: product.stockQuantity,
     }).onConflictDoUpdate({
       target: products.id,
-      // stockQuantity is deliberately NOT updated here. On-hand stock is owned by
-      // setStockQuantity, whose conditional UPDATE carries the
-      // reserved <= stock invariant in its WHERE clause. Rewriting stock from a
-      // property save would reopen the read-then-write window this exists to
-      // close, and could trip the database constraint as a raw 500. The insert
-      // above still sets the initial value when the product is created.
+      // Every editable property, so an operator's save is not partly discarded.
+      // See the note above for why stockQuantity is the one exception.
       set: {
         sku: product.sku,
         modelNumber: product.modelNumber,
         name: product.name,
+        slug: product.slug,
+        categoryId,
         categoryName: product.category,
+        subcategory: product.subcategory,
+        shortDescription: product.shortDescription,
+        longDescription: product.longDescription,
         priceUgx: product.priceUgx,
+        compareAtPriceUgx: product.compareAtPriceUgx,
+        // Against the live quantity, not the request's earlier read of it.
+        stockStatus: stockStatusForLabel(product.stockStatus),
+        imageUrl: product.imageUrl,
+        features: product.features,
+        warrantyPeriod: product.warrantyPeriod,
+        verificationEligible: product.verificationEligible,
+        active: product.active,
+        specifications: product.specifications,
         approvalStatus: product.approvalStatus,
+        isPreOrderEnabled: product.isPreOrderEnabled,
+        hasRetailPrice: product.hasRetailPrice,
+        hasImage: product.hasImage,
       }
     });
   }
@@ -144,16 +208,60 @@ export class DrizzleProductRepository implements IProductRepository {
       result.hasRetailPrice,
       result.hasImage,
       result.stockQuantity,
-      result.specifications as Record<string, string | number>
+      result.specifications as Record<string, string | number>,
+      result.reservedQuantity ?? 0
     ));
+  }
+
+  /**
+   * The words a search can match, for query expansion: names, SKUs, models, subcategories of approved active
+   * products, and category names. A few hundred rows; rebuilt at most every five minutes per replica, so a new
+   * product's words are searchable with typos within five minutes (exact words match at once).
+   */
+  async searchVocabulary(): Promise<Map<string, number>> {
+    if (vocabularyCache && Date.now() - vocabularyCache.at < VOCABULARY_TTL_MS) return vocabularyCache.vocab;
+    try {
+      const [rows, cats] = await Promise.all([
+        db
+          .select({ name: products.name, sku: products.sku, model: products.modelNumber, sub: products.subcategory, cat: products.categoryName })
+          .from(products)
+          .where(and(eq(products.approvalStatus, 'approved'), eq(products.active, true))),
+        db.select({ name: categories.name }).from(categories),
+      ]);
+      const vocab = buildSearchVocabulary([...rows.flatMap((r) => [r.name, r.sku, r.model, r.sub, r.cat]), ...cats.map((c) => c.name)]);
+      vocabularyCache = { at: Date.now(), vocab };
+      return vocab;
+    } catch {
+      // No vocabulary: words are matched exactly, as before expansion existed.
+      return vocabularyCache?.vocab ?? new Map();
+    }
   }
 
   async findPublicViewBySlug(slug: string): Promise<ProductWithPrice | null> {
     const row = await db.query.products.findFirst({
       where: eq(products.slug, slug),
     });
-    if (!row || row.approvalStatus !== 'approved') return null;
+    // Approved AND active. The SEO lifecycle, the sitemap and the recommender
+    // all treat active = false as discontinued; the public readers ignored it,
+    // so a deactivated product stayed listed, searchable and purchasable.
+    if (!row || row.approvalStatus !== 'approved' || !row.active) return null;
+    return this.buildView(row);
+  }
 
+  /**
+   * The same view WITHOUT the approved/active gate — admin only. Drafts,
+   * rejected and inactive products are exactly the ones an operator needs to
+   * review and edit; the public gate made the admin detail page call them
+   * "not found". Never wire this to a public route.
+   */
+  async findAdminViewById(id: string): Promise<ProductWithPrice | null> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
+    const row = await db.query.products.findFirst({ where: eq(products.id, id) });
+    if (!row) return null;
+    return this.buildView(row);
+  }
+
+  private async buildView(row: NonNullable<Awaited<ReturnType<typeof db.query.products.findFirst>>>): Promise<ProductWithPrice> {
     const [priceRow, categoryRow, imageRows, valueRows] = await Promise.all([
       db.query.productPrices.findFirst({ where: eq(productPrices.productId, row.id) }),
       db.query.categories.findFirst({ where: eq(categories.id, row.categoryId) }),
@@ -163,6 +271,7 @@ export class DrizzleProductRepository implements IProductRepository {
       }),
       db.query.productAttributeValues.findMany({ where: eq(productAttributeValues.productId, row.id) }),
     ]);
+    const display = await displayUrlMap(imageRows);
 
     const attrIds = Array.from(new Set(valueRows.map((v) => v.attributeId)));
     const attrRows = attrIds.length
@@ -193,18 +302,21 @@ export class DrizzleProductRepository implements IProductRepository {
       row.hasRetailPrice,
       row.hasImage,
       row.stockQuantity,
-      (row.specifications ?? {}) as Record<string, string | number>
+      (row.specifications ?? {}) as Record<string, string | number>,
+      row.reservedQuantity ?? 0
     );
 
     return {
       entity,
       retailPriceUgx: row.hasRetailPrice && priceRow?.retailPrice ? priceRow.retailPrice : null,
+      floorPriceUgx: priceRow?.floorPrice ?? null,
       categoryName: categoryRow?.name ?? row.categoryName ?? null,
       images: imageRows.map((i) => ({
-        url: i.url,
+        url: display.get(i.url) ?? i.url,
         altText: i.altText ?? null,
         displayOrder: i.displayOrder,
         isPrimary: i.isPrimary,
+        slot: i.slot ?? null,
       })),
       attributeValues: valueRows
         .map((v) => {
@@ -218,7 +330,9 @@ export class DrizzleProductRepository implements IProductRepository {
 
   async findPublicViewList(opts: {
     limit?: number;
+    offset?: number;
     search?: string;
+    searchGroups?: string[][];
     category?: string;
     inStock?: boolean;
     ids?: string[];
@@ -238,6 +352,7 @@ export class DrizzleProductRepository implements IProductRepository {
 
     const conditions: (SQL | undefined)[] = [
       eq(products.approvalStatus, 'approved'),
+      eq(products.active, true),
     ];
 
     if (targetCategoryId) {
@@ -245,18 +360,49 @@ export class DrizzleProductRepository implements IProductRepository {
     }
 
     if (opts.inStock) {
-      conditions.push(eq(products.stockStatus, 'in_stock'));
+      // Available units, as the product page and the feed count them.
+      conditions.push(sql`${products.stockQuantity} - ${products.reservedQuantity} > 0`);
     }
 
-    if (opts.search) {
-      const needle = `%${opts.search}%`;
-      conditions.push(
-        or(
-          ilike(products.name, needle),
-          ilike(products.modelNumber, needle),
-          ilike(products.sku, needle)
-        )
-      );
+    if (opts.search || opts.searchGroups?.length) {
+      // The autocomplete and the /shop results page must agree on what a query
+      // matches, or the dropdown says "nothing found" for a term the results
+      // page has products for. These are the same five fields the storefront
+      // filter reads, and both are denormalised onto products, so no join.
+      // Every GROUP must match somewhere, in any order, so "bank power" finds
+      // the power bank. A group's alternatives are a synonym phrase, a
+      // plural's singular, joined words split, or a typo's correction: the
+      // shared expandSearchQuery, the same expansion /shop applies.
+      const groups = opts.searchGroups?.length
+        ? opts.searchGroups
+        : expandSearchQuery(searchTerms(opts.search ?? ''), await this.searchVocabulary()).groups;
+      const fieldsMatch = (term: string): SQL | undefined => {
+        const needle = likeContains(term);
+        // A word that starts with a digit must not be the tail of a longer
+        // number ("2gb" must not match 32GB): the shared includesSearchTerm
+        // rule, stated as a Postgres regex so the SQL and /shop agree.
+        const numeric = numericSearchTermPattern(term);
+        const matches = (column: AnyColumn): SQL =>
+          numeric ? sql`${column} ~* ${numeric}` : ilike(column, needle);
+        return or(
+          matches(products.name),
+          matches(products.categoryName),
+          // ...and the joined category, which is what the storefront DTO
+          // actually shows. products.category_name is a denormalised copy;
+          // matching only the copy would silently reopen the dropdown /
+          // results-page divergence the moment the two drift.
+          inArray(
+            products.categoryId,
+            db.select({ id: categories.id }).from(categories).where(matches(categories.name)),
+          ),
+          matches(products.subcategory),
+          matches(products.modelNumber),
+          matches(products.sku)
+        );
+      };
+      for (const group of groups) {
+        conditions.push(or(...group.map(fieldsMatch)));
+      }
     }
 
     if (opts.ids && opts.ids.length > 0) {
@@ -266,6 +412,12 @@ export class DrizzleProductRepository implements IProductRepository {
     const rows = await db.query.products.findMany({
       where: and(...conditions),
       limit: opts.limit ?? 60,
+      offset: opts.offset,
+      // Without an explicit order Postgres returns rows in physical order,
+      // which reshuffles whenever a product is edited: the shop's default
+      // order was arbitrary, and paging over it would skip and repeat rows.
+      // Newest first, id breaking ties so the sequence is total and stable.
+      orderBy: [desc(products.createdAt), asc(products.id)],
     });
     if (rows.length === 0) return [];
 
@@ -281,6 +433,7 @@ export class DrizzleProductRepository implements IProductRepository {
       }),
       db.query.productAttributeValues.findMany({ where: inArray(productAttributeValues.productId, ids) }),
     ]);
+    const display = await displayUrlMap(imageRows);
 
     const attrIds = Array.from(new Set(valueRows.map((v) => v.attributeId)));
     const attrRows = attrIds.length
@@ -289,6 +442,7 @@ export class DrizzleProductRepository implements IProductRepository {
     const attrById = new Map(attrRows.map((a) => [a.id, a]));
 
     const priceByProduct = new Map(priceRows.map((p) => [p.productId, p.retailPrice]));
+    const floorByProduct = new Map(priceRows.map((p) => [p.productId, p.floorPrice ?? null]));
     const categoryById = new Map(categoryRows.map((c) => [c.id, c.name]));
 
     const imagesByProduct = new Map<string, typeof imageRows>();
@@ -332,15 +486,18 @@ export class DrizzleProductRepository implements IProductRepository {
           row.hasRetailPrice,
           row.hasImage,
           row.stockQuantity,
-          (row.specifications ?? {}) as Record<string, string | number>
+          (row.specifications ?? {}) as Record<string, string | number>,
+          row.reservedQuantity ?? 0
         ),
         retailPriceUgx: row.hasRetailPrice ? priceByProduct.get(row.id) ?? null : null,
+        floorPriceUgx: floorByProduct.get(row.id) ?? null,
         categoryName: categoryById.get(row.categoryId) ?? row.categoryName ?? null,
         images: rowImages.map((i) => ({
-          url: i.url,
+          url: display.get(i.url) ?? i.url,
           altText: i.altText ?? null,
           displayOrder: i.displayOrder,
           isPrimary: i.isPrimary,
+          slot: i.slot ?? null,
         })),
         attributeValues: rowValues
           .map((v) => {
@@ -355,6 +512,30 @@ export class DrizzleProductRepository implements IProductRepository {
 
   async getCategories(): Promise<Array<{ id: string; name: string; slug: string; isOther: boolean }>> {
     return await db.query.categories.findMany();
+  }
+
+  /**
+   * Make every taxonomy category FILEABLE. The storefront browses by the
+   * taxonomy, but a product can only be filed into this table, so a category
+   * added to the taxonomy alone was browsable and empty forever — no product
+   * could be put in it. Additive and idempotent: it creates what is missing,
+   * matching on slug, and never renames or removes anything.
+   */
+  async ensureCategories(wanted: Array<{ name: string; slug: string }>): Promise<string[]> {
+    if (wanted.length === 0) return [];
+    const existing = await db.select({ name: categories.name, slug: categories.slug }).from(categories);
+    const haveSlug = new Set(existing.map((c) => c.slug));
+    const haveName = new Set(existing.map((c) => c.name));
+    const created: string[] = [];
+    for (const category of wanted) {
+      if (!category.name || !category.slug) continue;
+      if (haveSlug.has(category.slug) || haveName.has(category.name)) continue;
+      await db.insert(categories).values({ name: category.name, slug: category.slug }).onConflictDoNothing();
+      haveSlug.add(category.slug);
+      haveName.add(category.name);
+      created.push(category.name);
+    }
+    return created;
   }
 
   async checkCategoryExists(categoryId: string): Promise<boolean> {
@@ -378,23 +559,133 @@ export class DrizzleProductRepository implements IProductRepository {
     return rows.length > 0;
   }
 
-  async createProduct(product: ProductEntity, categoryId: string): Promise<void> {
-    await this.save(product);
-    await db.update(products).set({ categoryId }).where(eq(products.id, product.id));
+  async createProduct(product: ProductEntity, categoryId: string, tiers: PriceTierPatch = {}): Promise<void> {
+    // The real category goes in with the INSERT; there is no window in which the
+    // row names a category that does not exist.
+    await this.save(product, categoryId);
     await db.insert(productPrices).values({
       productId: product.id,
       retailPrice: product.priceUgx,
+      ...tierColumns(tiers),
     });
   }
 
-  async updateProductProperties(product: ProductEntity, categoryId: string): Promise<void> {
-    await this.save(product);
-    await db.update(products).set({ categoryId }).where(eq(products.id, product.id));
+  /**
+   * The product's own price tiers. The floor (Price A) is the one the engine
+   * reads; B and C are preserved from the owner's price list. Validated by the
+   * caller AND by the database CHECK: a floor may never exceed the retail price.
+   */
+  async setPriceTiers(
+    productId: string,
+    tiers: { floorPriceUgx?: number | null; tierBPriceUgx?: number | null; tierCPriceUgx?: number | null },
+  ): Promise<void> {
+    const patch: Partial<typeof productPrices.$inferInsert> = {};
+    if (tiers.floorPriceUgx !== undefined) patch.floorPrice = tiers.floorPriceUgx;
+    if (tiers.tierBPriceUgx !== undefined) patch.tierBPrice = tiers.tierBPriceUgx;
+    if (tiers.tierCPriceUgx !== undefined) patch.tierCPrice = tiers.tierCPriceUgx;
+    if (Object.keys(patch).length === 0) return;
+    await db.update(productPrices).set(patch).where(eq(productPrices.productId, productId));
+  }
+
+  /**
+   * One approval decision for many products at once — what an import leaves
+   * behind is dozens of drafts, and approving them one edit form at a time is
+   * how a catalogue stays half-published. Returns the ids actually changed.
+   */
+  async setApprovalMany(productIds: string[], approvalStatus: 'draft' | 'approved' | 'rejected', active: boolean | null, opts: { requireStock?: boolean } = {}): Promise<string[]> {
+    const ids = productIds.filter((id) => UUID_SHAPE.test(id)).slice(0, 500);
+    if (ids.length === 0) return [];
+    const patch: Partial<typeof products.$inferInsert> = { approvalStatus, updatedAt: new Date() };
+    if (active !== null) patch.active = active;
+    // An import creates products with no stock recorded. Publishing those puts
+    // "out of stock" listings on the shop by accident, so approval can be
+    // limited to products that have stock — the default from the import page.
+    const byId = opts.requireStock ? and(inArray(products.id, ids), gt(products.stockQuantity, 0)) : inArray(products.id, ids);
+    // Approving never publishes a product without a selling price: priced at 0
+    // it rendered "Price on request" with an Add-to-cart that dead-ended at
+    // checkout. Mirrors requireStock; drafts and rejections are unaffected.
+    const where = approvalStatus === 'approved' ? and(byId, gt(products.priceUgx, 0)) : byId;
+    const rows = await db.update(products).set(patch).where(where).returning({ id: products.id });
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Explicitly clears optional fields an operator emptied. The upsert in
+   * save() skips undefined keys, so an emptied subcategory or compare-at price
+   * used to report "saved" and stay.
+   */
+  async clearProductFields(productId: string, fields: { subcategory?: boolean; compareAtPrice?: boolean }): Promise<void> {
+    const patch: Partial<typeof products.$inferInsert> = {};
+    if (fields.subcategory) patch.subcategory = null;
+    if (fields.compareAtPrice) patch.compareAtPriceUgx = null;
+    if (Object.keys(patch).length === 0) return;
+    await db.update(products).set({ ...patch, updatedAt: new Date() }).where(eq(products.id, productId));
+  }
+
+  async getPriceTiers(productId: string): Promise<{ floorPriceUgx: number | null; tierBPriceUgx: number | null; tierCPriceUgx: number | null }> {
+    const row = await db.query.productPrices.findFirst({ where: eq(productPrices.productId, productId) });
+    return { floorPriceUgx: row?.floorPrice ?? null, tierBPriceUgx: row?.tierBPrice ?? null, tierCPriceUgx: row?.tierCPrice ?? null };
+  }
+
+  // ── Listing (title, descriptions, specs) ──────────────────────────────────
+  async findListingTarget(productId: string): Promise<{ id: string; categoryId: string } | null> {
+    const row = await db.query.products.findFirst({ where: eq(products.id, productId), columns: { id: true, categoryId: true } });
+    return row ? { id: row.id, categoryId: row.categoryId } : null;
+  }
+
+  async updateListingText(productId: string, patch: { name?: string; shortDescription?: string; longDescription?: string }): Promise<void> {
+    await db.update(products).set({ ...patch, updatedAt: new Date() }).where(eq(products.id, productId));
+  }
+
+  /** Everything the listing editor shows for one product. */
+  async getListing(productId: string): Promise<{
+    id: string; name: string; slug: string; sku: string; modelNumber: string; categoryId: string; categoryName: string | null; subcategory: string | null;
+    shortDescription: string; longDescription: string; isFeedEligible: boolean; approvalStatus: string; active: boolean;
+    images: Array<{ id: string; url: string; isPrimary: boolean; displayOrder: number }>;
+    specs: Array<{ attributeId: string; name: string; unit: string | null; value: string; isVerified: boolean }>;
+  } | null> {
+    const row = await db.query.products.findFirst({ where: eq(products.id, productId) });
+    if (!row) return null;
+    const [imageRows, valueRows] = await Promise.all([
+      db.query.productImages.findMany({ where: eq(productImages.productId, productId), orderBy: [sql`${productImages.slot} ASC NULLS LAST`, desc(productImages.isPrimary), asc(productImages.displayOrder)] }),
+      db.select({ attributeId: productAttributeValues.attributeId, value: productAttributeValues.value, isVerified: productAttributeValues.isVerified, name: attributesTable.name, unit: attributesTable.unit, order: attributesTable.displayOrder })
+        .from(productAttributeValues).innerJoin(attributesTable, eq(attributesTable.id, productAttributeValues.attributeId)).where(eq(productAttributeValues.productId, productId)),
+    ]);
+    const display = await displayUrlMap(imageRows);
+    return {
+      id: row.id, name: row.name, slug: row.slug, sku: row.sku, modelNumber: row.modelNumber, categoryId: row.categoryId, categoryName: row.categoryName ?? null, subcategory: row.subcategory ?? null,
+      shortDescription: row.shortDescription ?? '', longDescription: row.longDescription ?? '', isFeedEligible: row.isFeedEligible, approvalStatus: row.approvalStatus, active: row.active,
+      images: imageRows.map((i) => ({ id: i.id, url: display.get(i.url) ?? i.url, isPrimary: i.isPrimary, displayOrder: i.displayOrder })),
+      specs: valueRows.sort((a, b) => a.order - b.order).map((v) => ({ attributeId: v.attributeId, name: v.name, unit: v.unit, value: v.value, isVerified: v.isVerified })),
+    };
+  }
+
+  /** Every product with the codes a photo filename can name it by. */
+  async listCodeIndex(): Promise<Array<{ id: string; name: string; category: string; codes: string[] }>> {
+    const rows = await db.select({ id: products.id, name: products.name, categoryName: products.categoryName, sku: products.sku, modelNumber: products.modelNumber }).from(products);
+    return rows.map((r) => ({ id: r.id, name: r.name, category: r.categoryName ?? '', codes: [r.sku, r.modelNumber].filter((c): c is string => !!c) }));
+  }
+
+  /** Merchant-feed listing is opt-out (0128): a sellable product is in the feed unless excluded here. */
+  async setFeedEligibility(productId: string, eligible: boolean): Promise<void> {
+    await db.update(products).set({ isFeedEligible: eligible, updatedAt: new Date() }).where(eq(products.id, productId));
+  }
+
+  async feedEligibilityFor(productId: string): Promise<boolean> {
+    const row = await db.query.products.findFirst({ where: eq(products.id, productId), columns: { isFeedEligible: true } });
+    return row?.isFeedEligible ?? true;
+  }
+
+  async updateProductProperties(product: ProductEntity, categoryId: string, tiers: PriceTierPatch = {}): Promise<void> {
+    await this.save(product, categoryId);
     const priceRow = await db.query.productPrices.findFirst({ where: eq(productPrices.productId, product.id) });
+    // Retail and tiers in ONE statement. Written separately, lowering the price
+    // below the OLD floor tripped the database CHECK between the two writes and
+    // surfaced as a 500 instead of the validation message the route already gave.
     if (priceRow) {
-      await db.update(productPrices).set({ retailPrice: product.priceUgx }).where(eq(productPrices.productId, product.id));
+      await db.update(productPrices).set({ retailPrice: product.priceUgx, ...tierColumns(tiers) }).where(eq(productPrices.productId, product.id));
     } else {
-      await db.insert(productPrices).values({ productId: product.id, retailPrice: product.priceUgx });
+      await db.insert(productPrices).values({ productId: product.id, retailPrice: product.priceUgx, ...tierColumns(tiers) });
     }
   }
 }

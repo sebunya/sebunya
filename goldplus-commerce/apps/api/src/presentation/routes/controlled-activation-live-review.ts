@@ -1,10 +1,34 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { PERMISSIONS } from '@goldplus/shared';
 import { Registry } from '../../infrastructure/Registry';
+import { authMiddleware } from '../../interfaces/http/middleware/auth';
+import { requirePermissions } from '../../interfaces/http/middleware/permissions';
 
-const liveReview = new Hono<{ Variables: { adminId: string } }>();
+const liveReview = new Hono<{
+  Variables: { adminId?: string; user?: { id: string; email: string; permissions: string[] } };
+}>();
 const registry = Registry.getInstance();
+
+// This router lives in presentation/ rather than interfaces/http/routes/admin/, so it
+// missed the admin auth chain its siblings carry: every handler read an `adminId`
+// nothing ever set, and the whole surface returned 401 to legitimate administrators —
+// a fail-closed dead module. Same chain as the dry-run sibling: session auth, then a
+// method-shaped permission gate (reads observe, writes govern activation), then the
+// verified identity becomes the `adminId` the handlers and use cases already expect.
+liveReview.use('*', authMiddleware);
+liveReview.use('*', async (c, next) => {
+  const guard = requirePermissions([
+    c.req.method === 'GET' ? PERMISSIONS.REPORTS_READ : PERMISSIONS.SETTINGS_MANAGE,
+  ]);
+  return guard(c, next);
+});
+liveReview.use('*', async (c, next) => {
+  const user = c.get('user');
+  if (user) c.set('adminId', user.id);
+  await next();
+});
 
 liveReview.post('/dry-runs/:dryRunId/live-review-candidate', zValidator('json', z.object({
   activationRequestId: z.string(),
