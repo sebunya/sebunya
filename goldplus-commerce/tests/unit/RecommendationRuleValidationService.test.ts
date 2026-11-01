@@ -105,12 +105,16 @@ describe('RecommendationRuleValidationService', () => {
     expect(errors).toContain('Unknown action field: unknownField');
   });
 
-  it('rejects unknown condition fields', () => {
+  it('rejects ALL non-empty conditions — the engine has never evaluated them (R5)', () => {
+    // Superseded 2026-08-06: per-field condition validation implied the
+    // engine would honour valid conditions. It never did — accepting them was
+    // the authored-but-unapplied trap. Any non-empty conditions object is now
+    // refused with an honest message.
     const errors = validator.validate(
       makeValidRule({
         conditions: { unknownCond: true } as any,
       })
     );
-    expect(errors).toContain('Unknown condition field: unknownCond');
+    expect(errors.join(' ')).toContain('not evaluated by the engine');
   });
 });

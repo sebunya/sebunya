@@ -65,8 +65,8 @@ describe('Customer DNA — deterministic features', () => {
   it('computes transactional features with provenance', () => {
     const f = computeFeatures(emptySignals({
       orders: [
-        { totalAmountUgx: 500_000, createdAt: daysAgo(40), paymentMethod: 'mtn', status: 'received' },
-        { totalAmountUgx: 300_000, createdAt: daysAgo(10), paymentMethod: 'mtn', status: 'received' },
+        { totalAmountUgx: 500_000, createdAt: daysAgo(40), paymentMethod: 'mtn', status: 'processing', paymentStatus: 'paid' },
+        { totalAmountUgx: 300_000, createdAt: daysAgo(10), paymentMethod: 'mtn', status: 'processing', paymentStatus: 'paid' },
       ],
     }), now);
     expect(numericFeature(f, 'order_count')).toBe(2);

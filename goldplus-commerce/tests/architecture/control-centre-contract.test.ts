@@ -20,6 +20,9 @@ vi.mock('../../apps/api/src/infrastructure/Registry', () => ({
 // a DEGRADED module, not a 500. These doubles make dependency state explicit.
 vi.mock('../../apps/api/src/infrastructure/control-centre/DrizzleControlCentreProbes', () => ({
   drizzleDependencyProbe: { isUp: async () => true },
+  // The mock must mirror the module's exports: the route imports this, and a
+  // missing one is undefined at the call site rather than a loud failure.
+  drizzleHealthProbe: { check: async () => ({ healthy: true }) },
   drizzleApprovalProbe: { isApproved: async () => false },
   envProviderConfigProbe: { isConfigured: () => false },
   createRouteMountProbe: (prefixes: readonly string[]) => ({
@@ -112,7 +115,7 @@ describe('GET /admin/control-centre/modules', () => {
       headers: { Authorization: 'Bearer admin' },
     });
     const body = await res.json();
-    expect(body.data.modules.length).toBe(14);
+    expect(body.data.modules.length).toBe(17);
     expect(body.data.modules.every((m: any) => m.category === 'COMMERCE_OS')).toBe(true);
   });
 

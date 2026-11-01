@@ -112,3 +112,56 @@ describe("ProductFinderRecommendationEngine", () => {
     expect(res.fallbackCategories).toContain("Power");
   });
 });
+
+describe("ProductFinderRecommendationEngine answers map to the real catalogue", () => {
+  const item = (over: Partial<ProductFinderCatalogItem>): ProductFinderCatalogItem => ({
+    productId: "x", slug: "x", sku: "X", name: "X", categoryId: "c", categoryName: "Power Devices", subcategory: null,
+    priceUgx: 40000, stockStatus: "in_stock", imageUrl: "", availableQuantity: 4, features: [], ...over,
+  });
+  const catalog = [
+    item({ productId: "bat", name: "Tecno BL-49 Replacement Battery", categoryName: "Power Devices" }),
+    item({ productId: "bank", name: "Power Bank 10000mAh", categoryName: "Power Devices" }),
+    item({ productId: "buds", name: "Wireless Earbuds", categoryName: "Sound Devices" }),
+    item({ productId: "mouse", name: "USB Mouse", categoryName: "PC Accessories" }),
+  ];
+  const ids = (answers: Record<string, string>) =>
+    ProductFinderRecommendationEngine.evaluate(answers, catalog).recommendedProducts.map((r) => r.productId).sort();
+
+  it("every category answer except 'Not sure yet' matches something on its own", () => {
+    for (const category of ["Power", "Phone battery", "Personal audio", "Accessories"]) {
+      expect(ids({ category }).length, category).toBeGreaterThan(0);
+    }
+  });
+
+  it("Phone battery finds batteries, not power banks", () => {
+    const res = ProductFinderRecommendationEngine.evaluate({ category: "Phone battery", problem: "My battery drains quickly" }, catalog);
+    expect(res.recommendedProducts.map((r) => r.productId)).toEqual(["bat"]);
+  });
+
+  it("Personal audio finds Sound Devices", () => {
+    expect(ProductFinderRecommendationEngine.evaluate({ category: "Personal audio" }, catalog).recommendedProducts.map((r) => r.productId)).toEqual(["buds"]);
+  });
+
+  it("Accessories finds any accessories category", () => {
+    expect(ProductFinderRecommendationEngine.evaluate({ category: "Accessories" }, catalog).recommendedProducts.map((r) => r.productId)).toEqual(["mouse"]);
+  });
+
+  it("Not sure yet applies no category penalty", () => {
+    const res = ProductFinderRecommendationEngine.evaluate({ category: "Not sure yet", priority: "Best value" }, catalog);
+    expect(res.recommendedProducts.length).toBe(3);
+  });
+
+  it("states no invented claims and no stock count", () => {
+    for (const priority of ["Best value", "Premium feel", "Warranty confidence", "Portability"]) {
+      const res = ProductFinderRecommendationEngine.evaluate({ category: "Not sure yet", priority }, [
+        ...catalog,
+        item({ productId: "big", name: "Big Power Bank", priceUgx: 200000 }),
+      ]);
+      for (const rec of res.recommendedProducts) {
+        const text = [...rec.reasons, rec.availabilityEvidence].join(" | ");
+        expect(text).not.toMatch(/warranty|excellent|quality|great overall/i);
+        expect(rec.availabilityEvidence).not.toMatch(/\d/);
+      }
+    }
+  });
+});
