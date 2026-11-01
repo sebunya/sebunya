@@ -1,6 +1,11 @@
 export interface MfaRecord {
   userId: string;
   secretCiphertext: string;
+  /**
+   * 0213: a replacement secret waiting for its first code. The confirmed secret above stays in force until this one
+   * is proven, so an abandoned re-enrolment never leaves the account without a working authenticator.
+   */
+  pendingSecretCiphertext?: string | null;
   confirmedAt: Date | null;
   lastVerifiedAt: Date | null;
   /** Consecutive failed step-up codes since the last success. */
@@ -18,6 +23,17 @@ export interface IMfaRepository {
   get(userId: string): Promise<MfaRecord | null>;
   /** Create or replace an (unconfirmed) enrolment with a new encrypted secret. */
   upsertEnrolment(userId: string, secretCiphertext: string): Promise<void>;
+  /** Hold a replacement secret beside a CONFIRMED one; the confirmed secret is untouched. */
+  setPendingSecret(userId: string, secretCiphertext: string): Promise<void>;
+  /** Promote the pending secret to the live one, confirmed now; recovery codes are replaced by the caller. */
+  promotePendingSecret(userId: string, at: Date): Promise<void>;
+  /** Clear a spent failure count (the lock window has passed). */
+  resetFailures(userId: string): Promise<void>;
+  /**
+   * Swap a ciphertext read under the previous at-rest key for one under the current key. Conditional on the old value,
+   * so it never overwrites a secret that changed in between. Optional so older fakes type.
+   */
+  rewrapSecret?(userId: string, oldCiphertext: string, newCiphertext: string): Promise<void>;
   /** Mark the enrolment confirmed and stamp the first verification. */
   confirm(userId: string, at: Date): Promise<void>;
   /** Stamp a successful step-up verification. */

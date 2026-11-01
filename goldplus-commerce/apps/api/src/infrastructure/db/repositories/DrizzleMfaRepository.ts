@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { authSessionStepUps, userMfa, userMfaRecoveryCodes } from '../schema/identity';
 import { IMfaRepository, MfaRecord } from '../../../application/ports/IMfaRepository';
@@ -32,6 +32,7 @@ export class DrizzleMfaRepository implements IMfaRepository {
     return {
       userId: row.userId,
       secretCiphertext: row.secretCiphertext,
+      pendingSecretCiphertext: row.pendingSecretCiphertext ?? null,
       confirmedAt: row.confirmedAt ?? null,
       lastVerifiedAt: row.lastVerifiedAt ?? null,
       failedAttempts: row.failedAttempts ?? 0,
@@ -56,8 +57,47 @@ export class DrizzleMfaRepository implements IMfaRepository {
         target: userMfa.userId,
         // Re-enrolling resets confirmation and freshness: a new secret is not a
         // proven factor until its first code is verified.
-        set: { secretCiphertext, confirmedAt: null, lastVerifiedAt: null, updatedAt: new Date() },
+        // Only an UNCONFIRMED row is replaced: a confirmed authenticator is never cleared here (MfaService parks a
+        // replacement with setPendingSecret instead), even if two requests race.
+        set: { secretCiphertext, pendingSecretCiphertext: null, confirmedAt: null, lastVerifiedAt: null, updatedAt: new Date() },
+        where: isNull(userMfa.confirmedAt),
       });
+  }
+
+  async setPendingSecret(userId: string, secretCiphertext: string): Promise<void> {
+    await db
+      .update(userMfa)
+      .set({ pendingSecretCiphertext: secretCiphertext })
+      .where(and(eq(userMfa.userId, userId), isNotNull(userMfa.confirmedAt)));
+  }
+
+  async promotePendingSecret(userId: string, at: Date): Promise<void> {
+    await db
+      .update(userMfa)
+      .set({
+        secretCiphertext: sql`${userMfa.pendingSecretCiphertext}`,
+        pendingSecretCiphertext: null,
+        confirmedAt: at,
+        lastVerifiedAt: at,
+        failedAttempts: 0,
+        updatedAt: at,
+      })
+      .where(and(eq(userMfa.userId, userId), isNotNull(userMfa.pendingSecretCiphertext)));
+  }
+
+  async resetFailures(userId: string): Promise<void> {
+    await db.update(userMfa).set({ failedAttempts: 0 }).where(eq(userMfa.userId, userId));
+  }
+
+  async rewrapSecret(userId: string, oldCiphertext: string, newCiphertext: string): Promise<void> {
+    await db
+      .update(userMfa)
+      .set({ secretCiphertext: newCiphertext })
+      .where(and(eq(userMfa.userId, userId), eq(userMfa.secretCiphertext, oldCiphertext)));
+    await db
+      .update(userMfa)
+      .set({ pendingSecretCiphertext: newCiphertext })
+      .where(and(eq(userMfa.userId, userId), eq(userMfa.pendingSecretCiphertext, oldCiphertext)));
   }
 
   async confirm(userId: string, at: Date): Promise<void> {
