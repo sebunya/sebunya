@@ -84,8 +84,12 @@ export class DrizzleLoyaltyReferralRepository implements ILoyaltyReferralReposit
     return row ? { id: row.id, status: row.status, referrerUserId: row.referrerUserId, refereeUserId: row.refereeUserId, qualifyingOrderId: row.qualifyingOrderId ?? null } : null;
   }
 
-  async markAwarded(id: string, referrerEntryId: string, refereeEntryId: string, qualifyingOrderId: string, decidedBy: string | null = null): Promise<void> {
-    await db
+  /**
+   * Compare-and-set from `fromStatus` (2026-11 review): two people deciding one held referral at once used to both
+   * pass the status check and the later write won. False when the referral was no longer in `fromStatus`.
+   */
+  async markAwarded(id: string, referrerEntryId: string, refereeEntryId: string, qualifyingOrderId: string, decidedBy: string | null = null, fromStatus: 'pending' | 'held' = 'pending'): Promise<boolean> {
+    const rows = await db
       .update(loyaltyReferrals)
       .set({
         status: 'awarded',
@@ -95,7 +99,9 @@ export class DrizzleLoyaltyReferralRepository implements ILoyaltyReferralReposit
         updatedAt: new Date(),
         ...(decidedBy ? { decidedBy, decidedAt: new Date() } : {}),
       })
-      .where(eq(loyaltyReferrals.id, id));
+      .where(and(eq(loyaltyReferrals.id, id), eq(loyaltyReferrals.status, fromStatus)))
+      .returning({ id: loyaltyReferrals.id });
+    return rows.length > 0;
   }
 
   async markHeld(id: string, reason: ReferralHoldReason, qualifyingOrderId: string): Promise<void> {
@@ -113,11 +119,14 @@ export class DrizzleLoyaltyReferralRepository implements ILoyaltyReferralReposit
     return row ?? null;
   }
 
-  async markRejected(id: string, reason: string, decidedBy: string | null = null): Promise<void> {
-    await db
+  /** Compare-and-set from `fromStatus` (a held referral refused, or an awarded one undone by a refund). */
+  async markRejected(id: string, reason: string, decidedBy: string | null = null, fromStatus: 'pending' | 'held' | 'awarded' = 'held'): Promise<boolean> {
+    const rows = await db
       .update(loyaltyReferrals)
       .set({ status: 'rejected', rejectionReason: reason.slice(0, 120), updatedAt: new Date(), ...(decidedBy ? { decidedBy, decidedAt: new Date() } : {}) })
-      .where(eq(loyaltyReferrals.id, id));
+      .where(and(eq(loyaltyReferrals.id, id), eq(loyaltyReferrals.status, fromStatus)))
+      .returning({ id: loyaltyReferrals.id });
+    return rows.length > 0;
   }
 
   async countAwardedForReferrer(referrerUserId: string, sinceDays: number): Promise<number> {

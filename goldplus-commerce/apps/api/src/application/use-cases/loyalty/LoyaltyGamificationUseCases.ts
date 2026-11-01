@@ -47,10 +47,12 @@ export interface ILoyaltyReferralRepository {
   findPendingByReferee(refereeUserId: string): Promise<{ id: string; code: string; referrerUserId: string } | null>;
   /** 0202: one referral by id, for a person deciding a held one. */
   findById?(id: string): Promise<{ id: string; status: string; referrerUserId: string; refereeUserId: string; qualifyingOrderId: string | null } | null>;
-  markAwarded(id: string, referrerEntryId: string, refereeEntryId: string, qualifyingOrderId: string, decidedBy?: string | null): Promise<void>;
+  /** Compare-and-set from `fromStatus` (default 'pending'); false when another decision got there first. */
+  markAwarded(id: string, referrerEntryId: string, refereeEntryId: string, qualifyingOrderId: string, decidedBy?: string | null, fromStatus?: 'pending' | 'held'): Promise<boolean | void>;
   /** 0202: waits for a person; the order it would pay on is kept so a release pays on it. */
   markHeld?(id: string, reason: ReferralHoldReason, qualifyingOrderId: string): Promise<void>;
-  markRejected(id: string, reason: string, decidedBy?: string | null): Promise<void>;
+  /** Compare-and-set from `fromStatus` (default 'held'); false when the referral had already moved on. */
+  markRejected(id: string, reason: string, decidedBy?: string | null, fromStatus?: 'pending' | 'held' | 'awarded'): Promise<boolean | void>;
   countAwardedForReferrer(referrerUserId: string, sinceDays: number): Promise<number>;
   countDeliveredRetailOrders(userId: string): Promise<number>;
   /**
@@ -275,15 +277,17 @@ export class QualifyReferralOnDeliveryUseCase {
     orderId: string,
     config: { referralReferrerPoints: number | null; referralRefereePoints: number | null },
     decidedBy: string | null,
-  ): Promise<{ ok: true; status: 'awarded'; referrerUserId: string }> {
+    fromStatus: 'pending' | 'held' = 'pending',
+  ): Promise<{ ok: true; status: 'awarded'; referrerUserId: string } | Fail> {
     const input = { refereeUserId, orderId };
     const referrerPoints = config.referralReferrerPoints ?? 0;
     const refereePoints = config.referralRefereePoints ?? 0;
     const referrerAccount = await this.loyalty.getOrCreateAccount(referral.referrerUserId);
     const refereeAccount = await this.loyalty.getOrCreateAccount(input.refereeUserId);
+    const freshEntries: string[] = [];
     const append = async (accountId: string, points: number, side: 'referrer' | 'referee') => {
       try {
-        const { entry } = await this.loyalty.append({
+        const { entry, replay } = await this.loyalty.append({
           accountId,
           type: 'adjustment',
           points,
@@ -295,6 +299,7 @@ export class QualifyReferralOnDeliveryUseCase {
           ruleCode: 'referral',
           ruleVersion: 1,
         });
+        if (!replay) freshEntries.push(entry.id);
         return entry.id;
       } catch (error) {
         if ((error as Error).message === 'LOYALTY_IDEMPOTENCY_CONFLICT') return null;
@@ -303,7 +308,15 @@ export class QualifyReferralOnDeliveryUseCase {
     };
     const referrerEntryId = await append(referrerAccount.id, referrerPoints, 'referrer');
     const refereeEntryId = await append(refereeAccount.id, refereePoints, 'referee');
-    await this.referrals.markAwarded(referral.id, referrerEntryId ?? '', refereeEntryId ?? '', input.orderId, decidedBy);
+    const won = await this.referrals.markAwarded(referral.id, referrerEntryId ?? '', refereeEntryId ?? '', input.orderId, decidedBy, fromStatus);
+    if (won === false) {
+      // Someone else decided it between our read and this write (2026-11 review). Take back only what THIS call
+      // wrote; a replay returns the payout an earlier release made, and that one stands.
+      for (const entryId of freshEntries) {
+        await this.loyalty.reverseEntry(entryId, 'Referral decided by someone else at the same time');
+      }
+      return fail('NOT_HELD', 'This referral was decided by someone else just now.');
+    }
     await this.gamification.awardBadgeByKey(referral.referrerUserId, 'referrer');
     await this.notify({ userId: referral.referrerUserId, points: referrerPoints, kind: 'referrer', referralId: referral.id }).catch(() => undefined);
     await this.notify({ userId: input.refereeUserId, points: refereePoints, kind: 'referee', referralId: referral.id }).catch(() => undefined);
@@ -333,14 +346,15 @@ export class DecideHeldReferralUseCase {
     if (input.decision === 'refuse') {
       const reason = (input.reason ?? '').trim();
       if (reason.length < 3) return fail('REASON_REQUIRED', 'Say why the referral is refused.');
-      await this.referrals.markRejected(r.id, `REFUSED: ${reason}`, input.actorId);
+      const won = await this.referrals.markRejected(r.id, `REFUSED: ${reason}`, input.actorId, 'held');
+      if (won === false) return fail('NOT_HELD', 'This referral was decided by someone else just now.');
       return { ok: true, status: 'rejected', referrerUserId: r.referrerUserId };
     }
     const config = await this.completion.getProgrammeConfig();
     if (!config.enabled || config.killSwitch) return fail('PROGRAMME_DISABLED', 'The programme is paused; nothing can be paid now.');
     if (config.referralReferrerPoints === null || config.referralRefereePoints === null) return fail('REFERRALS_OFF', 'Referral points are not set.');
     if (!r.qualifyingOrderId) return fail('NOT_FOUND', 'The order this referral was held on is not recorded.');
-    return this.qualify.award(r, r.refereeUserId, r.qualifyingOrderId, config, input.actorId);
+    return this.qualify.award(r, r.refereeUserId, r.qualifyingOrderId, config, input.actorId, 'held');
   }
 }
 

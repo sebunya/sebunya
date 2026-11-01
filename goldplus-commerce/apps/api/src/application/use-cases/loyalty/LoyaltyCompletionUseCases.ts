@@ -226,7 +226,7 @@ export class ApplyRefundToLoyaltyUseCase {
 /** What the referral reversal needs from the referral store. */
 export interface ReferralRefundPort {
   findAwardedByQualifyingOrder(orderId: string): Promise<{ id: string; referrerEntryId: string | null; refereeEntryId: string | null } | null>;
-  markRejected(id: string, reason: string): Promise<void>;
+  markRejected(id: string, reason: string, decidedBy?: string | null, fromStatus?: 'pending' | 'held' | 'awarded'): Promise<boolean | void>;
 }
 
 /**
@@ -259,7 +259,7 @@ export class ReverseReferralOnRefundUseCase {
         throw new Error(`REFERRAL_REVERSAL_FAILED:${result.code}`);
       }
     }
-    await this.referrals.markRejected(referral.id, 'QUALIFYING_ORDER_REFUNDED');
+    await this.referrals.markRejected(referral.id, 'QUALIFYING_ORDER_REFUNDED', null, 'awarded');
     return { reversed: true };
   }
 }
