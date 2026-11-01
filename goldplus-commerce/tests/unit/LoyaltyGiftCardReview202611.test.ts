@@ -41,3 +41,26 @@ describe('permission registry sync', () => {
     expect(loop.match(/markSeeded\(/g)?.length).toBe(2); // written for a role that already holds grants, and after a seed
   });
 });
+
+describe('loyalty daily ticker', () => {
+  it('a failing step does not stop the steps after it', async () => {
+    const { vi } = await import('vitest');
+    vi.doMock('../../apps/api/src/infrastructure/Registry', () => ({ Registry: { getInstance: () => ({}) } }));
+    const { runLoyaltySweepOnce } = await import('../../apps/api/src/infrastructure/scheduler/LoyaltyDailyTicker');
+    const ran: string[] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const summary = await runLoyaltySweepOnce({
+      runLoyaltyDailySweepUseCase: { execute: async () => { throw new Error('statement timeout'); } },
+      awardBirthdayPointsUseCase: { execute: async () => { ran.push('birthdays'); return { awarded: 0 }; } },
+      catchUpMissionAwardsUseCase: { execute: async () => { ran.push('missions'); throw new Error('boom'); } },
+      evaluateTiersUseCase: { execute: async () => { ran.push('tiers'); return { evaluated: 0, changed: 0 }; } },
+      loyaltyDrawRepo: { expireTokensDueBefore: async () => { ran.push('draws'); return 0; } },
+    } as never, async () => { ran.push('reconcile'); return { checked: 7, discrepancies: [] }; });
+    expect(ran).toEqual(['birthdays', 'missions', 'tiers', 'draws', 'reconcile']);
+    expect(summary.sweep).toEqual({ error: 'statement timeout' });
+    expect(summary.missions).toEqual({ error: 'boom' });
+    log.mockRestore(); err.mockRestore();
+    vi.doUnmock('../../apps/api/src/infrastructure/Registry');
+  });
+});
