@@ -304,11 +304,15 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     await repo.recordStarted(p.id, `T-${p.reference}`, 'https://pay/x');
     expect((await repo.buyerActivity(phone, since)).paidUgx).toBe(400_000);
     expect(await repo.paidSince(since)).toBe(shopBefore + 400_000);
-    // A start whose payment page never opened stops holding the limit after ten minutes.
+    // An unpaid start stops holding the limit after thirty minutes, page opened or not: unpaid pages must not be
+    // able to pause sales for the day.
     const q = await create({ buyerPhone: phone, amountUgx: 300_000 });
     expect((await repo.buyerActivity(phone, since)).paidUgx).toBe(700_000);
-    await raw`update gift_card_purchases set created_at = now() - interval '11 minutes' where id = ${q.id}`;
+    await raw`update gift_card_purchases set created_at = now() - interval '31 minutes' where id = ${q.id}`;
     expect((await repo.buyerActivity(phone, new Date(Date.now() - 3_600_000))).paidUgx).toBe(400_000);
+    await raw`update gift_card_purchases set created_at = now() - interval '31 minutes' where id = ${p.id}`;
+    expect((await repo.buyerActivity(phone, new Date(Date.now() - 3_600_000))).paidUgx).toBe(0);
+    await raw`update gift_card_purchases set created_at = now() where id = ${p.id}`;
     // Abandoned starts free the limit.
     await repo.markUnpaid(p.id, 'abandoned', '0 test');
     expect((await repo.buyerActivity(phone, since)).paidUgx).toBe(0);
