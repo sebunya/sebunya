@@ -160,10 +160,10 @@ const fmtWhen = (iso: string | null) =>
 
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
       {[
-        ["Rules", stats.total],
-        ["Active", stats.active],
-        ["Draft", stats.draft],
-        ["Paused", stats.paused],
+        ["Rules", isApiLive ? stats.total : "—"],
+        ["Active", isApiLive ? stats.active : "—"],
+        ["Draft", isApiLive ? stats.draft : "—"],
+        ["Paused", isApiLive ? stats.paused : "—"],
       ].map(([label, n]) => (
         <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
           <span class="block text-[10px] font-black uppercase tracking-widest text-gray-500">{label}</span>

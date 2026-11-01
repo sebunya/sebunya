@@ -8,7 +8,7 @@ import {
   previewRecommendationRules,
   type PreviewResultPayload,
 } from "../../../../lib/admin-recommendations";
-import type { ApiResponse, ProductPublicDto, RecommendationPlacement } from "@goldplus/shared";
+import type { RecommendationPlacement } from "@goldplus/shared";
 
 /**
  * The rule wizard, rebuilt for operators (R5, 2026-08-06; AC25).
@@ -37,23 +37,48 @@ const GOALS = [
   { id: "SUPPRESS", label: "Suppress", help: "Remove the target from this placement. Created as a draft; a DIFFERENT admin must activate it." },
 ] as const;
 
-// Product and category options by NAME. Eight products today — a dropdown is
-// the honest selector; search-as-you-type earns its place when the catalogue does.
-let products: ProductPublicDto[] = [];
-try {
-  const res = await fetch(`${apiBase}/products?limit=100`, { signal: AbortSignal.timeout(5000) });
-  const json = (await res.json()) as ApiResponse<ProductPublicDto[]>;
-  if (json.success && json.data) products = json.data;
-} catch {
-  // The form still renders; the product selector says the catalogue is unreachable.
-}
-const categoryNames = [...new Set(products.map((p) => p.categoryName).filter(Boolean))].sort();
-const CATEGORY_SLUG: Record<string, string> = {
-  "Power Devices": "power",
-  "Sound Devices": "sound",
-  "Storage Devices": "storage",
-  "Car Accessories": "car-accessories",
-  "PC Accessories": "pc-accessories",
+// Product and category options. Products come from the ADMIN list (drafts and
+// inactive products included, no 100-row cap), so a rule can be prepared before
+// a product goes live; categories and their slugs come from the categories API,
+// so a category added or renamed in the admin is targetable without a code change.
+type AdminProductOption = { id: string; name: string; sku?: string };
+type CategoryOption = { name: string; slug: string };
+let products: AdminProductOption[] = [];
+let categories: CategoryOption[] = [];
+const authHeaders = { Authorization: `Bearer ${token}`, Accept: "application/json" };
+await Promise.all([
+  (async () => {
+    try {
+      const res = await fetch(`${apiBase}/admin/products`, { headers: authHeaders, signal: AbortSignal.timeout(8000) });
+      const json = (await res.json().catch(() => null)) as { success?: boolean; data?: AdminProductOption[] } | null;
+      if (json?.success && Array.isArray(json.data)) {
+        products = json.data
+          .filter((p) => p && typeof p.id === "string" && typeof p.name === "string")
+          .sort((a, b) => a.name.localeCompare(b.name));
+      }
+    } catch {
+      // The form still renders; the product selector says the catalogue is unreachable.
+    }
+  })(),
+  (async () => {
+    try {
+      const res = await fetch(`${apiBase}/admin/products/categories`, { headers: authHeaders, signal: AbortSignal.timeout(5000) });
+      const json = (await res.json().catch(() => null)) as { success?: boolean; data?: CategoryOption[] } | null;
+      if (json?.success && Array.isArray(json.data)) {
+        categories = json.data
+          .filter((c) => c && typeof c.slug === "string" && c.slug && typeof c.name === "string")
+          .sort((a, b) => a.name.localeCompare(b.name));
+      }
+    } catch {
+      // The category selector says the categories are unreachable.
+    }
+  })(),
+]);
+const categorySlugs = new Set(categories.map((c) => c.slug));
+/** The chosen category's slug, only when it is one the API listed. */
+const categorySlugOf = (v: FormDataEntryValue | null) => {
+  const slug = String(v || "");
+  return categorySlugs.has(slug) ? slug : "";
 };
 
 let notice: { kind: "success" | "error"; text: string } | null = null;
@@ -67,7 +92,7 @@ function buildRule(f: FormData) {
     targetKind === "PRODUCT"
       ? String(f.get("targetProduct") || "")
       : targetKind === "CATEGORY"
-        ? CATEGORY_SLUG[String(f.get("targetCategory") || "")] ?? ""
+        ? categorySlugOf(f.get("targetCategory"))
         : "";
   return {
     name: String(f.get("name") || "").trim(),
@@ -102,7 +127,7 @@ if (Astro.request.method === "POST") {
       productId: ["product_related", "complete_setup"].includes(rule.placement)
         ? String(f.get("contextProduct") || "") || undefined
         : undefined,
-      categorySlug: rule.placement === "category_popular" ? CATEGORY_SLUG[String(f.get("targetCategory") || "")] : undefined,
+      categorySlug: rule.placement === "category_popular" ? categorySlugOf(f.get("targetCategory")) || undefined : undefined,
       draftRule: rule as never,
     });
     if (res.ok) {
@@ -184,7 +209,8 @@ const item = (c: { productId: string; name: string; score?: number }) => c;
           <label class="block">
             <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Category</span>
             <select name="targetCategory" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-              {categoryNames.map((c) => <option value={c} selected={val("targetCategory") === c}>{c}</option>)}
+              {categories.length === 0 && <option value="">Categories unreachable — try again</option>}
+              {categories.map((c) => <option value={c.slug} selected={val("targetCategory") === c.slug}>{c.name}</option>)}
             </select>
           </label>
         </div>
