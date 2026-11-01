@@ -3,6 +3,7 @@ import AdminLayout from '../../../../layouts/AdminLayout.astro';
 import FormFeedback from '../../../../components/FormFeedback.astro';
 import { apiBase } from '../../../../lib/api';
 import { readSessionToken } from '../../../../lib/session';
+import { adminFetchJson, type AdminFetchOutcome } from '../../../../lib/adminFetch';
 import { GALLERY_SLOT_ROLES } from '@goldplus/shared';
 
 /**
@@ -29,7 +30,7 @@ if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const kind = String(form.get('kind') ?? '');
   const expectedRevision = Number(form.get('expectedRevision'));
-  let res: Response | null = null;
+  let res: AdminFetchOutcome | null = null;
   if (kind === 'upload') {
     const files = form.getAll('files').filter((f): f is File => typeof f !== 'string' && f.size > 0);
     if (files.length === 0) { status = 'error'; message = 'Choose at least one image.'; }
@@ -40,7 +41,7 @@ if (Astro.request.method === 'POST') {
       for (const s of form.getAll('slots')) body.append('slots', String(s));
       body.append('expectedRevision', String(expectedRevision));
       if (form.get('replace') === 'on') body.append('replace', 'true');
-      res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/media/upload`, { method: 'POST', headers, body });
+      res = await adminFetchJson(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/media/upload`, { method: 'POST', headers, body }, 60_000);
     }
   } else if (kind === 'action') {
     const type = String(form.get('type') ?? '');
@@ -55,10 +56,13 @@ if (Astro.request.method === 'POST') {
       : type === 'SET_ALT' ? { type, slot: num('slot'), altText: str('altText') }
       : type === 'UNDO' ? { type, auditId: str('auditId') }
       : { type };
-    res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/media`, { method: 'PUT', headers: jsonHeaders, body: JSON.stringify({ expectedRevision, action }) });
+    res = await adminFetchJson(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/media`, { method: 'PUT', headers: jsonHeaders, body: JSON.stringify({ expectedRevision, action }) });
   }
-  if (res) {
-    const json = await res.json().catch(() => null);
+  if (res?.kind === 'unreachable') {
+    status = 'error';
+    message = 'The API did not answer, so it is not known whether the change was saved. Reload the page to check.';
+  } else if (res) {
+    const json = res.json;
     if (json?.success) return Astro.redirect(`${self}?saved=${encodeURIComponent(kind)}`, 303);
     status = 'error';
     message = json?.error?.code === 'STALE_REVISION'
@@ -67,8 +71,8 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/media`, { headers, signal: AbortSignal.timeout(10000) });
-const json = await res.json().catch(() => null);
+const loaded = await adminFetchJson(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/media`, { headers });
+const json = loaded.kind === 'answered' ? loaded.json : null;
 const gallery: Gallery | null = json?.success ? (json.data as Gallery) : null;
 if (!gallery) return Astro.redirect('/admin/listing-quality', 303);
 
@@ -82,8 +86,8 @@ let candidates: Asset[] = []; let candidateTotal = 0;
 if (pick || pickSlot) {
   const q = new URLSearchParams({ limit: '24', page: String(Number(url.searchParams.get('page')) || 1), status: 'ACTIVE' });
   if (pick) q.set('query', pick);
-  const r = await fetch(`${apiBase}/admin/media?${q.toString()}`, { headers, signal: AbortSignal.timeout(10000) });
-  const j = await r.json().catch(() => null);
+  const r = await adminFetchJson(`${apiBase}/admin/media?${q.toString()}`, { headers }, 10_000);
+  const j = r.kind === 'answered' ? r.json : null;
   if (j?.success) { candidates = j.data.items as Asset[]; candidateTotal = Number(j.data.total ?? candidates.length); }
 }
 const thumbOf = (u: string) => u.replace(/[^/]+$/, 'thumb.webp');
