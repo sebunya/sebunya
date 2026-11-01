@@ -1,0 +1,16 @@
+[Unit]
+Description=GoldPlus delivery nightly, daily 02:30 Kampala time
+
+[Timer]
+# Kampala time, converted by systemd (v255 on the host). 02:30 is after the last
+# evening deliveries are recorded and before the shop opens; the pg backup
+# (02:16 UTC = 05:16 Kampala) is well clear of it.
+OnCalendar=*-*-* 02:30:00 Africa/Kampala
+# Catch up a run missed while the host was down: these jobs are idempotent and
+# cheap, and a skipped purge is a privacy promise not kept.
+Persistent=true
+RandomizedDelaySec=300
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
