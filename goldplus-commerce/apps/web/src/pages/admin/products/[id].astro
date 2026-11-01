@@ -2,7 +2,7 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import Notice from "../../../components/Notice.astro";
 import { apiBase } from "../../../lib/api";
-import { readSessionToken, clearSessionCookie } from "../../../lib/session";
+import { readSessionToken, SESSION_COOKIE_NAME } from "../../../lib/session";
 
 const { id } = Astro.params;
 const token = readSessionToken(Astro.request);
@@ -10,27 +10,40 @@ if (!token) {
   return Astro.redirect(`/admin/login?returnTo=/admin/products/${encodeURIComponent(id ?? '')}`, 303);
 }
 
+// Admin view by id (GET /admin/products/:id/view): the public product shape
+// WITHOUT the approved/active gate. Reading the public /products/:slug route
+// made every draft, rejected or inactive product — the ones that need editing
+// — show "Product Not Found".
+let loadStatus = 0;
 async function fetchProduct(productId: string) {
   try {
-    const res = await fetch(`${apiBase}/products/${encodeURIComponent(productId)}`, {
+    const res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(productId)}/view`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
+    loadStatus = res.status;
+    if (res.status === 401) return { authError: true };
     const json = await res.json().catch(() => null);
-    if (res.status === 401 || res.status === 403) return { authError: true };
     return json?.success ? json.data : null;
   } catch {
+    loadStatus = 0;
     return null;
   }
 }
 
 const product = await fetchProduct(id || '');
+// /view answers the PUBLIC product shape: retailPriceUgx and availability.kind. This page read priceUgx and
+// stockStatus (the old shape), so every product showed "Retail Price —" and a red OUT OF STOCK (2026-10-22).
+const shownPriceUgx: number | null = product ? (product.retailPriceUgx ?? product.priceUgx ?? null) : null;
+const shownStock: string = product ? String(product.availability?.kind ?? product.stockStatus ?? 'unknown') : 'unknown';
 
 if (product && (product as any).authError) {
-  Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+  Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' }); // a header set on Astro.response is dropped by a returned redirect
   return Astro.redirect(`/admin/login?returnTo=/admin/products/${encodeURIComponent(id ?? '')}`, 303);
 }
 
-const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
+import { formatUgx } from '../../../lib/money';
+// UGX code format via the single money source (en-UG's currency symbol is "USh").
+const formatter = { format: (n: unknown) => formatUgx(n) };
 ---
 
 <AdminLayout 
@@ -52,12 +65,22 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
       
       {product && (
         <div class="flex items-center gap-3">
+          {product.liveOnStorefront ? (
           <a 
             href={`/products/${product.slug}`} 
             target="_blank" 
             class="bg-white border border-gray-200 hover:bg-gray-50 text-brand-dark font-bold text-xs px-4 py-2 rounded-xl transition-colors shadow-xs flex items-center gap-2"
           >
             Public Storefront &rarr;
+          </a>
+          ) : (
+          <span class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900">Not on the storefront ({product.approvalStatus}{product.active ? '' : ', inactive'})</span>
+          )}
+          <a 
+            href={`/admin/products/${product.id}/listing`} 
+            class="bg-white hover:bg-gray-50 text-brand-dark font-black text-xs px-4 py-2 rounded-xl transition-colors shadow-xs uppercase tracking-wider border border-gray-300"
+          >
+            Listing
           </a>
           <a 
             href={`/admin/products/${product.id}/edit-properties`} 
@@ -71,12 +94,13 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
           >
             Edit Assets
           </a>
+          <a href={`/admin/audit?entity=product&entityId=${encodeURIComponent(product.id)}`} class="inline-flex items-center rounded-full border border-gray-200 px-4 py-2 text-xs font-bold text-gray-700 hover:border-gray-900" title="Every audited change to this product">History</a>
         </div>
       )}
     </div>
 
     {!product ? (
-      <Notice kind="not-configured" title="Product Not Found" message="The requested product could not be located in the central database. It may have been removed or archived." />
+      <Notice kind="not-configured" title={loadStatus === 404 ? 'Product not found' : loadStatus === 403 ? 'Not permitted' : 'Product could not be loaded'} message={loadStatus === 404 ? 'No product exists with this id.' : loadStatus === 403 ? 'Your role cannot read products (products.read required).' : 'The products API did not answer. Reload to retry.'} />
     ) : (
       <div class="space-y-8 mb-12">
         
@@ -89,7 +113,7 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
               {product.images && product.images.length > 0 ? (
                 <img src={product.images[0].url} alt={product.images[0].alt || product.name} class="max-w-full max-h-full object-contain" />
               ) : (
-                <div class="flex flex-col items-center gap-2 text-gray-400">
+                <div class="flex flex-col items-center gap-2 text-gray-500">
                   <span class="text-[10px] font-black uppercase tracking-widest">No media bound</span>
                 </div>
               )}
@@ -110,50 +134,50 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
             
             <div class="flex justify-between items-start gap-4">
               <div>
-                <span class="text-[9px] font-black text-brand-gold uppercase tracking-widest border border-brand-gold/20 bg-brand-gold/5 px-2 py-0.5 rounded">{product.categoryName || 'General'}</span>
+                <span class="text-[9px] font-black text-brand-primaryInk uppercase tracking-widest border border-brand-gold/20 bg-brand-gold/5 px-2 py-0.5 rounded">{product.categoryName || 'General'}</span>
                 <h3 class="text-xl font-black text-brand-dark mt-2 leading-snug">{product.name}</h3>
-                <code class="text-[10px] text-gray-400 font-mono bg-gray-50 px-2 py-0.5 rounded border border-gray-100 inline-block mt-1.5">UUID: {product.id}</code>
+                <code class="text-[10px] text-gray-500 font-mono bg-gray-50 px-2 py-0.5 rounded border border-gray-100 inline-block mt-1.5">UUID: {product.id}</code>
               </div>
               <div class="text-right">
-                 <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Retail Price</p>
-                 <p class="text-2xl font-black text-brand-dark mt-1">{product.priceUgx ? formatter.format(product.priceUgx) : '—'}</p>
+                 <p class="text-[9px] font-black text-gray-500 uppercase tracking-widest">Retail Price</p>
+                 <p class="text-2xl font-black text-brand-dark mt-1">{shownPriceUgx ? formatter.format(shownPriceUgx) : '—'}</p>
               </div>
             </div>
 
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-6 py-6 border-y border-gray-100">
               <div>
-                <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-1">SKU Reference</span>
+                <span class="text-[9px] font-bold text-gray-500 uppercase tracking-wider block mb-1">SKU Reference</span>
                 <span class="text-sm font-black font-mono text-brand-dark">{product.sku || '—'}</span>
               </div>
               <div>
-                <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Stock Status</span>
+                <span class="text-[9px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Stock Status</span>
                 <span class={`inline-block px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider border ${
-                  product.stockStatus === 'in_stock' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
+                  shownStock === 'in_stock' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
                 }`}>
-                  {(product.stockStatus || 'out_of_stock').replace('_', ' ')}
+                  {shownStock.replace(/_/g, ' ')}
                 </span>
               </div>
               <div>
-                <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Visibility State</span>
-                <span class={`inline-block px-2 py-0.5 rounded text-[9px] font-black uppercase border ${product.active ? 'bg-brand-dark text-white border-brand-dark' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
+                <span class="text-[9px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Visibility State</span>
+                <span class={`inline-block px-2 py-0.5 rounded text-[9px] font-black uppercase border ${product.active ? 'bg-brand-dark text-white border-brand-dark' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                   {product.active ? 'Active' : 'Hidden'}
                 </span>
               </div>
               <div>
-                <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Approval Step</span>
+                <span class="text-[9px] font-bold text-gray-600 uppercase tracking-wider block mb-1">Approval Step</span>
                 <span class="text-[10px] font-bold text-gray-600 uppercase tracking-widest">{product.approvalStatus || 'Draft'}</span>
               </div>
             </div>
 
             <div class="space-y-3">
-               <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400">Product Routing Mapping</h4>
+               <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-600">Product Routing Mapping</h4>
                <div class="bg-gray-50 border border-gray-100 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                   <div>
-                     <span class="text-[9px] text-gray-400 block font-bold uppercase mb-1">Storefront Slug</span>
+                     <span class="text-[9px] text-gray-500 block font-bold uppercase mb-1">Storefront Slug</span>
                      <span class="font-mono text-brand-dark font-bold font-medium">/{product.slug}</span>
                   </div>
                   <div>
-                     <span class="text-[9px] text-gray-400 block font-bold uppercase mb-1">Featured Promotion</span>
+                     <span class="text-[9px] text-gray-500 block font-bold uppercase mb-1">Featured Promotion</span>
                      <span class="text-brand-dark font-medium">{product.isFeatured ? 'Enforced Featured Active' : 'Standard Catalogue Placement'}</span>
                   </div>
                </div>
@@ -176,7 +200,7 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
                  <div class="border border-gray-100 rounded-xl overflow-hidden text-xs">
                     <table class="w-full text-left border-collapse">
                        <thead>
-                          <tr class="bg-gray-50/50 font-black uppercase text-[8px] text-gray-400 border-b border-gray-100">
+                          <tr class="bg-gray-50/50 font-black uppercase text-[8px] text-gray-500 border-b border-gray-100">
                              <th class="p-3 pl-4">Property</th>
                              <th class="p-3">Value</th>
                              <th class="p-3 text-right">Verified</th>
@@ -196,7 +220,7 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
                     </table>
                  </div>
                ) : (
-                 <div class="text-center py-8 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-xs text-gray-400">
+                 <div class="text-center py-8 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-xs text-gray-500">
                    No dynamic specifications configured for this catalog entry.
                  </div>
                )}
@@ -218,8 +242,8 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
                          </div>
                          <div class="min-w-0">
                             <div class="flex items-center gap-2">
-                               <span class="font-black uppercase text-[8px] tracking-wider text-gray-400">Slot {idx + 1}</span>
-                               {idx === 0 && <span class="bg-brand-gold/10 text-brand-gold text-[7px] font-black uppercase px-1 rounded">Primary</span>}
+                               <span class="font-black uppercase text-[8px] tracking-wider text-gray-500">Slot {idx + 1}</span>
+                               {idx === 0 && <span class="bg-brand-gold/10 text-brand-primaryInk text-[7px] font-black uppercase px-1 rounded">Primary</span>}
                             </div>
                             <p class="text-[9px] text-gray-500 italic truncate max-w-xs mt-0.5">{img.url}</p>
                             <p class="text-brand-dark font-medium text-[10px] mt-1 font-bold">Alt: {img.alt || 'No context descriptive text provided'}</p>
@@ -228,7 +252,7 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
                    ))}
                  </div>
                ) : (
-                 <div class="flex-1 flex items-center justify-center py-8 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-xs text-gray-400">
+                 <div class="flex-1 flex items-center justify-center py-8 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-xs text-gray-500">
                    Zero visual binary references stored.
                  </div>
                )}

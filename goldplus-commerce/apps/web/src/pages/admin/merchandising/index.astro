@@ -14,12 +14,12 @@ const sections = [
     name: "Hero banner",
     status: "Active",
     statusColor: "text-green-700 bg-green-50 border-green-100",
-    source: "Storefront theme / Static",
-    maxItems: "1",
+    source: "Hero slider CMS (personalised slides)",
+    maxItems: "Per slider config",
     dedupe: "None",
-    editable: "No",
-    actionLabel: "Deployment Config",
-    actionLink: "/admin/settings"
+    editable: "Yes",
+    actionLabel: "Hero editor",
+    actionLink: "/admin/hero"
   },
   {
     id: "pickup",
@@ -36,26 +36,26 @@ const sections = [
   {
     id: "promo",
     name: "Promo / Campaign Cards",
-    status: "Rule-driven",
-    statusColor: "text-purple-700 bg-purple-50 border-purple-100",
-    source: "Campaign scheduling API",
-    maxItems: "2",
-    dedupe: "Manual priority stack",
-    editable: "Yes",
-    actionLabel: "Manage Rules",
-    actionLink: "/admin/recommendations/rules?type=CAMPAIGN"
+    status: "Automatic",
+    statusColor: "text-green-700 bg-green-50 border-green-100",
+    source: "Next photographed product (not curated; no rule affects it)",
+    maxItems: "1",
+    dedupe: "Skips products already shown above",
+    editable: "No",
+    actionLabel: "Upload photos",
+    actionLink: "/admin/photos"
   },
   {
     id: "picks",
     name: "Today's Picks",
-    status: "Rule-driven",
-    statusColor: "text-purple-700 bg-purple-50 border-purple-100",
-    source: "Complete setup placement",
-    maxItems: "6",
-    dedupe: "Suppress 'Featured' items",
-    editable: "Yes",
-    actionLabel: "Manage Rules",
-    actionLink: "/admin/recommendations/rules?placement=complete_setup"
+    status: "Automatic",
+    statusColor: "text-green-700 bg-green-50 border-green-100",
+    source: "Next photographed product (not curated; no rule affects it)",
+    maxItems: "1",
+    dedupe: "Skips products already shown above",
+    editable: "No",
+    actionLabel: "Upload photos",
+    actionLink: "/admin/photos"
   },
   {
     id: "categories",
@@ -74,24 +74,24 @@ const sections = [
     name: "Featured",
     status: "Active",
     statusColor: "text-green-700 bg-green-50 border-green-100",
-    source: "Database ('isFeatured' flag)",
-    maxItems: "6",
+    source: "First 4 live products, photographed first (not curated; there is no 'featured' flag)",
+    maxItems: "4",
     dedupe: "None",
-    editable: "Yes",
+    editable: "No",
     actionLabel: "View Products",
     actionLink: "/admin/products?visible=true"
   },
   {
     id: "trending",
     name: "Trending Now",
-    status: "Rule-driven",
-    statusColor: "text-purple-700 bg-purple-50 border-purple-100",
-    source: "Home trending placement",
+    status: "Automatic",
+    statusColor: "text-green-700 bg-green-50 border-green-100",
+    source: "Next 4 live products not already shown (not curated; no rule affects it)",
     maxItems: "4",
-    dedupe: "Trending Max 4 enforced",
-    editable: "Yes",
-    actionLabel: "Manage Rules",
-    actionLink: "/admin/recommendations/rules?placement=home_trending"
+    dedupe: "Skips products already shown above",
+    editable: "No",
+    actionLabel: "View Products",
+    actionLink: "/admin/products?visible=true"
   },
   {
     id: "footer",
@@ -107,9 +107,12 @@ const sections = [
   }
 ];
 
+// Facts about the home page, matched to lib/homepage-merchandising.ts. None
+// of the product rails is curated today: they fill in catalogue order,
+// photographed products first.
 const rules = [
-  { name: "Trending Max 4 Constraint", desc: "Limits Trending rails to 4 units to match responsive storefront styling." },
-  { name: "Cross-Rail Deduplication", desc: "Hides items already showcased in today's picks from standard carousel views." }
+  { name: "Photographed first", desc: "Rails fill from products with a real photo before any product still on its sample frame; the two highlight cards take photographed products only and hide when none is left." },
+  { name: "Cross-rail deduplication", desc: "A product shown in one home rail is skipped by the rails below it." }
 ];
 ---
 
@@ -151,7 +154,7 @@ const rules = [
           <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse text-xs font-medium">
               <thead>
-                <tr class="bg-gray-50/50 border-b border-gray-100 text-[9px] uppercase font-black text-gray-400 tracking-wider">
+                <tr class="bg-gray-50/50 border-b border-gray-100 text-[9px] uppercase font-black text-gray-500 tracking-wider">
                   <th class="p-4 pl-6">Homepage Section</th>
                   <th class="p-4 text-center">Status</th>
                   <th class="p-4">Product Source</th>
@@ -172,9 +175,9 @@ const rules = [
                     </td>
                     <td class="p-4 text-[11px]">{s.source}</td>
                     <td class="p-4 text-center font-mono font-bold text-brand-dark">{s.maxItems}</td>
-                    <td class="p-4 text-[10px] italic text-gray-400">{s.dedupe}</td>
+                    <td class="p-4 text-[10px] italic text-gray-500">{s.dedupe}</td>
                     <td class="p-4 text-center">
-                      <span class={`font-black text-[10px] uppercase ${s.editable === 'Yes' ? 'text-brand-dark' : 'text-gray-300'}`}>
+                      <span class={`font-black text-[10px] uppercase ${s.editable === 'Yes' ? 'text-brand-dark' : 'text-gray-500'}`}>
                         {s.editable}
                       </span>
                     </td>
@@ -194,7 +197,7 @@ const rules = [
                 <span class="w-1.5 h-1.5 bg-amber-500 rounded-full"></span>
                 Disclaimer:
              </p>
-             <p>Live-editing of slot structure layouts is not available yet. This matrix displays the truthful mechanical source of all 8 major rails and enables linking directly to active recommendation criteria or product flags where edits are supported.</p>
+             <p>This matrix is a read-only view of where each home section comes from. Slot structure is defined in code. Only the hero is edited here in the admin; the product rails are not curated — they fill automatically from live products, photographed products first.</p>
           </div>
         </div>
 
@@ -225,28 +228,28 @@ const rules = [
       <div class="lg:col-span-3 space-y-6">
         
         <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
-           <h3 class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-3">Direct Shortcuts</h3>
+           <h3 class="text-[10px] font-black uppercase tracking-widest text-gray-500 border-b border-gray-100 pb-3">Direct Shortcuts</h3>
            <div class="space-y-2.5">
              <a href="/admin/products?visible=true" class="block p-3 border border-gray-100 hover:border-brand-gold rounded-xl hover:bg-gray-50 transition-all text-xs">
                 <div class="flex justify-between font-bold text-brand-dark mb-0.5">
                    <span>Products Manager</span>
                    <span>&rarr;</span>
                 </div>
-                <p class="text-[10px] text-gray-400">Toggle featured tags or active inventory visibility.</p>
+                <p class="text-[10px] text-gray-500">Toggle featured tags or active inventory visibility.</p>
              </a>
              <a href="/admin/recommendations/rules" class="block p-3 border border-gray-100 hover:border-brand-gold rounded-xl hover:bg-gray-50 transition-all text-xs">
                 <div class="flex justify-between font-bold text-brand-dark mb-0.5">
                    <span>Recommendation Rules</span>
                    <span>&rarr;</span>
                 </div>
-                <p class="text-[10px] text-gray-400">Configure Boosting, Pinning, or Suppressing.</p>
+                <p class="text-[10px] text-gray-500">Configure Boosting, Pinning, or Suppressing.</p>
              </a>
              <a href="/admin/recommendations/preview" class="block p-3 border border-gray-100 hover:border-brand-gold rounded-xl hover:bg-gray-50 transition-all text-xs">
                 <div class="flex justify-between font-bold text-brand-dark mb-0.5">
                     <span>Rule Preview</span>
                    <span>&rarr;</span>
                 </div>
-                 <p class="text-[10px] text-gray-400">Test placement outcomes before activating rules.</p>
+                 <p class="text-[10px] text-gray-500">Test placement outcomes before activating rules.</p>
              </a>
            </div>
         </div>

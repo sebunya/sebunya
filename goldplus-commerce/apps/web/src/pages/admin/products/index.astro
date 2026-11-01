@@ -8,24 +8,12 @@ if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/products", 303);
 }
 
-const fallbackProducts = [
-  {
-    id: "p1",
-    name: "Generic Fast Charger",
-    sku: "GP-CHG-001",
-    modelNumber: "GP-001",
-    category: "Power",
-    stockStatus: "in_stock",
-    priceUgx: 50000,
-    active: true,
-    approvalStatus: "approved",
-    slug: "generic-fast-charger",
-    imageUrl: undefined
-  }
-];
+// Live data only. An invented fallback product ("Generic Fast Charger",
+// UGX 50,000) used to sit here; the list helper never rendered it, but an
+// invented record has no place in the catalogue screen — removed 2026-09-12.
 
 // Call central governance endpoint which lists all products
-const result = await tryFetchAdminList('/governance/admin/products', fallbackProducts, undefined, token);
+const result = await tryFetchAdminList('/governance/admin/products', [], undefined, token);
 const products = result.items || [];
 
 // 1. Extract unique values for contextual filter selections
@@ -64,7 +52,9 @@ if (appr) {
   filteredProducts = filteredProducts.filter(p => p.approvalStatus === appr);
 }
 
-const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
+import { formatUgx } from '../../../lib/money';
+// UGX code format via the single money source (en-UG's currency symbol is "USh").
+const formatter = { format: (n: unknown) => formatUgx(n) };
 const isFiltered = q || cat || stock || visible || appr;
 ---
 
@@ -103,42 +93,42 @@ const isFiltered = q || cat || stock || visible || appr;
 
     {/* ADVANCED BUSINESS FILTERS CONSOLE */}
     <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 mb-8">
-      <h3 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 flex items-center gap-2">
+      <h3 class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-4 flex items-center gap-2">
          Advanced Filters
       </h3>
       <form method="GET" action="/admin/products" class="grid grid-cols-1 md:grid-cols-6 gap-4">
         
         <div class="md:col-span-2">
-          <label for="q" class="block text-[9px] font-bold text-gray-400 uppercase mb-1.5">Search Keywords</label>
+          <label for="q" class="block text-[9px] font-bold text-gray-500 uppercase mb-1.5">Search Keywords</label>
           <input 
             type="text" 
             name="q" 
             id="q"
             value={q}
             placeholder="Name or SKU..." 
-            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2 text-xs text-brand-dark font-semibold focus:border-brand-gold outline-none" 
+            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2 text-xs text-brand-dark font-semibold focus:border-brand-primaryInk outline-none" 
           />
         </div>
 
         <div>
-          <label for="cat" class="block text-[9px] font-bold text-gray-400 uppercase mb-1.5">Category</label>
-          <select name="cat" id="cat" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+          <label for="cat" class="block text-[9px] font-bold text-gray-500 uppercase mb-1.5">Category</label>
+          <select name="cat" id="cat" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
             <option value="">All</option>
             {categories.map(c => <option value={c} selected={cat === c}>{c}</option>)}
           </select>
         </div>
 
         <div>
-          <label for="stock" class="block text-[9px] font-bold text-gray-400 uppercase mb-1.5">Stock</label>
-          <select name="stock" id="stock" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+          <label for="stock" class="block text-[9px] font-bold text-gray-500 uppercase mb-1.5">Stock</label>
+          <select name="stock" id="stock" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
             <option value="">All</option>
             {stockStatuses.map(s => <option value={s} selected={stock === s}>{s.replace('_', ' ')}</option>)}
           </select>
         </div>
 
         <div>
-          <label for="visible" class="block text-[9px] font-bold text-gray-400 uppercase mb-1.5">Visibility</label>
-          <select name="visible" id="visible" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+          <label for="visible" class="block text-[9px] font-bold text-gray-500 uppercase mb-1.5">Visibility</label>
+          <select name="visible" id="visible" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
             <option value="">All</option>
             <option value="true" selected={visible === 'true'}>Active</option>
             <option value="false" selected={visible === 'false'}>Hidden</option>
@@ -146,8 +136,8 @@ const isFiltered = q || cat || stock || visible || appr;
         </div>
 
         <div>
-          <label for="appr" class="block text-[9px] font-bold text-gray-400 uppercase mb-1.5">Approval</label>
-          <select name="appr" id="appr" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+          <label for="appr" class="block text-[9px] font-bold text-gray-500 uppercase mb-1.5">Approval</label>
+          <select name="appr" id="appr" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
             <option value="">All</option>
             {approvalStatuses.map(s => <option value={s} selected={appr === s}>{s}</option>)}
           </select>
@@ -171,7 +161,7 @@ const isFiltered = q || cat || stock || visible || appr;
       <div class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
           <thead>
-            <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
+            <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-500 tracking-widest border-b border-gray-100">
               <th class="p-5 w-16">Image</th>
               <th class="p-5">Product Details</th>
               <th class="p-5">Category & SKU</th>
@@ -195,13 +185,13 @@ const isFiltered = q || cat || stock || visible || appr;
                 </td>
                 <td class="p-5">
                   <div class="font-bold text-brand-dark text-sm max-w-xs truncate">{p.name}</div>
-                  <div class="text-[9px] text-gray-400 mt-1 flex items-center gap-2">
-                     <span class="font-mono tracking-tighter bg-gray-100 px-1.5 py-0.5 rounded">ID: {p.id.slice(0, 8)}…</span>
+                  <div class="text-[9px] text-gray-500 mt-1 flex items-center gap-2">
+                     <span class="font-mono tracking-tighter bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">ID: {p.id.slice(0, 8)}…</span>
                   </div>
                 </td>
                 <td class="p-5">
                   <div class="text-brand-dark font-bold">{p.category || 'Uncategorized'}</div>
-                  <div class="text-[9px] font-mono font-bold text-gray-400 mt-0.5">SKU: {p.sku}</div>
+                  <div class="text-[9px] font-mono font-bold text-gray-600 mt-0.5">SKU: {p.sku}</div>
                 </td>
                 <td class="p-5">
                    <span class={`inline-block px-2 py-0.5 rounded-full font-black text-[8px] uppercase border tracking-wider ${
@@ -215,10 +205,10 @@ const isFiltered = q || cat || stock || visible || appr;
                 </td>
                 <td class="p-5 text-center">
                   <div class="flex flex-col items-center gap-1">
-                    <span class={`px-2 py-0.5 rounded font-black text-[9px] uppercase border ${p.active ? 'bg-brand-dark text-white border-brand-dark' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
+                    <span class={`px-2 py-0.5 rounded font-black text-[9px] uppercase border ${p.active ? 'bg-brand-dark text-white border-brand-dark' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                       {p.active ? 'Active' : 'Hidden'}
                     </span>
-                    <span class="text-[8px] font-bold text-gray-400 tracking-widest uppercase mt-0.5">
+                    <span class="text-[8px] font-bold text-gray-600 tracking-widest uppercase mt-0.5">
                       {p.approvalStatus || 'Draft'}
                     </span>
                   </div>
@@ -263,11 +253,11 @@ const isFiltered = q || cat || stock || visible || appr;
       </div>
     </div>
 
-    {/* Disclaimer Note */}
-    <div class="bg-gray-50 border border-gray-200 rounded-2xl p-6 text-xs text-gray-500 leading-relaxed mb-12 max-w-3xl">
-       <p class="font-bold text-brand-dark mb-1">Product Data Administration Notice:</p>
+    {/* How-to */}
+    <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-sm text-emerald-900 leading-relaxed mb-12 max-w-3xl">
+       <p class="font-bold mb-1">Adding and editing products</p>
        <p>
-         Product creation and catalog deletion APIs are not available via console dashboard. Operational creation and heavy inventory updates must be executed via bulk-upload configurations or directly through product registry imports by engineering staff.
+         Use <a href="/admin/products/new" class="underline font-bold">New product</a> to add an item — set its name, category, price, stock, SKU and description. Then open the product and upload its real photos from the editor, or from the <a href="/admin/media" class="underline font-bold">Media Library</a>. Anything you publish here goes live on the storefront. No engineering needed.
        </p>
     </div>
 

@@ -4,12 +4,10 @@ import FormField from "../../../../components/FormField.astro";
 import FormFeedback from "../../../../components/FormFeedback.astro";
 import Notice from "../../../../components/Notice.astro";
 import RuleStatusBadge from "../../../../components/recommendations/RuleStatusBadge.astro";
-import RecommendationRulePreviewPanel from "../../../../components/recommendations/RecommendationRulePreviewPanel.astro";
 import InfoTooltip from "../../../../components/admin/InfoTooltip.astro";
 
-import { getRecommendationRule, updateRecommendationRule, changeRecommendationRuleStatus, archiveRecommendationRule, getRecommendationRuleAuditLog } from "../../../../lib/admin-recommendations";
+import { getRecommendationRule, updateRecommendationRule, changeRecommendationRuleStatus, archiveRecommendationRule, getRecommendationRuleAuditLog , rollbackRecommendationRule } from "../../../../lib/admin-recommendations";
 import { readSessionToken } from "../../../../lib/session";
-import { apiBase } from "../../../../lib/api";
 
 const { id } = Astro.params;
 const token = readSessionToken(Astro.request);
@@ -68,6 +66,12 @@ if (Astro.request.method === 'POST') {
     const status = String(form.get('status')) as any;
     const res = await changeRecommendationRuleStatus(token, id!, status);
     feedback = res.ok ? { status: 'success', message: `Status successfully changed to ${status}.` } : { status: 'error', message: res.message };
+  } else if (actionVerb === 'rollback') {
+    const auditId = String(form.get('auditId') || '');
+    const res = await rollbackRecommendationRule(token, id!, auditId);
+    feedback = res.ok
+      ? { status: 'success', message: 'Restored the version this change replaced. The rollback itself is now in the history.' }
+      : { status: 'error', message: res.message, details: Array.isArray(res.details) ? res.details : undefined };
   } else if (actionVerb === 'archive') {
     const res = await archiveRecommendationRule(token, id!);
     feedback = res.ok ? { status: 'success', message: 'Rule has been formally archived.' } : { status: 'error', message: res.message };
@@ -103,13 +107,13 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
         <div>
           <h2 class="text-2xl font-black text-brand-dark tracking-tight flex items-center gap-3 flex-wrap">
             {rule.name}
-            <span class="text-xs font-black border border-gray-200 bg-gray-100 text-gray-500 px-2 py-0.5 rounded uppercase font-mono">ID: {rule.id.substring(0,8)}</span>
+            <span class="text-xs font-black border border-gray-200 bg-gray-100 text-gray-600 px-2 py-0.5 rounded uppercase font-mono">ID: {rule.id.substring(0,8)}</span>
           </h2>
           <p class="text-sm text-gray-500 mt-1">Modify recommendation rule parameters.</p>
         </div>
         <div class="flex items-center gap-3">
           <RuleStatusBadge status={rule.status} />
-          <a href="/admin/recommendations/rules" class="text-xs font-bold text-gray-400 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
+          <a href="/admin/recommendations/rules" class="text-xs font-bold text-gray-600 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
             &larr; View rules
           </a>
         </div>
@@ -152,7 +156,7 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
                    </div>
                  </FormField>
                  <div>
-                    <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2">Placement</label>
+                    <label class="block text-xs font-black uppercase tracking-wide text-gray-500 mb-2">Placement</label>
                     <select name="placement" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none">
                       <option value="home_trending" selected={rule.placement==='home_trending'}>Home Trending</option>
                       <option value="product_related" selected={rule.placement==='product_related'}>Product Related</option>
@@ -165,12 +169,12 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
 
                <div class="bg-gray-50 p-5 rounded-2xl border border-gray-100 flex flex-col sm:flex-row sm:items-center gap-6">
                  <div>
-                    <span class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Rule Type</span>
+                    <span class="text-[9px] font-black text-gray-500 uppercase tracking-widest">Rule Type</span>
                     <div class="font-black text-blue-700 text-sm mt-1 uppercase">{rule.type}</div>
                     <input type="hidden" name="type" value={rule.type} />
                  </div>
                  <div class="flex-grow border-t sm:border-t-0 sm:border-l border-gray-200 sm:pl-6 pt-4 sm:pt-0">
-                    <div class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Action Parameters</div>
+                    <div class="text-[9px] font-black text-gray-500 uppercase tracking-widest">Action Parameters</div>
                     <div class="mt-3">
                       {rule.type === 'BOOST' && <FormField id="boost" name="boostScore" type="number" label="Score adjustment" defaultValue={String(rule.action.boostScore || 0)} />}
                       {rule.type === 'PIN' && <FormField id="pin" name="pinPosition" type="number" label="Position" defaultValue={String(rule.action.pinPosition || 1)} />}
@@ -187,7 +191,7 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
 
                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                  <div>
-                    <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2 flex items-center gap-2">
+                    <label class="block text-xs font-black uppercase tracking-wide text-gray-500 mb-2 flex items-center gap-2">
                       Target scope
                       <InfoTooltip text="The level of product coverage this rule should apply to." align="left" />
                     </label>
@@ -222,20 +226,21 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
 
              {rule.status !== 'ARCHIVED' && (
                 <div class="p-6 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row justify-end items-center gap-3">
-                   <button type="button" id="btn-trigger-preview" class="w-full sm:w-auto bg-white border border-gray-200 text-brand-dark px-5 py-2.5 rounded-xl font-bold hover:bg-gray-100 shadow-sm text-xs transition-colors">
-                     Preview
-                   </button>
+                   <a href={`/admin/recommendations/preview?placement=${rule.placement}`} class="w-full sm:w-auto bg-white border border-gray-200 text-brand-dark px-5 py-2.5 rounded-xl font-bold hover:bg-gray-100 shadow-sm text-xs transition-colors text-center">
+                     Preview placement
+                   </a>
                    <button type="submit" class="w-full sm:w-auto bg-brand-dark text-white px-5 py-2.5 rounded-xl font-black hover:bg-black transition-colors text-xs shadow-sm">
                      Apply Changes
                    </button>
                 </div>
              )}
-             <input type="hidden" id="session-token" value={token} />
-             <input type="hidden" id="api-base-url" value={apiBase} />
-             <input type="hidden" id="current-rule-id" value={rule.id} />
+             {/* R5: the session token and internal API origin are no longer
+                 serialized into the page — the old client-side preview shipped
+                 the ADMIN BEARER TOKEN in a hidden input and pointed the
+                 browser at the internal container origin. Preview is
+                 server-rendered on its own page now. */}
            </form>
 
-           <RecommendationRulePreviewPanel />
         </div>
 
         {/* SECONDARY CONTROL SIDEBAR */}
@@ -244,7 +249,7 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
           {/* Operations Controls */}
           {rule.status !== 'ARCHIVED' && (
             <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-              <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">Status</h3>
+              <h3 class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">Status</h3>
               <div class="flex flex-col gap-3">
                 {rule.status === 'ACTIVE' ? (
                   <form method="POST">
@@ -260,7 +265,7 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
                   </form>
                 )}
                 
-                <form method="POST" onsubmit="return confirm('Archive this rule permanently?');" class="pt-3 border-t border-dashed border-gray-200">
+                <form method="POST" data-confirm="Archive this rule permanently?" class="pt-3 border-t border-dashed border-gray-200">
                    <input type="hidden" name="_action" value="archive" />
                    <button class="w-full bg-red-50 text-red-700 font-black text-[10px] tracking-wide py-2 rounded-xl uppercase border border-red-100 hover:bg-red-100 transition-colors">Archive rule</button>
                 </form>
@@ -271,20 +276,27 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
           {/* Rule Transition History */}
           <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
              <div class="px-5 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-                <span class="text-[10px] font-black text-gray-400 tracking-widest uppercase">History</span>
+                <span class="text-[10px] font-black text-gray-500 tracking-widest uppercase">History</span>
                 <span class="text-[8px] font-mono font-bold border border-gray-200 bg-white px-1.5 py-0.5 rounded text-gray-600">{auditLogs.length} Logs</span>
              </div>
              <div class="divide-y divide-gray-100 max-h-[300px] overflow-y-auto text-xs">
                 {auditLogs.length === 0 ? (
-                   <div class="p-10 text-center text-gray-400 italic font-medium">No historical events.</div>
+                   <div class="p-10 text-center text-gray-500 italic font-medium">No historical events.</div>
                 ) : (
                   auditLogs.map(l => (
                     <div class="p-4 hover:bg-gray-50/80 transition-colors">
                        <div class="flex items-center justify-between mb-1 font-bold">
                           <span class={`${l.action==='CREATED'?'text-green-700':l.action==='UPDATED'?'text-blue-700':'text-gray-600'} uppercase tracking-wide text-[9px]`}>{l.action}</span>
-                          <span class="text-gray-400 text-[9px] font-medium">{new Date(l.performedAt).toLocaleDateString('en-GB', {month:'short', day:'numeric'})}</span>
+                          <span class="text-gray-500 text-[9px] font-medium">{new Date(l.performedAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', month:'short', day:'numeric'})}</span>
                        </div>
-                       <div class="text-gray-400 truncate font-mono text-[8px] mt-1">ACTOR: {l.performedBy || 'System'}</div>
+                       <div class="text-gray-500 truncate font-mono text-[8px] mt-1">ACTOR: {l.performedBy || 'System'}</div>
+                       {(l.action === 'UPDATED' || l.action === 'ROLLED_BACK') && l.before && rule.status !== 'ARCHIVED' && (
+                         <form method="POST" class="mt-2">
+                           <input type="hidden" name="_action" value="rollback" />
+                           <input type="hidden" name="auditId" value={l.id} />
+                           <button type="submit" class="text-[9px] font-black uppercase tracking-widest text-gray-500 hover:text-brand-dark underline">Restore the version before this change</button>
+                         </form>
+                       )}
                     </div>
                   ))
                 )}
@@ -296,107 +308,3 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
     )}
   </div>
 </AdminLayout>
-
-<script>
-  const btnPreview = document.getElementById('btn-trigger-preview');
-  const token = (document.getElementById('session-token') as HTMLInputElement)?.value;
-  const form = document.getElementById('rule-edit-form') as HTMLFormElement;
-
-  function validateInputs(): string[] {
-    const errors: string[] = [];
-    const nameInput = document.getElementById('r_name') as HTMLInputElement;
-    const targetTypeSelect = document.getElementsByName('targetType')[0] as HTMLSelectElement;
-    const targetValInput = document.getElementById('t_val') as HTMLInputElement;
-    const startInput = document.getElementById('st') as HTMLInputElement;
-    const endInput = document.getElementById('en') as HTMLInputElement;
-    const typeInput = document.getElementsByName('type')[0] as HTMLInputElement; // hidden input
-
-    if (nameInput && !nameInput.value.trim()) {
-      errors.push("Rule name is required.");
-    }
-    if (typeInput && typeInput.value === 'PIN' && targetTypeSelect.value !== 'PRODUCT') {
-      errors.push("Pin rule type requires Target Scope to be 'Specific product'.");
-    }
-    if (targetTypeSelect && targetTypeSelect.value !== 'GLOBAL' && targetValInput && !targetValInput.value.trim()) {
-      errors.push(`Target identifier is required when Target scope is ${targetTypeSelect.value}.`);
-    }
-    if (startInput && endInput && startInput.value && endInput.value) {
-      if (new Date(startInput.value) > new Date(endInput.value)) {
-        errors.push("This rule cannot end before it starts.");
-      }
-    }
-    return errors;
-  }
-
-  form?.addEventListener('submit', (e) => {
-    // Identify what action triggered the submit
-    const errors = validateInputs();
-    if (errors.length > 0) {
-      e.preventDefault();
-      alert("Please correct the following problems:\n- " + errors.join("\n- "));
-    }
-  });
-
-  btnPreview?.addEventListener('click', async () => {
-    const clientErrors = validateInputs();
-    if (clientErrors.length > 0) {
-      alert("Cannot preview due to validation errors:\n- " + clientErrors.join("\n- "));
-      return;
-    }
-
-    btnPreview.textContent = "Simulating...";
-    btnPreview.classList.add('opacity-50', 'pointer-events-none');
-
-    const fd = new FormData(form);
-
-    const type = fd.get('type') as string;
-    const action: any = { type };
-    if (type === 'BOOST') action.boostScore = parseFloat(fd.get('boostScore') as string || '0');
-    if (type === 'SUPPRESS') action.suppress = true;
-    if (type === 'PIN') action.pinPosition = parseInt(fd.get('pinPosition') as string || '1', 10);
-    if (type === 'CAMPAIGN') {
-       action.boostScore = parseFloat(fd.get('campBoostScore') as string || '0');
-       action.campaignLabel = fd.get('campaignLabel') as string;
-    }
-
-    const payload = {
-      placement: fd.get('placement') as string,
-      draftRule: {
-        id: (document.getElementById('current-rule-id') as HTMLInputElement)?.value,
-        name: fd.get('name') as string,
-        type,
-        placement: fd.get('placement') as string,
-        targetType: fd.get('targetType') as string,
-        targetValue: fd.get('targetValue') as string || undefined,
-        action,
-        status: 'ACTIVE',
-        priority: parseInt(fd.get('priority') as string || '100', 10),
-        conditions: {}
-      }
-    };
-
-    try {
-      const apiBase = (document.getElementById('api-base-url') as HTMLInputElement)?.value || 'http://localhost:3000';
-      const r = await fetch(`${apiBase}/admin/recommendations/preview`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify(payload)
-      });
-      
-      const json = await r.json();
-      if (json.success && json.data) {
-        if (typeof (window as any).renderRecommendationPreview === 'function') {
-          (window as any).renderRecommendationPreview(json.data);
-        }
-      } else {
-         alert("Preview Rejected: " + (json.error?.message || "Format error"));
-      }
-    } catch (err) {
-      alert("Preview runtime unavailable.");
-    } finally {
-      btnPreview.textContent = "Preview";
-      btnPreview.classList.remove('opacity-50', 'pointer-events-none');
-    }
-  });
-</script>
-
