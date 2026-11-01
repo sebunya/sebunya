@@ -1,3 +1,6 @@
+import { bodyLimit } from 'hono/body-limit';
+import { GIFT_CARD_PHOTO_MAX_BYTES } from '../../../../domain/credit/GiftCardPhoto';
+import { DELIVERY_PROOF_REFUSAL_WORDS } from '../../../../application/use-cases/fulfilment/DeliveryProofPhotoUseCases';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { authMiddleware } from '../../middleware/auth';
@@ -72,15 +75,86 @@ routes.get('/badge', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) =>
   return c.json(res);
 });
 
+/* ── Paid-order alerts (0143) ─────────────────────────────────────────────
+ * Static paths, registered before '/:id' so they are not shadowed by it.
+ * Every change goes through the registry's own set(), which validates against
+ * the closed key list and writes an audit row (createAuditLogUseCase).
+ */
+routes.get('/alerts', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const { FULFILMENT_ALERT_CONFIG_REGISTRY, alertRecipients } = await import('../../../../domain/fulfilment/FulfilmentAlertConfig');
+  const values = await Registry.getInstance().fulfilmentAlertConfig.values();
+  return c.json({
+    success: true,
+    data: {
+      entries: FULFILMENT_ALERT_CONFIG_REGISTRY.map((e) => ({ ...e, value: values[e.key] ?? null, set: values[e.key] !== undefined })),
+      activeRecipients: alertRecipients(values),
+      note: 'No alert is sent until at least one number is saved AND the alert is switched on. Every number on the list gets its own SMS.',
+    },
+  });
+});
+
+routes.put('/alerts/:key', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().fulfilmentAlertConfig.set({
+    key: String(c.req.param('key') ?? ''),
+    value: String(body?.value ?? ''),
+    actorId: (c.get('user') as { id?: string } | undefined)?.id ?? null,
+  });
+  if (!result.ok) return c.json({ success: false, error: { code: 'INVALID_CONFIG', message: result.message } }, 400);
+  return c.json({ success: true, data: { saved: true } });
+});
+
+/** Sends one alert for the most recent paid order, so the number can be proven. */
+routes.post('/alerts/test', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const paidOrderId = await registry.fulfilmentRepo.latestPaidOrderId();
+  if (!paidOrderId) {
+    return c.json({ success: false, error: { code: 'NO_PAID_ORDER', message: 'There is no paid order to base a test alert on yet.' } }, 400);
+  }
+  const out = await registry.fulfilmentAlertConfig.enqueuePaidOrderAlert(paidOrderId, { test: true });
+  if (!out.queued) {
+    const message = out.reason === 'NO_RECIPIENT_OR_DISABLED'
+      ? 'Save a number and switch the alert on first.'
+      : `The test alert was not queued (${out.reason}).`;
+    return c.json({ success: false, error: { code: out.reason, message } }, 400);
+  }
+  return c.json({ success: true, data: { queued: true, note: 'The test SMS goes out on the next send cycle, within about a minute.' } });
+});
+
 // F5 report — registered before '/:id' so the static path is not shadowed.
 routes.get('/report', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   const report = await Registry.getInstance().getFulfilmentReportUseCase.execute();
   return c.json({ success: true, data: report } satisfies ApiResponse<typeof report>);
 });
 
-routes.get('/:id', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+// F1 teams list — registered before '/:id' too. After it, GET /teams reached
+// the task-by-id handler, 'teams' went to Postgres as a uuid, and every call
+// answered 500.
+routes.get('/teams', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const teams = await Registry.getInstance().listFulfilmentTeamsUseCase.execute();
+  return c.json({ success: true, data: teams } satisfies ApiResponse<typeof teams>);
+});
+
+const TASK_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// The order page links dispatch/delivery to the order's fulfilment task —
+// the one place those moves are recorded (the governance fulfillment PATCH
+// deliberately refuses them).
+routes.get('/by-order/:orderId', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const orderId = String(c.req.param('orderId') ?? '');
+  const task = TASK_ID.test(orderId) ? await Registry.getInstance().getFulfilmentOverviewUseCase.byOrderId(orderId) : null;
+  if (!task) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No fulfilment task for this order.' } } satisfies ApiResponse<never>, 404);
+  }
+  const res: ApiResponse<typeof task> = { success: true, data: task };
+  return c.json(res);
+});
+
+routes.get('/:id',requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   const id = String(c.req.param('id') ?? '');
-  const task = await Registry.getInstance().getFulfilmentOverviewUseCase.byId(id);
+  // A task id is a uuid; anything else is simply not a task (404), never a
+  // Postgres cast error surfacing as a 500.
+  const task = TASK_ID.test(id) ? await Registry.getInstance().getFulfilmentOverviewUseCase.byId(id) : null;
   if (!task) {
     return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Fulfilment task not found.' } } satisfies ApiResponse<never>, 404);
   }
@@ -117,29 +191,44 @@ routes.patch('/:id/status', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), asy
     return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, status);
   }
 
-  // Section 12 inventory effects (idempotent, best-effort — never fail the
-  // transition): deduct on-hand stock when the order is dispatched-ready, and
-  // release held stock when the order is cancelled.
-  try {
-    const registry = Registry.getInstance();
-    if (result.to === 'READY_FOR_DISPATCH') {
-      await registry.consumeInventoryForOrderUseCase.execute(result.orderId);
-    } else if (result.to === 'CANCELLED') {
-      await registry.releaseInventoryForOrderUseCase.execute(result.orderId);
-      // Transactional admin email (OrderCancelled). Idempotent per order.
-      const cancelledOrder = await registry.orderRepo.findById(result.orderId);
-      if (cancelledOrder) {
-        await registry.enqueueAdminOrderEmailUseCase.execute({
-          order: cancelledOrder,
-          event: 'cancelled',
-          stockConfirmed: false,
-        });
-      }
-    }
-  } catch (invErr: any) {
-    console.error('[API_ERROR] Inventory/email effect after fulfilment transition failed:', invErr?.message);
-  }
+  // Section 12 stock effects (idempotent, never fail the transition, a
+  // failure is reported): ApplyFulfilmentStockEffectUseCase.
+  await Registry.getInstance().applyFulfilmentStockEffectUseCase.afterTaskTransition(result.orderId, result.to);
 
+  const res: ApiResponse<typeof result> = { success: true, data: result };
+  return c.json(res);
+});
+
+const reinstateBodySchema = z.object({
+  reason: z.string().trim().max(2000).nullish(),
+});
+
+/**
+ * Bring a cancelled task back into the queue. The recovery half of a one-way
+ * door: cancellation is terminal and task creation is keyed on a unique
+ * order_id, so without this an order still open to the customer could be
+ * cancelled out of every operational surface with no way back but SQL.
+ */
+routes.post('/:id/reinstate', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = String(c.req.param('id') ?? '');
+  const body = await c.req.json().catch(() => ({}));
+  const parsed = reinstateBodySchema.safeParse(body ?? {});
+  if (!parsed.success) {
+    return c.json(
+      { success: false, error: { code: 'INVALID_BODY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>,
+      400
+    );
+  }
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().reinstateFulfilmentTaskUseCase.execute({
+    taskId: id,
+    actorId,
+    reason: parsed.data.reason ?? null,
+  });
+  if (!result.ok) {
+    const status = result.code === 'NOT_FOUND' ? 404 : 409;
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, status);
+  }
   const res: ApiResponse<typeof result> = { success: true, data: result };
   return c.json(res);
 });
@@ -195,11 +284,6 @@ routes.patch('/:id/priority', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), a
 });
 
 // --- F1: teams, membership, ownership (orders.manage; audited in use cases) ---
-
-routes.get('/teams', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
-  const teams = await Registry.getInstance().listFulfilmentTeamsUseCase.execute();
-  return c.json({ success: true, data: teams } satisfies ApiResponse<typeof teams>);
-});
 
 routes.post('/teams', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -343,7 +427,7 @@ routes.post('/:id/packing/exception', requirePermissions([PERMISSIONS.ORDERS_MAN
 
 function dispatchErrStatus(code: string): 400 | 404 | 409 {
   if (code === 'NOT_FOUND' || code === 'NO_DISPATCH') return 404;
-  if (code === 'STALE_DISPATCH_VERSION') return 409;
+  if (code === 'STALE_DISPATCH_VERSION' || code === 'VARIANCE_AGREEMENT_PENDING') return 409;
   return 400;
 }
 
@@ -358,6 +442,8 @@ const recordDispatchBody = z.object({
   method: z.enum(['RIDER', 'COURIER', 'PICKUP', 'THIRD_PARTY']),
   carrierName: z.string().trim().max(120).optional(),
   riderName: z.string().trim().max(120).optional(),
+  riderId: z.string().uuid().optional(),
+  stopsOnTrip: z.number().int().min(1).max(50).optional(),
   contact: z.string().trim().max(40).optional(),
   estimatedDeliveryAt: z.string().datetime().optional(),
   notes: z.string().trim().max(2000).optional(),
@@ -374,6 +460,8 @@ routes.post('/:id/dispatch', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), as
     method: parsed.data.method,
     carrierName: parsed.data.carrierName,
     riderName: parsed.data.riderName,
+    riderId: parsed.data.riderId ?? null,
+    stopsOnTrip: parsed.data.stopsOnTrip ?? null,
     contact: parsed.data.contact,
     estimatedDeliveryAt: parsed.data.estimatedDeliveryAt ? new Date(parsed.data.estimatedDeliveryAt) : null,
     notes: parsed.data.notes,
@@ -449,6 +537,39 @@ routes.post('/:id/delivery', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), as
     notes: parsed.data.notes,
   });
   if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, deliveryErrStatus(result.code));
+  return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
+});
+
+// 0212: photos as proof of delivery, on the task's latest attempt. Staff-only: no public route serves them.
+routes.post('/:id/delivery/photos', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), bodyLimit({
+  maxSize: GIFT_CARD_PHOTO_MAX_BYTES,
+  onError: (c) => c.json({ success: false, error: { code: 'PHOTO_REFUSED', reason: 'too_large', message: DELIVERY_PROOF_REFUSAL_WORDS.too_large } }, 413),
+}), async (c) => {
+  const actorId = (c.get('user') as any).id as string;
+  const bytes = Buffer.from(await c.req.arrayBuffer());
+  const result = await Registry.getInstance().deliveryProofPhotoUseCases.upload({ taskId: String(c.req.param('id') ?? ''), bytes, actorId });
+  if (!result.ok) return c.json({ success: false, error: { code: 'PHOTO_REFUSED', reason: result.reason, message: result.message } }, result.reason === 'unavailable' ? 503 : 400);
+  return c.json({ success: true, data: { photoId: result.photoId, deliveryId: result.deliveryId } });
+});
+routes.get('/:id/delivery/photos', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const photos = await Registry.getInstance().deliveryProofPhotoUseCases.list(String(c.req.param('id') ?? ''));
+  return c.json({ success: true, data: { photos } });
+});
+routes.get('/delivery-photos/:photoId', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const image = await Registry.getInstance().deliveryProofPhotoUseCases.image(String(c.req.param('photoId') ?? ''));
+  if (!image) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No such photo.' } }, 404);
+  return c.body(new Uint8Array(image.buffer as ArrayBuffer, image.byteOffset, image.byteLength), 200, {
+    'Content-Type': 'image/jpeg', 'Content-Length': String(image.byteLength), 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
+  });
+});
+
+// The rider delivered (task Delivered) but the order never followed: bring the order up to date (2026-10-22).
+routes.post('/by-order/:orderId/complete-delivered', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const orderId = String(c.req.param('orderId') ?? '');
+  if (!TASK_ID.test(orderId)) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found.' } } satisfies ApiResponse<never>, 404);
+  const actorId = (c.get('user') as any).id as string;
+  const result = await Registry.getInstance().completeOrderForDeliveredTaskUseCase.execute({ orderId, actorId });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, result.code === 'NOT_FOUND' ? 404 : 409);
   return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
 });
 

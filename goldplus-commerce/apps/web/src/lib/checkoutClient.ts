@@ -1,3 +1,13 @@
+/**
+ * Order creation and payment handoff are the two slowest calls the customer
+ * ever waits on, and neither had a deadline: a hung API left the browser
+ * spinning until the edge gave up and showed its own error page, with no
+ * order reference and nothing the customer could act on. The timeout lands in
+ * the existing NETWORK branch, which already says: this may have been
+ * committed, retry with the SAME intent rather than creating a second order.
+ */
+const CHECKOUT_TIMEOUT_MS = 20_000;
+
 import type {
   CheckoutErrorCode,
   CheckoutRequestDto,
@@ -6,13 +16,20 @@ import type {
   PaymentStartRequestDto,
   PaymentStartResponseDto,
 } from '@goldplus/shared';
-import { CHECKOUT_INTENT_HEADER } from '@goldplus/shared';
+import { CHECKOUT_INTENT_HEADER, offersOnlinePayment } from '@goldplus/shared';
+import { apiBase } from './api';
 
-const API_BASE = (
-  import.meta.env.PUBLIC_API_BASE_URL ||
-  process.env.PUBLIC_API_BASE_URL ||
-  'http://localhost:3000'
-).replace(/\/+$/, '');
+/**
+ * The canonical, context-aware origin (apps/web/src/lib/api.ts): the internal
+ * compose origin during SSR, the public origin in the browser.
+ *
+ * This file used to resolve PUBLIC_API_BASE_URL on its own. The checkout POST
+ * runs in Astro frontmatter — server side — so every order creation hairpinned
+ * out to the public edge, where Cloudflare answered Node's fetch with a 403
+ * "Just a moment..." challenge page. The customer saw "Checkout failed" and no
+ * order was ever created. Never resolve the API origin here; ask api.ts.
+ */
+const API_BASE = apiBase;
 
 /**
  * Typed checkout client for the storefront BFF.
@@ -40,6 +57,11 @@ export type CheckoutCallResult =
       retryAfterSeconds?: number;
       /** Present on a blocked-stock refusal, which still carries the order. */
       details?: CheckoutResponseDto;
+      /**
+       * Present on CHECKOUT_ALREADY_ORDERED: the order this checkout already
+       * produced, so the page can name it instead of refusing with nothing to act on.
+       */
+      existingOrder?: { orderId: string; orderNumber: string; paymentStatus: string; sameItems?: boolean };
     };
 
 
@@ -49,6 +71,8 @@ export async function submitCheckout(args: {
   intentToken: string;
   /** Forwarded so the API can establish a verified USER principal. */
   sessionToken?: string | null;
+  /** R3.1: the HttpOnly visit token (Astro.locals.gpVisit, SSR only) — lets the API stamp the order with its experience profile for commercial attribution. */
+  visitToken?: string | null;
 }): Promise<CheckoutCallResult> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -56,6 +80,7 @@ export async function submitCheckout(args: {
     [CHECKOUT_INTENT_HEADER]: args.intentToken,
   };
   if (args.sessionToken) headers.Authorization = `Bearer ${args.sessionToken}`;
+  if (args.visitToken) headers['x-gp-visit'] = args.visitToken;
 
   let res: Response;
   try {
@@ -63,6 +88,7 @@ export async function submitCheckout(args: {
       method: 'POST',
       headers,
       body: JSON.stringify(args.request),
+      signal: AbortSignal.timeout(CHECKOUT_TIMEOUT_MS),
     });
   } catch {
     // A network failure is NOT a failed order: the request may have been
@@ -75,21 +101,62 @@ export async function submitCheckout(args: {
   const retryAfterRaw = res.headers.get('Retry-After');
   const retryAfterSeconds = retryAfterRaw ? Number(retryAfterRaw) : undefined;
 
-  const json = (await res.json().catch(() => null)) as
-    | { success?: boolean; data?: CheckoutResponseDto; error?: { code?: string; message?: string; details?: CheckoutResponseDto } }
-    | null;
+  // Read the body ONCE as text, then parse. A refusal that is not JSON (an edge
+  // challenge page, an HTML error page) is the case that used to vanish: the
+  // customer saw a generic "could not place your order" and the operator had
+  // nothing at all to go on.
+  const raw = await res.text().catch(() => '');
+  let json:
+    | {
+        success?: boolean;
+        data?: CheckoutResponseDto;
+        error?: {
+          code?: string;
+          message?: string;
+          details?: CheckoutResponseDto;
+          existingOrder?: { orderId: string; orderNumber: string; paymentStatus: string; sameItems?: boolean };
+        };
+      }
+    | null = null;
+  try {
+    json = raw ? JSON.parse(raw) : null;
+  } catch {
+    json = null;
+  }
 
   if (res.ok && json?.success && json.data) {
     return { ok: true, data: json.data, status: res.status };
+  }
+
+  /**
+   * One diagnostic line, server side only, so a broken order path is findable
+   * in the logs. Deliberately NOTHING from the customer's request: only where
+   * we called, what came back, and a short snippet of the RESPONSE when it was
+   * not the JSON we expect.
+   */
+  if (import.meta.env.SSR) {
+    console.error(
+      '[checkout] order create refused ' +
+        JSON.stringify({
+          origin: API_BASE,
+          status: res.status,
+          contentType: res.headers.get('content-type'),
+          bodyWasJson: json !== null,
+          errorCode: json?.error?.code ?? null,
+          snippet: json ? undefined : raw.slice(0, 160).replace(/\s+/g, ' '),
+        }),
+    );
   }
 
   return {
     ok: false,
     status: res.status,
     code: (json?.error?.code as CheckoutErrorCode) ?? 'ORDER_FAILED',
-    message: json?.error?.message ?? `Checkout failed (HTTP ${res.status}).`,
+    // No HTTP number: it is not something a customer can act on.
+    message: json?.error?.message ?? 'We could not place your order. Please try again.',
     ...(Number.isFinite(retryAfterSeconds) ? { retryAfterSeconds } : {}),
     ...(json?.error?.details ? { details: json.error.details } : {}),
+    ...(json?.error?.existingOrder ? { existingOrder: json.error.existingOrder } : {}),
   };
 }
 
@@ -105,7 +172,7 @@ export async function submitCheckout(args: {
  */
 export type PaymentStartResult =
   | { ok: true; data: PaymentStartResponseDto }
-  | { ok: false; status: number; code: PaymentStartErrorCode | 'NETWORK' };
+  | { ok: false; status: number; code: PaymentStartErrorCode | 'NETWORK'; message?: string };
 
 export async function startPayment(args: {
   orderId: string;
@@ -125,6 +192,7 @@ export async function startPayment(args: {
       method: 'POST',
       headers,
       body: JSON.stringify({ orderId: args.orderId } satisfies PaymentStartRequestDto),
+      signal: AbortSignal.timeout(CHECKOUT_TIMEOUT_MS),
     });
   } catch {
     return { ok: false, status: 0, code: 'NETWORK' };
@@ -152,24 +220,54 @@ export async function startPayment(args: {
  *
  * Every branch is spelled out so no case falls through to the API's own message.
  */
+
+/**
+ * Guest pay-by-reference: start (or resume) online payment for an order the
+ * customer proves is theirs with the reference plus the checkout phone or
+ * email. Same server rules as the checkout page's payment start.
+ */
+export async function startPaymentByReference(args: { reference: string; contact: string }): Promise<PaymentStartResult> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/commerce/orders/lookup/pay`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ reference: args.reference, contact: args.contact }),
+    });
+  } catch {
+    return { ok: false, status: 0, code: 'NETWORK', message: 'We could not reach the payment service.' };
+  }
+  const json = (await res.json().catch(() => null)) as { success?: boolean; data?: PaymentStartResponseDto; error?: { code?: string; message?: string } } | null;
+  if (res.ok && json?.success && json.data?.redirectUrl) return { ok: true, data: json.data };
+  const code = String(json?.error?.code ?? 'PAYMENT_START_FAILED') as PaymentStartErrorCode;
+  return { ok: false, status: res.status, code, message: json?.error?.message ?? 'Payment could not be started for this order.' };
+}
+
 export function paymentStartMessageFor(code: PaymentStartErrorCode | 'NETWORK'): string {
   switch (code) {
     case 'ORDER_ALREADY_PAID':
       return 'This order has already been paid. No further payment is needed.';
     case 'ORDER_NOT_PAYABLE':
       return 'This order cannot be paid for yet. Our team will contact you to confirm it.';
+    case 'ORDER_CANCELLED':
+      return 'This order was cancelled, so there is nothing to pay. If that is a mistake, message us and we will reopen it — or place a fresh order.';
+    case 'ORDER_HOLD_EXPIRED':
+      return 'We held the items on this order for a limited time, and that time has passed, so they may no longer be available. You have not been charged. Please place the order again.';
     case 'OFFLINE_DRAFT_NOT_PAYABLE':
       return 'This is a local draft saved on your device and cannot be paid for online.';
     case 'PAYMENT_NOT_CONFIGURED':
-      return 'Online payment is temporarily unavailable. Your order is saved — our team will contact you.';
+      return 'Online payment is temporarily unavailable. Your order is saved. Our team will contact you.';
     case 'PAYMENT_PROVIDER_UNAVAILABLE':
     case 'NETWORK':
-      return 'We could not reach the payment service. Your order is saved — please try again shortly.';
+      return 'We could not reach the payment service. Your order is saved. Please try again shortly.';
     case 'CHECKOUT_INTENT_REQUIRED':
-      return 'Your checkout session expired. Please reload the page and try again.';
+      return 'This checkout page has been open for a while. Reload it and try again — your order is saved and you have not been charged.';
     case 'ORDER_NOT_FOUND':
     case 'PAYMENT_START_FAILED':
-      return 'We could not start payment for this order. Please contact support and quote your order number.';
+    default:
+      // `default` so a code this client does not know (the API once returned
+      // ORDER_ID_REQUIRED) cannot yield `undefined` and a blank error box.
+      return 'We could not start the payment for this order. Your order is saved and nothing has been charged. Try again from the order page, or message us and we will send you a payment link.';
   }
 }
 
@@ -183,6 +281,8 @@ export function paymentStartMessageFor(code: PaymentStartErrorCode | 'NETWORK'):
 export function customerMessageFor(result: CheckoutCallResult): {
   status: 'received' | 'awaiting_payment' | 'error' | 'retry';
   message: string;
+  /** A way forward, when one exists that a button can open. */
+  action?: { href: string; label: string };
 } {
   if (result.ok) {
     switch (result.data.nextAction) {
@@ -199,20 +299,51 @@ export function customerMessageFor(result: CheckoutCallResult): {
           message: 'Your order was recorded but needs our team to review it. We will contact you.',
         };
       case 'NONE':
-        return { status: 'received', message: 'Your order is confirmed.' };
+        return {
+          status: 'received',
+          message: (result.data as { storeCreditAppliedUgx?: number }).storeCreditAppliedUgx
+            ? 'Your order is confirmed and paid in full with your gift card or store credit.'
+            : 'Your order is confirmed.',
+        };
     }
   }
 
   switch (result.code) {
+    case 'STORE_CREDIT_UNAVAILABLE':
+      // 0196: nothing was ordered or charged; the card cannot pay (wrong code, cancelled, expired, waiting for
+      // approval, or nothing left). Removing it lets the order go through for the full amount.
+      return {
+        status: 'error',
+        message: 'That gift card or store credit cannot be used. Check the code, or see what is on it on the Gift card balance page (shopgoldplus.com/gift-card), or remove it to pay the full amount with Mobile Money or card. Nothing has been charged.',
+      };
     case 'CHECKOUT_IN_PROGRESS':
       return {
         status: 'retry',
         message: 'This order is already being processed. Please wait a moment before retrying.',
       };
     case 'IDEMPOTENCY_CONFLICT':
+      // A LIVE claim for a different basket: two submissions are racing. This is
+      // a wait, not a dead end. It used to read "your basket changed since this
+      // checkout started", which was also shown for a spent intent — telling a
+      // customer whose basket had not changed to review a basket that was fine,
+      // with no way forward.
+      return {
+        status: 'retry',
+        message: 'This checkout is already being submitted. Please wait a moment, then try again.',
+      };
+    case 'CHECKOUT_INTENT_SPENT':
+      // The page mints a fresh intent and resubmits, so this wording is only
+      // ever reached if that recovery itself fails.
+      return {
+        status: 'retry',
+        message: 'That attempt had already been used. Please press Complete order once more — your details are still filled in. You have not been charged.',
+      };
+    case 'CHECKOUT_ALREADY_ORDERED':
+      // Deliberately NOT a second order. The page names the existing one and
+      // links to it; this is the fallback wording.
       return {
         status: 'error',
-        message: 'Your basket changed since this checkout started. Please review it and submit again.',
+        message: 'Good news — this order is already saved for you and nothing has been charged. Open it to pay, so you are not charged twice.',
       };
     case 'CHECKOUT_INTENT_EXPIRED':
     case 'CHECKOUT_INTENT_INVALID':
@@ -220,19 +351,129 @@ export function customerMessageFor(result: CheckoutCallResult): {
     case 'CHECKOUT_INTENT_REVOKED':
       return {
         status: 'error',
-        message: 'Your checkout session expired. Please reload the page and try again.',
+        message: 'This checkout page has been open for a while, so it needs a fresh start. Reload it and your basket will still be here. You have not been charged.',
+        action: { href: '/checkout', label: 'Reload checkout' },
       };
     case 'STOCK_NOT_RESERVED':
       return {
         status: 'error',
-        message: 'Your order was recorded but stock could not be confirmed, so it cannot be paid for yet.',
+        message: 'Your order is saved, but we could not confirm stock for it yet, so it cannot be paid for right now. We will contact you as soon as it is confirmed — or message us and we will check straight away. You have not been charged.',
       };
     case 'NETWORK':
       return {
         status: 'retry',
-        message: 'We could not reach the order service. Please retry — your order will not be duplicated.',
+        message: 'We could not reach the order service. Please retry. Your order will not be duplicated.',
       };
+    // The terminal business refusals. Each names what changed and what to do;
+    // none of them fall through to the API's text. Nothing has been charged
+    // on any of these — the order was refused before payment.
+    case 'PRICE_CHANGED':
+      return {
+        status: 'error',
+        message: 'A price changed while you were checking out. Please check the new total below, then place the order again. You have not been charged.',
+      };
+    case 'PROMOTION_CHANGED':
+      return {
+        status: 'error',
+        message: 'An offer on your basket ended while you were checking out. Please check the new total below, then place the order again. You have not been charged.',
+      };
+    case 'PRODUCT_UNAVAILABLE':
+      return {
+        status: 'error',
+        action: { href: '/cart', label: 'Go to your cart' },
+        message: 'One of the items in your basket is no longer available. Please remove it from your cart and try again. You have not been charged.',
+      };
+    case 'PRICE_UNAVAILABLE':
+      return {
+        status: 'error',
+        message: 'We could not confirm the price of an item in your basket. Please try again in a moment, or ask us about it. You have not been charged.',
+      };
+    case 'PROMOTION_LIMIT_REACHED':
+      return {
+        status: 'error',
+        message: 'An offer on your basket has been used as many times as it allows, so it cannot be applied to this order. If you used a code, remove it and place the order again; otherwise message us and we will sort it out. You have not been charged.',
+      };
+    case 'PAY_ON_DELIVERY_UNAVAILABLE':
+      return {
+        status: 'error',
+        message: 'Orders are paid now with Mobile Money or card. Please place the order again to pay. You have not been charged.',
+      };
+    case 'LOYALTY_REDEMPTION_REFUSED':
+      return {
+        status: 'error',
+        message: 'We could not use that many points on this order. Points can cover part of an order but never take an item below its lowest price. Use fewer points, or untick them, and place the order again. You have not been charged.',
+      };
+    case 'CHECKOUT_SESSION_UNAVAILABLE':
+    case 'DB_NOT_CONFIGURED':
+      return {
+        status: 'retry',
+        message: 'Checkout is temporarily unavailable. Please try again in a few minutes. Your basket is saved and you have not been charged.',
+      };
+    case 'INVALID_CHECKOUT':
+      // Only a refusal the page can pin to a field is called "highlighted"
+      // (see invalidCheckoutField). This fallback highlights nothing, so it
+      // must not say it does.
+      return {
+        status: 'error',
+        message: 'Some of your details do not look right. Please check them and try again. You have not been charged.',
+      };
+    case 'ORDER_FAILED':
+    case 'CHECKOUT_FAILED':
     default:
-      return { status: 'error', message: result.message };
+      return {
+        status: 'error',
+        message: 'We could not place your order. Please try again. You have not been charged. If it keeps failing, message us and we will take the order by phone.',
+      };
   }
+}
+
+/**
+ * The form field an INVALID_CHECKOUT refusal is about, with words for it.
+ *
+ * The API names the failing path first ("customerDetails.email: Invalid
+ * email"). The page used to say "check the highlighted fields" while nothing was
+ * highlighted, because the path was never read. The API's own text is never
+ * shown: only the path is used, to pick the field and the sentence.
+ */
+export type CheckoutFormField = 'name' | 'email' | 'phone' | 'locationJson' | 'deliveryAddress';
+
+export function invalidCheckoutField(apiMessage: string | null | undefined): { field: CheckoutFormField; message: string } | null {
+  const path = String(apiMessage ?? '').split(':')[0].trim();
+  if (!path.startsWith('customerDetails.')) return null;
+  const key = path.slice('customerDetails.'.length);
+  if (key === 'name') return { field: 'name', message: 'Enter your full name.' };
+  if (key === 'email') return { field: 'email', message: 'Enter a full email address, like name@example.com, or leave it empty.' };
+  if (key === 'phone') return { field: 'phone', message: 'Enter a mobile number we can call, for example 0772 123 456 (10 digits starting 07), or +256 772 123 456.' };
+  if (key === 'deliveryArea' || key.startsWith('deliveryLocation')) {
+    return { field: 'locationJson', message: 'Choose your delivery location again: type your area and pick it from the list, or pick your district.' };
+  }
+  if (key === 'deliveryAddress') return { field: 'deliveryAddress', message: 'Add the estate, road, building or landmark our rider should look for, in a few words.' };
+  return null;
+}
+
+/**
+ * Is this order waiting for money rather than moving? One rule for
+ * /track-order and the signed-in /orders/[id], so the two never disagree
+ * about whether to show the dispatch ladder.
+ *
+ * Read from the PAYMENT status: nothing writes the order status
+ * 'pending_payment' (orders are created 'received', and a declined online
+ * payment only sets paymentStatus 'failed'), so a status-only check never
+ * matched and a failed-payment order showed "Order placed, next: Confirmed &
+ * preparing" as if it were moving. A failed payment on a received order is
+ * unpaid whatever the method. 'unpaid'/'pending' alone also describes a
+ * cash-on-delivery order, which the rider collects and which keeps its ladder,
+ * so that case needs the payment method; when the method is not known the
+ * answer is "not waiting" rather than hiding a COD order's progress.
+ */
+export function orderAwaitsPayment(order: {
+  status?: string | null;
+  paymentStatus?: string | null;
+  paymentMethod?: string | null;
+}): boolean {
+  const status = String(order.status ?? '').toLowerCase();
+  const payment = String(order.paymentStatus ?? '').toLowerCase();
+  if (status === 'pending_payment') return true;
+  if (status === 'received' && payment === 'failed') return true;
+  return order.paymentMethod != null && offersOnlinePayment(order);
 }

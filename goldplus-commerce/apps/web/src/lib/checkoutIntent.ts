@@ -28,10 +28,10 @@ const isProduction = () => import.meta.env.PROD === true;
 
 function keys(): IntentKey[] | null {
   const root = (
-    import.meta.env.CHECKOUT_INTENT_SECRET ||
     process.env.CHECKOUT_INTENT_SECRET ||
-    import.meta.env.JWT_SECRET ||
+    import.meta.env.CHECKOUT_INTENT_SECRET ||
     process.env.JWT_SECRET ||
+    import.meta.env.JWT_SECRET ||
     ''
   ).trim();
   if (!root) return null;
@@ -42,10 +42,10 @@ function keys(): IntentKey[] | null {
   try {
     return buildIntentKeyring({
       rootSecret: root,
-      currentKeyId: import.meta.env.CHECKOUT_INTENT_KEY_ID || process.env.CHECKOUT_INTENT_KEY_ID,
+      currentKeyId: process.env.CHECKOUT_INTENT_KEY_ID || import.meta.env.CHECKOUT_INTENT_KEY_ID,
       previousKeyId:
-        import.meta.env.CHECKOUT_INTENT_PREVIOUS_KEY_ID ||
-        process.env.CHECKOUT_INTENT_PREVIOUS_KEY_ID,
+        process.env.CHECKOUT_INTENT_PREVIOUS_KEY_ID ||
+        import.meta.env.CHECKOUT_INTENT_PREVIOUS_KEY_ID,
     });
   } catch {
     // Misconfigured rather than absent. Returning null makes the page refuse, which
@@ -110,6 +110,42 @@ export function resolveCheckoutIntent(
     sameSite: 'lax',
     // __Host- requires Path=/ and no Domain. Both are required for the prefix to
     // be honoured, and the prefix is what stops a sibling subdomain setting it.
+    path: '/',
+    maxAge: CHECKOUT_INTENT_TTL_SECONDS,
+  });
+
+  return { token: issued.token, fresh: true };
+}
+
+/**
+ * Mints a NEW intent, discarding whatever was there.
+ *
+ * Used for exactly one recovery: the API reports the stored intent is spent and
+ * produced no order, so there is nothing to duplicate and the customer's submit
+ * should go through rather than dying at a refusal they cannot clear. Minting
+ * here is safe for the same reason the API allowed it — a spent-and-empty intent
+ * protects nothing.
+ *
+ * Never call this to work around a refusal that DID produce an order: that is
+ * how a customer ends up with two.
+ */
+export function issueFreshCheckoutIntent(
+  cookies: AstroCookies,
+  authenticatedUserId?: string | null,
+): ResolvedIntent | null {
+  const keyList = keys();
+  if (!keyList) return null;
+
+  const issued = issueCheckoutIntent({
+    key: keyList[0],
+    kind: authenticatedUserId ? 'USER' : 'GUEST',
+    userId: authenticatedUserId ?? undefined,
+  });
+
+  cookies.set(checkoutIntentCookieName(isProduction()), issued.token, {
+    httpOnly: true,
+    secure: isProduction(),
+    sameSite: 'lax',
     path: '/',
     maxAge: CHECKOUT_INTENT_TTL_SECONDS,
   });

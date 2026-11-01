@@ -58,13 +58,14 @@ function stateChip(s: string) {
   switch (s) {
     case "SENT": return "bg-green-50 text-green-700 border-green-200";
     case "DEAD_LETTER": return "bg-red-50 text-red-700 border-red-200";
+    case "FAILED": return "bg-red-50 text-red-700 border-red-200";
     case "RETRYING": return "bg-amber-50 text-amber-800 border-amber-200";
     case "MISSING_CONFIG": return "bg-orange-50 text-orange-700 border-orange-200";
     case "DELIVERY_DISABLED": return "bg-gray-100 text-gray-600 border-gray-200";
     default: return "bg-slate-50 text-slate-600 border-slate-200";
   }
 }
-const replayable = (s: string) => s === "DEAD_LETTER" || s === "RETRYING" || s === "MISSING_CONFIG" || s === "DELIVERY_DISABLED";
+const replayable = (s: string) => s === "DEAD_LETTER" || s === "FAILED" || s === "RETRYING" || s === "MISSING_CONFIG" || s === "DELIVERY_DISABLED";
 ---
 
 <AdminLayout
@@ -113,16 +114,16 @@ const replayable = (s: string) => s === "DEAD_LETTER" || s === "RETRYING" || s =
               <span class="font-mono text-xs text-gray-500">order {it.orderId?.slice(0, 8)}…</span>
               <span class="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border bg-slate-50 text-slate-600 border-slate-200">{it.event}</span>
               <span class={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${stateChip(it.deliveryState)}`}>{it.deliveryState.replace(/_/g, " ")}</span>
-              {it.preparationState && <span class="text-[10px] font-bold text-gray-400">{it.preparationState.replace(/_/g, " ")}</span>}
+              {it.preparationState && <span class="text-[10px] font-bold text-gray-500">{it.preparationState.replace(/_/g, " ")}</span>}
             </div>
-            <p class="text-[11px] text-gray-400 mt-1">
-              attempts {it.attemptCount} · created {new Date(it.createdAt).toLocaleString("en-UG")}{it.lastError ? ` · ${it.lastError}` : ""}
+            <p class="text-[11px] text-gray-500 mt-1">
+              attempts {it.attemptCount} · created {new Date(it.createdAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}{it.lastError ? ` · ${it.lastError}` : ""}
             </p>
           </div>
           {replayable(it.deliveryState) && (
             <form method="POST" class="flex items-end gap-2">
               <input type="hidden" name="id" value={it.id} />
-              <input type="text" name="reason" maxlength="500" placeholder="Replay reason (optional)" class="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+              <input type="text" name="reason" maxlength="500" placeholder="Replay reason (optional)" class="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk" />
               <button type="submit" class="bg-brand-gold text-brand-dark text-xs font-black px-4 py-2 rounded-xl hover:opacity-90 transition-opacity">Replay</button>
             </form>
           )}
