@@ -13,7 +13,8 @@ import { Fixtures } from './helpers/fixtures';
  * DLV-13-style hold (kill switch: no network call), accepted/unknown outcomes.
  */
 const URL = process.env.COMMERCE_TEST_DATABASE_URL;
-const suite = URL && process.env.DATABASE_URL ? describe : describe.skip;
+// The app db client connects to DATABASE_URL: run only when that IS the test database, never a dev or prod-clone one.
+const suite = URL && process.env.DATABASE_URL === URL ? describe : describe.skip;
 
 suite('measurement core (real PostgreSQL)', () => {
   let raw: any;

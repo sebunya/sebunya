@@ -252,11 +252,20 @@ describe('fulfilment stock effects: one use case, retried, reported', () => {
     expect(m.inventory.releaseForOrder).not.toHaveBeenCalled();
     expect(m.notifyCancelled).not.toHaveBeenCalled();
   });
-  it('cancelling a live order releases and tells the admin', async () => {
-    const m = make('processing');
+  it('cancelling the task of a CANCELLED order releases and tells the admin', async () => {
+    const m = make('cancelled');
     await m.uc.afterTaskTransition('o', 'CANCELLED');
     expect(m.inventory.releaseForOrder).toHaveBeenCalledWith('o');
     expect(m.notifyCancelled).toHaveBeenCalledWith('o');
+  });
+  it('cancelling a stray task on an OPEN order keeps its stock held and sends no cancel email (review 212)', async () => {
+    for (const status of ['received', 'processing', 'pending_owner_review']) {
+      const m = make(status);
+      await m.uc.afterTaskTransition('o', 'CANCELLED');
+      expect(m.inventory.releaseForOrder).not.toHaveBeenCalled();
+      expect(m.inventory.consumeForOrder).not.toHaveBeenCalled();
+      expect(m.notifyCancelled).not.toHaveBeenCalled();
+    }
   });
   it('an order closed without dispatch uses up its reservation', async () => {
     const m = make('completed');

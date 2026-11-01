@@ -93,19 +93,28 @@ export interface Config {
  * environment-specific assembly (prod required-and-strong, test safe defaults)
  * stays in validateEnv; this schema is the invariant every path must meet.
  */
+export const PRODUCTION_SECRET_MIN_LENGTHS = {
+  jwtSecret: 32,
+  identityHashPepper: 32,
+  mtnWebhookSecret: 24,
+  airtelWebhookSecret: 24,
+} as const;
+
 export const configSchema = z.object({
   nodeEnv: z.string().min(1),
   databaseUrl: z.string().min(1),
-  jwtSecret: z.string().min(32),
+  // Secret minimum lengths are a PRODUCTION rule (superRefine below);
+  // development and staging boot with shorter local secrets.
+  jwtSecret: z.string().min(1),
   publicApiBaseUrl: z.string().url(),
   bootstrapAdminEmail: z.string().optional(),
   bootstrapAdminPassword: z.string().optional(),
   bootstrapAdminPhone: z.string().optional(),
   whatsappSupportNumber: z.string().optional(),
   whatsappSupportLabel: z.string().optional(),
-  mtnWebhookSecret: z.string().min(24),
-  airtelWebhookSecret: z.string().min(24),
-  identityHashPepper: z.string().min(32),
+  mtnWebhookSecret: z.string().min(1),
+  airtelWebhookSecret: z.string().min(1),
+  identityHashPepper: z.string().min(1),
   pesapalEnv: z.string().optional(),
   pesapalBaseUrl: z.string().optional(),
   pesapalConsumerKey: z.string().optional(),
@@ -145,6 +154,13 @@ export const configSchema = z.object({
       qaAllowNetwork: z.boolean(),
     })
     .optional(),
+}).superRefine((cfg, ctx) => {
+  if (cfg.nodeEnv !== 'production') return;
+  for (const [key, min] of Object.entries(PRODUCTION_SECRET_MIN_LENGTHS) as Array<[keyof typeof PRODUCTION_SECRET_MIN_LENGTHS, number]>) {
+    if (cfg[key].length < min) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `must be at least ${min} characters in production` });
+    }
+  }
 });
 
 /** Type derived from the schema — the single source of truth for the shape. */
@@ -202,6 +218,25 @@ const obviousLocalPatterns = [
 function isObviousLocalSecret(value: string): boolean {
   const normalized = value.toLowerCase();
   return obviousLocalPatterns.some(pattern => normalized.includes(pattern));
+}
+
+/**
+ * PUBLIC_API_BASE_URL may be held without a scheme ("api.goldplus.ug"). It is
+ * a public HTTPS origin, so a bare host is read as https://host. Returns null
+ * when the value still is not a valid http(s) URL, so the boot names it.
+ */
+export function normalisePublicBaseUrl(raw: string): string | null {
+  const v = raw.trim();
+  if (!v) return null;
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? v : `https://${v.replace(/^\/+/, '')}`;
+  try {
+    const u = new URL(withScheme);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    if (!u.hostname) return null;
+    return withScheme;
+  } catch {
+    return null;
+  }
 }
 
 export function validateEnv(): Config {
@@ -269,7 +304,11 @@ export function validateEnv(): Config {
   const identityHashPepper = checkRequired('IDENTITY_HASH_PEPPER', 32);
   const mtnWebhookSecret = checkRequired('MTN_WEBHOOK_SECRET', 24);
   const airtelWebhookSecret = checkRequired('AIRTEL_WEBHOOK_SECRET', 24);
-  const publicApiBaseUrl = checkRequired('PUBLIC_API_BASE_URL');
+  const publicApiBaseUrlRaw = checkRequired('PUBLIC_API_BASE_URL');
+  const publicApiBaseUrl = publicApiBaseUrlRaw ? normalisePublicBaseUrl(publicApiBaseUrlRaw) ?? '' : '';
+  if (publicApiBaseUrlRaw && !publicApiBaseUrl) {
+    errors.push('Environment variable PUBLIC_API_BASE_URL is not a valid http(s) URL (expected e.g. https://api.example.com)');
+  }
 
   const bootstrapAdminEmail = process.env.BOOTSTRAP_ADMIN_EMAIL;
   const bootstrapAdminPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;

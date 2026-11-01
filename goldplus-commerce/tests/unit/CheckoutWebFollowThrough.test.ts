@@ -29,8 +29,8 @@ describe('the checkout intent is used up when its order settles', () => {
 });
 
 describe('an already-ordered resubmit keeps the new basket', () => {
-  it('does not clear the basket in the CHECKOUT_ALREADY_ORDERED branch', () => {
-    const branch = checkout.slice(checkout.indexOf("result.code === 'CHECKOUT_ALREADY_ORDERED'"), checkout.indexOf("result.code === 'STOCK_NOT_RESERVED'"));
+  it('does not clear the basket when the CHECKOUT_ALREADY_ORDERED basket differs (the same items are emptied: review 213)', () => {
+    const branch = checkout.slice(checkout.indexOf("result.code === 'CHECKOUT_ALREADY_ORDERED'"), checkout.indexOf("} else if (result.code === 'CHECKOUT_ALREADY_ORDERED' && result.existingOrder) {"));
     expect(branch.length).toBeGreaterThan(100);
     expect(branch).not.toContain('clearBasketAfterOrder');
   });

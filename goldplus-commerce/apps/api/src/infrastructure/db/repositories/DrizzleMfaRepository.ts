@@ -40,10 +40,14 @@ export class DrizzleMfaRepository implements IMfaRepository {
     };
   }
 
-  async recordFailure(userId: string, at: Date): Promise<number> {
+  async recordFailure(userId: string, at: Date, decayAfterMs?: number): Promise<number> {
+    const next =
+      decayAfterMs && decayAfterMs > 0
+        ? sql`case when ${userMfa.updatedAt} <= ${new Date(at.getTime() - decayAfterMs)} then 1 else ${userMfa.failedAttempts} + 1 end`
+        : sql`${userMfa.failedAttempts} + 1`;
     const [row] = await db
       .update(userMfa)
-      .set({ failedAttempts: sql`${userMfa.failedAttempts} + 1`, updatedAt: at })
+      .set({ failedAttempts: next, updatedAt: at })
       .where(eq(userMfa.userId, userId))
       .returning({ failedAttempts: userMfa.failedAttempts });
     return row?.failedAttempts ?? 0;
@@ -83,10 +87,6 @@ export class DrizzleMfaRepository implements IMfaRepository {
         updatedAt: at,
       })
       .where(and(eq(userMfa.userId, userId), isNotNull(userMfa.pendingSecretCiphertext)));
-  }
-
-  async resetFailures(userId: string): Promise<void> {
-    await db.update(userMfa).set({ failedAttempts: 0 }).where(eq(userMfa.userId, userId));
   }
 
   async rewrapSecret(userId: string, oldCiphertext: string, newCiphertext: string): Promise<void> {

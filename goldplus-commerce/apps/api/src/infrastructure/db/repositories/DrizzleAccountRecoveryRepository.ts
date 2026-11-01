@@ -79,7 +79,7 @@ export class DrizzleAccountRecoveryRepository implements IAccountRecoveryReposit
             -- Every token issued before this instant dies with the reset. If
             -- the reset was triggered BY an attacker holding a session, this
             -- is what removes them.
-            sessions_invalidated_after = date_trunc('second', now()) - interval '1 millisecond' -- whole-second iat: see sessionCutoffAt
+            sessions_invalidated_after = clock_timestamp() -- exact instant; tokens carry iat_ms: see sessionCutoffAt
         where id = ${input.userId}::uuid
       `);
 
@@ -103,7 +103,7 @@ export class DrizzleAccountRecoveryRepository implements IAccountRecoveryReposit
               password_changed_at = now(),
               -- Every session issued before this instant dies with the reset,
               -- exactly as it does for a link-based reset.
-              sessions_invalidated_after = date_trunc('second', now()) - interval '1 millisecond' -- whole-second iat: see sessionCutoffAt
+              sessions_invalidated_after = clock_timestamp() -- exact instant; tokens carry iat_ms: see sessionCutoffAt
           where id = ${input.userId}::uuid
           returning id
         `),

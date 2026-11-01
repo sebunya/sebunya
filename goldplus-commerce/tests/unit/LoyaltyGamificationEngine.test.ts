@@ -377,6 +377,22 @@ describe('referrals', () => {
     expect(await decide.execute({ referralId: row.id, decision: 'refuse', actorId: 'a', reason: 'late' })).toMatchObject({ ok: false, code: 'NOT_HELD' });
     expect(row.status).toBe('awarded');
   });
+
+  it('two releases at once: the one that loses the status write keeps the payout the winner points at', async () => {
+    const code = await referrals.getOrCreateCode('r1');
+    await new RecordReferralUseCase(completion as any, referrals as any).execute({ refereeUserId: 'twin', code });
+    const row = referrals.rows.find((r) => r.refereeUserId === 'twin')!;
+    await referrals.markHeld(row.id, 'ORDER_TO_REFERRER_PHONE', 'o1');
+    const uc = new QualifyReferralOnDeliveryUseCase(ledger as any, completion as any, referrals as any, gamification as any, async () => undefined);
+    // This call appends both entries first; the other release (replaying them) wins the status write meanwhile.
+    const realMark = referrals.markAwarded.bind(referrals);
+    (referrals as any).markAwarded = async () => { row.status = 'awarded'; return false; };
+    const r = await uc.award({ id: row.id, referrerUserId: 'r1' }, 'twin', 'o1', { referralReferrerPoints: 50, referralRefereePoints: 30 }, 'b', 'held');
+    (referrals as any).markAwarded = realMark;
+    expect(r).toMatchObject({ ok: false, code: 'NOT_HELD' });
+    expect(row.status).toBe('awarded');
+    expect(ledger.entries.reduce((s, e) => s + e.points, 0)).toBe(80);
+  });
 });
 
 describe('birthday points', () => {

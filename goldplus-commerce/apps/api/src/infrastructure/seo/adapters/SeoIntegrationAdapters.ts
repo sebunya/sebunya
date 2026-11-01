@@ -416,7 +416,40 @@ export class GoogleAdsKeywordAdapter implements SeoIntegrationAdapter {
 
 // ── Registry ──────────────────────────────────────────────────────────────────
 
-export function adapterFor(providerId: string, fetchImpl: typeof fetch = fetch): SeoIntegrationAdapter | null {
+export const PROVIDER_TIMEOUT_MS = 15_000;
+
+/** Every provider call gets a deadline unless the caller already set one. */
+export function withTimeout(f: typeof fetch, ms: number = PROVIDER_TIMEOUT_MS): typeof fetch {
+  return ((input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+    f(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(ms) })) as typeof fetch;
+}
+
+/**
+ * A network error, timeout or unreadable body inside testConnection used to
+ * escape as an exception (a 500 on the admin page). It is now a failed test
+ * the admin can read: PROVIDER_UNAVAILABLE with the reason.
+ */
+export function guardTestConnection(adapter: SeoIntegrationAdapter): SeoIntegrationAdapter {
+  const inner = adapter.testConnection.bind(adapter);
+  adapter.testConnection = async (connection, secret) => {
+    try {
+      return await inner(connection, secret);
+    } catch (err: any) {
+      const timedOut = err?.name === 'TimeoutError' || err?.name === 'AbortError';
+      const msg = timedOut ? 'Provider did not answer in time.' : `Provider request failed: ${String(err?.message ?? err).slice(0, 200)}`;
+      return failedTest([stageFail('ENDPOINT', msg)], 'PROVIDER_UNAVAILABLE', msg);
+    }
+  };
+  return adapter;
+}
+
+export function adapterFor(providerId: string, injectedFetch?: typeof fetch): SeoIntegrationAdapter | null {
+  const adapter = rawAdapterFor(providerId, injectedFetch);
+  return adapter ? guardTestConnection(adapter) : null;
+}
+
+function rawAdapterFor(providerId: string, injectedFetch?: typeof fetch): SeoIntegrationAdapter | null {
+  const fetchImpl = withTimeout(injectedFetch ?? fetch);
   switch (providerId) {
     case 'google-search-console': return new GscAdapter(fetchImpl);
     case 'google-analytics-4': return new Ga4Adapter(fetchImpl);
@@ -432,7 +465,9 @@ export function adapterFor(providerId: string, fetchImpl: typeof fetch = fetch):
     case 'backlink-provider-generic':
     case 'ai-engine-observation':
       return new GenericSlotAdapter(providerId);
-    case 'custom-readonly-rest': return new CustomReadOnlyRestAdapter(fetchImpl);
+    // No injected fetch: the custom connector uses its own transport pinned to
+    // the DNS answer it checked (DNS-rebinding defence).
+    case 'custom-readonly-rest': return new CustomReadOnlyRestAdapter(injectedFetch);
     default: return null;
   }
 }

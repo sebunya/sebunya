@@ -30,6 +30,24 @@ export interface CodeSender {
 
 const HOUR_MS = 60 * 60 * 1000;
 
+/**
+ * Budgets on the typed (no SMS) first use, on top of the per-client
+ * `auth-recovery` HTTP limit. The owner's rule (DESIGN.md §12) lets a number's
+ * FIRST use show prices with no code; these stop one client from walking
+ * through fresh numbers to read dealer prices. Over budget, the number must
+ * prove itself by SMS code like any later use.
+ */
+export const FIRST_VISITS_PER_CLIENT_PER_DAY = 3;
+/** Start requests a single number may make in an hour (first visit or code). */
+export const STARTS_PER_PHONE_PER_HOUR = 6;
+
+/** Counter port (Redis-backed in infrastructure). Returns true while within budget. */
+export interface PriceAccessLimiter {
+  allow(scope: 'first-visit-client' | 'start-phone', key: string, limit: { limit: number; windowMs: number }): Promise<boolean>;
+}
+
+const NO_LIMITS: PriceAccessLimiter = { allow: async () => true };
+
 export type StartPriceAccessResult =
   /** First use of the number: prices now, for this visit, no SMS. */
   | { ok: true; method: 'first_visit'; maskedPhone: string; token: string; expiresAt: Date }
@@ -44,16 +62,26 @@ export class StartBulkPriceAccessUseCase {
     private readonly sender: CodeSender,
     private readonly crypto: PriceAccessCrypto,
     private readonly clock: () => Date = () => new Date(),
+    private readonly limiter: PriceAccessLimiter = NO_LIMITS,
   ) {}
 
-  async execute(input: { phone: unknown }): Promise<StartPriceAccessResult> {
+  /** `clientKey` is the caller's rate-limit bucket (its IP), from the route. */
+  async execute(input: { phone: unknown; clientKey?: string }): Promise<StartPriceAccessResult> {
     if (!isValidUgandanPhone(input.phone)) {
       return { ok: false, code: 'BAD_PHONE', message: 'Enter a Ugandan phone number, for example 0772 123 456.' };
     }
     const phone = normalizePhone(input.phone);
     const now = this.clock();
-    if (accessMethodFor(await this.access.countUses(phone)) === 'first_visit') {
-      await this.access.recordFirstVisit(phone, now);
+    if (!(await this.limiter.allow('start-phone', phone, { limit: STARTS_PER_PHONE_PER_HOUR, windowMs: HOUR_MS }))) {
+      return { ok: false, code: 'TOO_MANY_CODES', message: 'We have had several requests for this number in the last hour. Try again later.' };
+    }
+    // The cheap read first; the atomic claim decides. A client past its daily
+    // budget of typed first uses proves the number by SMS code instead.
+    if (
+      accessMethodFor(await this.access.countUses(phone)) === 'first_visit' &&
+      (await this.limiter.allow('first-visit-client', input.clientKey || 'unknown', { limit: FIRST_VISITS_PER_CLIENT_PER_DAY, windowMs: 24 * HOUR_MS })) &&
+      (await this.access.claimFirstVisit(phone, now))
+    ) {
       const issued = issueAccessToken(phone, now, (body) => this.crypto.sign(body), FIRST_VISIT_TTL_MS);
       return { ok: true, method: 'first_visit', maskedPhone: maskPhone(phone), token: issued.token, expiresAt: issued.expiresAt };
     }

@@ -50,13 +50,13 @@ export class DrizzleSocialIdentityRepository implements ISocialIdentityRepositor
         `),
       );
       if (input.revokePasswordAccess) {
-        // Cut-off just before the current second: tokens carry whole-second
-        // iat and the check is iat <= cutoff, so "now()" would also void the
-        // token this very sign-in is about to issue.
+        // Exact cut-off (clock_timestamp, not the transaction start): tokens
+        // carry a millisecond iat_ms, so the token this sign-in issues after
+        // the update lives and anything issued before it dies.
         await tx.execute(sql`
           update users
           set password_hash = null,
-              sessions_invalidated_after = date_trunc('second', now()) - interval '1 millisecond'
+              sessions_invalidated_after = clock_timestamp()
           where id = ${input.userId}::uuid
         `);
         await tx.execute(sql`

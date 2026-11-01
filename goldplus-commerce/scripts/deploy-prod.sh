@@ -36,6 +36,15 @@ git fetch origin deploy/price-floor-145k -q
 git merge --ff-only FETCH_HEAD -q
 HEAD="$(git rev-parse --short HEAD)"
 [ "$HEAD" = "$EXPECTED" ] || { echo "STOP: HEAD is $HEAD, expected $EXPECTED — merge did not land"; exit 1; }
+# A failed build used to print only its LAST line — blank — and the roll died
+# silently (38ce4a3b, 2026-09-26: an Astro template error tsc cannot see).
+BUILD_LOG=/var/log/goldplus/build-$HEAD.log; mkdir -p /var/log/goldplus
+if ! docker compose --env-file .env.production -f docker-compose.production.yml build $SERVICES > "$BUILD_LOG" 2>&1; then
+  echo "STOP: image build failed for [$SERVICES] at $HEAD — last 40 lines of $BUILD_LOG:"; tail -40 "$BUILD_LOG"; exit 1
+fi
+tail -1 "$BUILD_LOG"
+# Edge and monitoring config are recreated only AFTER the images built: a failed
+# build used to leave the new Caddyfile serving in front of the old api/web.
 # The Caddyfile is a SINGLE-FILE bind mount: git replaces it by rename, so the
 # running container keeps the old inode and `caddy reload` re-reads stale text.
 # Only a recreate picks the new file up (seconds of edge downtime; certs persist).
@@ -57,24 +66,19 @@ if [ -n "$MON" ]; then
   docker compose --env-file .env.production -f docker-compose.production.yml up -d --force-recreate --no-deps $MON 2>&1 | tail -1 || echo "WARN: could not recreate$MON (monitoring only)"
   echo "Recreated for new monitoring config:$MON"
 fi
-# A failed build used to print only its LAST line — blank — and the roll died
-# silently (38ce4a3b, 2026-09-26: an Astro template error tsc cannot see).
-BUILD_LOG=/var/log/goldplus/build-$HEAD.log; mkdir -p /var/log/goldplus
-if ! docker compose --env-file .env.production -f docker-compose.production.yml build $SERVICES > "$BUILD_LOG" 2>&1; then
-  echo "STOP: image build failed for [$SERVICES] at $HEAD — last 40 lines of $BUILD_LOG:"; tail -40 "$BUILD_LOG"; exit 1
-fi
-tail -1 "$BUILD_LOG"
 docker compose --env-file .env.production -f docker-compose.production.yml up -d $SERVICES 2>&1 | tail -1
 N=$(echo $SERVICES | wc -w); WANT=$((N*2))
 # Bounded wait. This loop had no timeout: a replica that never reports
 # healthy (or a service with no healthcheck at all — caddy has none) would
 # hang the deploy forever with the old containers already replaced.
+# Anchored to the full container name: an unrelated "something-api-1" must not
+# count toward WANT.
 # "(healthy)" in brackets: a bare `.*healthy` also matched "(unhealthy)", so a
 # release whose healthcheck failed was declared healthy and tagged as rollback.
 DEADLINE=$(( $(date +%s) + ${HEALTH_TIMEOUT_SECONDS:-600} ))
-until [ "$(docker compose --env-file .env.production -f docker-compose.production.yml ps --format '{{.Name}} {{.Status}}' | grep -cE "($(echo $SERVICES | tr ' ' '|'))-[12] Up .*\(healthy\)")" -ge "$WANT" ]; do
+until [ "$(docker compose --env-file .env.production -f docker-compose.production.yml ps --format '{{.Name}} {{.Status}}' | grep -cE "^goldplus-commerce-($(echo $SERVICES | tr ' ' '|'))-[12] Up .*\(healthy\)$")" -ge "$WANT" ]; do
   if [ "$(date +%s)" -ge "$DEADLINE" ]; then
-    echo "STOP: $WANT healthy replicas of [$SERVICES] not reached within ${HEALTH_TIMEOUT_SECONDS:-600}s. Inspect with: docker compose ps; roll back with the rollback-$(git rev-parse --short "$PREV") image if needed."
+    echo "STOP: $WANT healthy replicas of [$SERVICES] not reached within ${HEALTH_TIMEOUT_SECONDS:-600}s. Inspect with: docker compose ps; roll back with the rollback-pre-$(git rev-parse --short "$PREV") image (tagged at the start of this run) if needed."
     docker compose --env-file .env.production -f docker-compose.production.yml ps --format '{{.Name}} {{.Status}}' | grep -E "($(echo $SERVICES | tr ' ' '|'))"
     exit 1
   fi
@@ -83,7 +87,7 @@ done
 for s in $SERVICES; do docker tag "goldplus-commerce-$s:latest" "goldplus-commerce-$s:rollback-$HEAD"; done
 echo "DEPLOYED $HEAD, $WANT/$WANT healthy, tagged rollback-$HEAD"
 # Rollback images accumulated without limit (286, disk full 2026-09-18).
-# Keep the newest 10 per service; never fails the deploy.
+# Keep the newest 2 per service (one release back, plus rollback-pre); never fails the deploy.
 [ -x scripts/prune-rollback-images.sh ] && { scripts/prune-rollback-images.sh 2 || true; }
 # Build cache: every deploy left 2-8 GB behind; the disk reached 97% on
 # 2026-09-20 after a day of deploys. Cache older than a day is dropped (the

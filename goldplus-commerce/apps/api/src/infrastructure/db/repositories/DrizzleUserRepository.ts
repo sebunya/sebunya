@@ -24,7 +24,7 @@ export class DrizzleUserRepository implements IUserRepository, IPasswordChangeRe
       // this instant stops verifying.
       await tx.execute(sql`
         update users
-        set password_hash = ${newPasswordHash}, sessions_invalidated_after = date_trunc('second', now()) - interval '1 millisecond' -- whole-second iat: see sessionCutoffAt
+        set password_hash = ${newPasswordHash}, sessions_invalidated_after = clock_timestamp() -- exact instant; tokens carry iat_ms: see sessionCutoffAt
         where id = ${userId}::uuid
       `);
       // An unused reset link must not outlive the password it was issued against.

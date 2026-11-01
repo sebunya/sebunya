@@ -16,6 +16,7 @@ function accessRepo(usesBefore = 0) {
     countUses: async () => usesBefore,
     countSince: async () => challenges.length,
     recordFirstVisit: async () => undefined,
+    claimFirstVisit: async () => usesBefore === 0,
     create: async (c: any) => { challenges.push({ id: `c${challenges.length}`, ...c, attempts: 0, verifiedAt: null }); },
     latestOpen: async () => challenges.at(-1) ?? null,
     recordAttempt: async () => 1,

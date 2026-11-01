@@ -1,5 +1,7 @@
 import { lookup } from 'node:dns/promises';
+import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
+import { Readable } from 'node:stream';
 import type {
   SeoIntegrationAdapter,
   SeoIntegrationConnectionView,
@@ -17,13 +19,17 @@ import type {
  *     loopback / link-local / metadata ranges
  *   - redirects are followed manually (max 2) and each hop must stay on the
  *     SAME host and re-pass all checks — off-host redirects are refused
- *   - 10s timeout, JSON responses only
+ *   - the connection is PINNED to the addresses that passed the check (no
+ *     second DNS lookup at connect time, so DNS rebinding cannot swap in an
+ *     internal address between check and connect)
+ *   - 10s timeout covering headers AND body, 1 MB body cap, JSON only
  * The 100 requests/day cap is enforced by the caller via
  * seo_integration_usage (tryConsumeUsage) before any network call.
  */
 
 const TIMEOUT_MS = 10_000;
 const MAX_REDIRECTS = 2;
+export const MAX_BODY_BYTES = 1_000_000;
 
 export function isPrivateAddress(addr: string): boolean {
   const family = isIP(addr);
@@ -48,7 +54,7 @@ export function isPrivateAddress(addr: string): boolean {
   return false;
 }
 
-export interface CustomRequestValidation { ok: boolean; reason?: string }
+export interface CustomRequestValidation { ok: boolean; reason?: string; addresses?: string[] }
 
 /**
  * Validate a custom-connector request. method must be GET; url must be https,
@@ -87,12 +93,86 @@ export async function validateCustomRequest(
       return { ok: false, reason: `Host ${host} resolves to a private or internal address; refused.` };
     }
   }
-  return { ok: true };
+  return { ok: true, addresses };
+}
+
+/**
+ * A fetch that connects only to `addresses` (already checked public). TLS
+ * still verifies the certificate against the URL's hostname (SNI/servername).
+ */
+export function pinnedFetch(addresses: string[]): typeof fetch {
+  return ((input: string | URL, init?: RequestInit) => new Promise<Response>((resolve, reject) => {
+    const url = new URL(String(input));
+    const address = addresses[0];
+    const family = isIP(address);
+    const req = httpsRequest({
+      hostname: url.hostname,
+      servername: url.hostname,
+      port: url.port || 443,
+      path: `${url.pathname}${url.search}`,
+      method: 'GET',
+      headers: init?.headers as Record<string, string> | undefined,
+      signal: init?.signal ?? undefined,
+      lookup: ((_h: string, opts: { all?: boolean }, cb: (...a: unknown[]) => void) => {
+        if (opts?.all) cb(null, [{ address, family }]);
+        else cb(null, address, family);
+      }) as never,
+    }, (res) => {
+      const headers = new Headers();
+      for (const [k, v] of Object.entries(res.headers)) {
+        if (v !== undefined) headers.set(k, Array.isArray(v) ? v.join(', ') : String(v));
+      }
+      const status = res.statusCode ?? 502;
+      const body = status === 204 || status === 304 ? null : (Readable.toWeb(res) as unknown as ReadableStream);
+      try {
+        resolve(new Response(body, { status, headers }));
+      } catch (err) {
+        res.destroy();
+        reject(err);
+      }
+    });
+    req.on('error', reject);
+    req.end();
+  })) as typeof fetch;
+}
+
+/** Read a body up to `max` bytes; over the cap -> null (the reader is cancelled). */
+export async function readCappedText(res: Response, max: number = MAX_BODY_BYTES, signal?: AbortSignal): Promise<string | null> {
+  const declared = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > max) {
+    await res.body?.cancel().catch(() => {});
+    return null;
+  }
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  // A body that drips forever is cut by the caller's timer even when the
+  // stream itself ignores the abort signal.
+  const onAbort = () => { reader.cancel(new Error('aborted')).catch(() => {}); };
+  if (signal?.aborted) onAbort();
+  signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > max) {
+        await reader.cancel().catch(() => {});
+        return null;
+      }
+      chunks.push(value);
+    }
+    if (signal?.aborted) throw new Error('aborted');
+    return Buffer.concat(chunks).toString('utf8');
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+  }
 }
 
 export async function performCustomGet(
   input: { url: string; allowedHosts: string[]; headerName?: string | null; headerValue?: string | null },
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl?: typeof fetch,
   resolveHost?: (host: string) => Promise<string[]>,
 ): Promise<{ ok: boolean; status?: number; reason?: string; json?: unknown }> {
   let currentUrl = input.url;
@@ -103,35 +183,47 @@ export async function performCustomGet(
     if (new URL(currentUrl).hostname.toLowerCase() !== originalHost) {
       return { ok: false, reason: 'Redirect left the original host; refused.' };
     }
+    // One timer for the whole hop: headers and body. Cleared on every exit.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    let res: Response;
     try {
-      const headers: Record<string, string> = { Accept: 'application/json' };
-      if (input.headerName && input.headerValue) headers[input.headerName] = input.headerValue;
-      res = await fetchImpl(currentUrl, { method: 'GET', headers, redirect: 'manual', signal: controller.signal });
-    } catch (err: any) {
-      return { ok: false, reason: `Request failed: ${String(err?.message ?? err).slice(0, 200)}` };
+      let res: Response;
+      try {
+        const headers: Record<string, string> = { Accept: 'application/json' };
+        if (input.headerName && input.headerValue) headers[input.headerName] = input.headerValue;
+        const doFetch = fetchImpl ?? pinnedFetch(validation.addresses ?? []);
+        res = await doFetch(currentUrl, { method: 'GET', headers, redirect: 'manual', signal: controller.signal });
+      } catch (err: any) {
+        return { ok: false, reason: `Request failed: ${String(err?.message ?? err).slice(0, 200)}` };
+      }
+      if (res.status >= 300 && res.status < 400) {
+        await res.body?.cancel().catch(() => {});
+        const location = res.headers.get('location');
+        if (!location) return { ok: false, reason: 'Redirect without a Location header; refused.' };
+        const next = new URL(location, currentUrl).toString();
+        if (new URL(next).hostname.toLowerCase() !== originalHost) {
+          return { ok: false, reason: 'Redirect to an off-host location; refused.' };
+        }
+        currentUrl = next;
+        continue;
+      }
+      if (!res.ok) return { ok: false, status: res.status, reason: `Upstream returned ${res.status}.` };
+      const contentType = res.headers.get('content-type') ?? '';
+      if (!contentType.includes('json')) return { ok: false, status: res.status, reason: 'Response is not JSON; only JSON sources are supported.' };
+      let text: string | null;
+      try {
+        text = await readCappedText(res, MAX_BODY_BYTES, controller.signal);
+      } catch (err: any) {
+        return { ok: false, status: res.status, reason: controller.signal.aborted ? 'Response body timed out.' : `Body read failed: ${String(err?.message ?? err).slice(0, 200)}` };
+      }
+      if (text === null) return { ok: false, status: res.status, reason: `Response body is larger than ${MAX_BODY_BYTES} bytes; refused.` };
+      try {
+        return { ok: true, status: res.status, json: JSON.parse(text) };
+      } catch {
+        return { ok: false, status: res.status, reason: 'Response body is not valid JSON.' };
+      }
     } finally {
       clearTimeout(timer);
-    }
-    if (res.status >= 300 && res.status < 400) {
-      const location = res.headers.get('location');
-      if (!location) return { ok: false, reason: 'Redirect without a Location header; refused.' };
-      const next = new URL(location, currentUrl).toString();
-      if (new URL(next).hostname.toLowerCase() !== originalHost) {
-        return { ok: false, reason: 'Redirect to an off-host location; refused.' };
-      }
-      currentUrl = next;
-      continue;
-    }
-    if (!res.ok) return { ok: false, status: res.status, reason: `Upstream returned ${res.status}.` };
-    const contentType = res.headers.get('content-type') ?? '';
-    if (!contentType.includes('json')) return { ok: false, status: res.status, reason: 'Response is not JSON; only JSON sources are supported.' };
-    try {
-      return { ok: true, status: res.status, json: await res.json() };
-    } catch {
-      return { ok: false, status: res.status, reason: 'Response body is not valid JSON.' };
     }
   }
   return { ok: false, reason: 'Too many redirects.' };
@@ -141,7 +233,7 @@ export class CustomReadOnlyRestAdapter implements SeoIntegrationAdapter {
   readonly providerId = 'custom-readonly-rest';
 
   constructor(
-    private readonly fetchImpl: typeof fetch = fetch,
+    private readonly fetchImpl?: typeof fetch,
     private readonly resolveHost?: (host: string) => Promise<string[]>,
   ) {}
 

@@ -52,7 +52,9 @@ if (Astro.request.method === 'POST') {
     quantity: String(form.get('quantity') ?? '').trim(),
     customerName: String(form.get('customerName') ?? '').trim(),
     phone: normalizePhone(String(form.get('phone') ?? '')),
-    organisation: String(form.get('organisation') ?? '').trim(),
+    // The field is only hidden when the buyer switches away from "An organisation"; its typed value still posts.
+    // Only an organisation's request carries one.
+    organisation: String(form.get('kind') ?? initialKind) === 'corporate' ? String(form.get('organisation') ?? '').trim() : '',
     email: normalizeEmail(String(form.get('email') ?? '')),
     locationJson: String(form.get('locationJson') ?? '').trim(),
     deliveryAddress: String(form.get('deliveryAddress') ?? '').trim(),

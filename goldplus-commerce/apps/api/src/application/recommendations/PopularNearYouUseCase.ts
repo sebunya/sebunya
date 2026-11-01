@@ -51,7 +51,9 @@ export class PopularNearYouUseCase {
   }
 
   async execute(input: { areaSlug: string | null; areaName: string | null; district: string | null; limit?: number }): Promise<PopularNearYouResult> {
-    const limit = Math.min(Math.max(input.limit ?? 6, 1), 12);
+    // A non-numeric ?limit= arrives as NaN, and Math.max(NaN, 1) is NaN (SQL LIMIT NaN, a 500).
+    const asked = Number.isFinite(input.limit) ? Math.trunc(input.limit as number) : 6;
+    const limit = Math.min(Math.max(asked, 1), 12);
 
     const rungs: Array<{ scope: PopularNearYouResult['scope']; label: string; where: NearbyScope }> = [];
     if (input.areaSlug) rungs.push({ scope: 'area', label: input.areaName || input.district || 'your area', where: { kind: 'area', areaSlug: input.areaSlug } });

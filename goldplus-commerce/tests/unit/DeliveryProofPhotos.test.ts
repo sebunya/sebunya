@@ -35,7 +35,7 @@ describe('photos as proof of delivery (0212)', () => {
   it('is staff-only: served behind ORDERS_READ, never by a public route', () => {
     const admin = readFileSync('apps/api/src/interfaces/http/routes/admin/fulfilment.ts', 'utf8');
     expect(admin).toMatch(/routes\.get\('\/delivery-photos\/:photoId', requirePermissions\(\[PERMISSIONS\.ORDERS_READ\]\)/);
-    expect(admin).toMatch(/routes\.post\('\/:id\/delivery\/photos', requirePermissions\(\[PERMISSIONS\.ORDERS_MANAGE\]\)/);
+    expect(admin).toMatch(/routes\.post\('\/:id\/delivery\/photos', requireTaskId, requirePermissions\(\[PERMISSIONS\.ORDERS_MANAGE\]\)/);
     expect(readFileSync('apps/api/src/interfaces/http/routes/commerce.ts', 'utf8')).not.toContain('deliveryProofPhoto');
     expect(readFileSync('apps/api/src/infrastructure/db/migrations/0212_delivery_proof_photos.sql', 'utf8')).toContain('ON DELETE CASCADE');
   });

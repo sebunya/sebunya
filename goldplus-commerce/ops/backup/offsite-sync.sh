@@ -80,7 +80,7 @@ LOCAL=$(list_local); REMOTE=$(list_remote)
 # instead of reporting what is missing offsite (exit 2).
 MISSING=$(LC_ALL=C comm -23 <(printf '%s\n' "$LOCAL") <(printf '%s\n' "$REMOTE") | awk '{print $2 " (" $1 " bytes locally)"}')
 if [ -n "$MISSING" ]; then
-  echo "FAIL: not on the remote, or a different size there:"; printf '  %s\n' $MISSING
+  echo "FAIL: not on the remote, or a different size there:"; printf '%s\n' "$MISSING" | sed 's/^/  /'
   rm -f "$VERIFIED_FILE"
   exit 2
 fi

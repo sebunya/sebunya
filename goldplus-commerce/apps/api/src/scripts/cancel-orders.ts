@@ -1,10 +1,7 @@
 import '../config/env';
 import { randomUUID } from 'node:crypto';
-import { DrizzleOrderRepository } from '../infrastructure/db/repositories/DrizzleOrderRepository';
-import { DrizzleInventoryRepository } from '../infrastructure/db/repositories/DrizzleInventoryRepository';
-import { DrizzleAuditRepository } from '../infrastructure/db/repositories/DrizzleAuditRepository';
-import { OrderTransitionService } from '../infrastructure/orders/OrderTransitionService';
-import { ReleaseInventoryForOrderUseCase } from '../application/use-cases/inventory/InventoryUseCases';
+import { Registry } from '../infrastructure/Registry';
+import { GOODS_LEFT_STATUSES } from '../application/use-cases/inventory/ApplyFulfilmentStockEffectUseCase';
 import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
 import { endDbConnection } from '../infrastructure/db/client';
 
@@ -15,11 +12,14 @@ import { endDbConnection } from '../infrastructure/db/client';
  *   ORDER_NUMBERS=GP-...,GP-... ACTOR_USER_ID=<uuid> \
  *     npx tsx src/scripts/cancel-orders.ts
  *
- * Per order: transition status -> 'cancelled' through OrderTransitionService
- * (status update + ONE append-only order_event, in one transaction, with the
- * actor recorded), release any open inventory reservation (the order-status
- * path does not, only the fulfilment path did — so a stranded reservation is
- * released here explicitly), and write an admin audit row. Idempotent: an order
+ * Per order: transition status -> 'cancelled' through the Registry's
+ * OrderTransitionService (status update + ONE append-only order_event, in one
+ * transaction, with the actor recorded). Using the Registry's instance runs its
+ * subscribers exactly as the admin screen does: stock, gift-card/store-credit
+ * and points holds are released, the customer is told, ad conversions are
+ * withdrawn. A bare, unsubscribed service instance ran none of them. An order
+ * whose goods have left the shop (dispatched) is skipped: its stock must not go
+ * back on sale. Then an admin audit row is written. Idempotent: an order
  * already cancelled is skipped; the transition's idempotencyKey makes a re-run
  * a no-op rather than a second event.
  *
@@ -38,10 +38,10 @@ async function main(): Promise<void> {
     .filter(Boolean);
   if (numbers.length === 0) throw new Error('ORDER_NUMBERS must be a comma-separated list of order numbers.');
 
-  const orderRepo = new DrizzleOrderRepository();
-  const transitions = new OrderTransitionService();
-  const releaseInventory = new ReleaseInventoryForOrderUseCase(new DrizzleInventoryRepository());
-  const audit = new CreateAuditLogUseCase(new DrizzleAuditRepository());
+  const registry = Registry.getInstance();
+  const orderRepo = registry.orderRepo;
+  const transitions = registry.orderTransitionService;
+  const audit = new CreateAuditLogUseCase(registry.auditRepo);
 
   for (const number of numbers) {
     const order = await orderRepo.findById(number); // findById accepts an order number too
@@ -51,6 +51,10 @@ async function main(): Promise<void> {
     }
     if (TERMINAL.has(order.orderStatus)) {
       console.log(`SKIP ${number}: already ${order.orderStatus}`);
+      continue;
+    }
+    if (GOODS_LEFT_STATUSES.has(order.orderStatus)) {
+      console.log(`SKIP ${number}: ${order.orderStatus} — the goods have left the shop; record the delivery outcome or a return instead`);
       continue;
     }
     const from = order.orderStatus;
@@ -63,16 +67,15 @@ async function main(): Promise<void> {
         note: 'Cancelled by owner request — test order cleanup (2026-09-12).',
         idempotencyKey: `cancel:${order.id}`,
       });
-      const released = await releaseInventory.execute(order.id);
       await audit.execute({
         actorId,
         action: 'ORDER_CANCELLED',
         entity: 'order',
         entityId: order.id,
         previousState: { status: from },
-        newState: { status: 'cancelled', reason: 'test_order_cleanup', inventoryReleased: released.released, eventId: result.eventId },
+        newState: { status: 'cancelled', reason: 'test_order_cleanup', holdsReleasedBy: 'order_transition_subscribers', eventId: result.eventId },
       });
-      console.log(`CANCELLED ${number} (${from} -> cancelled), inventory released=${released.released}, event=${result.eventId}, replay=${result.idempotentReplay}`);
+      console.log(`CANCELLED ${number} (${from} -> cancelled), holds released by the transition, event=${result.eventId}, replay=${result.idempotentReplay}`);
     } catch (e) {
       console.log(`FAILED ${number} (${from} -> cancelled): ${(e as Error).message}`);
     }

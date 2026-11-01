@@ -11,6 +11,9 @@ import { resolveAuthenticatedUserId } from '../../lib/customerAuth';
 import { startPayment, paymentStartMessageFor, orderAwaitsPayment } from '../../lib/checkoutClient';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../../lib/requestOrigin';
 import { offersOnlinePayment } from '@goldplus/shared';
+import { onSitePaymentPath } from '../../lib/payOnSite';
+import { rememberPaymentOrder } from '../../lib/paymentOrderCookie';
+import { orderProgressStage, orderReachedCustomer } from '../../lib/orderProgress';
 import type { OrderDetailDto, ApiResponse, ProductPublicDto } from '@goldplus/shared';
 
 const { id } = Astro.params;
@@ -98,7 +101,10 @@ if (Astro.request.method === 'POST' && order && isUnpaid) {
     } else {
       const payRes = await startPayment({ orderId: order.id, intentToken: intent.token, sessionToken: token });
       if (payRes.ok) {
-        return Astro.redirect(payRes.data.redirectUrl, 303);
+        // The same on-site payment page as checkout and /track-order (framed Pesapal, the network hint), and the
+        // order remembered for the cancellation page's "Pay for this order".
+        rememberPaymentOrder(Astro.cookies, order.orderNumber, import.meta.env.PROD);
+        return Astro.redirect(onSitePaymentPath({ redirectUrl: payRes.data.redirectUrl, orderNumber: order.orderNumber, phone: order.customer?.phone ?? null }), 303);
       }
       payMessage = paymentStartMessageFor(payRes.code);
     }
@@ -125,11 +131,8 @@ const PROGRESS_STAGES = [
   { title: 'Delivered', desc: 'Order completed.' },
 ];
 const statusKey = String(order?.status ?? '').toLowerCase();
-const progressStage =
-  ['delivered', 'completed'].includes(statusKey) ? 3
-  : ['shipped', 'dispatched', 'delivery_failed'].includes(statusKey) ? 2
-  : ['paid', 'processing', 'pending_owner_review'].includes(statusKey) ? 1
-  : 0;
+// The same mapping as /track-order (lib/orderProgress).
+const progressStage = orderProgressStage(statusKey);
 // Waiting for money is read from the payment status with the SAME rule as
 // /track-order (orderAwaitsPayment), not from order statuses nothing writes.
 const awaitingPayment = order
@@ -237,7 +240,7 @@ const helpHref = order
                     </li>
                     ))}
                 </ul>
-                {['delivered', 'completed'].includes(order.status) && (
+                {orderReachedCustomer(order.status) && (
                   <p class="px-5 py-3 border-t border-brand-borderGrey text-sm" data-start-return>
                     Something wrong with an item? <a href={`/returns/start?reference=${encodeURIComponent(order.orderNumber)}`} class="font-bold underline">Return or report a problem</a>
                   </p>

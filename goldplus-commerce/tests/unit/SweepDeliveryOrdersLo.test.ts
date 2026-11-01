@@ -290,7 +290,8 @@ describe('a cash-on-delivery order follows its task to dispatched (COD mirror)',
       state,
       transition: vi.fn(async (_orderId: string, to: string) => {
         const verdict = canTransitionOrder(state.status as never, to as never, { paymentStatus: paymentStatus as never });
-        if (!verdict.allowed) throw new Error(verdict.message);
+        // Shaped like OrderTransitionService's refusal (a DomainError with ORDER_TRANSITION_<code>).
+        if (!verdict.allowed) throw Object.assign(new Error(verdict.message), { code: `ORDER_TRANSITION_${verdict.code}` });
         state.hops.push(`${state.status}->${to}`);
         state.status = to;
         return {} as never;
@@ -331,6 +332,48 @@ describe('a cash-on-delivery order follows its task to dispatched (COD mirror)',
     const p = port('cancelled');
     expect(await mirrorOrderDispatched(p as never, 'o-1', { actorId: 'a', note: 'x', cashOnDelivery: true })).toBe('skipped');
     expect(p.state.hops).toEqual([]);
+  });
+
+  it('a transient failure on the first hop never takes the COD path (review 211)', async () => {
+    const transition = vi.fn(async () => { throw Object.assign(new Error('deadlock detected'), { code: '40P01' }); });
+    expect(await mirrorOrderDispatched({ transition, history: vi.fn() } as never, 'o-1', { actorId: 'a', note: 'x', cashOnDelivery: true })).toBe('skipped');
+    expect(transition).toHaveBeenCalledTimes(1);
+  });
+
+  it('a catch-up confirms cash on delivery only when a person chose it (review 211)', async () => {
+    const { cashOnDeliveryConfirmed } = await import('../../apps/api/src/application/use-cases/fulfilment/DispatchUseCases');
+    const codDispatch = { getByTask: async () => ({ paymentPolicy: 'CASH_ON_DELIVERY' }) };
+    const paidDispatch = { getByTask: async () => ({ paymentPolicy: 'PAID' }) };
+    // Unpaid online order, nobody confirmed COD: no switch.
+    expect(await cashOnDeliveryConfirmed({ id: 't', paymentStatus: 'unpaid', paymentMethod: 'pesapal' }, paidDispatch)).toBe(false);
+    expect(await cashOnDeliveryConfirmed({ id: 't', paymentStatus: 'pending', paymentMethod: 'pesapal' })).toBe(false);
+    // The operator confirmed COD at dispatch.
+    expect(await cashOnDeliveryConfirmed({ id: 't', paymentStatus: 'unpaid', paymentMethod: 'pesapal' }, codDispatch)).toBe(true);
+    // The customer chose pay on delivery.
+    expect(await cashOnDeliveryConfirmed({ id: 't', paymentStatus: 'unpaid', paymentMethod: 'offline' })).toBe(true);
+    expect(await cashOnDeliveryConfirmed({ id: 't', paymentStatus: 'paid', paymentMethod: 'pesapal' }, codDispatch)).toBe(false);
+  });
+
+  it('the delivered catch-up leaves an unpaid online order alone without a COD confirmation (review 211)', async () => {
+    const { CompleteOrderForDeliveredTaskUseCase } = await import('../../apps/api/src/application/use-cases/fulfilment/DeliveryUseCases');
+    const make = (policy: string) => {
+      const p = port('received');
+      const uc = new CompleteOrderForDeliveredTaskUseCase(
+        { findByOrderId: async () => ({ id: 't1', status: 'DELIVERED', paymentStatus: 'unpaid', paymentMethod: 'pesapal' }) } as never,
+        { listByTask: async () => [{ deliveredAt: new Date() }] } as never,
+        { save: async (e: unknown) => e } as never,
+        p as never,
+        { findById: async () => ({ orderStatus: p.state.status }) },
+        { getByTask: async () => ({ paymentPolicy: policy }) },
+      );
+      return { p, uc };
+    };
+    const refused = make('PAID');
+    expect(await refused.uc.execute({ orderId: 'o1', actorId: 'a' })).toMatchObject({ ok: false, code: 'REFUSED', message: expect.stringMatching(/Re-check its payment on the Payments page/) });
+    expect(refused.p.state.hops).toEqual([]);
+    const confirmed = make('CASH_ON_DELIVERY');
+    expect(await confirmed.uc.execute({ orderId: 'o1', actorId: 'a' })).toMatchObject({ ok: true, changed: true });
+    expect(confirmed.p.transition.mock.calls[1][2]).toMatchObject({ switchToPayOnDelivery: true });
   });
 
   it('the delivery outcome catches a stranded order up before recording delivered', () => {
@@ -382,7 +425,9 @@ describe('track order tells the truth about money, contrast and totals', () => {
   const page = read('apps/web/src/pages/track-order.astro');
 
   it('a wholesale order under review is "placed", and "preparing" makes no payment claim', () => {
-    expect(page).toMatch(/if \(s === 'processing'\) return 1;/);
+    // The mapping now lives in lib/orderProgress (shared with /orders/:id).
+    expect(page).toMatch(/orderProgressStage/);
+    expect(read('apps/web/src/lib/orderProgress.ts')).toMatch(/if \(s === 'processing'\) return 1;/);
     expect(page).not.toMatch(/\['processing', 'pending_owner_review'\]/);
     expect(page).not.toMatch(/We have checked your payment/);
   });

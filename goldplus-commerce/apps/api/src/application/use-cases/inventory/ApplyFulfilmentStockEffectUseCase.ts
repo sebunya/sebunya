@@ -3,8 +3,10 @@
  * case instead of an HTTP route.
  *
  *   READY_FOR_DISPATCH  → the reservation is used up: on-hand stock goes down.
- *   task CANCELLED      → held stock goes back on sale — unless the ORDER is
- *                         already dispatched, delivered or completed. Those
+ *   task CANCELLED      → held stock goes back on sale only when the ORDER is
+ *                         cancelled; an open order keeps its hold (a stray
+ *                         task was tidied). If the order is
+ *                         already dispatched, delivered or completed, those
  *                         goods have left the shop; releasing them put units
  *                         already gone back on sale. They are consumed instead.
  *   order closed        → an order closed without dispatch (processing →
@@ -60,6 +62,13 @@ export class ApplyFulfilmentStockEffectUseCase {
       // are gone, so the reservation is used up, never released. No "order
       // cancelled" email — the order was not cancelled.
       await this.isolated(orderId, 'consume', () => this.deps.inventory.consumeForOrder(orderId));
+      return;
+    }
+    if (orderStatus !== 'cancelled') {
+      // A stray task cancelled on an order still open to the customer (the case
+      // reinstatement exists for): the order still wants its goods, so its
+      // stock stays held and nobody is told the order was cancelled. Cancelling
+      // the ORDER releases its stock through the order transition.
       return;
     }
     await this.isolated(orderId, 'release', () => this.deps.inventory.releaseForOrder(orderId));
