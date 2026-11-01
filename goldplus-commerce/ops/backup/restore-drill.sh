@@ -10,6 +10,11 @@
 # production, and then compares: table count, and row counts of the five
 # largest live tables. The dump is up to a day older than live, so a restored
 # count may be lower, never higher, and never below DRILL_MIN_RATIO of live.
+# Tables that SHRINK overnight (outbox, sessions, OTP codes: purged after the
+# dump) are left out of that comparison: a restore with more of them than live
+# is normal, not a wrong dump. DRILL_VOLATILE_TABLES is the regex that names them.
+# Every failure, including a query that errors, goes through fail(), so the
+# result JSON always says ok:false rather than keeping a stale ok:true.
 # Any failure exits non-zero; systemd's OnFailure sends it to the owner.
 set -euo pipefail
 BACKUPS="${BACKUP_DIR:-/root/goldplus-db-backups}"
@@ -18,6 +23,7 @@ SSH_KEY="${OFFSITE_SSH_KEY:-/etc/goldplus/secrets/offsite_ed25519}"
 SSH_PORT="${OFFSITE_SSH_PORT:-23}"
 MIN_RATIO="${DRILL_MIN_RATIO:-0.90}"
 RESULT="${DRILL_RESULT:-/var/lib/goldplus-storage-steward/restore-drill.json}"
+VOLATILE="${DRILL_VOLATILE_TABLES:-(outbox|session|otp|verification_code|rate_limit)}"
 SOURCE="${1:-offsite}"
 
 STAMP=$(date -u +%Y%m%d-%H%M%S); NET=drill-$STAMP; DB=drill-db-$STAMP; WORK=$(mktemp -d /tmp/restore-drill.XXXXXX)
@@ -41,30 +47,34 @@ else
 fi
 echo "dump: $DUMP ($(stat -c %s "$DUMP" 2>/dev/null || stat -f %z "$DUMP") bytes)"
 
-docker network create "$NET" >/dev/null
-docker run -d --name "$DB" --network "$NET" -e POSTGRES_USER=drill -e POSTGRES_PASSWORD=drill -e POSTGRES_DB=goldplus postgres:16-alpine >/dev/null
+docker network create "$NET" >/dev/null || fail "could not create network $NET"
+docker run -d --name "$DB" --network "$NET" -e POSTGRES_USER=drill -e POSTGRES_PASSWORD=drill -e POSTGRES_DB=goldplus postgres:16-alpine >/dev/null || fail "could not start the drill database"
 ready() { docker exec -e PGPASSWORD=drill "$DB" psql -h 127.0.0.1 -U drill -d goldplus -tAc 'select 1' >/dev/null 2>&1; }
 ok=0; for i in $(seq 1 90); do if ready; then ok=$((ok+1)); [ $ok -ge 2 ] && break; else ok=0; fi; sleep 2; done
 [ $ok -ge 2 ] || fail "drill database never became ready"
-docker cp "$DUMP" "$DB":/tmp/drill.dump
+docker cp "$DUMP" "$DB":/tmp/drill.dump || fail "could not copy the dump into the drill database"
 # pg_restore's exit status is noise (ownership/extension warnings); the result is CHECKED.
 docker exec -e PGPASSWORD=drill "$DB" sh -c 'pg_restore -h 127.0.0.1 -U drill -d goldplus --no-owner --no-privileges /tmp/drill.dump' > "$WORK/restore.log" 2>&1 || true
 
 live()  { docker exec goldplus-commerce-postgres-1 sh -c "psql -U \$POSTGRES_USER -d \$POSTGRES_DB -tAc \"$1\""; }
 drill() { docker exec -e PGPASSWORD=drill "$DB" psql -h 127.0.0.1 -U drill -d goldplus -tAc "$1"; }
 Q_TABLES="select count(*) from information_schema.tables where table_schema='public'"
-LT=$(live "$Q_TABLES" | tr -d '[:space:]'); DT=$(drill "$Q_TABLES" | tr -d '[:space:]')
+LT=$(live "$Q_TABLES" | tr -d '[:space:]') || fail "could not count live tables"
+DT=$(drill "$Q_TABLES" | tr -d '[:space:]') || fail "could not count restored tables"
 echo "tables: live=$LT restored=$DT"
 [ "$DT" = "$LT" ] || fail "table count differs: live $LT, restored $DT"
 
-# the five largest live tables by rows, compared one by one
-TABLES=$(live "select relname from pg_stat_user_tables order by n_live_tup desc limit 5" | tr -d ' ' | grep . || true)
+# the five largest STABLE public tables by rows, schema-qualified, compared one by one
+# (the table count above is public-only, so this list is too)
+TABLES=$(live "select format('%I.%I', schemaname, relname) from pg_stat_user_tables where schemaname = 'public' and relname !~ '$VOLATILE' order by n_live_tup desc limit 5" | tr -d ' ' | grep . || true)
 [ -n "$TABLES" ] || fail "could not list live tables"
 checks=""
 for t in $TABLES; do
-  L=$(live "select count(*) from \"$t\"" | tr -d '[:space:]'); D=$(drill "select count(*) from \"$t\"" 2>/dev/null | tr -d '[:space:]' || echo "ERR")
+  L=$(live "select count(*) from $t" | tr -d '[:space:]') || fail "could not count live rows in $t"
+  D=$(drill "select count(*) from $t" 2>/dev/null | tr -d '[:space:]') || D=ERR
+  [[ "$L" =~ ^[0-9]+$ ]] || fail "live count for $t is not a number: $L"
   echo "  $t: live=$L restored=$D"
-  [ "$D" != "ERR" ] || fail "table $t missing in the restore"
+  [[ "$D" =~ ^[0-9]+$ ]] || fail "table $t missing in the restore"
   [ "$D" -le "$L" ] || fail "table $t has MORE rows restored ($D) than live ($L): wrong dump?"
   if [ "$L" -gt 0 ]; then
     awk -v d="$D" -v l="$L" -v r="$MIN_RATIO" 'BEGIN { exit !(d >= l * r) }' || fail "table $t restored $D of $L rows, below the $MIN_RATIO floor"

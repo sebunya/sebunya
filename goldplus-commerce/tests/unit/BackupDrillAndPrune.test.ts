@@ -121,6 +121,20 @@ describe('the restore drill proves the offsite copy becomes a working database',
     expect(drill).toMatch(/DRILL_MIN_RATIO:-0\.90/);
   });
 
+  it('leaves tables that shrink overnight out of the comparison, and names tables with their schema', () => {
+    expect(drill).toMatch(/DRILL_VOLATILE_TABLES:-\(outbox\|session\|otp/);
+    expect(drill).toMatch(/relname !~ '\$VOLATILE'/);
+    expect(drill).toMatch(/format\('%I\.%I', schemaname, relname\)[^\n]*schemaname = 'public'/);
+  });
+
+  it('every query that can fail goes through fail(), so the result JSON never stays ok:true', () => {
+    for (const line of drill.split('\n').filter((l) => /^\s*(LT|DT|L)=\$\((live|drill)/.test(l))) {
+      expect(line).toMatch(/\|\| fail "/);
+    }
+    expect(drill).toMatch(/docker network create "\$NET" >\/dev\/null \|\| fail/);
+    expect(drill).toMatch(/docker cp "\$DUMP"[^\n]*\|\| fail/);
+  });
+
   it('pulls the newest dump from the Storage Box by default, and can drill the local copy', () => {
     expect(drill).toMatch(/rsync -e "\$E" --timeout=600 "\$TARGET\/nightly\/\$NEWEST"/);
     expect(drill).toContain('--local');
