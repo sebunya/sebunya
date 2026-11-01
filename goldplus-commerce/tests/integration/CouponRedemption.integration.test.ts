@@ -158,4 +158,21 @@ suite('coupon inventory + redemption (real PostgreSQL, U1 AC3/AC8)', () => {
     expect(found?.id).toBe(couponId);
     expect(found?.maxRedemptions).toBe(3);
   });
+
+  it('a reversed redemption replayed on the same order takes a slot again, or is refused when none is left (2026-11 review)', async () => {
+    const couponId = await seedCoupon({ code: `REPLAY${Date.now().toString(36).toUpperCase()}`, maxRedemptions: 1 });
+    const orderId = await seedOrder();
+    expect((await repo.redeem({ couponId, orderId, customerIdentityHash: 'h', discountAmountUgx: 1000 })).ok).toBe(true);
+    expect((await repo.reverse(couponId, orderId)).reversed).toBe(true);
+    const other = await seedOrder();
+    expect((await repo.redeem({ couponId, orderId: other, customerIdentityHash: 'h2', discountAmountUgx: 1000 })).ok).toBe(true);
+    // The freed slot went to another order: the replay is refused, not reported as already redeemed.
+    expect(await repo.redeem({ couponId, orderId, customerIdentityHash: 'h', discountAmountUgx: 1000 })).toMatchObject({ ok: false, reason: 'COUPON_EXHAUSTED' });
+    expect((await couponRow(couponId)).redemption_count).toBe(1);
+    // With the slot free again, the replay re-activates the same row and counts it.
+    expect((await repo.reverse(couponId, other)).reversed).toBe(true);
+    expect(await repo.redeem({ couponId, orderId, customerIdentityHash: 'h', discountAmountUgx: 1000 })).toMatchObject({ ok: true, alreadyRedeemed: false });
+    expect((await couponRow(couponId)).redemption_count).toBe(1);
+    expect((await raw`select was_reversed from coupon_redemptions where coupon_id = ${couponId} and order_id = ${orderId}`)[0].was_reversed).toBe(false);
+  });
 });
