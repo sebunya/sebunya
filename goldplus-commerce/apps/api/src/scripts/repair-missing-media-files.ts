@@ -15,6 +15,8 @@ import { rowsOf } from './lib/scriptHelpers';
  * lost (see requireMediaVolume for how that happens). Asset paths are derived
  * from the file's sha256, so the ORIGINAL bytes are matched to their asset by
  * checksum and rewritten at the recorded storage key, renditions included;
+ * when the original is still on disk but a recorded rendition is not, the
+ * renditions alone are rebuilt from it;
  * nothing in the database changes. Files that are not a known asset are
  * reported and left alone. Ends with the list of assets STILL missing, so the
  * owner knows which originals to find.
@@ -31,20 +33,27 @@ async function main(): Promise<void> {
   const variants = new SharpVariantGenerator();
 
   const files = readdirSync(dir).filter((f) => statSync(join(dir, f)).isFile() && !f.startsWith('.')).sort();
-  let repaired = 0, present = 0, unknown = 0;
+  let repaired = 0, renditionsOnly = 0, present = 0, unknown = 0;
   for (const file of files) {
     const buffer = readFileSync(join(dir, file));
     const asset = await r.mediaLibraryRepo.findByChecksum(createHash('sha256').update(buffer).digest('hex'));
     if (!asset) { unknown += 1; console.log(`  NOT AN ASSET ${file}`); continue; }
-    if (existsSync(join(root, asset.storageKey))) { present += 1; continue; }
-    console.log(`  ${dryRun ? 'would restore' : 'restoring'} ${asset.storageKey} ← ${file}`);
-    if (dryRun) continue;
+    const originalOnDisk = existsSync(join(root, asset.storageKey));
+    // The renditions are what the storefront serves: an asset whose original survived but whose
+    // webp/avif files were lost is still a broken image, so they are rebuilt from the original too.
+    const recorded = rowsOf(await db.execute(sql`select storage_key from media_asset_variants where asset_id = ${asset.id}`));
+    const missingRenditions = recorded.filter((v) => !existsSync(join(root, String(v.storage_key)))).length;
+    if (originalOnDisk && missingRenditions === 0) { present += 1; continue; }
+    const what = originalOnDisk ? `${missingRenditions} rendition(s) of` : 'original and renditions of';
+    console.log(`  ${dryRun ? 'would restore' : 'restoring'} ${what} ${asset.storageKey} ← ${file}`);
+    if (dryRun) { if (originalOnDisk) renditionsOnly += 1; continue; }
     const assetDir = dirname(asset.storageKey);
-    await storage.saveAsset(assetDir, basename(asset.storageKey), buffer);
+    if (!originalOnDisk) await storage.saveAsset(assetDir, basename(asset.storageKey), buffer);
+    else renditionsOnly += 1;
     await variants.generate({ buffer, mime: asset.mime, checksum: asset.checksum, saveVariant: async (key, out) => { const s = await storage.saveAsset(assetDir, key, out); return { url: s.url, storageKey: s.storageKey }; } });
     repaired += 1;
   }
-  console.log(`${files.length} files: restored ${repaired}, already on disk ${present}, not an asset ${unknown}${dryRun ? ' (DRY RUN)' : ''}`);
+  console.log(`${files.length} files: restored ${repaired} (${renditionsOnly} renditions only), complete on disk ${present}, not an asset ${unknown}${dryRun ? ' (DRY RUN)' : ''}`);
 
   const still = rowsOf(await db.execute(sql`select storage_key, filename from media_assets order by created_at`)).filter((a) => !existsSync(join(root, String(a.storage_key))));
   console.log(`assets still missing on disk: ${still.length}`);
