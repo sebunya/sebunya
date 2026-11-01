@@ -3,7 +3,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import AccountNav from '../../components/AccountNav.astro';
 import ProductCard from '../../components/ProductCard.astro';
 import { apiBase } from '../../lib/api';
-import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
+import { readSessionToken, clearSignInCookies } from '../../lib/session';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 
 /** Saved for later (gap analysis #6): the signed-in customer's list, as each product is sold today. */
@@ -15,7 +15,7 @@ let problem = '';
 try {
   const res = await fetch(`${apiBase}/account/saved`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(6000) });
   if (res.status === 401) {
-    Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' });
+    clearSignInCookies(Astro.cookies);
     return Astro.redirect('/login?returnTo=/account/saved', 303);
   }
   const json = res.ok ? ((await res.json()) as ApiResponse<ProductPublicDto[]>) : null;

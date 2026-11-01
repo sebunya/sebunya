@@ -42,6 +42,13 @@ export function tokenSecondsLeft(token: string, nowMs = Date.now()): number | nu
   }
 }
 
+/** Seconds the refresh credential has left, or null when the expiry is missing or unreadable. */
+export function refreshMaxAgeSeconds(refreshExpiresAt: string | undefined, nowMs = Date.now()): number | null {
+  if (!refreshExpiresAt) return null;
+  const seconds = Math.floor((Date.parse(refreshExpiresAt) - nowMs) / 1000);
+  return Number.isFinite(seconds) ? Math.max(60, seconds) : null;
+}
+
 type CookieJar = { set(name: string, value: string, opts: Record<string, unknown>): void; delete(name: string, opts: Record<string, unknown>): void };
 
 /**
@@ -51,9 +58,7 @@ type CookieJar = { set(name: string, value: string, opts: Record<string, unknown
  */
 export function setSignInCookies(cookies: CookieJar, data: { token: string; refreshToken?: string; refreshExpiresAt?: string }): void {
   const secure = import.meta.env.PROD;
-  const refreshMaxAge = data.refreshExpiresAt
-    ? Math.max(60, Math.floor((Date.parse(data.refreshExpiresAt) - Date.now()) / 1000))
-    : null;
+  const refreshMaxAge = refreshMaxAgeSeconds(data.refreshExpiresAt);
   cookies.set(COOKIE_NAME, data.token, { path: '/', httpOnly: true, sameSite: 'lax', secure, maxAge: refreshMaxAge ?? 604800 });
   if (data.refreshToken && refreshMaxAge) {
     cookies.set(REFRESH_COOKIE_NAME, data.refreshToken, { path: '/', httpOnly: true, sameSite: 'lax', secure, maxAge: refreshMaxAge });
@@ -63,9 +68,7 @@ export function setSignInCookies(cookies: CookieJar, data: { token: string; refr
 /** The same cookies as raw Set-Cookie values, for routes that build their own Response. */
 export function signInCookieHeaders(data: { token: string; refreshToken?: string; refreshExpiresAt?: string }): string[] {
   const secure = import.meta.env.PROD ? '; Secure' : '';
-  const refreshMaxAge = data.refreshExpiresAt
-    ? Math.max(60, Math.floor((Date.parse(data.refreshExpiresAt) - Date.now()) / 1000))
-    : null;
+  const refreshMaxAge = refreshMaxAgeSeconds(data.refreshExpiresAt);
   const out = [`${COOKIE_NAME}=${data.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${refreshMaxAge ?? 604800}${secure}`];
   if (data.refreshToken && refreshMaxAge) {
     out.push(`${REFRESH_COOKIE_NAME}=${data.refreshToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${refreshMaxAge}${secure}`);

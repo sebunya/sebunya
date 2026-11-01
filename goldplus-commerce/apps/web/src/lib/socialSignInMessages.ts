@@ -33,5 +33,5 @@ const GENERAL = 'We could not complete that sign-in. Please try again, or use yo
 export function socialSignInMessage(code: string | null | undefined): string | null {
   if (!code) return null;
   const key = code.trim().toLowerCase();
-  return MESSAGES[key] ?? GENERAL;
+  return Object.hasOwn(MESSAGES, key) ? MESSAGES[key] : GENERAL;
 }

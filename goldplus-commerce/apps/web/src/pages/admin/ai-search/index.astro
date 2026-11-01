@@ -2,7 +2,7 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import AiSearchNav from "../../../components/admin/AiSearchNav.astro";
 import { readSessionToken } from "../../../lib/session";
-import { aivGet, aivPost, providerLabel, rate, delta, when, usd, RUN_STATE, DEFAULT_PROJECT } from "../../../lib/adminAiVisibility";
+import { aivGet, aivPost, providerLabel, rate, delta, when, usd, RUN_STATE, DEFAULT_PROJECT, parseRecField } from "../../../lib/adminAiVisibility";
 
 /** AI Search overview: what changed, why, what needs attention, what to do. */
 const token = readSessionToken(Astro.request);
@@ -20,10 +20,14 @@ if (Astro.request.method === "POST") {
     if (r.ok) notice = r.data.created ? `Run ${RUN_STATE[r.data.run.status]?.toLowerCase() ?? r.data.run.status}.` : "That run was already requested this hour; showing it below.";
     else formError = r.message;
   } else if (intent === "create-action") {
-    const rec = JSON.parse(String(form.get("rec") ?? "{}"));
-    const r = await aivPost<{ id: string }>(token, `${P}/actions`, { category: "CONTENT_CHANGE", title: rec.title, reason: rec.why, mechanism: rec.mechanism, targetPage: rec.targetPage, limitations: rec.limitations, confidence: rec.confidence, evidence: rec.evidence, expectedImpact: rec.verification });
-    if (r.ok) return Astro.redirect(`/admin/ai-search/actions?id=${r.data.id}${project !== DEFAULT_PROJECT ? `&project=${project}` : ""}`, 303);
-    formError = r.message;
+    const rec = parseRecField(form.get("rec"));
+    if (!rec) {
+      formError = "That recommendation could not be read. Reload the page and try again.";
+    } else {
+      const r = await aivPost<{ id: string }>(token, `${P}/actions`, { category: "CONTENT_CHANGE", title: rec.title, reason: rec.why, mechanism: rec.mechanism, targetPage: rec.targetPage, limitations: rec.limitations, confidence: rec.confidence, evidence: rec.evidence, expectedImpact: rec.verification });
+      if (r.ok) return Astro.redirect(`/admin/ai-search/actions?id=${encodeURIComponent(r.data.id)}${project !== DEFAULT_PROJECT ? `&project=${encodeURIComponent(project)}` : ""}`, 303);
+      formError = r.message;
+    }
   }
 }
 
