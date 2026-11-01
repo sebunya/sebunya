@@ -141,6 +141,24 @@ describe('LegalCmsUseCase governance', () => {
     expect([...repo.policies.values()].find((p) => p.key === 'privacy')?.currentVersionId).toBe(v.id);
   });
 
+  it('two scheduled versions that both fell due: the newer stays current on every later read', async () => {
+    let clock = new Date('2026-08-03T12:00:00Z');
+    const { useCase, repo } = setup(() => clock);
+    const schedule = async (at: string) => {
+      const v = await draft(useCase);
+      await useCase.submitForReview(v.id);
+      await useCase.approve(v.id, 'reviewer-2');
+      await useCase.publish(v.id, new Date(at));
+      return v;
+    };
+    const older = await schedule('2026-08-04T00:00:00Z');
+    const newer = await schedule('2026-08-05T00:00:00Z');
+    clock = new Date('2026-08-06T00:00:00Z');
+    expect((await useCase.resolveCurrent('privacy'))?.id).toBe(newer.id);
+    expect((await useCase.resolveCurrent('privacy'))?.id).toBe(newer.id);
+    expect(repo.versions.get(older.id)?.status).toBe('PUBLISHED');
+  });
+
   it('rollback re-points at a previously published version without rewriting history', async () => {
     const { useCase, repo } = setup();
     const v1 = await draft(useCase);

@@ -78,6 +78,9 @@ describe('compatibility workflow: maker/checker and publication', () => {
     const byMaker = transitionClaim(submitted, 'PUBLISH', 'maker', { allowAwaiting: true });
     expect(byMaker.ok).toBe(false);
     if (!byMaker.ok) expect(byMaker.code).toBe('MAKER_CHECKER');
+    // Whoever SUBMITTED it is a maker too, even when someone else entered it.
+    const bySubmitter = transitionClaim({ ...submitted, createdBy: 'importer' }, 'PUBLISH', 'maker', { allowAwaiting: true });
+    expect(bySubmitter.ok).toBe(false);
     // A verified claim is unaffected, and a draft still cannot skip submission.
     expect(transitionClaim({ ...submitted, evidenceStatus: 'FIT_TESTED' }, 'PUBLISH', 'publisher', { allowAwaiting: true }).ok).toBe(false);
     expect(transitionClaim(base, 'PUBLISH', 'publisher', { allowAwaiting: true }).ok).toBe(false);

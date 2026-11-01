@@ -266,14 +266,14 @@ export class GetRecommendationsUseCase {
         // it now); penalised elsewhere. Seen-recently: a bounded penalty —
         // demotion, never disappearance, because relevance still outranks
         // novelty (§14).
+        const suppressPurchased = ["product_related", "complete_setup", "cart_addon"].includes(input.placement);
+        if (suppressPurchased) {
+          // The pin stage re-inserts from postRuleCandidates; a product the
+          // customer just bought must not come back through a pin.
+          postRuleCandidates = postRuleCandidates.filter((c) => !purchased.has(c.productId));
+        }
         candidates = candidates
-          .filter(
-            (c) =>
-              !(
-                purchased.has(c.productId) &&
-                ["product_related", "complete_setup", "cart_addon"].includes(input.placement)
-              ),
-          )
+          .filter((c) => !(suppressPurchased && purchased.has(c.productId)))
           .map((c) => {
             let penalty = 0;
             if (shown.has(c.productId)) penalty += 30;
@@ -375,6 +375,7 @@ export class GetRecommendationsUseCase {
 
     const pool = new Map<string, RecommendationCandidate>();
     let bestsellerRanks: Map<string, { rank: number }> | undefined;
+    let recentBestsellerRanks = false;
     let bestsellerSampleSize = 0;
     let trendingRanks: Map<string, { rank: number }> | undefined;
     let trendingSampleSize = 0;
@@ -398,9 +399,15 @@ export class GetRecommendationsUseCase {
         const result = await this.gatherFromSource(source, input, contextProduct, excludeIds, limit, profileId);
         reports.push({ source, state: result.state, candidates: result.products.length });
 
-        if (source === "RECENT_PAID_ORDER_VELOCITY" || source === "GLOBAL_BESTSELLER" || source === "CATEGORY_BESTSELLER") {
+        // "Recently popular" is a 30-day claim. The 30-day ranks win; all-time
+        // bestseller ranks only fill in when there are none, and then they may
+        // score but never claim (their sample is not counted toward the claim).
+        if (source === "RECENT_PAID_ORDER_VELOCITY" && result.bestsellerRanks) {
+          bestsellerRanks = result.bestsellerRanks;
+          recentBestsellerRanks = true;
+          bestsellerSampleSize = result.bestsellerSampleSize ?? 0;
+        } else if ((source === "GLOBAL_BESTSELLER" || source === "CATEGORY_BESTSELLER") && !recentBestsellerRanks) {
           bestsellerRanks = result.bestsellerRanks ?? bestsellerRanks;
-          bestsellerSampleSize = Math.max(bestsellerSampleSize, result.bestsellerSampleSize ?? 0);
         }
         if (source === "RECENT_ENGAGEMENT_VELOCITY") {
           trendingRanks = result.trendingRanks;

@@ -10,9 +10,9 @@ import { RatingAggregate, computeRatingAggregate } from '../../../domain/reviews
 const PHOTO_IDS = sql<string[]>`coalesce((select array_agg(p.id::text order by p.created_at) from review_photos p where p.review_id = ${reviews.id}), '{}')`;
 
 export class DrizzleReviewRepository implements IReviewRepository {
-  async resolveOrderLine(orderItemId: string): Promise<{ orderPhone: string; orderStatus: string } | null> {
+  async resolveOrderLine(orderItemId: string): Promise<{ orderPhone: string; orderStatus: string; productId: string } | null> {
     const rows = await db
-      .select({ orderPhone: orders.customerPhone, orderStatus: orders.status })
+      .select({ orderPhone: orders.customerPhone, orderStatus: orders.status, productId: orderItems.productId })
       .from(orderItems)
       .innerJoin(orders, eq(orders.id, orderItems.orderId))
       .where(eq(orderItems.id, orderItemId))

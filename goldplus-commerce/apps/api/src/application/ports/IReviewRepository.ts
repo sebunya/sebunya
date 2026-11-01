@@ -30,7 +30,7 @@ export interface PublicReview {
 
 export interface IReviewRepository {
   /** The order line's owning phone and order status, for verification. */
-  resolveOrderLine(orderItemId: string): Promise<{ orderPhone: string; orderStatus: string } | null>;
+  resolveOrderLine(orderItemId: string): Promise<{ orderPhone: string; orderStatus: string; productId: string } | null>;
   /** Insert a review. Returns { conflict: true } if this identity already reviewed
    * this product (or the order line is already reviewed) — one review per identity
    * per product is enforced at the DB boundary. */

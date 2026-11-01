@@ -69,4 +69,26 @@ describe('UploadProductImagesUseCase — Focus 4: library + gallery, no second s
     expect(result.every((r) => r.outcome === 'REJECTED' && /Rejected:/.test(r.message ?? ''))).toBe(true);
     expect(gallery.assignNextFree).not.toHaveBeenCalled();
   });
+
+  it('a refusal after an earlier photo went live is reported per file, not thrown for the whole batch', async () => {
+    const library = libraryStoring(['a1', 'a2']);
+    const gallery = {
+      assignAsCover: vi.fn(),
+      assignNextFree: vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, map: [{ slot: 1, assetId: 'a1' }] })
+        .mockResolvedValueOnce({ ok: false, code: 'STALE_REVISION', message: 'The gallery changed; reload.' }),
+    };
+    const uc = new UploadProductImagesUseCase(library, gallery as never);
+    const result = await uc.execute({ productId: 'p1', files: [file('one.jpg'), file('two.jpg')], actorId: 'admin-1' });
+    expect(result.map((r) => r.outcome)).toEqual(['COVER', 'REJECTED']);
+    expect(result[1].message).toBe('The gallery changed; reload.');
+  });
+
+  it('a refusal before anything was stored still fails the request', async () => {
+    const library = libraryStoring(['a1']);
+    const gallery = { assignAsCover: vi.fn(), assignNextFree: vi.fn().mockResolvedValue({ ok: false, code: 'NOT_FOUND', message: 'No such product.' }) };
+    const uc = new UploadProductImagesUseCase(library, gallery as never);
+    await expect(uc.execute({ productId: 'p1', files: [file('one.jpg')], actorId: 'admin-1' })).rejects.toThrow('No such product.');
+  });
 });

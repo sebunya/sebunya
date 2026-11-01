@@ -13,7 +13,7 @@ function fakeRepo(orderStatus: string) {
   const inserted: InsertReviewInput[] = [];
   const lines: Record<string, { id: string; productId: string }> = { [P1]: { id: 'line-1', productId: P1 }, [P2]: { id: 'line-2', productId: P2 } };
   const repo: IReviewRepository = {
-    async resolveOrderLine(id) { return Object.values(lines).some((l) => l.id === id) ? { orderPhone: PHONE, orderStatus } : null; },
+    async resolveOrderLine(id) { const l = Object.values(lines).find((x) => x.id === id); return l ? { orderPhone: PHONE, orderStatus, productId: l.productId } : null; },
     async insertReview(input) {
       if (inserted.some((r) => r.productId === input.productId && r.customerIdentityHash === input.customerIdentityHash)) return { conflict: true };
       inserted.push(input); return { id: `rev-${inserted.length}` };
@@ -79,5 +79,14 @@ describe('customer reviews', () => {
     const uc = new GetProductReviewsUseCase(repo);
     expect((await uc.execute(P1)).aggregate).toMatchObject({ count: 2, average: 4.5 });
     expect(await uc.execute(P2)).toEqual({ aggregate: null, reviews: [] });
+  });
+
+  it('an order line for a different product cannot make a review a verified purchase', async () => {
+    const { repo, inserted } = fakeRepo('delivered');
+    const uc = new SubmitReviewUseCase(repo, 'pepper');
+    // line-2 is the charger (P2); using it to review the battery (P1) is refused.
+    expect(await uc.execute({ productId: P1, orderItemId: 'line-2', customerPhone: PHONE, rating: 5 })).toEqual({ ok: false, reason: 'ORDER_LINE_NOT_FOUND' });
+    expect(inserted).toHaveLength(0);
+    expect(await uc.execute({ productId: P2, orderItemId: 'line-2', customerPhone: PHONE, rating: 5 })).toMatchObject({ ok: true, isVerifiedPurchase: true });
   });
 });

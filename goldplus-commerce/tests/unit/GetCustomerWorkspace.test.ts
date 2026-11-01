@@ -67,4 +67,15 @@ describe('the customer workspace aggregates what already exists', () => {
     expect(inboxReads).toBe(0);
     expect((await uc.execute(U1, new Date(), { includeSupport: true }))?.support.map((t) => t.id)).toEqual(['t1']);
   });
+
+  it('a ticket filed with only a phone reaches the workspace once that phone is verified (and not before)', async () => {
+    const asked: any[] = [];
+    const inbox = [{ ticket: { id: 't-phone', phone: '+256770123456', subject: 'No email', status: 'open', priority: 'low', createdAt: d('2026-03-07') }, sla: { overdue: false } }];
+    const verified = build({ asked, inbox, user: { id: U1, email: 'a@b.c', phone: '0770 123456', isActive: true, createdAt: d('2026-01-01'), phoneVerifiedAt: d('2026-01-02') } });
+    await verified.execute(U1, d('2026-04-01'), { includeSupport: true });
+    expect(asked[0]).toMatchObject({ customerId: U1, email: 'a@b.c', phone: '+256770123456' });
+    const unverified: any[] = [];
+    await build({ asked: unverified, inbox, user: { id: U1, email: 'a@b.c', phone: '0770 123456', isActive: true, createdAt: d('2026-01-01') } }).execute(U1, d('2026-04-01'), { includeSupport: true });
+    expect(unverified[0].phone).toBeUndefined();
+  });
 });

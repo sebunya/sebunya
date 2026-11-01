@@ -52,8 +52,11 @@ export function mayApprove(input: { approverKind: ActorKind; approverId: string;
 /** Whether an action may be marked executed by this actor. */
 export function mayExecute(input: { status: ActionStatus; risk: RiskClass; actorKind: ActorKind }): ApprovalDecision {
   if (input.status !== 'APPROVED') return { ok: false, reason: 'An action runs only after it has been approved.' };
-  if ((input.risk === 'PUBLISH' || input.risk === 'DESTRUCTIVE') && input.actorKind !== 'USER') {
-    return { ok: false, reason: 'Publishing and destructive actions are carried out by a person, never an agent.' };
+  // Machines may propose and PREPARE only (CLAUDE.md, AI visibility rules). A measurement or report prepares
+  // evidence and changes nothing; every other class (tracking config, edits, publishing, destructive) changes the
+  // site or the KPIs and is carried out by a person.
+  if (input.actorKind !== 'USER' && input.risk !== 'MEASURE') {
+    return { ok: false, reason: 'Only measurements and reports may be run by an agent; every other approved action is carried out by a person.' };
   }
   return { ok: true };
 }
@@ -61,7 +64,9 @@ export function mayExecute(input: { status: ActionStatus; risk: RiskClass; actor
 /** Before/after verification outcome — before/after only, so never causal. */
 export function verificationVerdict(baseline: { cited: number; eligible: number }, after: { cited: number; eligible: number }): { status: 'VERIFIED' | 'NOT_VERIFIED'; summary: string } {
   if (after.eligible === 0) return { status: 'NOT_VERIFIED', summary: 'No citation-capable answers were collected after the change; nothing can be concluded.' };
-  const b = baseline.eligible ? baseline.cited / baseline.eligible : 0;
+  // An empty baseline is "no data", never 0%: treating it as 0% made any single citation after the change VERIFIED.
+  if (baseline.eligible === 0) return { status: 'NOT_VERIFIED', summary: 'No citation-capable answers were collected before the change, so there is no baseline to compare against; nothing can be concluded.' };
+  const b = baseline.cited / baseline.eligible;
   const a = after.cited / after.eligible;
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   return a > b

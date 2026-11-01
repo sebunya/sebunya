@@ -211,13 +211,25 @@ export class LegalCmsUseCase {
     const mine = all.find((p) => p.key === policyKey);
     if (!mine) return null;
     const now = this.now().getTime();
-    const due = mine.versions
+    // Every due version is promoted in effective order, in one pass. Promoting only the newest left an older due
+    // version SCHEDULED, and the next read promoted it over the newer one. The current pointer moves only to a
+    // version that takes effect later than the one already current.
+    const dueAll = mine.versions
       .filter((v) => v.status === 'SCHEDULED' && v.effectiveAt && v.effectiveAt.getTime() <= now)
-      .sort((a, b) => (b.effectiveAt!.getTime() - a.effectiveAt!.getTime()))[0];
-    if (due) {
-      await this.repo.setVersionStatus(due.id, { status: 'PUBLISHED', publishedAt: this.now() });
-      await this.repo.setCurrentVersion(policy.id, due.id);
-      return this.repo.findVersion(due.id);
+      .sort((a, b) => a.effectiveAt!.getTime() - b.effectiveAt!.getTime());
+    if (dueAll.length > 0) {
+      const currentNow = policy.currentVersionId ? mine.versions.find((v) => v.id === policy.currentVersionId) : undefined;
+      let currentAt = currentNow && currentNow.status === 'PUBLISHED' && currentNow.effectiveAt ? currentNow.effectiveAt.getTime() : -Infinity;
+      let currentId = currentNow && currentNow.status === 'PUBLISHED' ? currentNow.id : null;
+      for (const due of dueAll) {
+        await this.repo.setVersionStatus(due.id, { status: 'PUBLISHED', publishedAt: this.now() });
+        if (due.effectiveAt!.getTime() >= currentAt) {
+          currentAt = due.effectiveAt!.getTime();
+          currentId = due.id;
+        }
+      }
+      if (currentId && currentId !== policy.currentVersionId) await this.repo.setCurrentVersion(policy.id, currentId);
+      return currentId ? this.repo.findVersion(currentId) : null;
     }
     if (!policy.currentVersionId) return null;
     const current = await this.repo.findVersion(policy.currentVersionId);

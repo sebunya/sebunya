@@ -52,7 +52,7 @@ function harness(over: {
     validLiveRunCount: async () => over.validLiveRuns ?? 5,
     runBackfill: async (w) => { rec.backfills.push({ windows: w.length }); return { windowsLoaded: w.length }; },
     recordGatedRun: async (g) => { rec.gated.push({ readiness: g.readiness, phase: g.phase }); },
-    latestSourceDate: async () => (over.latestSourceDate === undefined ? '2026-08-13' : over.latestSourceDate),
+    latestSourceDate: async () => (over.latestSourceDate === undefined ? '2026-08-11' : over.latestSourceDate),
     entityWindows: async () => {
       if (over.throwOn === 'entityWindows') throw new Error('provider exploded');
       return over.windows ?? [];
@@ -118,9 +118,9 @@ describe('a clean run is silent and still recorded', () => {
 
 describe('provider latency never becomes an incident', () => {
   it('draws no comparison while the source window is still settling', async () => {
-    // Two days behind: a 92% "collapse" that is really back-fill latency.
+    // Data newer than the sync hold-back: a 92% "collapse" that is really back-fill latency.
     const { uc, rec } = harness({
-      latestSourceDate: '2026-08-11',
+      latestSourceDate: '2026-08-12',
       windows: [{ entity: '/power', baselineClicks: 5000, currentClicks: 400 }],
     });
     const r = await uc.execute();
@@ -408,5 +408,16 @@ describe('the agent establishes context before it judges anything', () => {
     const a = await active.uc.execute();
     expect(a.phase).toBe('OBSERVE_ONLY_ACTIVE');
     expect(a.materialChanges).toBe(1);
+  });
+});
+
+describe('the signal key survives the daily source date', () => {
+  it('two runs on different source dates address the same signal and incident', async () => {
+    const a = harness({ latestSourceDate: '2026-08-11', windows: bigDrop });
+    await a.uc.execute();
+    const b = harness({ latestSourceDate: '2026-08-12', windows: bigDrop });
+    await b.uc.execute();
+    expect(a.rec.saved[0].key).toBe(b.rec.saved[0].key);
+    expect(a.rec.saved[0].key).not.toContain('2026-08');
   });
 });

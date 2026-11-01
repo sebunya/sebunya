@@ -36,6 +36,23 @@ describe('self-service returns (gap #8)', () => {
     expect(await setup(200).uc.execute(order(), ask({ reason: 'faulty' }))).toMatchObject({ ok: true });
   });
 
+  it('prototype names are not reasons or preferences', async () => {
+    const { uc, opened } = setup(1);
+    expect(await uc.execute(order(), ask({ reason: 'toString' }))).toEqual({ ok: false, reason: 'BAD_REASON' });
+    expect(await uc.execute(order(), ask({ preference: 'constructor' }))).toEqual({ ok: false, reason: 'BAD_PREFERENCE' });
+    expect(opened).toHaveLength(0);
+  });
+
+  it('a change of mind with no recorded delivery date reaches staff flagged as unchecked, never silently in-window', async () => {
+    const { uc, opened } = setup(null);
+    expect(await uc.execute(order(), ask({ reason: 'changed_mind', detail: '' }))).toMatchObject({ ok: true });
+    expect(opened[0].detail).toMatch(/CHECK FIRST: the 14-day change-of-mind window could not be checked/);
+    expect(opened[0].proposedAction).toMatchObject({ changeOfMindWindowChecked: false });
+    const dated = setup(3);
+    await dated.uc.execute(order(), ask({ reason: 'changed_mind', detail: '' }));
+    expect(dated.opened[0].proposedAction).toMatchObject({ changeOfMindWindowChecked: true });
+  });
+
   it('refuses what the policy does not cover', async () => {
     const { uc, opened } = setup(1);
     expect(await uc.execute(order('dispatched'), ask())).toEqual({ ok: false, reason: 'NOT_DELIVERED' });

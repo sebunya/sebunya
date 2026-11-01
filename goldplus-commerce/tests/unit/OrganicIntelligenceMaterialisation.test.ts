@@ -199,6 +199,7 @@ function harness(over: {
   dependencies?: Partial<Record<string, any>>;
   answerDrafts?: any[];
   answerHashes?: Map<string, string>;
+  cannibalisationPrior?: Map<string, { hash: string; persistence: number }>;
 } = {}) {
   const rec = {
     upserts: [] as Array<{ key: string; isNew: boolean }>,
@@ -283,7 +284,7 @@ function harness(over: {
     loadMembershipKeys: async () => over.membershipKeys ?? new Set<string>(),
     loadCompetingUrls: async () => over.competingUrls ?? new Map(),
     upsertCannibalisation: async (i) => { rec.cannibalisation.push(i.classification); return { changed: true }; },
-    loadCannibalisationHashes: async () => new Map(),
+    loadCannibalisationHashes: async () => over.cannibalisationPrior ?? new Map(),
     upsertContentIntelligence: async (i) => { rec.content.push({ key: i.contentKey, classification: i.classification }); return { changed: true }; },
     loadContentHashes: async () => new Map(),
     upsertActionRequest: async (i) => {
@@ -587,7 +588,7 @@ describe('the engines that were built but never ran now actually run', () => {
   });
 
   it('classifies content as INSUFFICIENT_EVIDENCE rather than THIN when it has no content signal', async () => {
-    const url: EntityCandidate = { ...candidate(), entityType: 'URL', entityId: '/probe-page' };
+    const url: EntityCandidate = { ...candidate(), entityType: 'URL', entityId: '/probe-page', evidenceStates: { ...candidate().evidenceStates, CONTENT: 'UNKNOWN' } };
     const { m, rec } = harness({
       candidates: [url],
       changes: [{ source: 'CONTENT', entityId: '/probe-page', changeType: 'UPDATED' }],
@@ -598,6 +599,18 @@ describe('the engines that were built but never ran now actually run', () => {
     expect(rec.content).toHaveLength(1);
     // THIN is a measurement; without content evidence it would be a fabrication.
     expect(rec.content[0].classification).toBe('INSUFFICIENT_EVIDENCE');
+  });
+
+  it('a URL WITH content evidence is classified (the dimension is CONTENT, not CONTENT_DEPTH)', async () => {
+    const url: EntityCandidate = { ...candidate(), entityType: 'URL', entityId: '/probe-page' };
+    const { m, rec } = harness({
+      candidates: [url],
+      changes: [{ source: 'CONTENT', entityId: '/probe-page', changeType: 'UPDATED' }],
+      universe: [{ entityType: 'URL', entityId: '/probe-page' }],
+    });
+    await m.execute('INCREMENTAL');
+    expect(rec.content).toHaveLength(1);
+    expect(rec.content[0].classification).not.toBe('INSUFFICIENT_EVIDENCE');
   });
 });
 
@@ -992,5 +1005,49 @@ describe('connecting Search Console enriches opportunities rather than replacing
     });
     await m.execute('INCREMENTAL');
     expect(rec.actionRequests.every((a) => a.state !== 'PROPOSED')).toBe(true);
+  });
+});
+
+describe('review fixes: persistence, preconditions', () => {
+  const twoUrls = () => new Map([['cl:samsung-battery', [
+    { url: '/a', impressions: 400, clicks: 20, intent: 'COMMERCIAL', ownerType: 'PRODUCT', canonicalTarget: null, contentSimilarity: null, lifecycleActive: true, providerObserved: true },
+    { url: '/b', impressions: 300, clicks: 10, intent: 'COMMERCIAL', ownerType: 'PRODUCT', canonicalTarget: null, contentSimilarity: null, lifecycleActive: true, providerObserved: true },
+  ]]]);
+  const universe = { queries: [{ raw: 'samsung battery', source: 'GSC', observedAt: null, isBackfill: false }], entities: [] };
+
+  it('the first sighting is variance; a pattern seen on a previous run is judged for real', async () => {
+    const first = harness({ queryUniverse: universe, competingUrls: twoUrls() });
+    await first.m.execute('INCREMENTAL');
+    expect(first.rec.cannibalisation).toEqual(['TEMPORARY_RANKING_VARIANCE']);
+
+    const second = harness({
+      queryUniverse: universe, competingUrls: twoUrls(),
+      cannibalisationPrior: new Map([['cl:samsung-battery::TEMPORARY_RANKING_VARIANCE', { hash: 'x', persistence: 1 }]]),
+    });
+    await second.m.execute('INCREMENTAL');
+    expect(second.rec.cannibalisation).toHaveLength(1);
+    expect(second.rec.cannibalisation[0]).not.toBe('TEMPORARY_RANKING_VARIANCE');
+  });
+
+  it('an unchanged, persisted finding is not rewritten', async () => {
+    const { cannibalisationHash } = await import('../../apps/api/src/application/use-cases/seo-growth/OrganicIntelligenceMaterialiser');
+    const probe = harness({ queryUniverse: universe, competingUrls: twoUrls(), cannibalisationPrior: new Map([['cl:samsung-battery::TEMPORARY_RANKING_VARIANCE', { hash: 'x', persistence: 1 }]]) });
+    let body: any = null;
+    probe.ports.upsertCannibalisation = async (i: any) => { body = i; return { changed: true }; };
+    await probe.m.execute('INCREMENTAL');
+    const again = harness({ queryUniverse: universe, competingUrls: twoUrls(), cannibalisationPrior: new Map([
+      ['cl:samsung-battery::TEMPORARY_RANKING_VARIANCE', { hash: 'x', persistence: 1 }],
+      [body.findingKey, { hash: cannibalisationHash(body), persistence: 2 }],
+    ]) });
+    await again.m.execute('INCREMENTAL');
+    expect(again.rec.cannibalisation).toHaveLength(0);
+  });
+
+  it('only OPPORTUNITY_MATERIAL can be established here; editorial and human approvals never are', async () => {
+    const { establishedPreconditions } = await import('../../apps/api/src/application/use-cases/seo-growth/OrganicIntelligenceMaterialiser');
+    const q = new Set(['NOW', 'NEXT']);
+    expect(establishedPreconditions(['FACTUAL_GROUNDING', 'EDITORIAL_APPROVAL'], { priorityBucket: 'NOW', confidence: 'HIGH' }, q)).toEqual([]);
+    expect(establishedPreconditions(['OPPORTUNITY_MATERIAL'], { priorityBucket: 'NOW', confidence: 'HIGH' }, q)).toEqual(['OPPORTUNITY_MATERIAL']);
+    expect(establishedPreconditions(['OPPORTUNITY_MATERIAL'], { priorityBucket: 'NOW', confidence: 'LOW' }, q)).toEqual([]);
   });
 });

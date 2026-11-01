@@ -11,7 +11,7 @@ import {
 } from '../../application/use-cases/seo-growth/LandingPageEntityResolver';
 import { projectObservationsToQueries } from '../../application/use-cases/seo-growth/GscQueryProjection';
 import {
-  OrganicIntelligenceMaterialiser,
+  OrganicIntelligenceMaterialiser, cannibalisationHash,
   type MaterialiserPorts, type MaterialisationMode, type EntityCandidate, type MaterialisationResult,
 } from '../../application/use-cases/seo-growth/OrganicIntelligenceMaterialiser';
 import type { StoredSnapshot } from '../../application/use-cases/seo-growth/OrganicIntelligenceIdentity';
@@ -613,8 +613,8 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
               where updated_at <= ${upperBound}::timestamptz
                 and (${lower.at === null ? sql`true` : sql`
                   (updated_at > ${lower.at}::timestamptz
-                   or (updated_at = ${lower.at}::timestamptz and id::text > ${lower.id ?? ''}))`})
-              order by updated_at, id
+                   or (updated_at = ${lower.at}::timestamptz and id::text collate "C" > ${lower.id ?? ''}))`})
+              order by updated_at, id::text collate "C"
               limit 5000
             `));
             return rows.map((r) => ({
@@ -633,12 +633,12 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
               where occurred_at <= ${upperBound}::timestamptz
                 and (${lower.at === null ? sql`true` : sql`
                   (occurred_at > ${lower.at}::timestamptz
-                   or (occurred_at = ${lower.at}::timestamptz and id::text > ${lower.id ?? ''}))`})
-              order by occurred_at, id
+                   or (occurred_at = ${lower.at}::timestamptz and id::text collate "C" > ${lower.id ?? ''}))`})
+              order by occurred_at, id::text collate "C"
               limit 5000
             `));
             return rows.map((r) => ({
-              id: String(r.target), at: String(r.at),
+              id: String(r.target), cursorId: String(r.id), at: String(r.at),
               stateHash: stateHashOf({ scope: r.scope, state: r.validation_state, id: r.id }),
             }));
           }
@@ -650,12 +650,12 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
                 and last_observed_at <= ${upperBound}::timestamptz
                 and (${lower.at === null ? sql`true` : sql`
                   (last_observed_at > ${lower.at}::timestamptz
-                   or (last_observed_at = ${lower.at}::timestamptz and id::text > ${lower.id ?? ''}))`})
-              order by last_observed_at, id
+                   or (last_observed_at = ${lower.at}::timestamptz and id::text collate "C" > ${lower.id ?? ''}))`})
+              order by last_observed_at, id::text collate "C"
               limit 5000
             `));
             return rows.map((r) => ({
-              id: String(r.query), at: String(r.at),
+              id: String(r.query), cursorId: String(r.id), at: String(r.at),
               stateHash: stateHashOf({ intent: r.intent, evidence: r.evidence_state }),
               // A CSV import or operator entry describes the past, so it must
               // not be read as a new current SEO event.
@@ -1020,10 +1020,19 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
     async loadCannibalisationHashes(keys) {
       if (keys.length === 0) return new Map();
       const rows = rowsOf(await conn.execute(sql`
-        select finding_key, classification, rationale from seo_intel_cannibalisation
+        select finding_key, classification, confidence, rationale, affected_urls, persistence from seo_intel_cannibalisation
         where ${pgInTextList(sql`finding_key`, keys)}
       `));
-      return new Map(rows.map((r) => [String(r.finding_key), String(r.classification ?? '')]));
+      return new Map(rows.map((r) => {
+        const urls = typeof r.affected_urls === 'string' ? JSON.parse(r.affected_urls) : r.affected_urls;
+        return [String(r.finding_key), {
+          hash: cannibalisationHash({
+            classification: String(r.classification ?? ''), confidence: Number(r.confidence),
+            rationale: String(r.rationale ?? ''), affectedUrls: Array.isArray(urls) ? urls.map(String) : [],
+          }),
+          persistence: Number(r.persistence ?? 0),
+        }];
+      }));
     },
 
     async upsertCannibalisation(i) {
@@ -1038,7 +1047,8 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
         on conflict (finding_key) do update set
           confidence = excluded.confidence, rationale = excluded.rationale,
           affected_urls = excluded.affected_urls,
-          persistence = seo_intel_cannibalisation.persistence + 1,
+          -- The materialiser computes persistence from what it loaded (prior runs + 1).
+          persistence = greatest(excluded.persistence, seo_intel_cannibalisation.persistence),
           last_seen_at = now(),
           last_material_change_at = case
             when seo_intel_cannibalisation.classification is distinct from excluded.classification

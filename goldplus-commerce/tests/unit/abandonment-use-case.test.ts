@@ -25,9 +25,8 @@ class FakeRepo implements IAbandonmentRepository {
       (c) => c.lastActivityAt.getTime() < staleBefore.getTime() && !this.openCartIds.has(c.cartId),
     );
   }
-  async createOpen(candidate: AbandonmentCandidate) {
+  async createOpen(candidate: AbandonmentCandidate, announce?: (r: AbandonmentRecord) => Promise<void>) {
     if (this.openCartIds.has(candidate.cartId)) return null; // unique index behaviour
-    this.openCartIds.add(candidate.cartId);
     const rec: AbandonmentRecord = {
       id: `ab-${++this.seq}`,
       cartId: candidate.cartId,
@@ -38,6 +37,9 @@ class FakeRepo implements IAbandonmentRepository {
       classifiedAt: new Date(0),
       lastActivityAt: candidate.lastActivityAt,
     };
+    // Same transaction as the insert: a throwing announcement leaves no row behind.
+    if (announce) await announce(rec);
+    this.openCartIds.add(candidate.cartId);
     this.created.push(rec);
     return rec;
   }
@@ -101,5 +103,25 @@ describe('AbandonmentUseCase.scan', () => {
     repo.expiredCount = 3;
     const useCase = new AbandonmentUseCase(repo, { publish: async () => {} }, () => NOW);
     expect((await useCase.scan()).expired).toBe(3);
+  });
+});
+
+describe('a failed announcement is retried, and never aborts the scan', () => {
+  it('rolls the row back on a publish failure, carries on with the other carts, and re-announces next scan', async () => {
+    const repo = new FakeRepo();
+    const published: string[] = [];
+    let queueDown = true;
+    repo.candidates = [candidate('c1', 1, ABANDONMENT_STALE_HOURS + 1), candidate('c2', 1, ABANDONMENT_STALE_HOURS + 1)];
+    repo.expiredCount = 3;
+    const useCase = new AbandonmentUseCase(repo, {
+      publish: async (r) => { if (queueDown && r.cartId === 'c1') throw new Error('redis down'); published.push(r.cartId); },
+    }, () => NOW);
+    const first = await useCase.scan();
+    expect(first).toMatchObject({ classified: 1, expired: 3, failed: 1 });
+    expect(published).toEqual(['c2']);
+    queueDown = false;
+    const second = await useCase.scan();
+    expect(second.classified).toBe(1);
+    expect(published).toEqual(['c2', 'c1']);
   });
 });

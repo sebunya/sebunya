@@ -25,7 +25,7 @@ export class GetSupportInboxUseCase {
   }
 
   /** One customer's tickets (signed-in id or submitted email), same SLA ordering. */
-  async executeForCustomer(query: { customerId: string; email: string | null }, now: Date = new Date()): Promise<InboxTicket[]> {
+  async executeForCustomer(query: { customerId: string; email: string | null; phone?: string | null }, now: Date = new Date()): Promise<InboxTicket[]> {
     return annotate(await this.repo.findForCustomer(query), now);
   }
 }

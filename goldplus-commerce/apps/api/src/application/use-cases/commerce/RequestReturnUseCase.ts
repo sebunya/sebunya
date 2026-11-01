@@ -45,8 +45,9 @@ export class RequestReturnUseCase {
     if (!REVIEWABLE_ORDER_STATUSES.has(order.orderStatus)) return { ok: false, reason: 'NOT_DELIVERED' };
     const item = order.items.find((i) => i.productId === input.productId);
     if (!item) return { ok: false, reason: 'NOT_ON_ORDER' };
-    if (!(input.reason in RETURN_REASONS)) return { ok: false, reason: 'BAD_REASON' };
-    if (!(input.preference in RETURN_PREFERENCES)) return { ok: false, reason: 'BAD_PREFERENCE' };
+    // Own keys only: `in` also accepted prototype names such as 'toString'.
+    if (!Object.hasOwn(RETURN_REASONS, input.reason)) return { ok: false, reason: 'BAD_REASON' };
+    if (!Object.hasOwn(RETURN_PREFERENCES, input.preference)) return { ok: false, reason: 'BAD_PREFERENCE' };
     const detail = (input.detail ?? '').trim();
     if (detail.length > 1000) return { ok: false, reason: 'TOO_LONG' };
     const reason = input.reason as ReturnReason;
@@ -55,6 +56,9 @@ export class RequestReturnUseCase {
     const deliveredAt = await this.delivered.deliveredAt(order.orderNumber).catch(() => null);
     const days = deliveredAt ? (this.now().getTime() - deliveredAt.getTime()) / 86_400_000 : null;
     if (reason === 'changed_mind' && days !== null && days > CHANGE_OF_MIND_DAYS) return { ok: false, reason: 'PAST_CHANGE_OF_MIND' };
+    // With no recorded delivery date the 14-day window cannot be checked here. The request still reaches the Care
+    // Desk (the order IS delivered), but it says plainly that staff must confirm the window before accepting it.
+    const windowUnchecked = reason === 'changed_mind' && days === null;
 
     const title = `Return ${order.orderNumber}: ${item.name}`.slice(0, 200);
     // Exactly this item: a prefix match took "Battery BL-4C" for an open "Battery BL-4CT" return and dropped it.
@@ -65,6 +69,7 @@ export class RequestReturnUseCase {
       `Reason: ${RETURN_REASONS[reason]}`,
       `How it comes back: ${RETURN_PREFERENCES[input.preference as ReturnPreference]}`,
       deliveredAt ? `Delivered or collected: ${deliveredAt.toISOString().slice(0, 10)} (${Math.floor(days ?? 0)} days ago)` : 'Delivery date not recorded',
+      windowUnchecked ? `CHECK FIRST: the ${CHANGE_OF_MIND_DAYS}-day change-of-mind window could not be checked (no delivery date). Confirm when the customer received it before accepting.` : null,
       detail ? `Customer says: ${detail}` : null,
     ].filter(Boolean);
     const res = await this.care.openTask({
@@ -76,7 +81,7 @@ export class RequestReturnUseCase {
       customerEmail: order.customerEmail ?? null,
       orderNumber: order.orderNumber,
       channel: 'web',
-      proposedAction: { type: 'return', productId: item.productId, reason, preference: input.preference, daysSinceDelivery: days === null ? null : Math.floor(days) },
+      proposedAction: { type: 'return', productId: item.productId, reason, preference: input.preference, daysSinceDelivery: days === null ? null : Math.floor(days), changeOfMindWindowChecked: !windowUnchecked },
       openedBy: 'customer-return-form',
     });
     return { ok: true, created: Boolean(res.created ?? res.ok) };

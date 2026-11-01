@@ -125,6 +125,26 @@ describe('MediaImportUseCases — stage → four eyes → apply → resume', () 
     expect(galleryRepo.products.get('p1')!.map).toEqual([]);
   });
 
+  it('on resume, a product applied on the first run keeps APPLIED when an earlier product fails again', async () => {
+    const { uc, galleryRepo, importRepo } = harness();
+    const staged = await uc.stage({ name: 'e', files: [file('GP-A1__01-main.jpg'), file('GP-B2__01-main.jpg')], actorId: 'maker' });
+    if (!staged.ok) throw new Error(staged.message);
+    await uc.approve({ id: staged.session.id, expectedVersion: 1, actorId: 'checker', decision: 'APPROVED', reason: '' });
+    // First run: p1 goes stale (not done), p2 applies.
+    galleryRepo.products.get('p1')!.mediaRevision = 5;
+    const first = await uc.apply({ id: staged.session.id, expectedVersion: 2, actorId: 'checker' });
+    if (!first.ok) throw new Error(first.message);
+    expect(first.summary).toMatchObject({ applied: 1, stale: 1 });
+    // Resume: p1 now throws; p2 must stay APPLIED, not be overwritten to NOT_ATTEMPTED.
+    galleryRepo.products.get('p1')!.mediaRevision = 0;
+    galleryRepo.failNext = 'p1';
+    const resumed = await uc.apply({ id: staged.session.id, expectedVersion: first.session.version, actorId: 'checker', resume: true });
+    if (!resumed.ok) throw new Error(resumed.message);
+    const rows = await importRepo.rowsOf(staged.session.id);
+    expect(rows.find((r) => r.productId === 'p2')!.applyStatus).toBe('APPLIED');
+    expect(resumed.summary).toMatchObject({ failed: 1, skipped: 1, notAttempted: 0 });
+  });
+
   it('an unexpected failure stops the batch, leaves the rest NOT_ATTEMPTED, and resume finishes them without re-applying', async () => {
     const { uc, galleryRepo, importRepo } = harness();
     const staged = await uc.stage({ name: 'd', files: [file('GP-A1__01-main.jpg'), file('GP-B2__01-main.jpg')], actorId: 'maker' });

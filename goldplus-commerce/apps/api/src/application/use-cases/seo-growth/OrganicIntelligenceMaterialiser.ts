@@ -18,6 +18,7 @@ import {
 import { buildAnswerUnit, type AnswerUnitDraft } from './AnswerUnitEngine';
 import {
   clusterQueries, classifyIntent, resolveOwnership, classifyCannibalisation, intentConsensus,
+  CANNIBALISATION_CLASSES, CANNIBALISATION_PERSISTENCE,
   type ClusterEntity, type Intent, type OwnerType,
 } from './QueryIntelligence';
 import {
@@ -225,7 +226,12 @@ export interface MaterialiserPorts {
     findingKey: string; clusterKey: string | null; classification: string; confidence: number;
     rationale: string; affectedUrls: string[]; persistence: number;
   }): Promise<{ changed: boolean }>;
-  loadCannibalisationHashes(keys: string[]): Promise<Map<string, string>>;
+  /**
+   * Stored findings by key: `hash` is cannibalisationHash() of what was stored (persistence excluded), and
+   * `persistence` how many runs the finding has been seen. The old port returned the classification string and the
+   * caller compared it to a hash, so nothing ever matched and persistence was a run counter.
+   */
+  loadCannibalisationHashes(keys: string[]): Promise<Map<string, { hash: string; persistence: number }>>;
 
   upsertContentIntelligence(input: {
     contentKey: string; url: string; classification: string; primaryIntent: string | null;
@@ -312,6 +318,24 @@ const emptyCounts = (): RunCounts => ({
 
 /** Only these priorities justify occupying the human work queue. */
 const WORK_QUEUE_PRIORITIES = new Set(['NOW', 'NEXT']);
+
+/** The semantic identity of a cannibalisation finding: what it says, not how many runs have seen it. */
+export function cannibalisationHash(f: { classification: string; confidence: number; rationale: string; affectedUrls: string[] }): string {
+  return semanticHash({ classification: f.classification, confidence: Number(f.confidence), rationale: f.rationale, affectedUrls: [...f.affectedUrls] });
+}
+
+/**
+ * Preconditions this materialiser can actually establish. Everything else (editorial approval, factual grounding,
+ * a human approval...) is a fact only a person or another system can supply, so it stays UNMET here. The old rule
+ * ("required minus blockedBy") compared two different vocabularies and so recorded every precondition as satisfied.
+ */
+export function establishedPreconditions(
+  required: string[],
+  o: { priorityBucket: string; confidence: string },
+  workQueuePriorities: ReadonlySet<string>,
+): string[] {
+  return required.filter((p) => p === 'OPPORTUNITY_MATERIAL' && workQueuePriorities.has(o.priorityBucket) && o.confidence !== 'LOW');
+}
 
 export class OrganicIntelligenceMaterialiser {
   constructor(
@@ -565,7 +589,8 @@ export class OrganicIntelligenceMaterialiser {
         symptoms.push({
           opportunityId: opp.opportunityKey,
           entity: opp.entityId,
-          templateFamily: candidates.find((c) => c.entityId === opp.entityId)?.templateFamily ?? null,
+          // Entity ids are unique only within a type (a URL and a query may share text).
+          templateFamily: candidates.find((c) => c.entityId === opp.entityId && c.entityType === opp.entityType)?.templateFamily ?? null,
           actionClass: opp.recommendedActionClass as OpportunitySymptom['actionClass'],
           reasonCodes: opp.blockedBy,
           score: opp.adjustedScore ?? 0,
@@ -806,36 +831,42 @@ export class OrganicIntelligenceMaterialiser {
     // Cannibalisation is a cluster-level judgement, so it runs once the
     // clusters exist rather than guessing from URLs alone.
     const competitionByCluster = await this.ports.loadCompetingUrls(clusterKeysForCannibalisation);
-    const findingKeys: string[] = [];
     const findings: Array<{ key: string; body: Parameters<MaterialiserPorts['upsertCannibalisation']>[0] }> = [];
+    const competing = [...competitionByCluster].filter(([, urls]) => urls.length >= 2); // One URL cannot cannibalise itself.
+    // Every finding a cluster could hold, so the pattern's persistence is known before it is classified.
+    const priorFindings = await this.ports.loadCannibalisationHashes(
+      competing.flatMap(([ck]) => CANNIBALISATION_CLASSES.map((cls) => `${ck}::${cls}`)),
+    );
 
-    for (const [ck, urls] of competitionByCluster) {
-      if (urls.length < 2) continue; // One URL cannot cannibalise itself.
+    for (const [ck, urls] of competing) {
+      // How many runs this cluster has already shown competing URLs, whatever they were classified as.
+      const seenRuns = Math.max(0, ...CANNIBALISATION_CLASSES.map((cls) => priorFindings.get(`${ck}::${cls}`)?.persistence ?? 0));
+      const persistence = seenRuns + 1;
       const verdict = classifyCannibalisation({
         urls: urls.map((u) => ({
           url: u.url, intent: u.intent, impressions: u.impressions, clicks: u.clicks,
           ownerType: u.ownerType, canonicalTarget: u.canonicalTarget,
           contentSimilarity: u.contentSimilarity, lifecycleActive: u.lifecycleActive,
         })),
-        persistence: 1,
+        persistence,
       });
       const findingKey = `${ck}::${verdict.classification}`;
-      findingKeys.push(findingKey);
       findings.push({
         key: findingKey,
         body: {
           findingKey, clusterKey: ck, classification: verdict.classification,
           confidence: verdict.confidence, rationale: verdict.rationale,
-          affectedUrls: urls.map((u) => u.url), persistence: 1,
+          affectedUrls: urls.map((u) => u.url), persistence,
         },
       });
     }
 
-    const priorFindings = await this.ports.loadCannibalisationHashes(findingKeys);
     let cannibalisationChanged = 0;
     for (const f of findings) {
-      const h = semanticHash(f.body);
-      if (priorFindings.get(f.key) === h) continue;
+      const prior = priorFindings.get(f.key);
+      // Unchanged findings are skipped once the pattern has persisted long enough to be judged; until then the
+      // write is what records that another run saw it.
+      if (prior && prior.hash === cannibalisationHash(f.body) && prior.persistence >= CANNIBALISATION_PERSISTENCE) continue;
       const res = await this.ports.upsertCannibalisation(f.body);
       if (res.changed) cannibalisationChanged += 1;
     }
@@ -872,7 +903,9 @@ export class OrganicIntelligenceMaterialiser {
       const contentKey = `content::${o.entityId}`;
       // Without content signals the honest classification is
       // INSUFFICIENT_EVIDENCE — never THIN, which is a measurement.
-      const classification = o.evidenceAvailable.includes('CONTENT_DEPTH')
+      // The evidence dimension is 'CONTENT' (OrganicOpportunityScoring); 'CONTENT_DEPTH' never occurs, so every URL
+      // was INSUFFICIENT_EVIDENCE.
+      const classification = o.evidenceAvailable.includes('CONTENT')
         ? o.recommendedActionClass === 'CREATE_CONTENT' ? 'MISSING' : 'PERFORMING'
         : 'INSUFFICIENT_EVIDENCE';
       const body = {
@@ -926,9 +959,7 @@ export class OrganicIntelligenceMaterialiser {
         verificationPlan: entry.verificationMethod,
       };
 
-      // Preconditions a blocked opportunity cannot satisfy are exactly the
-      // ones already recorded as blockers — no separate truth.
-      const satisfied = entry.requiredPreconditions.filter((p) => !o.blockedBy.includes(p));
+      const satisfied = establishedPreconditions(entry.requiredPreconditions, o, WORK_QUEUE_PRIORITIES);
 
       const decision = evaluateActionRequest({
         request,

@@ -57,11 +57,18 @@ export class BusinessInfoService {
       deliveryNote: s(merged.deliveryNote, 200),
       openDays: s(merged.openDays, 80),
       sameDayCutoffHour: (() => {
-        const h = Math.trunc(Number(merged.sameDayCutoffHour));
+        // Number(null) and Number('') are 0: a blank field must keep the default, not become a midnight cutoff.
+        const raw = merged.sameDayCutoffHour as unknown;
+        if (raw === null || raw === undefined || (typeof raw === 'string' && raw.trim() === '') || typeof raw === 'boolean') return DEFAULT_BUSINESS_INFO.sameDayCutoffHour;
+        const h = Math.trunc(Number(raw));
         return Number.isFinite(h) && h >= 0 && h <= 23 ? h : DEFAULT_BUSINESS_INFO.sameDayCutoffHour;
       })(),
       closedDays: Array.isArray(merged.closedDays)
-        ? Array.from(new Set(merged.closedDays.map((d) => Math.trunc(Number(d))).filter((d) => d >= 0 && d <= 6))).sort((a, b) => a - b)
+        // Blank entries (null, '') are dropped, not read as 0 = Sunday closed.
+        ? Array.from(new Set((merged.closedDays as unknown[])
+            .filter((d) => typeof d === 'number' || (typeof d === 'string' && d.trim() !== ''))
+            .map((d) => Math.trunc(Number(d)))
+            .filter((d) => Number.isFinite(d) && d >= 0 && d <= 6))).sort((a, b) => a - b)
         : DEFAULT_BUSINESS_INFO.closedDays,
       socials: (Array.isArray(merged.socials) ? merged.socials : DEFAULT_BUSINESS_INFO.socials)
         .slice(0, 20)

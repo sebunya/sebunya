@@ -529,7 +529,8 @@ export class DrizzleSeoGrowthRepository {
         config = case when ${patch.config != null} then excluded.config else seo_integrations.config end,
         last_success_at = coalesce(excluded.last_success_at, seo_integrations.last_success_at),
         last_failure_at = coalesce(excluded.last_failure_at, seo_integrations.last_failure_at),
-        last_error = ${patch.lastError !== undefined ? patch.lastError : null},
+        -- Only a patch that says something about the error changes it; a config- or status-only update keeps it.
+        last_error = case when ${patch.lastError !== undefined} then excluded.last_error else seo_integrations.last_error end,
         sync_state = case when ${patch.syncState != null} then excluded.sync_state else seo_integrations.sync_state end,
         updated_at = now()
       returning *

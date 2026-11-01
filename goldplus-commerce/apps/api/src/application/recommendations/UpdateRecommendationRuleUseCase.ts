@@ -43,6 +43,8 @@ export class UpdateRecommendationRuleUseCase {
       // Protect metadata fields
       id: existing.id,
       createdAt: existing.createdAt,
+      // createdBy is who the two-person SUPPRESS gate compares against: an edit must not rewrite it.
+      createdBy: existing.createdBy,
       updatedAt: new Date(),
       updatedBy: performedBy,
     } as any;

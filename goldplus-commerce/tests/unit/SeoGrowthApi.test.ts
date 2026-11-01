@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   GenerateSeoOpportunitiesUseCase,
   GenerateSeoOpportunitiesDeps,
@@ -241,8 +243,8 @@ describe('extractPageFacts', () => {
 // ── Integration env presence ────────────────────────────────────────────────
 
 describe('integration env presence', () => {
-  it('reports CONNECTED only when every expected var is set non-empty', () => {
-    expect(computeEnvPresence(['A_KEY', 'B_KEY'], { A_KEY: 'x', B_KEY: 'y' }).computedStatus).toBe('CONNECTED');
+  it('reports credentials present only when every expected var is set non-empty (presence is never CONNECTED)', () => {
+    expect(computeEnvPresence(['A_KEY', 'B_KEY'], { A_KEY: 'x', B_KEY: 'y' }).computedStatus).toBe('CREDENTIALS_PRESENT');
     expect(computeEnvPresence(['A_KEY', 'B_KEY'], { A_KEY: 'x', B_KEY: '' }).computedStatus).toBe('READY_FOR_CREDENTIALS');
     expect(computeEnvPresence(['A_KEY'], {}).computedStatus).toBe('READY_FOR_CREDENTIALS');
     expect(computeEnvPresence([], { A_KEY: 'x' }).computedStatus).toBeNull();
@@ -262,8 +264,9 @@ describe('integration env presence', () => {
     };
     const views = await new SyncSeoIntegrationStatusesUseCase(store, env).execute();
     const gsc = views.find((v) => v.provider === 'GSC')!;
-    expect(gsc.computedStatus).toBe('CONNECTED');
-    expect(gsc.status).toBe('CONNECTED');
+    // Env vars alone are not a connection: nothing has succeeded with them yet.
+    expect(gsc.computedStatus).toBe('CREDENTIALS_PRESENT');
+    expect(gsc.status).toBe('READY_FOR_CREDENTIALS');
     expect(gsc.envVars).toEqual([
       { name: 'GSC_SERVICE_ACCOUNT_JSON', present: true },
       { name: 'GSC_SITE_URL', present: true },
@@ -271,6 +274,27 @@ describe('integration env presence', () => {
     const serialized = JSON.stringify({ views, updates });
     expect(serialized).not.toContain(secret);
     expect(serialized).not.toContain('svc@x.iam');
+  });
+
+  it('is CONNECTED only after a successful operation newer than any failure', async () => {
+    const env = { GSC_SERVICE_ACCOUNT_JSON: '{}', GSC_SITE_URL: 'sc-domain:x' };
+    const run = async (row: Record<string, unknown>) => {
+      const updates: any[] = [];
+      const store = {
+        listIntegrations: async () => [{ provider: 'GSC', status: 'READY_FOR_CREDENTIALS', config: { envVars: ['GSC_SERVICE_ACCOUNT_JSON', 'GSC_SITE_URL'] }, ...row }],
+        upsertIntegrationStatus: async (provider: string, patch: any) => { updates.push({ provider, patch }); return { provider, status: patch.status ?? 'READY_FOR_CREDENTIALS', config: patch.config ?? {} }; },
+      };
+      return (await new SyncSeoIntegrationStatusesUseCase(store as never, env).execute()).find((v) => v.provider === 'GSC')!;
+    };
+    expect((await run({ last_success_at: '2026-10-30T00:00:00Z' })).status).toBe('CONNECTED');
+    expect((await run({ last_success_at: '2026-10-29T00:00:00Z', last_failure_at: '2026-10-30T00:00:00Z' })).computedStatus).toBe('CREDENTIALS_PRESENT');
+    // A row an env-only check once marked CONNECTED, with no success behind it, is put back.
+    expect((await run({ status: 'CONNECTED' })).status).toBe('READY_FOR_CREDENTIALS');
+  });
+
+  it('a status- or config-only update keeps the recorded last_error', () => {
+    const src = readFileSync(resolve(__dirname, '../../apps/api/src/infrastructure/db/repositories/DrizzleSeoGrowthRepository.ts'), 'utf8');
+    expect(src).toMatch(/last_error = case when \$\{patch\.lastError !== undefined\} then excluded\.last_error else seo_integrations\.last_error end/);
   });
 
   it('does not overwrite a manual DISABLED status with an env presence check', async () => {

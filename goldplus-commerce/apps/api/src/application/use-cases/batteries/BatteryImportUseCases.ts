@@ -16,6 +16,8 @@ import {
   validateMapping,
   type CatalogueContext,
   type ImportMapping,
+  cleanText,
+  parseInteger,
 } from '../../../domain/batteries/BatteryImport';
 import { batteryCodeCandidates, normaliseBatteryCode, stripCodeQualifier } from '../../../domain/batteries/BatteryCodes';
 import { normaliseDeviceToken } from '../../../domain/products/Devices';
@@ -262,8 +264,10 @@ export class BatteryImportUseCases {
         if (!battery || 'ambiguous' in battery) continue;
         if (!stockCache.has(battery.productId)) stockCache.set(battery.productId, (await this.ledgerRepo.currentStock(battery.productId))?.stock ?? null);
         if (session.importType === 'STOCK_RECEIPT') {
-          const reference = mapping.supplierReference ? String(r.sourceData[mapping.supplierReference] ?? '').trim() || null : null;
-          const quantity = Number(String(r.sourceData[mapping.quantity ?? ''] ?? '').replace(/[,\s]/g, ''));
+          // Same clean-up as the domain row normaliser, so the key it looks up is the key stored here.
+          const reference = mapping.supplierReference ? cleanText(r.sourceData[mapping.supplierReference]) || null : null;
+          const quantity = mapping.quantity ? parseInteger(cleanText(r.sourceData[mapping.quantity])) : null;
+          if (quantity == null) continue;
           const key = `${battery.productId}|${reference ?? ''}|${quantity}`;
           if (!receiptCache.has(key)) receiptCache.set(key, await this.ledgerRepo.receiptAlreadyApplied(battery.productId, reference, quantity));
         }
@@ -497,7 +501,9 @@ export class BatteryImportUseCases {
             // reviewer has already judged are all left exactly as they are.
             if (['READY', 'ACTIVE', 'ARCHIVED'].includes(existing.workflowStatus) || existing.evidenceStatus !== 'SUPPLIER_LISTED') return { status: 'SKIPPED', appliedRecordIds: null, beforeSnapshot: null, afterSnapshot: null, error: null };
             const updated = await this.compatibility.update(existing.id, { evidenceSource: data.evidenceSource ?? existing.evidenceSource, notes: [existing.notes, data.notes].filter(Boolean).join('\n') || null }, actorId);
-            return { status: 'APPLIED', appliedRecordIds: { claims: [existing.id], devices: deviceCreated ? [device.id] : [], brands: partial.brands, series: partial.series }, beforeSnapshot: { evidenceSource: existing.evidenceSource, notes: existing.notes }, afterSnapshot: { evidenceSource: updated?.evidenceSource ?? null }, error: null };
+            // `updatedClaims`, not `claims`: this claim existed before the import, so rollback
+            // restores its evidence and notes instead of archiving someone else's claim.
+            return { status: 'APPLIED', appliedRecordIds: { updatedClaims: [existing.id], devices: deviceCreated ? [device.id] : [], brands: partial.brands, series: partial.series }, beforeSnapshot: { evidenceSource: existing.evidenceSource, notes: existing.notes }, afterSnapshot: { evidenceSource: updated?.evidenceSource ?? null, notes: updated?.notes ?? null }, error: null };
           }
           // createdBy = the uploader who authored the research, so they cannot verify their own claims.
           const { created, skipped } = await this.compatibility.create({ productId, deviceIds: [device.id], actorId, createdBy: session.createdBy, evidenceStatus: data.evidenceStatus ?? 'SUPPLIER_LISTED', evidenceSource: data.evidenceSource ?? null, notes: data.notes ?? null, sourceImportSessionId: session.id, sourceReference: ref });
@@ -582,6 +588,20 @@ export class BatteryImportUseCases {
               if (!claim) continue;
               if (claim.workflowStatus === 'ACTIVE') throw new Error(`Claim for ${claim.device.label} was published since import; not rolled back.`);
               if (claim.workflowStatus !== 'ARCHIVED') await this.compatibility.transition(claimId, 'ARCHIVE', input.actorId, { reason: `Import rollback: ${input.reason}` });
+            }
+            // A claim the import only UPDATED was not ours to remove: put its evidence
+            // and notes back, unless someone changed them since.
+            for (const claimId of ids.updatedClaims ?? []) {
+              const claim = await this.compatRepo.find(claimId);
+              if (!claim) continue;
+              const before = (row.beforeSnapshot ?? {}) as { evidenceSource?: string | null; notes?: string | null };
+              const after = (row.afterSnapshot ?? {}) as { evidenceSource?: string | null; notes?: string | null };
+              const current = claim as unknown as { evidenceSource?: string | null; notes?: string | null };
+              if ((current.evidenceSource ?? null) !== (after.evidenceSource ?? null) || ('notes' in after && (current.notes ?? null) !== (after.notes ?? null))) {
+                notes.push(`Claim ${claimId} changed since import; its evidence was not restored.`);
+                continue;
+              }
+              await this.compatibility.update(claimId, { evidenceSource: before.evidenceSource ?? null, notes: before.notes ?? null }, input.actorId);
             }
             // What the import created goes too, unless something else now uses
             // it. Counting archived claims (which rollback just made) kept every

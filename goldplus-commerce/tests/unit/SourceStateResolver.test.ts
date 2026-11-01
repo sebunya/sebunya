@@ -236,3 +236,29 @@ describe('state hashing is stable and meaning-sensitive', () => {
     expect(stateHashOf({ stock: null })).not.toBe(stateHashOf({ stock: 0 }));
   });
 });
+
+describe('the cursor tie-breaks on the row id the SQL compares, in sorted order', () => {
+  const LEDGER = SOURCE_DESCRIPTORS.find((d) => d.key === 'seo_change_ledger')!;
+
+  it('a ledger row keyed by URL commits its own uuid as the cursor id, not the URL', async () => {
+    const at = '2026-08-13T10:00:00Z';
+    const snap = await resolveSourceChanges(ports({ since: { seo_change_ledger: [
+      row('/z-page', at, 'h1', { cursorId: '0000-a' }),
+      row('/a-page', at, 'h2', { cursorId: '0000-b' }),
+    ] } }), [LEDGER]);
+    expect(snap.proposedCursors.seo_change_ledger).toEqual({ at, id: '0000-b' });
+    expect(snap.changes.map((c) => c.entityId).sort()).toEqual(['/a-page', '/z-page']);
+  });
+
+  it('rows the adapter returned out of order still advance the cursor to the true last row', async () => {
+    const snap = await resolveSourceChanges(ports({ since: { products: [
+      row('p9', '2026-08-13T11:00:00Z', 'h'),
+      row('p1', '2026-08-13T09:00:00Z', 'h'),
+    ] } }), [PRODUCTS]);
+    expect(snap.proposedCursors.products).toEqual({ at: '2026-08-13T11:00:00Z', id: 'p9' });
+  });
+
+  it('a row at the boundary instant with a later uuid is not skipped', () => {
+    expect(isAfter(row('/a-page', '2026-01-01T00:00:00Z', 'h', { cursorId: 'bbbb' }), { at: '2026-01-01T00:00:00Z', id: 'aaaa' })).toBe(true);
+  });
+});

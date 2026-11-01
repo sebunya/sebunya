@@ -277,7 +277,9 @@ export class SearchConsoleGuardianUseCase {
           property: this.property,
           entity: w.entity,
           changeType: CLICK_DROP,
-          sourceStateVersion: latestSourceDate ?? 'none',
+          // The condition's identity must survive the daily source date: a key that
+          // embedded it reset hysteresis every day and orphaned (and re-emailed) incidents.
+          sourceStateVersion: 'rolling',
           action: 'OPEN_INCIDENT',
           policyVersion: GUARDIAN_POLICY_VERSION,
         });
@@ -349,7 +351,7 @@ export class SearchConsoleGuardianUseCase {
         await this.ports.recordAction({
           runId,
           signalId: saved.id,
-          key: `${key}::act`,
+          key: `${key}::${latestSourceDate ?? 'none'}::act`,
           remediationClass: REMEDIATION_CLASS,
           tier: 'TIER_1_INTERNAL',
           mode: decision.allowed ? decision.mode : null,

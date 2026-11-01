@@ -92,8 +92,8 @@ describe('battery finder stock and price', () => {
 import { normaliseBatteryCode } from '../../apps/api/src/domain/batteries/BatteryCodes';
 import { DEFAULT_BATTERY_FINDER_CONFIG } from '@goldplus/shared';
 
-function codeFinder(opts: { lifecycle: 'ACTIVE' | 'REVIEW'; showAwaiting: boolean }) {
-  const row = fit({ batteryLifecycle: opts.lifecycle, evidenceStatus: 'SUPPLIER_LISTED' });
+function codeFinder(opts: { lifecycle: 'ACTIVE' | 'REVIEW'; showAwaiting: boolean; evidence?: PublicFitRow['evidenceStatus'] }) {
+  const row = fit({ batteryLifecycle: opts.lifecycle, evidenceStatus: opts.evidence ?? 'SUPPLIER_LISTED' });
   const repo = {
     getConfig: async () => ({ config: { ...DEFAULT_BATTERY_FINDER_CONFIG, showAwaitingVerification: opts.showAwaiting }, version: 1 }),
     deviceCandidates: async () => [],
@@ -121,11 +121,18 @@ describe('battery finder: search by code agrees with the phone pages', () => {
     expect(out.kind).toBe('NO_RESULT');
   });
 
-  it('an active record keeps its verified, stock-aware answer', async () => {
-    const out = await codeFinder({ lifecycle: 'ACTIVE', showAwaiting: true }).search('BL-5C');
+  it('an active record with a verified fit keeps its verified, stock-aware answer', async () => {
+    const out = await codeFinder({ lifecycle: 'ACTIVE', showAwaiting: true, evidence: 'PACKAGE_VERIFIED' }).search('BL-5C');
     expect(out.kind).toBe('BATTERY');
     if (out.kind !== 'BATTERY') return;
     expect(out.battery.fitState).toBe('VERIFIED_IN_STOCK');
+  });
+
+  it('an active record whose fits are all unchecked never says "Verified fit"', async () => {
+    const out = await codeFinder({ lifecycle: 'ACTIVE', showAwaiting: true }).search('BL-5C');
+    expect(out.kind).toBe('BATTERY');
+    if (out.kind !== 'BATTERY') return;
+    expect(out.battery.fitState).toBe('AWAITING_VERIFICATION');
   });
 });
 
