@@ -46,12 +46,13 @@ const shortDescAttr = product.attributeValues?.find(a => a.name === 'CardShortDe
 // products carried the same imported 200, which read as test data. The count
 // comes back only once real stock figures exist; in/out of stock stays.
 const inStock = product.availability.kind === 'in_stock';
+const soldOut = product.availability.kind === 'out_of_stock';
 
 const availabilityLabel = (() => {
   switch(product.availability.kind) {
     case 'in_stock': return 'In Stock';
     case 'pre_order': return 'Pre-Order';
-    case 'out_of_stock': return 'Out of Stock';
+    case 'out_of_stock': return 'Sold out';
     default: return 'Confirm availability';
   }
 })();
@@ -99,7 +100,14 @@ const availabilityBadgeClass = (() => {
           <span class="text-[11px] font-bold text-slate-600 mt-1 uppercase tracking-tight">Image unavailable</span>
         </div>
       )}
-      {product.availability.kind !== 'in_stock' && (
+      {/* Sold out reads at a glance, as on oraimo's cards: the photo dims and
+          "Sold out" sits across it. Pre-order and unconfirmed keep the pill. */}
+      {soldOut && (
+        <span class="absolute inset-0 flex items-center justify-center bg-slate-900/55 pointer-events-none" aria-hidden="true" data-sold-out-overlay>
+          <span class="text-white text-xl sm:text-2xl font-black tracking-tight drop-shadow-md">Sold out</span>
+        </span>
+      )}
+      {!inStock && !soldOut && (
         <div class="absolute top-3 left-3">
            <span class={`text-[11px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider border ${availabilityBadgeClass}`}>
              {availabilityLabel}
@@ -139,7 +147,7 @@ const availabilityBadgeClass = (() => {
           {formattedPrice}
         </p>
       )}
-      {onSale && discount.endsIso && (
+      {onSale && discount.endsIso && !soldOut && (
         <p class="mt-1 text-[11px] font-bold text-amber-700 tabular-nums" data-card-sale-ends={discount.endsIso}>Discounted price. Limited time</p>
       )}
       {inStock && <p class="mt-1 text-[11px] font-bold text-slate-500">In stock</p>}
