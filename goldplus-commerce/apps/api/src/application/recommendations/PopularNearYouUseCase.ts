@@ -26,7 +26,13 @@ export interface PopularNearYouResult {
 }
 
 export class PopularNearYouUseCase {
-  private readonly cache = new Map<string, { at: number; result: PopularNearYouResult }>();
+  /**
+   * Only the DEMAND evidence (who bought what, per rung) is cached. Product eligibility, stock and price are read
+   * live on every request, the label comes from this caller's input, and the attribution ids are minted per render:
+   * caching the finished rail served one caller's area name, another render's attribution ids and a stock count up
+   * to ten minutes old to everyone sharing the key.
+   */
+  private readonly cache = new Map<string, { at: number; top: Array<{ productId: string; buyers: number }> }>();
 
   constructor(
     private readonly demand: INearbyDemandReader,
@@ -34,22 +40,29 @@ export class PopularNearYouUseCase {
     private readonly now: () => number = () => Date.now(),
   ) {}
 
+  private async topFor(where: NearbyScope, limit: number): Promise<Array<{ productId: string; buyers: number }>> {
+    const key = `${JSON.stringify(where)}|${limit}`;
+    const hit = this.cache.get(key);
+    if (hit && this.now() - hit.at < CACHE_MS) return hit.top;
+    const top = await this.demand.topProducts(where, { sinceDays: SINCE_DAYS, minBuyers: NEAR_YOU_MIN_BUYERS, limit: limit * 3 });
+    if (this.cache.size > 2000) this.cache.clear();
+    this.cache.set(key, { at: this.now(), top });
+    return top;
+  }
+
   async execute(input: { areaSlug: string | null; areaName: string | null; district: string | null; limit?: number }): Promise<PopularNearYouResult> {
     const limit = Math.min(Math.max(input.limit ?? 6, 1), 12);
-    const key = `${input.areaSlug ?? ''}|${(input.district ?? '').toLowerCase()}|${limit}`;
-    const hit = this.cache.get(key);
-    if (hit && this.now() - hit.at < CACHE_MS) return hit.result;
 
     const rungs: Array<{ scope: PopularNearYouResult['scope']; label: string; where: NearbyScope }> = [];
     if (input.areaSlug) rungs.push({ scope: 'area', label: input.areaName || input.district || 'your area', where: { kind: 'area', areaSlug: input.areaSlug } });
     if (input.district) rungs.push({ scope: 'district', label: input.district, where: { kind: 'district', district: input.district } });
     if (isGreaterKampala(input.district)) rungs.push({ scope: 'greater_kampala', label: 'Greater Kampala', where: { kind: 'districts', districts: GREATER_KAMPALA_DISTRICTS } });
 
-    let result: PopularNearYouResult = { scope: null, scopeLabel: null, items: [] };
     for (const rung of rungs) {
-      const top = await this.demand.topProducts(rung.where, { sinceDays: SINCE_DAYS, minBuyers: NEAR_YOU_MIN_BUYERS, limit: limit * 3 });
+      const top = await this.topFor(rung.where, limit);
       if (top.length < MIN_ITEMS) continue;
-      const records = await this.products.findProductsByIds(top.map((t) => t.productId));
+      // The canonical public predicate (approved, active, available-to-promise, not retired) lives in the reader's SQL.
+      const records = await this.products.findPublicProducts({ productIds: top.map((t) => t.productId), limit: top.length });
       const byId = new Map(records.map((r) => [r.id, r]));
       const railRenderId = crypto.randomUUID();
       const items: RecommendationItemDto[] = [];
@@ -74,13 +87,8 @@ export class PopularNearYouUseCase {
         });
         if (items.length >= limit) break;
       }
-      if (items.length >= MIN_ITEMS) {
-        result = { scope: rung.scope, scopeLabel: rung.label, items };
-        break;
-      }
+      if (items.length >= MIN_ITEMS) return { scope: rung.scope, scopeLabel: rung.label, items };
     }
-    this.cache.set(key, { at: this.now(), result });
-    if (this.cache.size > 2000) this.cache.clear();
-    return result;
+    return { scope: null, scopeLabel: null, items: [] };
   }
 }

@@ -15,8 +15,13 @@ function setup(byScope: Record<string, Array<{ productId: string; buyers: number
       return byScope[key] ?? [];
     },
   };
-  const products = { findProductsByIds: async (ids: string[]) => records.filter((r) => ids.includes(r.id)) } as unknown as IProductRecommendationReader;
-  return { uc: new PopularNearYouUseCase(demand, products), asked };
+  const reads: string[][] = [];
+  // findPublicProducts is the approved + available-to-promise read; findProductsByIds (no predicate) must not be used.
+  const products = {
+    findPublicProducts: async (input: { productIds: string[] }) => { reads.push(input.productIds); return records.filter((r) => input.productIds.includes(r.id)); },
+    findProductsByIds: async () => { throw new Error('unfiltered read'); },
+  } as unknown as IProductRecommendationReader;
+  return { uc: new PopularNearYouUseCase(demand, products), asked, reads, records };
 }
 
 describe('Popular in <area>: what customers there actually bought', () => {
@@ -44,5 +49,19 @@ describe('Popular in <area>: what customers there actually bought', () => {
     const { uc } = setup({ 'area:x-y-1': top }, [product('a'), product('b', { stockQuantity: 0 }), product('c', { isVisible: false }), product('d'), product('e'), product('f')]);
     const r = await uc.execute({ areaSlug: 'x-y-1', areaName: 'Y', district: 'Kampala' });
     expect(r.items.map((i) => i.productId)).toEqual(['a', 'd', 'e', 'f']);
+  });
+
+  it('caches demand only: the label is per caller, ids are fresh per render, stock is read live', async () => {
+    const top = ['a', 'b', 'c', 'd'].map((id) => ({ productId: id, buyers: 3 }));
+    const { uc, asked, records } = setup({ 'area:kampala-x': top }, top.map((t) => product(t.productId)));
+    const first = await uc.execute({ areaSlug: 'kampala-x', areaName: 'Kisementi', district: 'Kampala' });
+    records[0].stockQuantity = 1;
+    const second = await uc.execute({ areaSlug: 'kampala-x', areaName: 'Kololo', district: 'Kampala' });
+    expect(asked).toHaveLength(1); // demand came from the cache the second time
+    expect(first.scopeLabel).toBe('Kisementi');
+    expect(second.scopeLabel).toBe('Kololo');
+    expect(second.items[0].attributionId).not.toBe(first.items[0].attributionId);
+    expect(second.items[0].railRenderId).not.toBe(first.items[0].railRenderId);
+    expect(second.items[0].availability).toEqual({ kind: 'in_stock', quantity: 1 });
   });
 });
