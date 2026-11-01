@@ -37,7 +37,7 @@ describe('a category the shop browses by can always be filed into', () => {
 
   it('what was created is audited and returned, not silently done', () => {
     expect(route).toMatch(/newState: \{ version: result\.version, categoriesCreated \}/);
-    expect(route).toMatch(/data: \{ version: result\.version, categoriesCreated \}/);
+    expect(route).toMatch(/data: \{ version: result\.version, categoriesCreated(, auditRecorded)? \}/);
   });
 
   it('the repository only ever adds — it never renames or deletes a category', () => {
