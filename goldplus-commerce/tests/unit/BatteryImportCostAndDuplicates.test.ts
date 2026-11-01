@@ -62,3 +62,30 @@ describe('the same battery written two ways is one duplicate', () => {
     expect(r.rowKey).toBe('XX1|PRICE');
   });
 });
+
+describe('the dry run asks about the receipt the row will actually record', () => {
+  it('a reference with double spaces still finds the receipt already applied', async () => {
+    const asked: Array<[string, string | null, number]> = [];
+    let saved: Array<{ hold: string | null }> = [];
+    const mapping = { batteryCode: 'Code', quantity: 'Qty', supplierName: 'Supplier', supplierReference: 'Ref' };
+    const uc = new BatteryImportUseCases(
+      {
+        find: async () => ({ id: 's', status: 'MAPPED', importType: 'STOCK_RECEIPT', mapping }),
+        rows: async () => [{ id: 'r1', rowNumber: 1, sourceData: { Code: 'BL-5C', Qty: '1,000', Supplier: 'Acme', Ref: ' INV  42 ' } }],
+        savePreview: async (_id: string, _v: number, _d: string, rows: Array<{ hold: string | null }>) => { saved = rows; return { id: 's' }; },
+      } as never,
+      {} as never,
+      { resolveCode: async () => [{ productId: 'p', canonicalCode: 'BL-5C', lifecycleStatus: 'ACTIVE' }] } as never,
+      {} as never, {} as never,
+      {
+        listLocations: async () => [],
+        currentStock: async () => ({ stock: 3 }),
+        receiptAlreadyApplied: async (p: string, ref: string | null, q: number) => { asked.push([p, ref, q]); return ref === 'INV 42' && q === 1000; },
+      } as never,
+      {} as never, {} as never, {} as never, {} as never,
+    );
+    await uc.preview({ id: 's', expectedVersion: 1, actorId: 'a' }).catch(() => undefined);
+    expect(asked).toEqual([['p', 'INV 42', 1000]]);
+    expect(saved[0]?.hold).toMatch(/already applied/);
+  });
+});

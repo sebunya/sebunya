@@ -206,18 +206,22 @@ export interface CatalogueContext {
 }
 
 const PENDING = /pending|missing|required|unknown|tbc|n\/a|^-$/i;
-const cleanText = (v: unknown): string => String(v ?? '').replace(/\s+/g, ' ').trim();
+/** The one text clean-up every import cell gets; the dry run's duplicate checks key on exactly this. */
+export const cleanText = (v: unknown): string => String(v ?? '').replace(/\s+/g, ' ').trim();
 const pendingToNull = (v: string): string | null => (v && !PENDING.test(v) ? v : null);
 
-function parseInteger(v: string): number | null {
+export function parseInteger(v: string): number | null {
   if (!v) return null;
   const n = Number(v.replace(/[,\s]/g, ''));
   return Number.isInteger(n) ? n : null;
 }
 
-function parseVoltageMv(v: string): number | null {
+export function parseVoltageMv(v: string): number | null {
   if (!v) return null;
-  const n = Number(v.replace(/[^0-9.]/g, ''));
+  // A decimal comma ('3,85', '3,8 V') is a decimal point; a comma before exactly three
+  // digits ('3,850 mV') is a thousands separator. Stripping every comma read '3,85' as 385 mV.
+  const t = v.replace(/,(?=\d{3}(?!\d))/g, '').replace(/,/g, '.');
+  const n = Number(t.replace(/[^0-9.]/g, ''));
   if (!Number.isFinite(n) || n <= 0) return null;
   // Accept volts (3.85) or millivolts (3850).
   return n < 100 ? Math.round(n * 1000) : Math.round(n);

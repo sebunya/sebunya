@@ -114,6 +114,26 @@ describe('rollback removes what the import created', () => {
   });
 });
 
+describe('rollback of a claim the import only updated', () => {
+  it('restores the evidence and notes and never archives the pre-existing claim', async () => {
+    const transition = vi.fn();
+    const update = vi.fn(async () => ({}));
+    const uc = new BatteryImportUseCases(
+      { beginRollback: async () => ({ id: 's', importType: 'COMPATIBILITY' }), rows: async () => [{ id: 'r1', rowNumber: 1, status: 'APPLIED', appliedRecordIds: { updatedClaims: ['c0'], devices: [] }, beforeSnapshot: { evidenceSource: 'old', notes: 'n0' }, afterSnapshot: { evidenceSource: 'new', notes: 'n0\nn1' } }], markRowRolledBack: vi.fn(), finishRollback: async () => ({}) } as never,
+      {} as never, {} as never,
+      { find: async () => ({ id: 'c0', workflowStatus: 'DRAFT', evidenceSource: 'new', notes: 'n0\nn1', device: { label: 'x' } }) } as never,
+      { liveClaimCount: async () => 0, activeDeviceCount: async () => 0 } as never,
+      {} as never, {} as never,
+      { transition, update } as never,
+      {} as never,
+      {} as never,
+    );
+    await uc.rollback({ id: 's', expectedVersion: 1, actorId: 'a', reason: 'wrong file' });
+    expect(transition).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith('c0', { evidenceSource: 'old', notes: 'n0' }, 'a');
+  });
+});
+
 describe('a receipt being applied cannot be cancelled, and a lost apply is not reported as success', () => {
   it('cancel refuses a claimed receipt', async () => {
     const repo = { findReceipt: async () => ({ id: 'r', status: 'DRAFT', appliedBy: 'someone', lines: [] }), markReceipt: vi.fn() };
@@ -132,5 +152,16 @@ describe('a receipt being applied cannot be cancelled, and a lost apply is not r
     };
     const uc = new InventoryLedgerUseCases(repo as never, {} as never, audit);
     await expect(uc.applyReceipt('r', 'a', false)).rejects.toThrow(/posted to stock/);
+  });
+});
+
+describe('voltage written with a decimal comma', () => {
+  it('3,85 is 3850 mV, and a thousands comma still reads as millivolts', async () => {
+    const { parseVoltageMv } = await import('../../apps/api/src/domain/batteries/BatteryImport');
+    expect(parseVoltageMv('3,85')).toBe(3850);
+    expect(parseVoltageMv('3,85 V')).toBe(3850);
+    expect(parseVoltageMv('3.85')).toBe(3850);
+    expect(parseVoltageMv('3,850')).toBe(3850);
+    expect(parseVoltageMv('3850 mV')).toBe(3850);
   });
 });
