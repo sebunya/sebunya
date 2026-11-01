@@ -46,7 +46,7 @@ async function isolated<T>(step: string, run: () => Promise<T>): Promise<T | { e
   } catch (error) {
     const message = (error as Error)?.message ?? String(error);
     // eslint-disable-next-line no-console
-    console.error(`[loyalty-sweep] ${step} failed`, message);
+    console.error("[loyalty-sweep] step failed", step, message);
     return { error: message };
   }
 }
