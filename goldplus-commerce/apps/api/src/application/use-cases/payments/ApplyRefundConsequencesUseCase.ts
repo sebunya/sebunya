@@ -1,0 +1,196 @@
+import { IRefundLedgerRepository } from '../../ports/IRefundLedgerRepository';
+import { IPesaPalPaymentRepository, RecordedPaymentAttempt } from '../../ports/IPesaPalPaymentRepository';
+import { IOrderTransitionPort, OrderActorType, OrderEventSource } from '../../ports/IOrderTransitionPort';
+import { DomainError } from '../../../domain/errors/DomainError';
+
+/**
+ * Loyalty follow-up for money that went back (ApplyRefundToLoyaltyUseCase).
+ * Idempotent: called with the share refunded TO DATE, on every verification.
+ */
+export interface RefundLoyaltyPort {
+  execute(input: { orderId: string; refundedShareBps: number; reason: string }): Promise<void>;
+}
+
+/**
+ * Closes the order's fulfilment task once a total refund has cancelled the
+ * order (CancelFulfilmentTaskForCancelledOrderUseCase). Idempotent.
+ */
+export interface RefundFulfilmentPort {
+  execute(input: { orderId: string; actorId: string | null; reason: string }): Promise<unknown>;
+}
+
+export type RefundReading = 'partial' | 'total';
+
+/**
+ * How much of a payment has come back, read against the money collected.
+ * Only a figure strictly between nothing and everything is partial: with no
+ * ledger rows we cannot tell, so the safe total reading stands, and an
+ * over-refund is never mistaken for a partial.
+ */
+export function readRefund(refundedUgx: number, collectedUgx: number): RefundReading {
+  return refundedUgx > 0 && refundedUgx < collectedUgx ? 'partial' : 'total';
+}
+
+export interface RefundConsequencesResult {
+  reading: RefundReading;
+  refundedUgx: number;
+  /** Set when a total reading met an order that can no longer be cancelled. */
+  lifecycleConflict?: true;
+  conflictMessage?: string;
+  /**
+   * Set when ANOTHER completed attempt still holds the order's money (the customer paid twice and this is the
+   * extra payment going back): only this attempt's status changed; the order, its stock and its points did not.
+   */
+  coveredByAnotherPayment?: true;
+}
+
+/**
+ * What money going back MEANS for the order: the ONE place the partial or
+ * total reading turns into effects.
+ *
+ *   - partial: the attempt stays completed, the order stays paid, and the
+ *     refunded share of the order's points is clawed back;
+ *   - total: the attempt moves completed→reversed and the order is cancelled
+ *     with payment 'reversed' through the canonical transition (whose
+ *     cancelled subscriber carries loyalty). An order that can no longer be
+ *     cancelled (delivered) keeps its status, records the payment fact and
+ *     has its loyalty reversed here instead.
+ *
+ * It used to live only inside the provider poll, so a refund an operator
+ * confirmed by hand (ResolveRefundUseCase 'settled') recorded the money and
+ * nothing else: the order stayed paid and dispatchable, the attempt stayed
+ * completed and the points stayed with the customer. Every step is
+ * idempotent (the transition by its key, the clawback by its cumulative
+ * share), so the poll and the operator may both run it.
+ */
+export class ApplyRefundConsequencesUseCase {
+  constructor(
+    private readonly paymentRepo: Pick<IPesaPalPaymentRepository, 'updatePaymentAttemptStatus' | 'updateOrderPaymentStatusSafely'>
+      & Partial<Pick<IPesaPalPaymentRepository, 'findAttemptsByOrderId'>>,
+    private readonly orderTransition: IOrderTransitionPort,
+    /** Optional so hermetic suites need no database: absent, every reversal reads total. */
+    private readonly refundLedger?: Pick<IRefundLedgerRepository, 'getRefundedTotalUgx'>,
+    private readonly refundLoyalty?: RefundLoyaltyPort,
+    /** Optional so hermetic suites construct unchanged; production wires it. */
+    private readonly refundFulfilment?: RefundFulfilmentPort,
+    /**
+     * 0196: what a gift card / store credit paid towards the order. Points are earned on the whole order, so a cash
+     * partial refund takes back its share of the WHOLE order, not of the cash part alone (which over-clawed).
+     */
+    private readonly storeCreditOf?: (orderId: string) => Promise<number>,
+  ) {}
+
+  /**
+   * Never lets a task failure fail the money path: the order is already
+   * cancelled and its stock released; a task left open is visible in the
+   * queue as a task on a cancelled order and can be closed by hand.
+   */
+  private async closeFulfilmentTask(orderId: string, actorId: string | null): Promise<void> {
+    if (!this.refundFulfilment) return;
+    try {
+      await this.refundFulfilment.execute({ orderId, actorId, reason: 'Order cancelled: payment refunded in full.' });
+    } catch {
+      // Isolated, as the loyalty follow-up is.
+    }
+  }
+
+  /**
+   * The money OTHER completed attempts on this order still hold (paid, less what has gone back). When it covers
+   * this attempt, this attempt was a second payment, and money going back on it is not money going back on the
+   * order: refunding a customer's double charge used to cancel the order they had legitimately paid for.
+   */
+  private async otherAttemptsNetUgx(attemptId: string, orderId: string): Promise<number> {
+    if (!this.paymentRepo.findAttemptsByOrderId) return 0;
+    const others = (await this.paymentRepo.findAttemptsByOrderId(orderId))
+      .filter((a) => a.id !== attemptId && a.status === 'completed' && a.amount > 0);
+    let net = 0;
+    for (const a of others) {
+      const back = this.refundLedger ? await this.refundLedger.getRefundedTotalUgx(a.id) : 0;
+      net += Math.max(0, a.amount - back);
+    }
+    return net;
+  }
+
+  /** Never lets a loyalty failure fail the money path. */
+  private async applyRefundToLoyalty(orderId: string, refundedShareBps: number, reason: string): Promise<void> {
+    if (!this.refundLoyalty) return;
+    try {
+      await this.refundLoyalty.execute({ orderId, refundedShareBps, reason });
+    } catch {
+      // Isolated: the money fact is already recorded; the admin can reverse by hand.
+    }
+  }
+
+  async execute(
+    attempt: Pick<RecordedPaymentAttempt, 'id' | 'orderId' | 'amount' | 'orderTrackingId' | 'merchantReference'>,
+    ctx: {
+      actorType: OrderActorType;
+      actorId?: string | null;
+      source: OrderEventSource;
+      /** True only when the provider's own status said so (the poll). */
+      providerConfirmed: boolean;
+    },
+  ): Promise<RefundConsequencesResult> {
+    const refundedUgx = this.refundLedger ? await this.refundLedger.getRefundedTotalUgx(attempt.id) : 0;
+    // A gift card / store credit paid part of this order: the cash attempt is only part of what it cost, so even all
+    // of the cash back is a PARTIAL refund of the order. Read against the cash alone it was 'total', which cancelled
+    // the order and also returned the card's share (an out-of-stock item refunded = the rest of the order lost, or
+    // shipped with the card money given back; 2026-10-22). Cancelling such an order stays a person's decision.
+    const credit = this.storeCreditOf ? await this.storeCreditOf(attempt.orderId).catch(() => 0) : 0;
+    const reading: RefundReading = credit > 0 && refundedUgx > 0 ? 'partial' : readRefund(refundedUgx, attempt.amount);
+
+    if (attempt.amount > 0 && (await this.otherAttemptsNetUgx(attempt.id, attempt.orderId)) >= attempt.amount) {
+      // A second payment going back. The attempt records it; the order stays paid and keeps its stock and points.
+      await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, {
+        status: reading === 'partial' ? 'completed' : 'reversed',
+        ...(ctx.providerConfirmed ? { providerConfirmed: true } : {}),
+      });
+      return { reading, refundedUgx, coveredByAnotherPayment: true };
+    }
+
+    if (reading === 'partial') {
+      await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, {
+        status: 'completed',
+        ...(ctx.providerConfirmed ? { providerConfirmed: true } : {}),
+      });
+      if (attempt.amount > 0) {
+        // The order never moves on a partial refund, so the lifecycle
+        // subscriber never sees it: claw back the refunded share here.
+        await this.applyRefundToLoyalty(attempt.orderId, Math.floor((refundedUgx * 10_000) / (attempt.amount + Math.max(0, credit))), 'Partial refund');
+      }
+      return { reading, refundedUgx };
+    }
+
+    await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, {
+      status: 'reversed',
+      ...(ctx.providerConfirmed ? { providerConfirmed: true } : {}),
+    });
+    try {
+      // The same key whichever door the news came through, so the poll and an
+      // operator's resolution write one cancellation between them.
+      await this.orderTransition.transition(attempt.orderId, 'cancelled', {
+        actorType: ctx.actorType,
+        actorId: ctx.actorId ?? null,
+        source: ctx.source,
+        reasonCode: 'pesapal_payment_reversed',
+        paymentStatus: 'reversed',
+        idempotencyKey: `pesapal:reversed:${attempt.orderTrackingId ?? attempt.merchantReference}`,
+        correlationId: attempt.merchantReference,
+      });
+    } catch (err) {
+      // The order is in a state that does not permit cancelling (a reversal
+      // after delivery). Never force an illegal transition: record the payment
+      // fact, reverse loyalty here, and surface it for a person.
+      if (err instanceof DomainError) {
+        await this.paymentRepo.updateOrderPaymentStatusSafely(attempt.orderId, 'reversed');
+        await this.applyRefundToLoyalty(attempt.orderId, 10_000, 'Payment reversed by provider');
+        return { reading, refundedUgx, lifecycleConflict: true, conflictMessage: err.message };
+      }
+      throw err;
+    }
+    // The order is cancelled: take its task out of the work queue too, so no
+    // one packs goods for an order whose money has gone back.
+    await this.closeFulfilmentTask(attempt.orderId, ctx.actorId ?? null);
+    return { reading, refundedUgx };
+  }
+}

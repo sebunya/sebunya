@@ -63,6 +63,18 @@ export interface PaymentVerificationResult {
   orderId: string;
   /** The adapter's status vocabulary. Mapped here, once. */
   status: string;
+  /**
+   * The provider's answer was established but the order refused the move.
+   * Money may have arrived against an order that cannot receive it, so this is
+   * settled by a person rather than confirmed automatically.
+   */
+  lifecycleConflict?: boolean;
+  /**
+   * The attempt failed, but the order already holds a later fact about its
+   * money (it was paid by another attempt), so the failure was not recorded on
+   * the order. Nothing here may treat the ORDER as failed.
+   */
+  superseded?: boolean;
 }
 
 export interface ReconcileOrderPaymentDeps {
@@ -126,27 +138,78 @@ export class ReconcileOrderPaymentUseCase {
     // callback and the IPN routinely both arrive — so this is an expected path, not an
     // error, and it must change nothing.
     if (checkout.stage === 'ORDER_CONFIRMED' || checkout.stage === 'COMPLETED') {
+      // Except one case: a DIFFERENT attempt's money arrived on an order that was already paid (a late Mobile Money
+      // approval on an older payment page). A repeat of the same attempt carries the same idempotency key and never
+      // conflicts; lifecycleConflict with money arrived means the customer has been charged twice. The order stays
+      // as it is (it is paid and moving), but a person is told, and the customer is not told "no second payment".
+      const secondPayment = !!verification.lifecycleConflict && verification.ok;
+      if (secondPayment) this.deps.observer?.onReviewRequired(orderId, traceId, 'SECOND_PAYMENT_TAKEN');
       return {
         kind: 'ALREADY_SETTLED',
         orderId,
         stage: checkout.stage as CheckoutSagaStage,
-        reason: 'ALREADY_CONFIRMED',
+        reason: secondPayment ? 'SECOND_PAYMENT_TAKEN' : 'ALREADY_CONFIRMED',
       };
     }
 
     const status = (verification.status || '').trim().toLowerCase();
 
-    // Verification itself failing outranks whatever status came with it: if we could not
-    // establish the result, the status is not evidence of anything.
-    if (!verification.ok) {
-      return this.review(orderId, checkout.stage, traceId, 'VERIFICATION_FAILED');
+    // The provider answered, but the order's own state machine refused the move.
+    // Confirming here would mark fulfilment paid, settle loyalty and tell the
+    // customer "payment received" for an order that could not accept the payment.
+    if (verification.lifecycleConflict) {
+      return this.review(orderId, checkout.stage, traceId, 'LIFECYCLE_CONFLICT');
+    }
+
+    // Classified by STATUS before the `ok` gate, and deliberately so.
+    //
+    // The verifier's `ok` means "money arrived", not "we established the result":
+    // it answers ok:false for a decline (2), a final unpaid (0 → invalid), a
+    // reversal (3), a young unpaid attempt inside the grace window ('pending') and
+    // a status API that could not be reached ('verification_pending'). Gating on
+    // `ok` first sent every one of those to PAYMENT_REVIEW — which is outside the
+    // payable trunk, so the order could never be paid online again, and the
+    // FAILED and PENDING branches below were unreachable from production. Only an
+    // answer we could NOT establish ('verification_failed', an integrity
+    // mismatch) or do not recognise is a question for a person.
+    if (FAILED_STATUSES.has(status) && verification.superseded) {
+      // A late decline for ANOTHER attempt on an order whose money already
+      // arrived. It must not release a review (the order may be parked because
+      // money landed on an order that could not accept it — a person still owns
+      // that), and it is not a FAILED settlement: the customer must not be told
+      // "payment did not go through" when they have paid. Nothing moves.
+      return {
+        kind: checkout.stage === 'PAYMENT_REVIEW' ? 'REVIEW_REQUIRED' : 'ALREADY_SETTLED',
+        orderId,
+        stage: checkout.stage as CheckoutSagaStage,
+        reason: 'ORDER_ALREADY_PAID',
+      };
     }
 
     if (FAILED_STATUSES.has(status)) {
-      // Terminal, and deliberately NOT advanced to a confirmed stage. The order remains
+      // Not advanced to a confirmed stage: no money arrived. The order remains
       // unpaid and the customer may retry onto the same checkout.
+      //
+      // A checkout PARKED for a human is released here, and only here. Parking
+      // means "we do not know what happened to the money"; the provider has now
+      // answered that nothing did, so the question is closed. Leaving it parked
+      // left the order permanently unpayable — a customer with a declined card
+      // could neither retry nor be helped, on an order we KNEW was unpaid.
+      // Back onto the trunk, not backwards: PAYMENT_STARTED is simply true (a
+      // payment WAS started and it declined), it is a stage the port already
+      // allows, and it is past PAYMENT_READY, so the order is payable again.
+      const released = checkout.stage === 'PAYMENT_REVIEW'
+        ? await this.deps.idempotency
+            .advancePaymentStage(orderId, 'PAYMENT_STARTED', ['PAYMENT_REVIEW'])
+            .catch(() => false)
+        : false;
       this.deps.observer?.onSettled(orderId, 'FAILED', traceId);
-      return { kind: 'FAILED', orderId, stage: checkout.stage as CheckoutSagaStage, reason: 'PAYMENT_FAILED' };
+      return {
+        kind: 'FAILED',
+        orderId,
+        stage: released ? 'PAYMENT_STARTED' : (checkout.stage as CheckoutSagaStage),
+        reason: 'PAYMENT_FAILED',
+      };
     }
 
     if (PENDING_STATUSES.has(status)) {
@@ -164,6 +227,12 @@ export class ReconcileOrderPaymentUseCase {
       };
     }
 
+    // Verification itself failing outranks a confirmed-looking status: if we could
+    // not establish the result, 'completed' is not evidence of anything.
+    if (!verification.ok) {
+      return this.review(orderId, checkout.stage, traceId, 'VERIFICATION_FAILED');
+    }
+
     if (!CONFIRMED_STATUSES.has(status)) {
       // An unrecognised status. Never optimistically treated as success.
       return this.review(orderId, checkout.stage, traceId, 'UNRECOGNISED_PAYMENT_STATUS');
@@ -177,9 +246,22 @@ export class ReconcileOrderPaymentUseCase {
     );
 
     if (!advanced) {
+      // The callback and the IPN routinely arrive together: both read
+      // PAYMENT_STARTED, one advances, and the loser lands here. That is the
+      // normal duplicate, not a question for a person — so look again before
+      // raising PAYMENT_REVIEW_REQUIRED (an error-level log on a correctly
+      // paid order trains operators to ignore the one line about money).
+      const now = await this.deps.idempotency.findByOrderId(orderId).catch(() => null);
+      if (now && (now.stage === 'ORDER_CONFIRMED' || now.stage === 'COMPLETED')) {
+        return {
+          kind: 'ALREADY_SETTLED',
+          orderId,
+          stage: now.stage as CheckoutSagaStage,
+          reason: 'ALREADY_CONFIRMED',
+        };
+      }
       // The stage was not one a settlement may leave — a callback for a checkout that
-      // never reached payment, or one another process settled between the read and here.
-      // Either way this process must not claim the settlement.
+      // never reached payment. This process must not claim the settlement.
       this.deps.observer?.onReviewRequired(orderId, traceId, 'STAGE_NOT_SETTLEABLE');
       return {
         kind: 'REVIEW_REQUIRED',

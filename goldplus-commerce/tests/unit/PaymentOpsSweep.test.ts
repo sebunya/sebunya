@@ -1,0 +1,301 @@
+import { auditEntityId } from '../../apps/api/src/domain/audit/AuditEntityId';
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  AbandonStaleUnpaidOrdersUseCase,
+  AlertOnLedgerMismatchUseCase,
+  ExpireStaleReservationsUseCase,
+} from '../../apps/api/src/application/use-cases/payments/PaymentOpsSweepUseCases';
+import { validatePaymentsOpsValue, isPaymentsOpsConfigKey } from '../../apps/api/src/domain/payments/PaymentsOpsConfig';
+
+/**
+ * The payment ops sweep: reservation TTL, order abandonment, and the ledger
+ * mismatch alert. Every mechanism ships OFF — the thresholds are business
+ * decisions an operator makes, never developer defaults — and every test here
+ * starts from the state production was found in: stock held for months by
+ * unpaid test orders, and a mismatch report nobody read.
+ */
+
+const HOUR = 3_600_000;
+const NOW = new Date('2026-08-06T12:00:00Z');
+
+const audit = { entries: [] as any[], async save(e: any) { this.entries.push(e); return e; } };
+
+class FakeOrders {
+  stale: Array<{ id: string; orderNumber: string; status: string; createdAt: Date }> = [];
+  reserved: Array<{ id: string; orderNumber: string; createdAt: Date }> = [];
+  lastStaleCutoff: Date | null = null;
+  lastReservedCutoff: Date | null = null;
+  async listStaleUnpaidOrders(olderThan: Date) {
+    this.lastStaleCutoff = olderThan;
+    return this.stale.filter((o) => o.createdAt < olderThan);
+  }
+  async listReservedUnpaidOrders(olderThan: Date) {
+    this.lastReservedCutoff = olderThan;
+    return this.reserved.filter((o) => o.createdAt < olderThan);
+  }
+}
+
+let orders: FakeOrders;
+let releases: string[];
+let transitions: Array<{ orderId: string; to: string; reasonCode: string }>;
+let config: Record<string, string>;
+
+const inventory = {
+  async releaseForOrder(orderId: string) {
+    releases.push(orderId);
+    return { released: true };
+  },
+};
+
+const configReader = { values: async () => config };
+
+beforeEach(() => {
+  orders = new FakeOrders();
+  releases = [];
+  transitions = [];
+  config = {};
+  audit.entries = [];
+});
+
+describe('reservation TTL — stock held by an unpaid order goes back on sale', () => {
+  const useCase = () => new ExpireStaleReservationsUseCase(configReader, orders, inventory, audit as never);
+
+  it('does NOTHING while the TTL is unset, and says why', async () => {
+    orders.reserved = [{ id: 'o1', orderNumber: 'GP-1', createdAt: new Date(NOW.getTime() - 1000 * HOUR) }];
+    const r = await useCase().execute(NOW);
+    expect(r).toEqual({ released: 0, skipped: 'ttl_not_configured' });
+    expect(releases).toEqual([]);
+  });
+
+  it('releases through the REAL transactional path once the TTL is set, and audits each', async () => {
+    config.reservation_ttl_hours = '48';
+    orders.reserved = [
+      { id: 'old', orderNumber: 'GP-OLD', createdAt: new Date(NOW.getTime() - 72 * HOUR) },
+      { id: 'new', orderNumber: 'GP-NEW', createdAt: new Date(NOW.getTime() - 2 * HOUR) },
+    ];
+    const r = await useCase().execute(NOW);
+    expect(r.released).toBe(1);
+    expect(releases).toEqual(['old']);
+    // The fixture id 'old' is not a UUID; the audit writer maps such references
+    // to a stable UUID (audit_logs.entity_id is a UUID column). A real order id
+    // passes through unchanged.
+    expect(audit.entries[0]).toMatchObject({ action: 'RESERVATION_EXPIRED', entityId: auditEntityId('order', 'old') });
+    expect(audit.entries[0].newState.reason).toContain('48 hours');
+  });
+
+  it('the cutoff is the TTL, exactly', async () => {
+    config.reservation_ttl_hours = '24';
+    await useCase().execute(NOW);
+    expect(orders.lastReservedCutoff).toEqual(new Date(NOW.getTime() - 24 * HOUR));
+  });
+});
+
+describe('order abandonment — cancelled through the canonical lifecycle, never overwritten', () => {
+  const transition = {
+    async transition(orderId: string, to: 'cancelled', ctx: { reasonCode: string }) {
+      transitions.push({ orderId, to, reasonCode: ctx.reasonCode });
+    },
+  };
+  const useCase = () =>
+    new AbandonStaleUnpaidOrdersUseCase(configReader, orders, transition, inventory, audit as never);
+
+  it('does NOTHING while the window is unset', async () => {
+    orders.stale = [{ id: 'o1', orderNumber: 'GP-1', status: 'received', createdAt: new Date(0) }];
+    const r = await useCase().execute(NOW);
+    expect(r).toMatchObject({ abandoned: 0, skipped: 'window_not_configured' });
+    expect(transitions).toEqual([]);
+  });
+
+  it('cancels via the transition service with a named reason, then releases stock', async () => {
+    config.order_abandonment_hours = '72';
+    orders.stale = [{ id: 'o1', orderNumber: 'GP-1', status: 'received', createdAt: new Date(NOW.getTime() - 100 * HOUR) }];
+    const r = await useCase().execute(NOW);
+    expect(r.abandoned).toBe(1);
+    expect(transitions).toEqual([{ orderId: 'o1', to: 'cancelled', reasonCode: 'payment_abandoned' }]);
+    expect(releases).toEqual(['o1']);
+    expect(audit.entries[0]).toMatchObject({ action: 'ORDER_ABANDONED_UNPAID' });
+  });
+
+  it("closes the abandoned order's fulfilment task, so it stops counting as new or overdue", async () => {
+    config.order_abandonment_hours = '72';
+    orders.stale = [{ id: 'o1', orderNumber: 'GP-1', status: 'received', createdAt: new Date(NOW.getTime() - 100 * HOUR) }];
+    const closed: Array<{ orderId: string; reason: string }> = [];
+    const fulfilment = { async execute(i: { orderId: string; actorId: string | null; reason: string }) { closed.push({ orderId: i.orderId, reason: i.reason }); } };
+    await new AbandonStaleUnpaidOrdersUseCase(configReader, orders, transition, inventory, audit as never, fulfilment).execute(NOW);
+    expect(closed).toEqual([{ orderId: 'o1', reason: expect.stringMatching(/abandoned/i) }]);
+    // A task that cannot be closed never undoes the cancellation or stops the sweep.
+    const failing = { async execute() { throw new Error('db down'); } };
+    const r = await new AbandonStaleUnpaidOrdersUseCase(configReader, orders, transition, inventory, audit as never, failing).execute(NOW);
+    expect(r.abandoned).toBe(1);
+    expect(r.errors).toEqual([]);
+  });
+
+  it('asks Pesapal once about failed attempts before cancelling: a paid order is never abandoned, an unreachable provider means wait (2026-10-22)', async () => {
+    config.order_abandonment_hours = '72';
+    const old = new Date(NOW.getTime() - 100 * HOUR);
+    orders.stale = [
+      { id: 'paid', orderNumber: 'GP-P', status: 'received', createdAt: old },
+      { id: 'unpaid', orderNumber: 'GP-U', status: 'received', createdAt: old },
+      { id: 'unknown', orderNumber: 'GP-X', status: 'received', createdAt: old },
+    ];
+    transitions.length = 0;
+    const recheck = async (id: string) => { if (id === 'unknown') throw new Error('PROVIDER_UNREACHABLE'); return id === 'paid'; };
+    const r = await new AbandonStaleUnpaidOrdersUseCase(configReader, orders, transition, inventory, audit as never, undefined, recheck).execute(NOW);
+    expect(r.abandoned).toBe(1);
+    expect(transitions.map((t: { orderId: string }) => t.orderId)).toEqual(['unpaid']);
+    expect(r.errors.join(' ')).toMatch(/GP-X/);
+  });
+
+  it('one refused transition never stops the rest', async () => {
+    config.order_abandonment_hours = '72';
+    const refusing = {
+      async transition(orderId: string) {
+        if (orderId === 'bad') throw new Error('ILLEGAL_TRANSITION');
+        transitions.push({ orderId, to: 'cancelled', reasonCode: 'payment_abandoned' });
+      },
+    };
+    orders.stale = [
+      { id: 'bad', orderNumber: 'GP-BAD', status: 'received', createdAt: new Date(0) },
+      { id: 'good', orderNumber: 'GP-GOOD', status: 'received', createdAt: new Date(0) },
+    ];
+    const r = await new AbandonStaleUnpaidOrdersUseCase(configReader, orders, refusing as never, inventory, audit as never).execute(NOW);
+    expect(r.abandoned).toBe(1);
+    expect(r.errors).toHaveLength(1);
+    expect(transitions.map((t) => t.orderId)).toEqual(['good']);
+  });
+
+  /**
+   * The exclusion that matters more than the rule. The reader contract only
+   * returns orders with NO live attempt; an order whose attempt is still
+   * `pending` may yet be answered COMPLETED by the provider, and cancelling it
+   * would be exactly the "money taken, no order" failure the timeout rule
+   * forbids. Pinned here as a contract scan so the SQL cannot quietly lose it.
+   */
+  it('the stale-order reader excludes orders with a live payment attempt', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const registry = readFileSync(join(__dirname, '../../apps/api/src/infrastructure/Registry.ts'), 'utf8');
+    const readerBlock = registry.slice(registry.indexOf('listStaleUnpaidOrders'), registry.indexOf('expireStaleReservationsUseCase'));
+    expect(readerBlock).toContain('not exists');
+    expect(readerBlock).toContain("'pending', 'verification_pending', 'verification_failed'");
+  });
+
+  /**
+   * COD safety: a pay-on-delivery / manual / admin-created order NEVER creates
+   * a payment attempt and is unpaid by design until delivered. Both sweeps must
+   * therefore require the order to HAVE attempted online payment (an `exists`
+   * over payment_attempts), or enabling order_abandonment_hours /
+   * reservation_ttl_hours would auto-cancel legitimate COD orders and release
+   * their stock. Pinned as a contract scan over BOTH reader queries.
+   */
+  it('both sweep readers require an online payment attempt (never touch COD/manual orders)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const registry = readFileSync(join(__dirname, '../../apps/api/src/infrastructure/Registry.ts'), 'utf8');
+    const staleBlock = registry.slice(registry.indexOf('listStaleUnpaidOrders'), registry.indexOf('listReservedUnpaidOrders'));
+    const reservedBlock = registry.slice(registry.indexOf('listReservedUnpaidOrders'), registry.indexOf('expireStaleReservationsUseCase'));
+    for (const block of [staleBlock, reservedBlock]) {
+      // Only orders whose recorded payment mode is online-prepaid are swept.
+      // 'offline' (COD) and NULL (legacy/admin) are never auto-cancelled or released.
+      expect(block).toMatch(/o\.payment_method = 'pesapal'/);
+    }
+  });
+});
+
+describe('RESERVED_LEDGER_MISMATCH is an alert, not a report line', () => {
+  it('shouts when the scan finds a mismatch, with the entities named', async () => {
+    const alerts: unknown[] = [];
+    const useCase = new AlertOnLedgerMismatchUseCase(
+      {
+        async execute() {
+          return {
+            exceptions: [
+              { type: 'RESERVED_LEDGER_MISMATCH', entityId: 'o1' },
+              { type: 'ORDER_TOTAL_MISMATCH', entityId: 'o2' },
+              { type: 'RESERVED_LEDGER_MISMATCH', entityId: 'o3' },
+            ],
+          };
+        },
+      },
+      (input) => void alerts.push(input),
+    );
+    const r = await useCase.execute();
+    expect(r.mismatches).toBe(2);
+    expect(alerts).toEqual([{ count: 2, entityIds: ['o1', 'o3'], types: ['RESERVED_LEDGER_MISMATCH'] }]);
+  });
+
+  it('stays silent when there is nothing to shout about', async () => {
+    const alerts: unknown[] = [];
+    const useCase = new AlertOnLedgerMismatchUseCase(
+      { async execute() { return { exceptions: [] }; } },
+      (input) => void alerts.push(input),
+    );
+    await useCase.execute();
+    expect(alerts).toEqual([]);
+  });
+});
+
+describe('the ops config registry — closed, validated, no invented defaults', () => {
+  it('refuses a key outside the registry', () => {
+    expect(isPaymentsOpsConfigKey('some_new_knob')).toBe(false);
+    expect(validatePaymentsOpsValue('some_new_knob', '5')).toMatchObject({ ok: false });
+  });
+
+  it('validates integers against their declared ranges', () => {
+    expect(validatePaymentsOpsValue('reservation_ttl_hours', '48')).toEqual({ ok: true, value: 48 });
+    expect(validatePaymentsOpsValue('reservation_ttl_hours', '0')).toMatchObject({ ok: false });
+    expect(validatePaymentsOpsValue('reservation_ttl_hours', '48.5')).toMatchObject({ ok: false });
+    expect(validatePaymentsOpsValue('reservation_ttl_hours', '10000')).toMatchObject({ ok: false });
+  });
+
+  it('validates clock values as real times of day', () => {
+    expect(validatePaymentsOpsValue('trading_hours_start_eat', '08:30')).toEqual({ ok: true, value: '08:30' });
+    expect(validatePaymentsOpsValue('trading_hours_start_eat', '25:99')).toMatchObject({ ok: false });
+  });
+});
+
+/**
+ * The order-level reservation state can no longer be entered and never left
+ * (2026-08-06). Seven production orders claimed RESERVED after their stock was
+ * released, because the 0053 vocabulary had no terminal — the payment-attempt
+ * trap repeated on the exact field payment and fulfilment fail closed on.
+ */
+describe('orders.reservation_state has exits', () => {
+  it('the vocabulary carries RELEASED and CONSUMED, and RELEASED may not progress to payment', async () => {
+    const { mayProgressToPayment } = await import('../../apps/api/src/domain/inventory/Inventory');
+    expect(mayProgressToPayment('RELEASED' as never)).toBe(false);
+    expect(mayProgressToPayment('CONSUMED' as never)).toBe(false);
+    expect(mayProgressToPayment('RESERVED' as never)).toBe(true);
+  });
+
+  it('releaseForOrder and consumeForOrder mirror the order row in the SAME transaction', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const src = readFileSync(
+      join(__dirname, '../../apps/api/src/infrastructure/db/repositories/DrizzleInventoryRepository.ts'),
+      'utf8',
+    );
+    // Both mirrors run inside the ledger transaction via the shared helper —
+    // extracted so the canonical-transition guard's inspection window around
+    // .update(orders) contains only the two reservation fields.
+    const releaseBlock = src.slice(src.indexOf('async releaseForOrder'), src.indexOf('async consumeForOrder'));
+    expect(releaseBlock).toContain("mirrorOrderReservationState(tx, orderId, 'RELEASED')");
+    const consumeBlock = src.slice(src.indexOf('async consumeForOrder'));
+    expect(consumeBlock).toContain("mirrorOrderReservationState(tx, orderId, 'CONSUMED')");
+    expect(src).toMatch(/private async mirrorOrderReservationState\(/);
+    expect(src).toMatch(/reservationState: state, reservationUpdatedAt/);
+  });
+
+  it('the widened DB constraint admits exactly the domain vocabulary', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const migration = readFileSync(
+      join(__dirname, '../../apps/api/src/infrastructure/db/migrations/0098_reservation_state_terminals.sql'),
+      'utf8',
+    );
+    for (const state of ['PENDING', 'RESERVED', 'BACKORDERED', 'NOT_REQUIRED', 'UNRESERVED_BLOCKED', 'RELEASED', 'CONSUMED']) {
+      expect(migration).toContain(`'${state}'`);
+    }
+    expect(migration).not.toMatch(/\bINSERT\s+INTO\b/i);
+  });
+});
