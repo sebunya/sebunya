@@ -1,0 +1,14 @@
+[Unit]
+Description=GoldPlus Storage Steward — observe
+Documentation=file:/etc/goldplus-storage-steward/policy.yaml
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/goldplus-storage-steward observe --quiet
+# Measurement must never compete with the shop: lowest CPU and IO share.
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=10
+IOWeight=10
+TimeoutStartSec=300

@@ -1,7 +1,18 @@
+# Container logs were unbounded (json-file keeps every line forever). The
+# bound is the Storage Steward's policy (ops/storage-steward/policy.yaml:
+# log_max_size_mb 50, log_max_files 3); the Steward also writes it into
+# /etc/docker/daemon.json, and this keeps the compose file honest about it.
+x-goldplus-logging: &goldplus-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:16-alpine
     restart: always
+    logging: *goldplus-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -20,6 +31,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: always
+    logging: *goldplus-logging
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
@@ -32,14 +44,22 @@ services:
       start_period: 5s
 
   pgbouncer:
-    image: edoburu/pgbouncer:latest
+    # Pinned by digest: `latest` drifted to a build whose default listen_port is 5432,
+    # which made the :6432 healthcheck fail and (via depends_on) blocked the API from
+    # starting even though the API connects to postgres directly. Digest = PgBouncer
+    # 1.25.2 (edoburu has no matching semver tag), re-pointed to 6432 via LISTEN_PORT.
+    image: edoburu/pgbouncer@sha256:4c1ca296ef525f108f5d3552cc337c0c09587cf8dae7f0067fd93349e47dc1cd
     restart: always
+    logging: *goldplus-logging
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=${POSTGRES_USER}
       - DB_PASSWORD=${POSTGRES_PASSWORD}
       - DB_DATABASE=${POSTGRES_DB}
+      # Listen on the intended pooling port so the healthcheck and the published
+      # 6432 mapping agree with the process.
+      - LISTEN_PORT=6432
       - POOL_MODE=transaction
       - MAX_CLIENT_CONN=1000
       - DEFAULT_POOL_SIZE=20
@@ -62,17 +82,70 @@ services:
       context: .
       dockerfile: Dockerfile.api
     restart: always
+    logging: *goldplus-logging
+    # Signals reach node through an init process, and the stop budget covers the
+    # whole graceful shutdown (server.ts: HTTP close, outbox wait up to 10s, queue
+    # workers, then the pool). Docker's default 10s SIGKILLed it part way through.
+    # `deploy.update_config` below is a Swarm setting plain `docker compose` ignores.
+    init: true
+    stop_grace_period: 30s
+    # The API connects to postgres directly (DATABASE_URL=postgres:5432), so it gates
+    # its startup on postgres + redis — the services it actually uses — not on
+    # pgbouncer. Gating on an unused pooler is what let a pgbouncer image drift take
+    # the whole API down.
     depends_on:
-      pgbouncer:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment:
       - NODE_ENV=production
+      # Explicit proxy topology is REQUIRED in production (clientAddress guard):
+      # Caddy is the edge here, so trusted client IP comes from its forwarded header.
+      - PROXY_TOPOLOGY_MODE=${PROXY_TOPOLOGY_MODE:-CADDY_EDGE}
+      # Synthetic monitor mutating stages (place a real order + payment webhook) are OFF
+      # in production; the read-only journey remains the health signal. Only a dedicated
+      # synthetic-safe environment should set this true.
+      - SYNTHETIC_MONITOR_WRITE_STAGES_ENABLED=${SYNTHETIC_MONITOR_WRITE_STAGES_ENABLED:-false}
+      # Loyalty programme master switch. Points carry monetary value, so activation
+      # is deliberately two-key: this deployment flag AND the audited admin config
+      # (enabled + earn rate + expiry). Either one off means no points are issued.
+      - LOYALTY_PROGRAMME_ENABLED=${LOYALTY_PROGRAMME_ENABLED:-false}
       - PORT=3000
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - JWT_SECRET=${JWT_SECRET}
+      # Cart/checkout identity is signed by the storefront (BFF) and verified here.
+      # Dedicated secrets (not JWT_SECRET) keep the cart/intent key streams isolated
+      # from the session-token stream. Web and API MUST share the same values or every
+      # shopper loses their basket / cannot check out.
+      - CART_CREDENTIAL_SECRET=${CART_CREDENTIAL_SECRET}
+      # Storefront SSR -> API: proves the caller is our own SSR, the only caller
+      # that receives product floors (Price A). MUST match between api and web.
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      - CHECKOUT_INTENT_SECRET=${CHECKOUT_INTENT_SECRET}
+      # Integration credential vault. Independent of JWT_SECRET on purpose: the
+      # vault falls back to JWT_SECRET when this is unset, which would couple
+      # stored provider credentials to the auth secret and make rotating either
+      # one strand the other. Must be present here — listing it in
+      # .env.production alone does NOT reach the container, because compose
+      # passes only the variables named in this block.
+      - SEO_CREDENTIAL_VAULT_KEY=${SEO_CREDENTIAL_VAULT_KEY}
+      # Lighthouse Watch (2026-09-13): machine token for the host runner's ingest,
+      # optional PageSpeed key, watch URLs and per-category targets (default 100).
+      - LIGHTHOUSE_WATCH_TOKEN=${LIGHTHOUSE_WATCH_TOKEN:-}
+      - LIGHTHOUSE_WATCH_URLS=${LIGHTHOUSE_WATCH_URLS:-}
+      - LIGHTHOUSE_WATCH_INTERVAL_MINUTES=${LIGHTHOUSE_WATCH_INTERVAL_MINUTES:-}
+      - GOOGLE_PAGESPEED_API_KEY=${GOOGLE_PAGESPEED_API_KEY:-}
+      # YouTube Data API key (0206): nightly public view counts for sponsored videos. Absent: counts are not read and the MMM page says so.
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY:-}
+      - BOU_FX_TOKEN=${BOU_FX_TOKEN:-}
+      - ALLRATES_API_KEY=${ALLRATES_API_KEY:-}
+      - CLARITY_EXPORT_TOKEN=${CLARITY_EXPORT_TOKEN:-}
+      - LIGHTHOUSE_WATCH_TARGET_PERFORMANCE=${LIGHTHOUSE_WATCH_TARGET_PERFORMANCE:-}
+      - LIGHTHOUSE_WATCH_TARGET_ACCESSIBILITY=${LIGHTHOUSE_WATCH_TARGET_ACCESSIBILITY:-}
+      - LIGHTHOUSE_WATCH_TARGET_BEST_PRACTICES=${LIGHTHOUSE_WATCH_TARGET_BEST_PRACTICES:-}
+      - LIGHTHOUSE_WATCH_TARGET_SEO=${LIGHTHOUSE_WATCH_TARGET_SEO:-}
       - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - COOKIE_SECURE=${COOKIE_SECURE}
@@ -91,6 +164,10 @@ services:
       - PESAPAL_BRANCH=${PESAPAL_BRANCH}
       - PESAPAL_REDIRECT_MODE=${PESAPAL_REDIRECT_MODE}
       - PESAPAL_CALLBACK_URL=${PESAPAL_CALLBACK_URL}
+      # The provider's return destination (our API). Defaults from
+      # PUBLIC_API_BASE_URL when unset; listed here because a variable that is
+      # only in .env.production never reaches the container.
+      - PESAPAL_PROVIDER_CALLBACK_URL=${PESAPAL_PROVIDER_CALLBACK_URL:-}
       - PESAPAL_CANCELLATION_URL=${PESAPAL_CANCELLATION_URL}
       - PESAPAL_IPN_URL=${PESAPAL_IPN_URL}
       - PESAPAL_IPN_ID=${PESAPAL_IPN_ID}
@@ -106,6 +183,64 @@ services:
       - NOTIFICATIONS_DRY_RUN=${NOTIFICATIONS_DRY_RUN}
       - NOTIFICATIONS_LIVE_SEND_ENABLED=${NOTIFICATIONS_LIVE_SEND_ENABLED}
       - NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS=${NOTIFICATIONS_ALLOWED_TEST_RECIPIENTS}
+      # Internal recipients for new-order operations alerts. Without this the
+      # ADMIN_ORDER_EMAIL intent routes to zero targets and is marked unroutable —
+      # the alert silently never sends however many delivery flags are on.
+      - ADMIN_ORDER_NOTIFICATION_EMAILS=${ADMIN_ORDER_NOTIFICATION_EMAILS}
+      # Goldie (docs/assistant/README.md). WhatsApp stays off unless GOLDIE_WHATSAPP_ENABLED=true AND a token and
+      # the number id are set; GOLDIE_WHATSAPP_TEST_NUMBERS limits a trial to those numbers. The api asks the web
+      # container for Goldie's answer at WEB_INTERNAL_ORIGIN. Care Desk alerts: CARE_ALERTS_PER_HOUR caps paging
+      # shop-wide; GOLDIE_ALERT_TEMPLATE (an approved WhatsApp template, one body variable) enables WhatsApp alerts.
+      # Goldie acts on orders herself (cancel before dispatch, refund up to the cap, rider notes); off sends them to the desk.
+      - GOLDIE_ORDER_ACTIONS=${GOLDIE_ORDER_ACTIONS:-on}
+      - GOLDIE_REFUND_CAP_UGX=${GOLDIE_REFUND_CAP_UGX:-300000}
+      - GOLDIE_WHATSAPP_ENABLED=${GOLDIE_WHATSAPP_ENABLED:-false}
+      - GOLDIE_WHATSAPP_TOKEN=${GOLDIE_WHATSAPP_TOKEN:-}
+      - GOLDIE_WHATSAPP_PHONE_NUMBER_ID=${GOLDIE_WHATSAPP_PHONE_NUMBER_ID:-}
+      # Optional: the WhatsApp Business Account id (normally read from the admin's WhatsApp settings).
+      - WHATSAPP_WABA_ID=${WHATSAPP_WABA_ID:-}
+      # The Messaging account id (Meta keeps templates and billing there); template calls try it first.
+      - WHATSAPP_MESSAGING_ACCOUNT_ID=${WHATSAPP_MESSAGING_ACCOUNT_ID:-}
+      - GOLDIE_WHATSAPP_TEST_NUMBERS=${GOLDIE_WHATSAPP_TEST_NUMBERS:-}
+      - GOLDIE_BURST_WAIT_MS=${GOLDIE_BURST_WAIT_MS:-2000}
+      - GOLDIE_ALERT_TEMPLATE=${GOLDIE_ALERT_TEMPLATE:-}
+      - GOLDIE_ALERT_TEMPLATE_LANG=${GOLDIE_ALERT_TEMPLATE_LANG:-en}
+      - CARE_ALERTS_PER_HOUR=${CARE_ALERTS_PER_HOUR:-12}
+      - WEB_INTERNAL_ORIGIN=${WEB_INTERNAL_ORIGIN:-http://web:4321}
+      # Goldie on Messenger / Instagram: a Page access token (pages_messaging; instagram_manage_messages) and the
+      # per-platform switch. Webhook: /webhooks/meta-messaging in the same Meta app as WhatsApp.
+      - GOLDIE_META_PAGE_TOKEN=${GOLDIE_META_PAGE_TOKEN:-}
+      - GOLDIE_MESSENGER_ENABLED=${GOLDIE_MESSENGER_ENABLED:-false}
+      - GOLDIE_INSTAGRAM_ENABLED=${GOLDIE_INSTAGRAM_ENABLED:-false}
+      # Care Desk push alerts to staff phones (Web Push): set all three to enable.
+      - CARE_PUSH_VAPID_PUBLIC_KEY=${CARE_PUSH_VAPID_PUBLIC_KEY:-}
+      - CARE_PUSH_VAPID_PRIVATE_KEY=${CARE_PUSH_VAPID_PRIVATE_KEY:-}
+      - CARE_PUSH_CONTACT=${CARE_PUSH_CONTACT:-mailto:support@shopgoldplus.com}
+      # Social sign-in (Google, Apple, Facebook): a provider appears on /login only when its credentials are set.
+      # Listed here because compose passes only the variables named in this block (they never arrived before).
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - APPLE_CLIENT_ID=${APPLE_CLIENT_ID:-}
+      - APPLE_TEAM_ID=${APPLE_TEAM_ID:-}
+      - APPLE_KEY_ID=${APPLE_KEY_ID:-}
+      - APPLE_PRIVATE_KEY=${APPLE_PRIVATE_KEY:-}
+      - FACEBOOK_CLIENT_ID=${FACEBOOK_CLIENT_ID:-}
+      - FACEBOOK_CLIENT_SECRET=${FACEBOOK_CLIENT_SECRET:-}
+      # Checkout's deep place layer (buildings, malls, plots) via Google Places API (New). Unset = "Not configured":
+      # the picker behaves exactly as without it. Caps are per calendar month, shared by both replicas (Redis), paced per day.
+      - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY:-}
+      # Google bills suggestions and place lookups separately, 10,000 free a month each; 9,500 leaves headroom.
+      - GOOGLE_PLACES_AUTOCOMPLETE_MONTHLY_CAP=${GOOGLE_PLACES_AUTOCOMPLETE_MONTHLY_CAP:-9500}
+      - GOOGLE_PLACES_DETAILS_MONTHLY_CAP=${GOOGLE_PLACES_DETAILS_MONTHLY_CAP:-9500}
+      # Outbound governance gates (domain/notifications/OutboundGovernancePolicy).
+      # Each defaults to false — silence must never read as permission — and every
+      # one must be true before a real message reaches a provider. They were
+      # enforced by the policy but never passed to the container, so live delivery
+      # was unreachable no matter what the other flags said.
+      - PROVIDER_DELIVERY_ENABLED=${PROVIDER_DELIVERY_ENABLED:-false}
+      - NOTIFICATION_DELIVERY_ENABLED=${NOTIFICATION_DELIVERY_ENABLED:-false}
+      - CUSTOMER_COMMUNICATIONS_ENABLED=${CUSTOMER_COMMUNICATIONS_ENABLED:-false}
+      - NOTIFICATIONS_OPERATOR_APPROVED=${NOTIFICATIONS_OPERATOR_APPROVED:-false}
       - ZEPTOMAIL_BASE_URL=${ZEPTOMAIL_BASE_URL}
       - ZEPTOMAIL_API_TOKEN=${ZEPTOMAIL_API_TOKEN}
       - ZEPTOMAIL_FROM_ADDRESS=${ZEPTOMAIL_FROM_ADDRESS}
@@ -115,10 +250,54 @@ services:
       - NOTIFICATIONS_EMAIL_ENABLED=${NOTIFICATIONS_EMAIL_ENABLED}
       - ZEPTOMAIL_API_BASE_URL=${ZEPTOMAIL_API_BASE_URL}
       - NOTIFICATIONS_PROVIDER_TIMEOUT_MS=${NOTIFICATIONS_PROVIDER_TIMEOUT_MS}
+      # WhatsApp via Zoho CPaaS (docs/notifications/whatsapp-zoho.md). Empty = Not configured.
+      - NOTIFICATIONS_WHATSAPP_ENABLED=${NOTIFICATIONS_WHATSAPP_ENABLED:-false}
+      - ZOHO_WHATSAPP_API_KEY=${ZOHO_WHATSAPP_API_KEY:-}
+      - ZOHO_WHATSAPP_FROM_NUMBER=${ZOHO_WHATSAPP_FROM_NUMBER:-}
+      - ZOHO_WHATSAPP_BASE_URL=${ZOHO_WHATSAPP_BASE_URL:-https://cpaas.zoho.com/v1.1/whatsapp}
+      - ZOHO_WHATSAPP_TIMEOUT_MS=${ZOHO_WHATSAPP_TIMEOUT_MS:-10000}
+      - ZOHO_WHATSAPP_TEMPLATE_ORDER_RECEIVED_UNPAID=${ZOHO_WHATSAPP_TEMPLATE_ORDER_RECEIVED_UNPAID:-}
+      - ZOHO_WHATSAPP_TEMPLATE_ORDER_PAYMENT_PENDING=${ZOHO_WHATSAPP_TEMPLATE_ORDER_PAYMENT_PENDING:-}
+      - ZOHO_WHATSAPP_TEMPLATE_ORDER_PAYMENT_SUCCESS=${ZOHO_WHATSAPP_TEMPLATE_ORDER_PAYMENT_SUCCESS:-}
+      - ZOHO_WHATSAPP_TEMPLATE_ORDER_PAYMENT_FAILED=${ZOHO_WHATSAPP_TEMPLATE_ORDER_PAYMENT_FAILED:-}
+      - ZOHO_WHATSAPP_TEMPLATE_ORDER_PAYMENT_CANCELLED=${ZOHO_WHATSAPP_TEMPLATE_ORDER_PAYMENT_CANCELLED:-}
+      - ZOHO_WHATSAPP_TEMPLATE_ORDER_FULFILLMENT_PROCESSING=${ZOHO_WHATSAPP_TEMPLATE_ORDER_FULFILLMENT_PROCESSING:-}
+      - ZOHO_WHATSAPP_TEMPLATE_ORDER_DISPATCHED=${ZOHO_WHATSAPP_TEMPLATE_ORDER_DISPATCHED:-}
+      - ZOHO_WHATSAPP_TEMPLATE_ORDER_FULFILLMENT_COMPLETED=${ZOHO_WHATSAPP_TEMPLATE_ORDER_FULFILLMENT_COMPLETED:-}
+      - ZOHO_WHATSAPP_TEMPLATE_ORDER_CANCELLED_BY_SHOP=${ZOHO_WHATSAPP_TEMPLATE_ORDER_CANCELLED_BY_SHOP:-}
+      - ZOHO_WHATSAPP_TEMPLATE_PHONE_VERIFICATION=${ZOHO_WHATSAPP_TEMPLATE_PHONE_VERIFICATION:-}
+      - ZOHO_WHATSAPP_TEMPLATE_SUPPORT_REQUEST_RECEIVED=${ZOHO_WHATSAPP_TEMPLATE_SUPPORT_REQUEST_RECEIVED:-}
+      - ZOHO_WHATSAPP_TEMPLATE_QUOTE_REQUEST_RECEIVED=${ZOHO_WHATSAPP_TEMPLATE_QUOTE_REQUEST_RECEIVED:-}
+      - ZOHO_WHATSAPP_TEMPLATE_DEALER_APPLICATION_RECEIVED=${ZOHO_WHATSAPP_TEMPLATE_DEALER_APPLICATION_RECEIVED:-}
+      - ZOHO_WHATSAPP_TEMPLATE_FAKE_REPORT_RECEIVED=${ZOHO_WHATSAPP_TEMPLATE_FAKE_REPORT_RECEIVED:-}
       - METRICS_INTERNAL_URL=${METRICS_INTERNAL_URL:-http://sgtm-production:8080}
+      # Server-side measurement: the GA4 stream server-confirmed purchases are
+      # sent to, and the container config the /health/deep probe keys on.
+      # Without these the API had no way to know measurement was provisioned.
+      # The storefront's own origins may send cookie-bearing POSTs to the API.
+      # Unset, every browser beacon was refused as cross-site (CSRF) as soon as
+      # any cookie reached api.shopgoldplus.com, which GA4's domain-wide _ga
+      # cookies guarantee: all server-side ecommerce tracking was blocked.
+      - CSRF_ALLOWED_ORIGINS=${CSRF_ALLOWED_ORIGINS:-https://shopgoldplus.com,https://www.shopgoldplus.com}
+      - GA4_MEASUREMENT_ID=${GA4_MEASUREMENT_ID:-}
+      - GTM_CONTAINER_CONFIG=${GTM_CONTAINER_CONFIG:-}
+      - PUBLIC_GTM_ID=${PUBLIC_GTM_ID:-}
+      # Wave 2B: durable media storage on the shared volume the edge serves. Without
+      # this the api wrote uploads into its own ephemeral filesystem (write-only
+      # black hole — the original broken-images root cause).
+      - MEDIA_STORAGE_ROOT=/data/media
       - SHADOW_TRAFFIC_URL=${SHADOW_TRAFFIC_URL:-}
       - SHADOW_TRAFFIC_RATIO=${SHADOW_TRAFFIC_RATIO:-0}
+      # Nothing polls /health/ready in this topology (Caddy has no active health
+      # checks), so a readiness drain pause only delays shutdown past the grace period.
+      - SHUTDOWN_DRAIN_MS=${SHUTDOWN_DRAIN_MS:-0}
       - NODE_OPTIONS=--max-old-space-size=400
+      # Continuous Performance Assurance: the API READS the host audit's data directory
+      # and writes run requests into its queue; the audit itself runs on the host.
+      - PERFORMANCE_AUDIT_DATA_DIR=/data/performance-audit
+    volumes:
+      - media_uploads:/data/media
+      - ${PERFORMANCE_AUDIT_HOST_DATA_DIR:-/var/lib/goldplus-performance-audit}:/data/performance-audit
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health/live').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
       interval: 10s
@@ -137,11 +316,13 @@ services:
       rollback_config:
         parallelism: 1
         order: stop-first
+      # `any`, not `on-failure`: Compose lets this block override the service's
+      # `restart: always`. on-failure with a retry cap left web and api created
+      # as on-failure/3 on production: not guaranteed to return after a host
+      # reboot, and permanently down after three crashes (seen 2026-10-06).
       restart_policy:
-        condition: on-failure
+        condition: any
         delay: 5s
-        max_attempts: 3
-        window: 120s
       resources:
         limits:
           cpus: '1.0'
@@ -156,12 +337,42 @@ services:
       dockerfile: Dockerfile.web
       args:
         - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL}
+        # Astro inlines PUBLIC_* at BUILD time: set only at runtime they never
+        # reach the page, and the GTM loader stays off whatever .env says.
+        - PUBLIC_GTM_ID=${PUBLIC_GTM_ID:-}
+        - PUBLIC_METRICS_URL=${PUBLIC_METRICS_URL:-}
+        - PUBLIC_CLARITY_ID=${PUBLIC_CLARITY_ID:-}
     restart: always
+    logging: *goldplus-logging
+    # node as PID 1 ignores SIGTERM (the Astro node adapter registers no handler),
+    # so every stop waited the full grace period and was then SIGKILLed. With an
+    # init process SIGTERM ends it promptly.
+    init: true
+    stop_grace_period: 30s
     environment:
       - NODE_ENV=production
       - PORT=4321
       - HOST=0.0.0.0
       - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL}
+      # SSR calls the API over the internal compose network (never the public
+      # edge). Default to the api service; overridable per environment.
+      - INTERNAL_API_ORIGIN=${INTERNAL_API_ORIGIN:-http://api:3000}
+      # The storefront is the Backend-for-Frontend that MINTS the signed cart and
+      # checkout-intent credentials the API verifies. Without these the storefront
+      # cannot mint a credential (keys() returns null), every shopper degrades to a
+      # local-only basket, and the checkout funnel is dead. MUST match the API's values.
+      - CART_CREDENTIAL_SECRET=${CART_CREDENTIAL_SECRET}
+      # Storefront SSR -> API: proves the caller is our own SSR, the only caller
+      # that receives product floors (Price A). MUST match between api and web.
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      # The shop assistant (/api/assistant/chat). Unset = the widget is not rendered. Policy lives in admin.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Only for an organisation-scoped key: the workspace it bills (console → Settings → Workspaces).
+      - ANTHROPIC_WORKSPACE_ID=${ANTHROPIC_WORKSPACE_ID:-}
+      - CHECKOUT_INTENT_SECRET=${CHECKOUT_INTENT_SECRET}
+      # Strict script policy: report (default: observe only) | enforce | off.
+      # See docs/hardening/strict-csp.md before changing it.
+      - CSP_STRICT_MODE=${CSP_STRICT_MODE:-report}
       - NODE_OPTIONS=--max-old-space-size=400
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:4321').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
@@ -181,11 +392,13 @@ services:
       rollback_config:
         parallelism: 1
         order: stop-first
+      # `any`, not `on-failure`: Compose lets this block override the service's
+      # `restart: always`. on-failure with a retry cap left web and api created
+      # as on-failure/3 on production: not guaranteed to return after a host
+      # reboot, and permanently down after three crashes (seen 2026-10-06).
       restart_policy:
-        condition: on-failure
+        condition: any
         delay: 5s
-        max_attempts: 3
-        window: 120s
       resources:
         limits:
           cpus: '1.0'
@@ -198,24 +411,30 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: always
+    logging: *goldplus-logging
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./ops/caddy-fallback:/srv/caddy-fallback:ro
+      - media_uploads:/srv/media:ro
       - caddy_data:/data
       - caddy_config:/config
 
   pghero:
     image: ankane/pghero
     restart: always
+    logging: *goldplus-logging
     ports:
       - "127.0.0.1:8082:8080"
     environment:
       - DATABASE_URL=${DATABASE_URL}
-      - PGHERO_USERNAME=${PGHERO_USERNAME}
-      - PGHERO_PASSWORD=${PGHERO_PASSWORD}
+      # Unset in .env.production on the host: every compose command warned
+      # twice per service. Empty means pghero's own auth is off; it is only
+      # reachable on 127.0.0.1 behind Caddy's admin guard anyway.
+      - PGHERO_USERNAME=${PGHERO_USERNAME:-}
+      - PGHERO_PASSWORD=${PGHERO_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -223,43 +442,68 @@ services:
   prometheus:
     image: prom/prometheus:latest
     restart: always
+    logging: *goldplus-logging
     ports:
       - "127.0.0.1:9090:9090"
     volumes:
       - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/prometheus/goldie.rules.yml:/etc/prometheus/goldie.rules.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
+      # Explicit retention: the default is 15 days, unbounded in size. 7 days
+      # and 1 GB is more than the Grafana panels look back on a 4 GB host.
+      - '--storage.tsdb.retention.time=7d'
+      - '--storage.tsdb.retention.size=1GB'
 
   grafana:
     image: grafana/grafana:latest
     restart: always
+    logging: *goldplus-logging
     ports:
       - "127.0.0.1:3001:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
     volumes:
       - grafana_data:/var/lib/grafana
+      # Prometheus data source and the GoldPlus dashboards (Goldie) load at start: nothing to import by hand.
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
 
   node-exporter:
     image: prom/node-exporter:latest
     restart: always
+    logging: *goldplus-logging
     ports:
       - "127.0.0.1:9100:9100"
 
+  # ── Server-side GTM (provisioned 2026-09-19) ────────────────────────────────
+  # GoldPlus GTM account 6377806000: web container GTM-PS424MV3 (loaded from
+  # https://metrics.shopgoldplus.com/gtm.js via the server's web-container
+  # client), server container GTM-P5VKZN7V (this image), GA4 G-YVV0KLGMQJ.
+  # GTM_CONTAINER_CONFIG is the server container's config string (Admin >
+  # Install Google Tag Manager > Manually provision).
+  # Preview (Tag Assistant for the SERVER container) runs on its own public
+  # HTTPS host, preview-metrics.shopgoldplus.com (Caddy -> sgtm-preview). The
+  # image refuses an internal http PREVIEW_SERVER_URL, so production forwards
+  # preview requests to that public host.
   sgtm-production:
     image: gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable
     restart: always
+    logging: *goldplus-logging
     environment:
       - CONTAINER_CONFIG=${GTM_CONTAINER_CONFIG}
       - RUN_AS_PREVIEW_SERVER=false
-      - PREVIEW_SERVER_URL=https://metrics.shopgoldplus.com
+      - PREVIEW_SERVER_URL=https://preview-metrics.shopgoldplus.com
     ports:
       - "127.0.0.1:8080:8080"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/healthy"]
+      # The image ships no curl and no `node` on PATH (a bare "node" failed every
+      # check for 37 h while the service answered 200). Use the image's own
+      # checker — the same command its built-in HEALTHCHECK runs.
+      test: ["CMD", "/nodejs/bin/node", "/app/health_checker_bin.js"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -268,14 +512,16 @@ services:
   sgtm-preview:
     image: gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable
     restart: always
+    logging: *goldplus-logging
     environment:
       - CONTAINER_CONFIG=${GTM_CONTAINER_CONFIG}
       - RUN_AS_PREVIEW_SERVER=true
     ports:
       - "127.0.0.1:8081:8080"
-    mem_limit: 512m
+    mem_limit: 256m
 
 volumes:
+  media_uploads:
   pg_prod_data:
   caddy_data:
   caddy_config:

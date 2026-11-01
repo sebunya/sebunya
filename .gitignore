@@ -20,3 +20,6 @@ coverage/
 .env.production.server
 .env.production.local
 .env*.local
+
+# The fonts' licence notice is served with the fonts (SIL OFL), unlike the logs the rule above keeps out.
+!goldplus-commerce/apps/web/public/fonts/FONTS-LICENSE.txt

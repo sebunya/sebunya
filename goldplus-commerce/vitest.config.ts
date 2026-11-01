@@ -7,16 +7,28 @@ export default defineConfig({
       // Existing suites only ever did `import type` from the shared package, so it
       // was erased at transform time and never actually resolved. Tests that import
       // real values (the Control Centre registry) need a genuine path.
+      // A storefront module imports one shared file directly (gift card text rules), keeping the rest of the
+      // package out of the browser bundle; the sub-path must resolve here as it does in the website build.
+      // (Listed first: the bare name below would otherwise claim the sub-path too.)
+      '@goldplus/shared/src': path.resolve(__dirname, 'packages/shared/src'),
       '@goldplus/shared': path.resolve(__dirname, 'packages/shared/src/index.ts'),
       // ioredis is a dependency of apps/api, not of the workspace root, so the
       // root-level vitest run cannot resolve it from a test file. The Redis
       // integration proofs import it directly.
       ioredis: path.resolve(__dirname, 'apps/api/node_modules/ioredis'),
+      // Same reason as ioredis: the PostgreSQL parameter-boundary proofs build
+      // real drizzle SQL fragments and inspect what would be bound, so the
+      // import cannot be erased as a type-only one.
+      'drizzle-orm': path.resolve(__dirname, 'apps/api/node_modules/drizzle-orm'),
     },
   },
   test: {
     // Playwright owns tests/e2e (run via `pnpm test:e2e`); vitest must not
     // try to load @playwright/test specs.
-    exclude: [...configDefaults.exclude, 'tests/e2e/**'],
+    // The audit packages own their runners and are NOT vitest suites:
+    // performance-audit runs `node --test` + python unittest (its package
+    // `test` script); compatibility-audit is Playwright against a live site.
+    // A root `vitest run` could only report them as un-collectable failures.
+    exclude: [...configDefaults.exclude, 'tests/e2e/**', 'tests/e2e-production/**', 'performance-audit/**', 'compatibility-audit/**'],
   },
 });

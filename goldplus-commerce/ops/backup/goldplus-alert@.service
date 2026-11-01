@@ -1,0 +1,9 @@
+# Instantiated by OnFailure=goldplus-alert@%n.service on every GoldPlus timer
+# job. The work is in ops/backup/alert.sh: inline shell here had its "$"
+# expanded by systemd and never sent anything useful.
+[Unit]
+Description=Tell the owner that %i failed
+
+[Service]
+Type=oneshot
+ExecStart=/opt/goldplus/app/goldplus-commerce/ops/backup/alert.sh %i
