@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { IAuditRepository } from '../../ports/IAuditRepository';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import { IPesaPalClient } from '../../ports/IPesaPalClient';
@@ -69,9 +68,11 @@ export class RefundPesaPalPaymentUseCase {
     actorId: string;
     actorUsername: string;
     /**
-     * Optional. When absent a deterministic key is derived from the request
-     * itself, so an accidental double-submit of the identical refund collapses
-     * to one payout instead of two.
+     * Required: one key per refund REQUEST (the admin form's per-request nonce,
+     * Goldie's per-order key). A retry of the same request carries the same key
+     * and collapses to one payout; a genuine second refund carries a new one.
+     * (A key derived from reference|amount|reason used to be the default; it
+     * blocked a real second refund of the same amount for the same reason.)
      */
     idempotencyKey?: string;
     lines?: RefundLineAllocation[];
@@ -102,19 +103,10 @@ export class RefundPesaPalPaymentUseCase {
       );
     }
 
-    // The derived key deliberately collapses two identical requests: same
-    // reference, same amount, same reason is treated as one refund, because a
-    // double-click must never return the customer's money twice. That does mean
-    // a GENUINE second refund of the same amount for the same reason cannot be
-    // raised on the derived key alone — it must carry an explicit
-    // `idempotencyKey`, which is exactly what that input is for. Refunding
-    // twice by accident is the worse failure, so the default stays safe.
-    const idempotencyKey =
-      input.idempotencyKey?.trim() ||
-      createHash('sha256')
-        .update(`${input.merchantReference}|${input.amountUgx}|${input.reason.trim()}`)
-        .digest('hex')
-        .slice(0, 64);
+    const idempotencyKey = input.idempotencyKey?.trim() ?? '';
+    if (!idempotencyKey) {
+      return fail('IDEMPOTENCY_KEY_REQUIRED', 'A refund request needs its own idempotency key. Nothing was reserved or sent.');
+    }
 
     const reservation = await this.ledger.reserveRefund({
       paymentAttemptId: attempt.id,
