@@ -3,7 +3,7 @@ import { FailureLockoutStore, MemoryFailureLockout } from '../../application/por
 import { logger } from '../logging/logger';
 
 /**
- * Shared failure counter on Redis (INCR + first-write PEXPIRE), so every API
+ * Shared failure counter on Redis (INCR + PEXPIRE in one Lua script), so every API
  * replica sees the same count. When Redis is unreachable it falls back to a
  * per-process counter for five seconds at a time — the same posture as the
  * abuse-control store: never fail open across the whole window, never make a
@@ -36,6 +36,14 @@ export class RedisFailureLockout implements FailureLockoutStore {
     }
   }
 
+  /**
+   * INCR and the expiry in ONE server-side step. Two separate commands could leave the counter with no TTL (the
+   * PEXPIRE timing out at 250 ms, or the process dying between them), and since PEXPIRE only ran when the count was
+   * 1 it never ran again: that phone or code key stayed locked for good. The script also repairs such a key: any
+   * counter found without a TTL gets one.
+   */
+  static readonly INCR_WITH_TTL = "local n = redis.call('INCR', KEYS[1]) if redis.call('PTTL', KEYS[1]) < 0 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end return n";
+
   private key(k: string): string { return `${this.prefix}:${k}`; }
 
   private degrade(now: number, err: unknown): void {
@@ -59,8 +67,7 @@ export class RedisFailureLockout implements FailureLockoutStore {
     if (!c) return this.local.recordFailure(key, now, windowMs);
     try {
       const k = this.key(key);
-      const n = await c.incr(k);
-      if (n === 1) await c.pexpire(k, windowMs);
+      await c.eval(RedisFailureLockout.INCR_WITH_TTL, 1, k, String(windowMs));
     } catch (err) { this.degrade(now, err); return this.local.recordFailure(key, now, windowMs); }
   }
 
