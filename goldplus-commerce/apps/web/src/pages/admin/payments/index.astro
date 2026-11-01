@@ -2,6 +2,7 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
 import { apiBase } from "../../../lib/api";
+import { unresolvedRefundOf } from "../../../lib/adminRefundKey";
 
 /**
  * The payments screen (payments brief, 2026-08-06).
@@ -122,7 +123,14 @@ if (paymentQuery && queue && Array.isArray(queue.rows)) {
     refundTarget = { merchantReference: a.merchantReference, orderId: a.orderId, amountUgx: Number(a.amountUgx) || 0, refundedUgx, remainingUgx: Math.max(0, (Number(a.amountUgx) || 0) - refundedUgx), refunds };
   }
 }
-const refundIdempotencyKey = crypto.randomUUID();
+// One key per refund REQUEST. While a refund on this order is still
+// 'requested' with no acceptance from the provider (the call failed or
+// answered nothing), nobody knows whether money moved: a fresh key on every
+// render let "try again" pay out a second time. The form then carries THAT
+// refund's key, so a resubmit answers "already recorded" and sends nothing;
+// the operator resolves it against PesaPal first.
+const unresolvedRefund = refundTarget ? unresolvedRefundOf(refundTarget.refunds) : null;
+const refundIdempotencyKey = unresolvedRefund?.idempotencyKey ? String(unresolvedRefund.idempotencyKey) : crypto.randomUUID();
 
 const ugx = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `UGX ${Math.round(n).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}`);
 const counters: Array<[string, keyof NonNullable<typeof funnel>["day"]]> = [
@@ -268,6 +276,9 @@ const counters: Array<[string, keyof NonNullable<typeof funnel>["day"]]> = [
           )}
           {refundTarget.remainingUgx > 0 ? (
             <form method="POST" class="mt-4 grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+              {unresolvedRefund && (
+                <p class="sm:col-span-4 text-sm font-bold text-amber-900">A refund of {ugx(Number(unresolvedRefund.amountUgx) || 0)} is still unresolved: it is unknown whether PesaPal sent it. Check PesaPal and record the outcome on the order page before refunding again. Submitting this form now only repeats that same request.</p>
+              )}
               <input type="hidden" name="intent" value="refund" />
               <input type="hidden" name="reference" value={refundTarget.merchantReference} />
               <input type="hidden" name="idempotencyKey" value={refundIdempotencyKey} />

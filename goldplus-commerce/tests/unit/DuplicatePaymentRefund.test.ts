@@ -57,11 +57,29 @@ describe('refunding the extra payment of a double charge', () => {
     expect(h.transition.transition).toHaveBeenCalledWith('o1', 'cancelled', expect.anything());
   });
 
-  it('another payment that was itself mostly refunded does not cover this one', async () => {
-    const h = harness({ attempts: [A, B], refunded: { 'att-a': 70_000, 'att-b': 100_000 } });
+  it('another payment refunded in full (still completed) does not cover this one', async () => {
+    const h = harness({ attempts: [A, B], refunded: { 'att-a': 100_000, 'att-b': 100_000 } });
     const result = await h.uc.execute(B, ctx);
     expect(result.coveredByAnotherPayment).toBeUndefined();
     expect(h.transition.transition).toHaveBeenCalled();
+  });
+
+  it('net vs net (review 2026-11): after a 10k partial on A, refunding duplicate B in full keeps the order A still pays for', async () => {
+    const h = harness({ attempts: [A, B], refunded: { 'att-a': 10_000, 'att-b': 100_000 } });
+    const result = await h.uc.execute(B, ctx);
+    expect(result.coveredByAnotherPayment).toBe(true);
+    expect(h.transition.transition).not.toHaveBeenCalled();
+  });
+
+  it('a refund merely ACCEPTED by the provider is not counted until it lands (review 2026-11)', async () => {
+    // 40k settled earlier, a second 60k accepted but not landed: REVERSED still shows from the first.
+    const paymentRepo = { updatePaymentAttemptStatus: vi.fn(), updateOrderPaymentStatusSafely: vi.fn(), findAttemptsByOrderId: vi.fn(async () => [A] as never) };
+    const transition = { transition: vi.fn() };
+    const ledger = { getRefundedTotalUgx: async () => 100_000, getLandedRefundTotalUgx: async () => 40_000 };
+    const uc = new ApplyRefundConsequencesUseCase(paymentRepo, transition as never, ledger);
+    const result = await uc.execute(A, ctx);
+    expect(result).toMatchObject({ reading: 'partial', refundedUgx: 40_000 });
+    expect(transition.transition).not.toHaveBeenCalled();
   });
 
   it('a single-payment order is unchanged: a full refund cancels it', async () => {

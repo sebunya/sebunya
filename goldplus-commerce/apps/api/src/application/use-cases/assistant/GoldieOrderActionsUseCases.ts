@@ -41,6 +41,11 @@ export interface GoldieOrderDeps {
   cancel(orderId: string, note: string, idempotencyKey: string): Promise<void>;
   /** Completed online payments for the order (merchantReference, amount). */
   completedPayments(orderId: string): Promise<Array<{ merchantReference: string; amount: number }>>;
+  /**
+   * True while any online payment for the order is still in flight ('pending' or 'verification_pending'):
+   * money may yet land, so Goldie neither cancels nor says "nothing was charged" (review 2026-11).
+   */
+  paymentInFlight(orderId: string): Promise<boolean>;
   refund(input: { merchantReference: string; amountUgx: number; reason: string; idempotencyKey: string }): Promise<{ ok: true; refundId: string } | { ok: false; code: string; message: string }>;
   note(orderId: string, note: string): Promise<void>;
   openTask(input: OpenTaskInput): Promise<unknown>;
@@ -74,6 +79,14 @@ export class GoldieOrderActionsUseCases {
       return { ok: false, code: 'TOO_LATE', told: `Order ${o.orderNumber} ${where}, so it can't be cancelled from here. ${status === 'dispatched' ? 'You can decline it at the door, or I can get the team to call the rider now.' : 'If something is wrong with it, tell me and I will sort it out.'}` };
     }
     const reason = `Cancelled by the customer through Goldie (${input.channel}): ${input.reason}`.slice(0, 500);
+    // A payment still in flight may land after the cancel: the order would be cancelled with money on it, and the
+    // customer told "nothing was charged". A person checks the payment and finishes it (review 2026-11).
+    // A failed lookup is treated as in flight: the Care Desk is the safe side.
+    const inFlight = await this.deps.paymentInFlight(o.id).catch(() => true);
+    if (inFlight) {
+      await this.deps.openTask({ kind: 'urgent', title: `Cancel order ${o.orderNumber}: a payment is still in progress`, detail: reason, customerName: o.customerName, customerPhone: o.customerPhone, orderNumber: o.orderNumber, conversationId: input.conversationId, channel: input.channel, urgent: true });
+      return { ok: false, code: 'PAYMENT_IN_PROGRESS', told: `A payment for order ${o.orderNumber} is still going through, so I haven't cancelled it yet. I've passed it to the team as urgent: they will check the payment, cancel the order, and return any money that arrived. Please don't approve any payment request for this order meanwhile.` };
+    }
     try {
       await this.deps.cancel(o.id, reason, `goldie-cancel:${o.id}`);
     } catch (error) {

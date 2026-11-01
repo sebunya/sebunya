@@ -60,7 +60,9 @@ if (Astro.request.method === 'POST') {
           ? 'Refund recorded as paid out. The order and loyalty points were updated to match.'
           : 'Refund recorded as not paid. Its amount can be refunded again.';
       } else {
-        actionError = json?.error?.message || 'The refund could not be resolved.';
+        actionError = String(json?.error?.code ?? '').startsWith('MFA_')
+          ? `${json.error.message} Verify on Two-step verification (/admin/security/mfa), then record the outcome again. Nothing was changed.`
+          : json?.error?.message || 'The refund could not be resolved.';
       }
     } else if (action === 'complete_delivered') {
       // The rider delivered (the task says Delivered) but the order never followed (2026-10-22).

@@ -29,6 +29,16 @@ function rowToPaymentAttempt(row: typeof paymentAttempts.$inferSelect): Recorded
   };
 }
 
+/** Whether a write changes the attempt itself (status, tracking id, page), not just its receipt stamps. */
+export function attemptWriteChangesAttempt(
+  currentStatus: string | undefined,
+  update: { status?: string; orderTrackingId?: string | null; redirectUrl?: string | null },
+): boolean {
+  return (update.status !== undefined && update.status !== currentStatus)
+    || update.orderTrackingId !== undefined
+    || update.redirectUrl !== undefined;
+}
+
 export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepository {
   async createPaymentAttempt(input: {
     orderId: string;
@@ -106,7 +116,10 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
         redirectUrl: update.redirectUrl !== undefined ? update.redirectUrl : undefined,
         ipnReceivedAt: update.ipnReceivedAt !== undefined ? update.ipnReceivedAt : undefined,
         callbackReceivedAt: update.callbackReceivedAt !== undefined ? update.callbackReceivedAt : undefined,
-        updatedAt: new Date(),
+        // Only a real change moves updated_at. A timestamp-only stamp or a re-verify that re-writes the same
+        // status kept it fresh, which read as a recent successful payment and masked the payment-silence
+        // alarm (review 2026-11).
+        updatedAt: attemptWriteChangesAttempt(current?.status, update) ? new Date() : undefined,
       })
       .where(eq(paymentAttempts.id, id))
       .returning();

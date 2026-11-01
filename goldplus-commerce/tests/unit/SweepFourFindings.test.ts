@@ -125,13 +125,13 @@ describe('money moves once, and for the right amount', () => {
   });
 
   it('two identical refund requests still collapse into one', () => {
-    // Deliberate: a double-click must never return the money twice. A genuine
-    // second refund of the same amount and reason carries an explicit
-    // idempotencyKey, which is what that input exists for. This was briefly
-    // changed to key on the running refunded total and reverted, because
-    // refunding twice by accident is the worse failure.
+    // A double-click must never return the money twice. Since review 2026-11
+    // that is the per-request key's job (the form's nonce is the same on a
+    // resubmit); the derived reference|amount|reason key blocked a genuine
+    // second refund and is gone, so a request without a key is refused.
     const src = read('apps/api/src/application/use-cases/payments/RefundPesaPalPaymentUseCase.ts');
-    expect(src).toMatch(/\$\{input\.merchantReference\}\|\$\{input\.amountUgx\}\|\$\{input\.reason\.trim\(\)\}`/);
+    expect(src).not.toMatch(/\$\{input\.merchantReference\}\|\$\{input\.amountUgx\}/);
+    expect(src).toMatch(/IDEMPOTENCY_KEY_REQUIRED/);
     expect(src).not.toMatch(/\|\$\{alreadyRefundedUgx\}/);
   });
 

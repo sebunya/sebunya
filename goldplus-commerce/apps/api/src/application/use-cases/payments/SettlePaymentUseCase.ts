@@ -129,6 +129,9 @@ export class SettlePaymentUseCase {
         status: verification.status,
         lifecycleConflict: verification.lifecycleConflict,
         superseded: verification.superseded,
+        untrusted: verification.untrusted,
+        replay: verification.replay,
+        refundObserved: verification.refundObserved,
       },
       traceId: input.traceId,
     });

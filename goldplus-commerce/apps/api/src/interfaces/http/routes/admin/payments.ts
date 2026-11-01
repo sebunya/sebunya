@@ -203,7 +203,7 @@ routes.post('/attempts/:merchantReference/refund', requirePermissions([PERMISSIO
  * whether money moved until someone checks the provider). Refund permission,
  * a written reason, audited in ResolveRefundUseCase.
  */
-routes.post('/orders/:orderId/refunds/:refundId/resolve', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), async (c) => {
+routes.post('/orders/:orderId/refunds/:refundId/resolve', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), requireStepUp('payment_refund'), async (c) => {
   const body = await c.req.json().catch(() => null);
   const registry = Registry.getInstance();
   const { ResolveRefundUseCase } = await import('../../../../application/use-cases/payments/RefundPesaPalPaymentUseCase');

@@ -385,7 +385,7 @@ describe('refunds — the way to give money back, built before it is needed', ()
     audit.entries = [];
   });
 
-  const good = { merchantReference: 'GP-PAID', amountUgx: 50_000, reason: 'customer declined a delivery variance', actorId: 'ops', actorUsername: 'ops@goldplus' };
+  const good = { merchantReference: 'GP-PAID', amountUgx: 50_000, reason: 'customer declined a delivery variance', actorId: 'ops', actorUsername: 'ops@goldplus', idempotencyKey: 'req-1' };
 
   it('refunds only a COMPLETED attempt — anything else never collected money', async () => {
     for (const status of ['pending', 'failed', 'invalid', 'not_started', 'abandoned']) {
@@ -401,7 +401,7 @@ describe('refunds — the way to give money back, built before it is needed', ()
   it('never refunds more than was collected, and permits a partial', async () => {
     const { useCase } = makeRefund('completed');
     expect(await useCase.execute({ ...good, amountUgx: 50_001 })).toMatchObject({ ok: false, code: 'EXCEEDS_REFUNDABLE_BALANCE' });
-    expect((await useCase.execute({ ...good, amountUgx: 20_000 })).ok).toBe(true);
+    expect((await useCase.execute({ ...good, amountUgx: 20_000, idempotencyKey: 'req-2' })).ok).toBe(true);
   });
 
   /**
@@ -444,12 +444,20 @@ describe('refunds — the way to give money back, built before it is needed', ()
     expect(await ledger.getRefundedTotalUgx('a1')).toBe(10_000);
   });
 
-  it('an identical request with no explicit key still collapses — the double-click case', async () => {
+  it('a request with no key is refused: the key is per request, never derived (review 2026-11)', async () => {
     const ledger = makeLedger();
     const { useCase, refundCalls } = makeRefund('completed', { ledger });
-    await useCase.execute({ ...good, amountUgx: 10_000 });
-    await useCase.execute({ ...good, amountUgx: 10_000 });
-    expect(refundCalls).toHaveLength(1);
+    expect(await useCase.execute({ ...good, amountUgx: 10_000, idempotencyKey: undefined })).toMatchObject({ ok: false, code: 'IDEMPOTENCY_KEY_REQUIRED' });
+    expect(refundCalls).toHaveLength(0);
+  });
+
+  it('a genuine second refund of the same amount and reason goes through on its own request key (review 2026-11)', async () => {
+    const ledger = makeLedger();
+    const { useCase, refundCalls } = makeRefund('completed', { ledger });
+    expect(await useCase.execute({ ...good, amountUgx: 10_000, idempotencyKey: 'req-a' })).toMatchObject({ ok: true, alreadyProcessed: false });
+    expect(await useCase.execute({ ...good, amountUgx: 10_000, idempotencyKey: 'req-a' })).toMatchObject({ ok: true, alreadyProcessed: true });
+    expect(await useCase.execute({ ...good, amountUgx: 10_000, idempotencyKey: 'req-b' })).toMatchObject({ ok: true, alreadyProcessed: false });
+    expect(refundCalls).toHaveLength(2);
   });
 
   it('line allocations must sum to the refund, or be omitted entirely', async () => {

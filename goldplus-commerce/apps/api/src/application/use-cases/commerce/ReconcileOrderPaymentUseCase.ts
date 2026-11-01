@@ -75,6 +75,12 @@ export interface PaymentVerificationResult {
    * the order. Nothing here may treat the ORDER as failed.
    */
   superseded?: boolean;
+  /** The request did not prove it belongs to this payment: nothing moves. */
+  untrusted?: boolean;
+  /** A completed attempt answering again: never a second payment. */
+  replay?: boolean;
+  /** A partial refund was observed: paid, but never grounds to confirm a held checkout. */
+  refundObserved?: boolean;
 }
 
 export interface ReconcileOrderPaymentDeps {
@@ -126,6 +132,12 @@ export class ReconcileOrderPaymentUseCase {
       return { kind: 'UNKNOWN_ATTEMPT', orderId: null, stage: null, reason: 'NO_ORDER_REFERENCE' };
     }
 
+    // A wrong reference says nothing about the payment. Answered before the
+    // checkout is even read: it must not release a hold, fail, or confirm.
+    if (verification.untrusted) {
+      return { kind: 'UNKNOWN_ATTEMPT', orderId, stage: null, reason: 'REFERENCE_MISMATCH' };
+    }
+
     const checkout = await this.deps.idempotency.findByOrderId(orderId);
     if (!checkout) {
       // A provider event for an order with no checkout record. Reported rather than
@@ -142,7 +154,10 @@ export class ReconcileOrderPaymentUseCase {
       // approval on an older payment page). A repeat of the same attempt carries the same idempotency key and never
       // conflicts; lifecycleConflict with money arrived means the customer has been charged twice. The order stays
       // as it is (it is paid and moving), but a person is told, and the customer is not told "no second payment".
-      const secondPayment = !!verification.lifecycleConflict && verification.ok;
+      // A replay of an already-completed attempt is never a second payment: an
+      // order held for owner review writes no event when its money lands, so its
+      // replay after release conflicts without any new money (review 2026-11).
+      const secondPayment = !!verification.lifecycleConflict && verification.ok && !verification.replay;
       if (secondPayment) this.deps.observer?.onReviewRequired(orderId, traceId, 'SECOND_PAYMENT_TAKEN');
       return {
         kind: 'ALREADY_SETTLED',
@@ -159,6 +174,14 @@ export class ReconcileOrderPaymentUseCase {
     // customer "payment received" for an order that could not accept the payment.
     if (verification.lifecycleConflict) {
       return this.review(orderId, checkout.stage, traceId, 'LIFECYCLE_CONFLICT');
+    }
+
+    // A partial refund reads as paid, but a checkout not already confirmed (one
+    // parked in PAYMENT_REVIEW because money met an order that could not take
+    // it, then partly refunded) must not be confirmed by it: that ran every
+    // success effect on a cancelled order (review 2026-11).
+    if (verification.refundObserved) {
+      return this.review(orderId, checkout.stage, traceId, 'REFUND_ON_UNCONFIRMED_CHECKOUT');
     }
 
     // Classified by STATUS before the `ok` gate, and deliberately so.

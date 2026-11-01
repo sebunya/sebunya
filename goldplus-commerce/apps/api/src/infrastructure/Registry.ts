@@ -3263,7 +3263,10 @@ export class Registry {
     orders: {
       findById: async (orderId) => {
         const order = await this.orderRepo.findById(orderId);
-        return order ? { id: order.id, paymentStatus: order.paymentStatus, totalUgx: order.totalUgx, orderStatus: order.orderStatus } : null;
+        // storeCreditAppliedUgx is load-bearing: without it a gift-card order's
+        // live attempt (amount = total - credit) never matches and every tap opens
+        // a new payable PesaPal page, and a fully credited order can never settle.
+        return order ? { id: order.id, paymentStatus: order.paymentStatus, totalUgx: order.totalUgx, orderStatus: order.orderStatus, storeCreditAppliedUgx: order.storeCreditAppliedUgx ?? 0 } : null;
       },
     },
     attempts: {
@@ -3350,6 +3353,8 @@ export class Registry {
     },
     completedPayments: async (orderId) => (await this.pesapalPaymentRepo.findAttemptsByOrderId(orderId))
       .filter((a) => a.status === 'completed').map((a) => ({ merchantReference: a.merchantReference, amount: Number(a.amount) })),
+    paymentInFlight: async (orderId) => (await this.pesapalPaymentRepo.findAttemptsByOrderId(orderId))
+      .some((a) => a.status === 'pending' || a.status === 'verification_pending'),
     refund: async (input) => {
       const r = await this.refundPesaPalPaymentUseCase.execute({ ...input, actorId: GOLDIE_ACTOR_ID, actorUsername: 'Goldie (shop assistant)' });
       return r.ok ? { ok: true as const, refundId: r.refundId } : { ok: false as const, code: r.code, message: r.message };
