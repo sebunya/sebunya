@@ -567,7 +567,8 @@ routes.patch('/admin/orders/:id/fulfillment', requirePermissions([PERMISSIONS.OR
     // Enforce allowed transitions via the domain state machine (single source of
     // truth; the entity enforces the same rules, so nothing can persist an
     // illegal transition from any caller).
-    const decision = canTransitionOrder(currentStatus, nextStatus as OrderStatus, { paymentStatus: order.paymentStatus });
+    const paymentMethod = await registry.orderRepo.findPaymentMethod(order.id);
+    const decision = canTransitionOrder(currentStatus, nextStatus as OrderStatus, { paymentStatus: order.paymentStatus, paymentMethod });
     if (!decision.allowed) {
       return c.json({ success: false, error: { code: 'TRANSITION_BLOCKED', message: decision.message } }, 400);
     }
@@ -576,7 +577,7 @@ routes.patch('/admin/orders/:id/fulfillment', requirePermissions([PERMISSIONS.OR
     // append-only order_event commit in one transaction. Actor is the session
     // user, never a body field. The pure domain object is kept only for the
     // response DTO; persistence goes through the canonical service.
-    const updatedOrder = order.transitionStatus(nextStatus as any);
+    const updatedOrder = order.transitionStatus(nextStatus as any, { paymentMethod });
     await registry.orderTransitionService.transition(order.id, nextStatus as OrderStatus, {
       actorId: (c.get('user') as { id: string }).id,
       actorType: 'administrator',

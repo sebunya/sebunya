@@ -213,10 +213,23 @@ export class Order {
    * DomainError on an illegal transition so no caller — route, worker or test —
    * can persist an order into a state it cannot legally reach.
    */
-  public transitionStatus(newStatus: OrderStatus): Order {
-    const decision = canTransitionOrder(this.orderStatus, newStatus, { paymentStatus: this.paymentStatus });
+  public transitionStatus(
+    newStatus: OrderStatus,
+    /**
+     * How the customer chose to pay (stored on the order row, not on this
+     * entity) and whether a person confirmed pay on delivery: without them the
+     * owner's UNPAID_ONLINE rule (an online order is not prepared before it is
+     * paid) could not apply here.
+     */
+    payment: { paymentMethod?: string | null; payOnDeliveryConfirmed?: boolean } = {},
+  ): Order {
+    const decision = canTransitionOrder(this.orderStatus, newStatus, {
+      paymentStatus: this.paymentStatus,
+      paymentMethod: payment.paymentMethod ?? null,
+      payOnDeliveryConfirmed: payment.payOnDeliveryConfirmed === true,
+    });
     if (!decision.allowed) {
-      const category = decision.code === 'UNPAID' ? 'FORBIDDEN' : 'CONFLICT';
+      const category = decision.code === 'UNPAID' || decision.code === 'UNPAID_ONLINE' ? 'FORBIDDEN' : 'CONFLICT';
       throw new DomainError(`ORDER_TRANSITION_${decision.code}`, category, decision.message, { clientSafe: true });
     }
     return new Order(
@@ -224,7 +237,7 @@ export class Order {
       this.deliveryArea, this.deliveryAddress, this.buyerType, this.items,
       this.subtotalUgx, this.deliveryFeeUgx, this.totalUgx, this.paymentStatus,
       newStatus, this.createdAt, new Date(), this.deliveryLocation, this.deliveryFeeConfirmed, this.pricingSnapshot,
-      this.userId, this.loyaltyDiscountUgx, this.loyaltyRedemptionId
+      this.userId, this.loyaltyDiscountUgx, this.loyaltyRedemptionId, this.storeCreditAppliedUgx
     );
   }
 }
