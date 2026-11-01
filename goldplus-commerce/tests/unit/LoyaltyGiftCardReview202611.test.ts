@@ -30,3 +30,14 @@ describe('credit expiry typed by an admin', async () => {
     expect(parseCreditExpiry('2026-10-31', now)).toMatchObject({ ok: false, message: 'The expiry date is in the past.' });
   });
 });
+
+describe('permission registry sync', () => {
+  it('seeds a governance role once, by a marker, so a role emptied on purpose stays empty', () => {
+    const src = read('apps/api/src/infrastructure/security/PermissionRegistrySync.ts');
+    const loop = src.slice(src.indexOf('for (const roleName of GOVERNANCE_ROLES)'), src.indexOf('// Top up (never trim)'));
+    // The marker is read before "holds nothing" is even looked at, and every outcome writes one.
+    expect(loop.indexOf('BASELINE_SEEDED_ACTION')).toBeGreaterThan(-1);
+    expect(loop.indexOf('if (marked) continue;')).toBeLessThan(loop.indexOf('.from(rolePermissions)'));
+    expect(loop.match(/markSeeded\(/g)?.length).toBe(2); // written for a role that already holds grants, and after a seed
+  });
+});
