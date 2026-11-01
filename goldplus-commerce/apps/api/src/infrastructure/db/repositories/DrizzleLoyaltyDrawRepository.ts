@@ -212,6 +212,16 @@ export class DrizzleLoyaltyDrawRepository implements ILoyaltyDrawRepository {
     return rows.length > 0;
   }
 
+  async voidPlayedUnawardedToken(tokenId: string, now: Date): Promise<boolean> {
+    const rows = await db
+      .update(loyaltyDrawTokens)
+      .set({ status: 'expired', expiresAt: now })
+      .where(and(eq(loyaltyDrawTokens.id, tokenId), eq(loyaltyDrawTokens.status, 'played'),
+        sql`not exists (select 1 from loyalty_draw_results r where r.token_id = ${loyaltyDrawTokens.id})`))
+      .returning({ id: loyaltyDrawTokens.id });
+    return rows.length > 0;
+  }
+
   async findResultByToken(tokenId: string) {
     const row = await db.query.loyaltyDrawResults.findFirst({ where: eq(loyaltyDrawResults.tokenId, tokenId) });
     return row ? { pointsAwarded: row.pointsAwarded, prizeId: row.prizeId } : null;

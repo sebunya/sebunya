@@ -254,6 +254,14 @@ export class PlayDrawTokenUseCase {
         ledgerEntryId: entry.id,
         prizeSnapshot: snapshot,
       });
+      // The order this card came from may have been refunded while it was being played: the refund cancels a card
+      // it finds mid-play (no result yet), and the prize is taken back here (2026-11 review).
+      const after = await this.draws.findToken(claimed.id);
+      if (after && after.status !== 'played') {
+        await this.loyalty.reverseEntry(entry.id, 'Scratch card prize reversed: order refunded while the card was played');
+        await this.draws.releasePrizeAward?.(prize.id).catch(() => undefined);
+        return fail('TOKEN_REVOKED', 'This card was cancelled because the order it came with was refunded.');
+      }
       await this.draws.incrementCampaignTotals(campaign.id, prize.pointsAwarded, 0);
       await this.notify({ userId: input.userId, points: prize.pointsAwarded, label: prize.label }).catch(() => undefined);
 
@@ -340,6 +348,11 @@ export interface DrawRefundPort {
   drawsForSource(sourceType: string, sourceId: string): Promise<Array<{ tokenId: string; status: string; ledgerEntryId: string | null }>>;
   /** Voids a card nobody has played yet; false when it was played (or gone) first. */
   voidAvailableToken(tokenId: string, now: Date): Promise<boolean>;
+  /**
+   * Cancels a card that is being played right now (claimed, no result recorded yet); false once a result exists.
+   * The play notices after recording its result and takes the prize back itself.
+   */
+  voidPlayedUnawardedToken?(tokenId: string, now: Date): Promise<boolean>;
 }
 
 /**
@@ -363,10 +376,16 @@ export class ReverseDrawOnRefundUseCase {
         voided++;
         continue;
       }
+      // Claimed by a play that has not recorded its prize yet: cancel the card; that play reverses its own prize.
+      if (draw.status !== 'expired' && !draw.ledgerEntryId && this.draws.voidPlayedUnawardedToken
+        && (await this.draws.voidPlayedUnawardedToken(draw.tokenId, this.now()))) {
+        voided++;
+        continue;
+      }
       // Played (possibly a moment ago, by the customer): take the prize back.
-      const [latest] = draw.status === 'available'
-        ? (await this.draws.drawsForSource('order', input.orderId)).filter((d) => d.tokenId === draw.tokenId)
-        : [draw];
+      const [latest] = draw.ledgerEntryId
+        ? [draw]
+        : (await this.draws.drawsForSource('order', input.orderId)).filter((d) => d.tokenId === draw.tokenId);
       if (latest?.ledgerEntryId) {
         const r = await this.ledger.reverseEntry(latest.ledgerEntryId, `Scratch card prize reversed: order refunded (${input.reason})`.slice(0, 300));
         if (r.ok && !r.replay) reversed++;

@@ -61,4 +61,22 @@ suite('scratch card on a refunded order (real PostgreSQL)', () => {
     expect(rev.points).toBe(-500);
     expect(await uc.execute({ orderId, reason: 'Refund again' })).toEqual({ voided: 0, reversed: 0 }); // idempotent
   });
+
+  it('a card claimed by a play that has not recorded its prize yet is cancelled, and that play takes its prize back (2026-11 review)', async () => {
+    const orderId = await order('M');
+    const tokenId = await token(orderId, 'played'); // claimed, no result yet
+    expect(await uc.execute({ orderId, reason: 'Refund' })).toEqual({ voided: 1, reversed: 0 });
+    expect((await raw`select status from loyalty_draw_tokens where id = ${tokenId}`)[0].status).toBe('expired');
+    // The play finishing afterwards sees the card is no longer its own and reverses what it paid.
+    expect((await draws.findToken(tokenId)).status).toBe('expired');
+    // Once a result exists the card is not cancelled; the prize is reversed instead.
+    const orderId2 = await order('N');
+    const tokenId2 = await token(orderId2, 'played');
+    const [credit] = await raw`insert into loyalty_ledger_entries (account_id, type, points, reason, idempotency_key)
+      values (${accountId}, 'adjustment', 500, 'Scratch card prize', ${`draw:${tokenId2}`}) returning id`;
+    await raw`insert into loyalty_draw_results (token_id, campaign_id, prize_id, user_id, points_awarded, ledger_entry_id, prize_snapshot)
+      values (${tokenId2}, ${campaignId}, ${prizeId}, ${userId}, 500, ${credit.id}, '{}'::jsonb)`;
+    expect(await draws.voidPlayedUnawardedToken(tokenId2, new Date())).toBe(false);
+    expect(await uc.execute({ orderId: orderId2, reason: 'Refund' })).toEqual({ voided: 0, reversed: 1 });
+  });
 });

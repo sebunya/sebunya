@@ -470,6 +470,21 @@ describe('playing a card', () => {
     expect(ledger.pointsFor('u1')).toBe(25);
   });
 
+  it('a refund that cancels the card mid-play makes the play take its prize back (2026-11 review)', async () => {
+    const tokenId = await grantOne();
+    const recordResult = draws.recordResult.bind(draws);
+    (draws as any).recordResult = async (input: any) => { await recordResult(input); draws.tokens.get(tokenId)!.status = 'expired'; };
+    (ledger as any).reverseEntry = async (entryId: string) => {
+      const e = ledger.entries.find((x: any) => x.id === entryId)!;
+      ledger.entries.push({ ...e, id: `rev-${entryId}`, points: -e.points, idempotencyKey: `reversal:${entryId}` });
+      return { ok: true };
+    };
+    expect(await playUc(9999).execute({ userId: 'u1', tokenId })).toMatchObject({ ok: false, code: 'TOKEN_REVOKED' });
+    expect(ledger.pointsFor('u1')).toBe(0);
+    expect(draws.prizes.find((p) => p.id === 'p1000')!.awardsMade).toBe(0);
+    expect(draws.campaign.pointsAwarded).toBe(0);
+  });
+
   it('gives the prize slot back when the award fails after taking it', async () => {
     const tokenId = await grantOne();
     ledger.failNext = true;
