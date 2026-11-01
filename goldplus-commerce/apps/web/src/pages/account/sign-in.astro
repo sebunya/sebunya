@@ -1,0 +1,152 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AccountNav from '../../components/AccountNav.astro';
+import FormFeedback from '../../components/FormFeedback.astro';
+import { apiBase } from '../../lib/api';
+import { readSessionToken } from '../../lib/session';
+import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../../lib/requestOrigin';
+import { socialSignInMessage } from '../../lib/socialSignInMessages';
+
+/**
+ * Account → Sign-in methods: the password and each provider (Google, Apple, Facebook), connected or not.
+ *
+ * Connecting goes through /auth/<provider>/start?intent=link and returns here with ?connected= or ?social_error=.
+ * Removing is a POST here; the API refuses to remove the last way into the account. Only providers the operator has
+ * configured can be connected, so there is never a button that cannot work.
+ */
+const PAGE = '/account/sign-in';
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect(`/login?returnTo=${encodeURIComponent(PAGE)}`, 303);
+}
+
+type Method = { provider: string; displayName: string; configured: boolean; connected: boolean; email: string | null };
+
+let status: 'success' | 'error' | null = null;
+let message: string | undefined;
+
+if (Astro.request.method === 'POST') {
+  const origin = checkRequestOrigin(Astro.request, import.meta.env as unknown as Record<string, string | undefined>);
+  const form = await Astro.request.formData().catch(() => null);
+  const provider = String(form?.get('provider') ?? '');
+  status = 'error';
+  if (!origin.allowed) {
+    message = CROSS_SITE_MESSAGE;
+  } else if (!/^[a-z]{2,20}$/.test(provider)) {
+    message = 'Choose a sign-in method to remove.';
+  } else {
+    try {
+      const res = await fetch(`${apiBase}/account/sign-in-methods/${provider}/remove`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(8000),
+      });
+      const json = await res.json().catch(() => null);
+      if (res.status === 401) return Astro.redirect(`/login?returnTo=${encodeURIComponent(PAGE)}`, 303);
+      if (res.ok && json?.success) {
+        status = 'success';
+        message = 'Removed. It can no longer be used to sign in to this account.';
+      } else {
+        message = typeof json?.error?.message === 'string' && json.error.message.length < 300
+          ? json.error.message
+          : 'Nothing was removed. Please try again.';
+      }
+    } catch {
+      message = 'We could not reach our servers. Nothing was removed. Please try again.';
+    }
+  }
+} else {
+  const connected = Astro.url.searchParams.get('connected');
+  const socialError = socialSignInMessage(Astro.url.searchParams.get('social_error'));
+  if (socialError) {
+    status = 'error';
+    message = socialError;
+  } else if (connected && /^[a-z]{2,20}$/.test(connected)) {
+    status = 'success';
+    message = 'Connected. You can now sign in to this account with it.';
+  }
+}
+
+let methods: Method[] = [];
+let hasPassword = false;
+let loadFailed = false;
+try {
+  const res = await fetch(`${apiBase}/account/sign-in-methods`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(6000),
+  });
+  if (res.status === 401) return Astro.redirect(`/login?returnTo=${encodeURIComponent(PAGE)}`, 303);
+  const json = await res.json().catch(() => null);
+  if (res.ok && json?.success) {
+    methods = (json.data.methods ?? []) as Method[];
+    hasPassword = json.data.hasPassword === true;
+  } else {
+    loadFailed = true;
+  }
+} catch {
+  loadFailed = true;
+}
+
+// Unconfigured providers that are not connected are left out: nothing can be done with them.
+const shown = methods.filter((m) => m.connected || m.configured);
+const waysIn = (hasPassword ? 1 : 0) + methods.filter((m) => m.connected).length;
+---
+
+<BaseLayout robotsMeta="noindex,nofollow" title="Sign-in methods">
+  <div class="container mx-auto px-4 lg:px-8 py-10 max-w-3xl">
+    <header class="mb-8">
+      <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal tracking-tight">Sign-in methods</h1>
+      <p class="mt-2 text-sm text-brand-mutedGrey">The ways you can sign in to this account. Keep at least one.</p>
+    </header>
+
+    <AccountNav active="sign-in" />
+
+    <FormFeedback status={status} message={message} />
+
+    {loadFailed ? (
+      <p class="text-sm text-brand-mutedGrey">Your sign-in methods could not be loaded just now. Please refresh the page.</p>
+    ) : (
+      <ul class="bg-white border border-brand-borderGrey rounded-2xl divide-y divide-brand-borderGrey">
+        <li class="flex flex-wrap items-center justify-between gap-3 p-5">
+          <div>
+            <p class="text-sm font-bold text-brand-charcoal">Email and password</p>
+            <p class="text-xs text-brand-mutedGrey">{hasPassword ? 'Set' : 'No password yet'}</p>
+          </div>
+          {hasPassword ? (
+            <a href="/account/password" class="text-sm font-bold text-brand-mutedGrey underline hover:text-brand-charcoal">Change password</a>
+          ) : (
+            <a href="/forgot-password" class="text-sm font-bold text-brand-mutedGrey underline hover:text-brand-charcoal">Set a password</a>
+          )}
+        </li>
+        {shown.map((m) => (
+          <li class="flex flex-wrap items-center justify-between gap-3 p-5">
+            <div>
+              <p class="text-sm font-bold text-brand-charcoal">{m.displayName}</p>
+              <p class="text-xs text-brand-mutedGrey">
+                {m.connected ? (m.email ? `Connected (${m.email})` : 'Connected') : 'Not connected'}
+              </p>
+            </div>
+            {m.connected ? (
+              waysIn > 1 ? (
+                <form method="POST">
+                  <input type="hidden" name="provider" value={m.provider} />
+                  <button type="submit" class="text-sm font-bold text-red-700 underline hover:text-red-900">Remove</button>
+                </form>
+              ) : (
+                <p class="text-xs text-brand-mutedGrey max-w-[16rem]">Your only way in. Set a password or connect another first.</p>
+              )
+            ) : (
+              <a
+                href={`/auth/${m.provider}/start?intent=link`}
+                rel="nofollow"
+                class="inline-flex items-center justify-center rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:opacity-90"
+              >
+                Connect {m.displayName}
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    )}
+  </div>
+</BaseLayout>
