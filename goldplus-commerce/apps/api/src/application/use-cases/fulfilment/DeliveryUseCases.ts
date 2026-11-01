@@ -11,7 +11,21 @@ import { IFulfilmentRepository } from '../../ports/IFulfilmentRepository';
 import { IFulfilmentDeliveryRepository } from '../../ports/IFulfilmentDeliveryRepository';
 import { IFulfilmentReportRepository, FulfilmentReport } from '../../ports/IFulfilmentReportRepository';
 import { IAuditRepository } from '../../ports/IAuditRepository';
+import { IOrderTransitionPort } from '../../ports/IOrderTransitionPort';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
+import { mirrorOrderDispatched } from './DispatchUseCases';
+
+/** What the quote capture needs to know about a recorded delivery attempt (0189). */
+export interface IDeliveryCaptureMirror {
+  recordAttempt(input: {
+    orderId: string;
+    taskId: string;
+    attempt: number;
+    completed: boolean;
+    failedFirstAttempt: boolean;
+    deliveredAt: Date | null;
+  }): Promise<void>;
+}
 
 export type DeliveryError =
   | 'NOT_FOUND'
@@ -46,13 +60,34 @@ export class RecordDeliveryUseCase {
   constructor(
     private readonly tasks: IFulfilmentRepository,
     private readonly deliveries: IFulfilmentDeliveryRepository,
-    private readonly audit: IAuditRepository
+    private readonly audit: IAuditRepository,
+    /**
+     * Location module stage 2: a recorded outcome now also moves the ORDER
+     * lifecycle (dispatched → delivered / delivery_failed) through the one
+     * canonical ledgered path, so failed-delivery metrics are derivable from
+     * order history. Optional so existing tests and callers stay valid; when
+     * absent, only the fulfilment task moves (pre-stage-2 behaviour).
+     */
+    private readonly orderTransitions?: IOrderTransitionPort,
+    /**
+     * 0189: the delivery quote capture learns from this outcome (delivered_at,
+     * actual_minutes from the dispatch time, first_attempt_success — written
+     * FALSE on a failed first attempt too, so the rate is not 100% by
+     * construction). Nothing wrote these columns before, so the calibration
+     * loop and two of the location-accuracy numbers had no data source.
+     * Optional and best-effort: a capture that fails never voids a truthfully
+     * recorded delivery.
+     */
+    private readonly captureMirror?: IDeliveryCaptureMirror
   ) {}
 
   async execute(input: {
     taskId: string;
     actorId: string;
     outcome: FulfilmentDeliveryOutcome;
+    /** 0190: the rider's point at handover (a WhatsApp location) and how the attempt reached us. */
+    handover?: { lat: number; lng: number; accuracyM: number | null } | null;
+    recordedVia?: 'office' | 'rider_whatsapp';
     deliveredQuantity?: number;
     returnedQuantity?: number;
     recipientName?: string | null;
@@ -62,7 +97,16 @@ export class RecordDeliveryUseCase {
     rescheduledFor?: Date | null;
     notes?: string | null;
     now?: Date;
-  }): Promise<{ ok: true; delivery: FulfilmentDeliverySnapshot; completed: boolean } | Fail> {
+  }): Promise<
+    | {
+        ok: true;
+        delivery: FulfilmentDeliverySnapshot;
+        completed: boolean;
+        /** Whether the ORDER followed the outcome; 'skipped' is for the operator to see. */
+        orderTransition?: 'delivered' | 'delivery_failed' | 'skipped' | 'not_wired';
+      }
+    | Fail
+  > {
     const now = input.now ?? new Date();
     const snapshot = await this.tasks.findById(input.taskId);
     if (!snapshot) return fail('NOT_FOUND', 'Fulfilment task not found.');
@@ -110,6 +154,8 @@ export class RecordDeliveryUseCase {
       deliveredQuantity,
       returnedQuantity,
       notes: input.notes?.trim() || null,
+      handover: input.handover ?? null,
+      recordedVia: input.recordedVia ?? 'office',
     });
 
     // Only DELIVERED completes the lifecycle. Payment is deliberately untouched.
@@ -125,14 +171,124 @@ export class RecordDeliveryUseCase {
       }
     }
 
+    // Mirror the outcome onto the order lifecycle. Best-effort by design: a
+    // legacy order that never entered `dispatched` (or was closed manually)
+    // refuses the transition in the state machine, and that refusal must not
+    // void a truthfully recorded physical delivery attempt.
+    let orderTransition: 'delivered' | 'delivery_failed' | 'skipped' | 'not_wired' = 'not_wired';
+    if (this.orderTransitions) {
+      const target =
+        deliveryCompletesTask(input.outcome) ? ('delivered' as const)
+        : input.outcome === 'DELIVERY_FAILED' ? ('delivery_failed' as const)
+        : null; // RESCHEDULED and partials leave the order dispatched
+      orderTransition = 'skipped';
+      if (target) {
+        const record = () =>
+          this.orderTransitions!.transition(snapshot.orderId, target, {
+            actorId: input.actorId,
+            actorType: 'administrator',
+            source: 'fulfilment',
+            reasonCode: 'delivery_outcome',
+            note: `Fulfilment attempt ${attempt}: ${input.outcome}`,
+          });
+        try {
+          await record();
+          orderTransition = target;
+        } catch {
+          // The order never followed the task to 'dispatched' — every COD
+          // order dispatched before the dispatch mirror learned the legal
+          // route. Catch it up the same way (confirm, then dispatch) and try
+          // once more; each hop is legal and ledgered or commits nothing.
+          const caughtUp = await mirrorOrderDispatched(this.orderTransitions, snapshot.orderId, {
+            actorId: input.actorId,
+            note: `Catch-up before recording attempt ${attempt}`,
+            cashOnDelivery: snapshot.paymentStatus !== 'paid',
+            paid: snapshot.paymentStatus === 'paid',
+          });
+          if (caughtUp === 'dispatched') {
+            try {
+              await record();
+              orderTransition = target;
+            } catch {
+              orderTransition = 'skipped';
+            }
+          } else {
+            orderTransition = 'skipped';
+          }
+        }
+      }
+    }
+
+    if (this.captureMirror) {
+      try {
+        await this.captureMirror.recordAttempt({
+          orderId: snapshot.orderId,
+          taskId: input.taskId,
+          attempt,
+          completed,
+          failedFirstAttempt: attempt === 1 && !deliveryCompletesTask(input.outcome),
+          deliveredAt: deliveryCompletesTask(input.outcome) ? now : null,
+        });
+      } catch {
+        // Best-effort by design: the capture is an observation for the model, never a condition of the delivery.
+      }
+    }
     await new CreateAuditLogUseCase(this.audit).execute({
       actorId: input.actorId,
       action: 'FULFILMENT_DELIVERY_RECORDED',
       entity: 'fulfilment_delivery',
       entityId: input.taskId,
-      newState: { attempt, outcome: input.outcome, completed, deliveredQuantity, returnedQuantity },
+      newState: { attempt, outcome: input.outcome, completed, deliveredQuantity, returnedQuantity, orderTransition },
     });
-    return { ok: true, delivery, completed };
+    return { ok: true, delivery, completed, orderTransition };
+  }
+}
+
+/**
+ * Brings an order up to a delivery the rider already made: the task says Delivered (with a delivered attempt on
+ * record) but the order does not. That was every paid order delivered while it still read 'received' or
+ * 'awaiting review' (owner, 2026-10-22): the task finished, and nothing on the order page could reach 'delivered'
+ * afterwards. The same legal, ledgered hops as the delivery itself (confirm, dispatch, delivered); a closed order
+ * (completed, cancelled) is left alone and said so.
+ */
+export class CompleteOrderForDeliveredTaskUseCase {
+  constructor(
+    private readonly tasks: IFulfilmentRepository,
+    private readonly deliveries: IFulfilmentDeliveryRepository,
+    private readonly audit: IAuditRepository,
+    private readonly orderTransitions: IOrderTransitionPort,
+    private readonly orders: { findById(id: string): Promise<{ orderStatus: string } | null> },
+  ) {}
+
+  async execute(input: { orderId: string; actorId: string }): Promise<
+    | { ok: true; orderStatus: 'delivered'; changed: boolean }
+    | { ok: false; code: 'NOT_FOUND' | 'NOT_DELIVERED' | 'ORDER_CLOSED' | 'REFUSED'; message: string }
+  > {
+    const order = await this.orders.findById(input.orderId);
+    const task = order ? await this.tasks.findByOrderId(input.orderId) : null;
+    if (!order || !task) return { ok: false, code: 'NOT_FOUND', message: 'Order or its fulfilment task not found.' };
+    if (order.orderStatus === 'delivered') return { ok: true, orderStatus: 'delivered', changed: false };
+    const delivered = task.status === 'DELIVERED' && (await this.deliveries.listByTask(task.id)).some((a) => a.deliveredAt !== null);
+    if (!delivered) return { ok: false, code: 'NOT_DELIVERED', message: 'No delivery is recorded for this order yet. Record it on the fulfilment task\'s Delivery page.' };
+    if (['completed', 'cancelled', 'failed'].includes(order.orderStatus)) {
+      return { ok: false, code: 'ORDER_CLOSED', message: `The order is ${order.orderStatus}, so it is not changed.` };
+    }
+    const base = { actorId: input.actorId, actorType: 'administrator' as const, source: 'fulfilment' as const, reasonCode: 'delivery_outcome', note: 'Delivered by the rider (recorded on the task); order brought up to date' };
+    try {
+      if (order.orderStatus !== 'dispatched') {
+        const caught = await mirrorOrderDispatched(this.orderTransitions, input.orderId, { actorId: input.actorId, note: 'Catch-up for a recorded delivery', cashOnDelivery: task.paymentStatus !== 'paid', paid: task.paymentStatus === 'paid' });
+        if (caught !== 'dispatched') throw new Error('not dispatched');
+      }
+      await this.orderTransitions.transition(input.orderId, 'delivered', base);
+    } catch (err) {
+      const why = err instanceof Error && err.message !== 'not dispatched' ? ` ${err.message}` : '';
+      return { ok: false, code: 'REFUSED', message: `The order could not be moved to delivered.${why}` };
+    }
+    await new CreateAuditLogUseCase(this.audit).execute({
+      actorId: input.actorId, action: 'ORDER_DELIVERED_CATCH_UP', entity: 'order', entityId: input.orderId,
+      previousState: { status: order.orderStatus }, newState: { status: 'delivered', taskId: task.id },
+    });
+    return { ok: true, orderStatus: 'delivered', changed: true };
   }
 }
 

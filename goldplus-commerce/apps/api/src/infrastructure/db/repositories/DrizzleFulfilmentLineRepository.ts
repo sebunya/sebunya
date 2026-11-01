@@ -96,12 +96,16 @@ export class DrizzlePackingSessionRepository implements IPackingSessionRepositor
   }
 
   async startForTask(taskId: string, packerUserId: string): Promise<PackingSessionSnapshot> {
+    // Only (re)start a session that is not already finished. The comment used
+    // to be the only guard: pressing Start on a COMPLETED session rewrote it to
+    // IN_PROGRESS with a fresh startedAt, on a task already ready for dispatch.
+    const current = await this.getByTask(taskId);
+    if (current && (current.status === 'COMPLETED' || current.status === 'PARTIAL')) return current;
     await db
       .insert(packingSessions)
       .values({ fulfilmentTaskId: taskId, status: 'IN_PROGRESS', packerUserId, startedAt: new Date() })
       .onConflictDoUpdate({
         target: packingSessions.fulfilmentTaskId,
-        // Only (re)start a session that is not already terminal.
         set: { status: 'IN_PROGRESS', packerUserId, startedAt: new Date(), updatedAt: new Date() },
       });
     return (await this.getByTask(taskId))!;

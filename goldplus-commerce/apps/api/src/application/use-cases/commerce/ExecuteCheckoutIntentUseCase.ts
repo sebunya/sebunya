@@ -48,6 +48,10 @@ export type CheckoutOutcomeKind =
   | 'BLOCKED_STOCK'
   | 'CHECKOUT_IN_PROGRESS'
   | 'IDEMPOTENCY_CONFLICT'
+  /** The intent already produced an order; this request asks for something else. */
+  | 'SUPERSEDED_BY_ORDER'
+  /** The intent is spent and produced nothing; a fresh one may proceed at once. */
+  | 'INTENT_SPENT'
   | 'PRICE_REVIEW_REQUIRED'
   | 'INTENT_INVALID'
   | 'SESSION_INVALID'
@@ -71,6 +75,34 @@ export interface CheckoutRefusalOutcome {
   /** Stable code for the storefront. Never an internal message. */
   reason: string;
   retryAfterSeconds?: number;
+  /**
+   * The order this intent already produced, on SUPERSEDED_BY_ORDER.
+   *
+   * Carried so the customer can be told WHICH order they already have and sent
+   * to it, instead of being refused with nothing to act on.
+   */
+  existingOrder?: {
+    orderId: string;
+    orderNumber: string;
+    paymentStatus: string;
+    /**
+     * Whether THIS request's items are the order's items (product and quantity). The fingerprint also covers the
+     * address, the payment method and so on, so a resubmit of the same basket with one detail changed lands here
+     * too, and is right to be pointed at paying that order. A different basket is not that order (2026-10-14).
+     */
+    sameItems: boolean;
+  };
+}
+
+/** Product -> quantity, consolidated, for comparing a basket with an order. */
+function itemCounts(items: ReadonlyArray<{ productId: string; quantity: number }>): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const i of items) m.set(i.productId, (m.get(i.productId) ?? 0) + i.quantity);
+  return m;
+}
+function sameItemCounts(a: ReadonlyArray<{ productId: string; quantity: number }>, b: ReadonlyArray<{ productId: string; quantity: number }>): boolean {
+  const x = itemCounts(a), y = itemCounts(b);
+  return x.size === y.size && [...x].every(([id, q]) => y.get(id) === q);
 }
 
 export type CheckoutOutcome = CheckoutSuccessOutcome | CheckoutRefusalOutcome;
@@ -108,8 +140,11 @@ export interface CheckoutCommand {
   buyerType: 'retail' | 'wholesale' | 'corporate';
   items: Array<{ productId: string; quantity: number }>;
   couponCode?: string | null;
+  /** 0196: keyed hash of a store credit / gift card code (the route hashes; the raw code never travels further). */
+  storeCreditCodeHash?: string | null;
   previewQuoteId?: string | null;
   acceptPriceChange?: boolean;
+  redeemPoints?: number | null;
   /**
    * The basket this checkout was raised against, and its version.
    *
@@ -120,6 +155,8 @@ export interface CheckoutCommand {
   cartVersion?: number | null;
   /** Online versus offline is a materially different operation, not a presentation choice. */
   paymentMethod?: string | null;
+  /** R3.1: resolved server-side by the route from the HttpOnly visit token — never from the body. */
+  profileId?: string | null;
   traceId: string;
 }
 
@@ -130,9 +167,15 @@ export interface CheckoutOrderCreator {
     items: CheckoutCommand['items'];
     clientOrderKey: string | null;
     couponCode: string | null;
+    storeCreditCodeHash?: string | null;
     previewQuoteId: string | null;
     acceptPriceChange: boolean;
     checkoutLink?: LeaseToken;
+    /** Verified principal from the signed intent — USER links the order to the account. */
+    principal: { kind: 'USER' | 'GUEST'; id: string };
+    redeemPoints?: number | null;
+    paymentMethod?: 'pesapal' | 'offline' | null;
+      stitching?: { profileId?: string | null; cartId?: string | null } | null;
   }): Promise<{ order: Order; deliveryFeeConfirmed: boolean; idempotentReplay: boolean }>;
 }
 
@@ -190,6 +233,7 @@ export class ExecuteCheckoutIntentUseCase {
       items: command.items,
       buyerType: command.buyerType,
       couponCode: command.couponCode ?? null,
+      storeCreditCodeHash: command.storeCreditCodeHash ?? null,
       deliveryZoneKey:
         command.customerDetails.deliveryLocation?.district ?? command.customerDetails.deliveryArea,
       currency: 'UGX',
@@ -287,9 +331,14 @@ export class ExecuteCheckoutIntentUseCase {
       items: command.items,
       clientOrderKey: null,
       couponCode: command.couponCode ?? null,
+      storeCreditCodeHash: command.storeCreditCodeHash ?? null,
       previewQuoteId: command.previewQuoteId ?? null,
       acceptPriceChange: command.acceptPriceChange ?? false,
+      redeemPoints: command.redeemPoints ?? null,
+      paymentMethod: command.paymentMethod === 'pesapal' || command.paymentMethod === 'offline' ? command.paymentMethod : null,
+      stitching: { profileId: command.profileId ?? null, cartId: command.cartId ?? null },
       checkoutLink: lease,
+      principal: { kind: command.claims.kind, id: command.claims.principalId },
     });
 
     return this.afterOrder(command, lease, created.order, {
@@ -483,6 +532,54 @@ export class ExecuteCheckoutIntentUseCase {
     switch (decision.action) {
       case 'CONFLICT':
         return { kind: 'IDEMPOTENCY_CONFLICT', reason: decision.reason };
+      case 'INTENT_SPENT':
+        // Nothing was created under the old intent, so nothing can be
+        // duplicated. The caller mints a fresh intent and submits again.
+        return { kind: 'INTENT_SPENT', reason: 'INTENT_SPENT' };
+      case 'SUPERSEDED_BY_ORDER': {
+        // Name the order the customer already has. If it can no longer be
+        // loaded there is nothing to point them at and nothing to duplicate,
+        // so this degrades to a spent intent rather than a dead end.
+        const existing = await this.deps.orderReader.findById(decision.orderId);
+        if (!existing) return { kind: 'INTENT_SPENT', reason: 'INTENT_SPENT' };
+        // The order the intent produced is un-collectable: its payment failed,
+        // or the order itself was cancelled or failed. A new checkout with a
+        // different basket is then a NEW order, not a duplicate of a dead one,
+        // so it must go THROUGH — not be answered "you already ordered" and
+        // pointed at an order that cannot be paid. Observed in production on
+        // 2026-09-12: an order parked in PAYMENT_REVIEW (payment_status=failed)
+        // held the intent, every fresh checkout was superseded by it, and
+        // startPayment for it returned NOT_PAYABLE — a total dead end with no
+        // new order creatable until the intent's 12h expiry. Degrading to a
+        // spent intent lets the caller mint a fresh one and place the order.
+        // A merely unpaid-but-live order (pending payment) is still protected
+        // from duplication.
+        const uncollectable =
+          existing.paymentStatus !== 'paid' &&
+          (existing.paymentStatus === 'failed' ||
+            existing.orderStatus === 'cancelled' ||
+            existing.orderStatus === 'failed');
+        if (uncollectable) return { kind: 'INTENT_SPENT', reason: 'INTENT_SPENT' };
+        // A PAID order is finished business, so it spends the intent too. This
+        // branch is reached only when the request's fingerprint DIFFERS from the
+        // one that produced the order (the same basket replays through
+        // RETURN_EXISTING), so a different basket after a completed payment is
+        // a new purchase, not a duplicate. Nothing cleared the intent after a
+        // PesaPal payment, so for 12 h every later checkout in that browser was
+        // answered "you have already paid for this order", pointed at the OLD
+        // order, and the new basket was emptied with no order placed.
+        if (existing.paymentStatus === 'paid') return { kind: 'INTENT_SPENT', reason: 'INTENT_SPENT' };
+        return {
+          kind: 'SUPERSEDED_BY_ORDER',
+          reason: 'INTENT_ALREADY_ORDERED',
+          existingOrder: {
+            orderId: existing.id,
+            orderNumber: existing.orderNumber,
+            paymentStatus: existing.paymentStatus,
+            sameItems: sameItemCounts(command.items, existing.items ?? []),
+          },
+        };
+      }
       case 'IN_FLIGHT':
         return {
           kind: 'CHECKOUT_IN_PROGRESS',

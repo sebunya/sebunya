@@ -1,5 +1,5 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { CartOwnerKind } from '@goldplus/shared';
+import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import { CartOwnerKind, CART_RETENTION_DAYS } from '@goldplus/shared';
 import { db } from '../client';
 import { carts, cartItems } from '../schema/commerce';
 import { products, productPrices } from '../schema/products';
@@ -7,8 +7,11 @@ import {
   CartOwner,
   CartRecord,
   CartProductReader,
+  CartStockLimit,
   ICartAuthorizedRepository,
 } from '../../../application/use-cases/commerce/MutateCartUseCase';
+import { cartStockLimit } from '../../../domain/inventory/Inventory';
+import type { IAccountCartRepository } from '../../../application/use-cases/commerce/ResolveAccountCartUseCase';
 
 /**
  * Cart persistence with ownership and optimistic concurrency.
@@ -25,7 +28,22 @@ import {
  * and the caller is told, rather than the write landing on whatever state it finds.
  */
 
-const CART_TTL_DAYS = 30;
+/**
+ * The ONE pricing rule for a basket line, the same as the public product DTO
+ * (DrizzleProductRepository + toProductPublicDto): a product has a price only
+ * when `has_retail_price` is true AND `product_prices` holds a positive whole
+ * retail price. `products.price_ugx` is never a fallback: the storefront shows
+ * such a product as "Price on request" and checkout refuses it
+ * (PRICE_UNAVAILABLE), so pricing its cart line from price_ugx put a number in
+ * the subtotal that the order would never charge.
+ */
+export function confirmedRetailPrice(hasRetailPrice: boolean | null | undefined, retailPrice: number | null | undefined): number | null {
+  if (!hasRetailPrice) return null;
+  return typeof retailPrice === 'number' && Number.isInteger(retailPrice) && retailPrice > 0 ? retailPrice : null;
+}
+
+// Same constant the credential cookie uses — cookie lifetime and row expiry move together.
+const CART_TTL_DAYS = CART_RETENTION_DAYS;
 
 export class DrizzleAuthorizedCartRepository implements ICartAuthorizedRepository {
   async find(cartId: string): Promise<CartRecord | null> {
@@ -50,8 +68,9 @@ export class DrizzleAuthorizedCartRepository implements ICartAuthorizedRepositor
         productId: cartItems.productId,
         quantity: cartItems.quantity,
         name: products.name,
+        slug: products.slug,
         retailPrice: productPrices.retailPrice,
-        fallbackPrice: products.priceUgx,
+        hasRetailPrice: products.hasRetailPrice,
       })
       .from(cartItems)
       .innerJoin(products, eq(products.id, cartItems.productId))
@@ -63,12 +82,19 @@ export class DrizzleAuthorizedCartRepository implements ICartAuthorizedRepositor
       version: cart.version,
       ownerKind: (cart.ownerKind as CartOwnerKind | null) ?? null,
       ownerId: cart.ownerId ?? null,
-      items: lines.map((line) => ({
-        productId: line.productId,
-        name: line.name,
-        unitPriceUgx: line.retailPrice ?? line.fallbackPrice,
-        quantity: line.quantity,
-      })),
+      items: lines.map((line) => {
+        const price = confirmedRetailPrice(line.hasRetailPrice, line.retailPrice);
+        return {
+          productId: line.productId,
+          name: line.name,
+          slug: line.slug,
+          unitPriceUgx: price ?? 0,
+          quantity: line.quantity,
+          // No confirmed price: out of the subtotal and named, as an
+          // unpurchasable line is, instead of a price checkout will refuse.
+          ...(price === null ? { unavailable: true } : {}),
+        };
+      }),
     };
   }
 
@@ -169,14 +195,19 @@ export class DrizzleAuthorizedCartRepository implements ICartAuthorizedRepositor
 export class DrizzleCartProductReader implements CartProductReader {
   async findPurchasable(
     productIds: readonly string[],
-  ): Promise<Array<{ id: string; name: string; unitPriceUgx: number }>> {
+  ): Promise<Array<{ id: string; name: string; unitPriceUgx: number; stock: CartStockLimit }>> {
     if (productIds.length === 0) return [];
     const rows = await db
       .select({
         id: products.id,
         name: products.name,
         retailPrice: productPrices.retailPrice,
-        fallbackPrice: products.priceUgx,
+        hasRetailPrice: products.hasRetailPrice,
+        stockStatus: products.stockStatus,
+        isPreOrderEnabled: products.isPreOrderEnabled,
+        inventoryPolicy: products.inventoryPolicy,
+        stockQuantity: products.stockQuantity,
+        reservedQuantity: products.reservedQuantity,
       })
       .from(products)
       .leftJoin(productPrices, eq(productPrices.productId, products.id))
@@ -187,10 +218,112 @@ export class DrizzleCartProductReader implements CartProductReader {
           eq(products.approvalStatus, 'approved'),
         ),
       );
-    return rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      unitPriceUgx: row.retailPrice ?? row.fallbackPrice,
-    }));
+    // A product with no confirmed retail price cannot be bought (checkout
+    // answers PRICE_UNAVAILABLE), so it is not purchasable here either.
+    return rows.flatMap((row) => {
+      const price = confirmedRetailPrice(row.hasRetailPrice, row.retailPrice);
+      return price === null
+        ? []
+        : [{ id: row.id, name: row.name, unitPriceUgx: price, stock: cartStockLimit(row) }];
+    });
+  }
+}
+
+/** Thrown inside a merge transaction to roll it back; never escapes the repository. */
+class MergeRaceLost extends Error {}
+
+/**
+ * The account basket and the guest-basket merge (ResolveAccountCartUseCase).
+ *
+ * Both halves of the merge commit together: emptying the guest basket and
+ * writing the account basket are one transaction, each guarded by its version,
+ * so a second tab or a retry can never fold the same guest lines in twice.
+ */
+export class DrizzleAccountCartRepository implements IAccountCartRepository {
+  async findLatestFor(owner: CartOwner, now: Date): Promise<{ id: string } | null> {
+    const [row] = await db
+      .select({ id: carts.id })
+      .from(carts)
+      .where(
+        and(
+          eq(carts.ownerKind, owner.kind),
+          eq(carts.ownerId, owner.id),
+          or(isNull(carts.expiresAt), gt(carts.expiresAt, now)),
+        ),
+      )
+      .orderBy(desc(carts.updatedAt))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async mergeInto(args: {
+    guestCartId: string;
+    guestVersion: number;
+    targetCartId: string;
+    targetOwner: CartOwner;
+    targetExpectedVersion: number | null;
+    items: Array<{ productId: string; quantity: number }>;
+  }): Promise<boolean> {
+    const now = new Date();
+    try {
+      await db.transaction(async (tx) => {
+        const guest = await tx
+          .update(carts)
+          .set({ version: sql`${carts.version} + 1`, updatedAt: now })
+          .where(and(eq(carts.id, args.guestCartId), eq(carts.version, args.guestVersion)))
+          .returning({ id: carts.id });
+        if (guest.length !== 1) throw new MergeRaceLost();
+
+        if (args.targetExpectedVersion === null) {
+          const created = await tx
+            .insert(carts)
+            .values({
+              id: args.targetCartId,
+              ownerKind: args.targetOwner.kind,
+              ownerId: args.targetOwner.id,
+              version: 1,
+              updatedAt: now,
+              expiresAt: new Date(now.getTime() + CART_TTL_DAYS * 24 * 60 * 60 * 1000),
+            })
+            .onConflictDoNothing()
+            .returning({ id: carts.id });
+          if (created.length !== 1) throw new MergeRaceLost();
+        } else {
+          const target = await tx
+            .update(carts)
+            .set({
+              version: sql`${carts.version} + 1`,
+              updatedAt: now,
+              expiresAt: new Date(now.getTime() + CART_TTL_DAYS * 24 * 60 * 60 * 1000),
+            })
+            .where(
+              and(
+                eq(carts.id, args.targetCartId),
+                eq(carts.version, args.targetExpectedVersion),
+                eq(carts.ownerKind, args.targetOwner.kind),
+                eq(carts.ownerId, args.targetOwner.id),
+              ),
+            )
+            .returning({ id: carts.id });
+          if (target.length !== 1) throw new MergeRaceLost();
+        }
+
+        await tx.delete(cartItems).where(eq(cartItems.cartId, args.guestCartId));
+        await tx.delete(cartItems).where(eq(cartItems.cartId, args.targetCartId));
+        if (args.items.length > 0) {
+          await tx.insert(cartItems).values(
+            args.items.map((item) => ({
+              cartId: args.targetCartId,
+              productId: item.productId,
+              quantity: item.quantity,
+            })),
+          );
+        }
+      });
+      return true;
+    } catch (err) {
+      if (err instanceof MergeRaceLost) return false;
+      throw err;
+    }
   }
 }

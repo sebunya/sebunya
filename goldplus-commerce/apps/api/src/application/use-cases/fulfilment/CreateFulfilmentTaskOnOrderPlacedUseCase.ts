@@ -25,13 +25,19 @@ function toFulfilmentPaymentStatus(status: string): FulfilmentPaymentStatus {
 function buildDeliverySummary(order: Order): string {
   const loc = order.deliveryLocation;
   if (loc) {
-    const parts = [loc.district, loc.subcountyDivisionTc, loc.parishWard, order.deliveryArea]
+    // Lean payloads (post gazetteer replacement) carry displayLabel/area;
+    // legacy rows carry subcountyDivisionTc/parishWard. Read both so neither
+    // era degrades to bare district text.
+    const leanLabel = (loc as { displayLabel?: string }).displayLabel;
+    const leanArea = (loc as { area?: string }).area;
+    const parts = [leanLabel, leanArea, loc.district, loc.subcountyDivisionTc, loc.parishWard, order.deliveryArea]
       .map((p) => (p ?? '').trim())
       .filter(Boolean);
     const unique = [...new Set(parts)];
     if (unique.length > 0) return unique.join(' · ');
   }
-  return [order.deliveryArea, order.deliveryAddress].filter(Boolean).join(' · ');
+  // A typed-in place fills both fields with the same words; said once (the queue showed it twice, 2026-10-21).
+  return [...new Set([order.deliveryArea, order.deliveryAddress].map((p) => (p ?? '').trim()).filter(Boolean))].join(' · ');
 }
 
 /**
@@ -46,7 +52,9 @@ export class CreateFulfilmentTaskOnOrderPlacedUseCase {
 
   async execute(
     order: Order,
-    opts: { extraWarnings?: string[]; hold?: boolean } = {}
+    /** paymentMethod: how the customer chose to pay ('offline' = on delivery or at the shop, 'pesapal' = online),
+     *  so the queue can tell 'collect at the door' from 'confirm before dispatch'. */
+    opts: { extraWarnings?: string[]; hold?: boolean; paymentMethod?: string | null } = {}
   ): Promise<CreateFulfilmentTaskResult> {
     const existing = await this.repo.findByOrderId(order.id);
     if (existing) {
@@ -79,7 +87,7 @@ export class CreateFulfilmentTaskOnOrderPlacedUseCase {
       orderId: order.id,
       orderNumber: order.orderNumber,
       paymentStatus: toFulfilmentPaymentStatus(order.paymentStatus),
-      paymentMethod: null,
+      paymentMethod: opts.paymentMethod ?? null,
       customerName: order.customerName,
       customerPhone: order.customerPhone,
       customerEmail: order.customerEmail,
