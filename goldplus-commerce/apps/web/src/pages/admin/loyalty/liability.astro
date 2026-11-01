@@ -1,0 +1,116 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/loyalty/liability", 303);
+}
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+// Read-only: GET /admin/loyalty/liability (ledger totals, UGX value, last 30
+// daily snapshots). The finance CSV downloads through the same-origin proxy
+// /api/admin/loyalty/finance-export.csv, which attaches the session bearer.
+type Liability = {
+  totals: { issued: number; redeemed: number; expired: number; clawedBack: number; outstanding: number };
+  liabilityUgx: number | null;
+  pointValueUgx: number | null;
+  budgetCapPoints: number | null;
+  killSwitch: boolean;
+  snapshots: Array<Record<string, unknown>>;
+};
+type ProgrammeState = { enabled: boolean; envFlag: boolean; active: boolean };
+
+let liability: Liability | null = null;
+let programme: ProgrammeState | null = null;
+let loadError = "";
+try {
+  const [liabRes, cfgRes] = await Promise.all([
+    fetch(`${apiBase}/admin/loyalty/liability`, { headers, signal: AbortSignal.timeout(5000) }),
+    fetch(`${apiBase}/admin/loyalty/config`, { headers, signal: AbortSignal.timeout(5000) }),
+  ]);
+  const liabJson = await liabRes.json().catch(() => null);
+  const cfgJson = await cfgRes.json().catch(() => null);
+  if (liabJson?.success) liability = liabJson.data;
+  else loadError = liabJson?.error?.message || `Could not load the points liability (HTTP ${liabRes.status}).`;
+  if (cfgJson?.success) programme = cfgJson.data;
+} catch {
+  loadError = "Loyalty service is unreachable right now.";
+}
+
+const NUM = new Intl.NumberFormat("en-UG");
+const n = (v: unknown) => (v === null || v === undefined || v === "" ? "—" : NUM.format(Number(v)));
+const ugx = (v: number | null) => (v === null ? "Not set" : `UGX ${NUM.format(v)}`);
+---
+
+<AdminLayout title="Points liability" description="Outstanding loyalty points, their UGX value, daily snapshots and the finance export.">
+  <div class="container mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-admin-loyalty-liability>
+    <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <a href="/admin/loyalty" class="text-xs font-black text-brand-primaryInk hover:underline">← Loyalty programme</a>
+        <h1 class="mt-3 text-3xl font-black tracking-tight text-brand-dark">Points liability</h1>
+        <p class="mt-2 text-sm text-slate-600">Outstanding points are the signed ledger total. The UGX value uses the configured point value; if none is set, no value is shown.</p>
+      </div>
+      <a href="/api/admin/loyalty/finance-export.csv" download class="rounded-lg bg-brand-dark px-4 py-2.5 text-center text-xs font-black uppercase tracking-widest text-white hover:opacity-90">Download finance CSV</a>
+    </header>
+
+    {programme === null ? (
+      <div class="rounded-2xl border border-slate-300 bg-slate-100 p-4 text-sm font-bold text-slate-800" role="alert" data-programme-state="unknown">Programme state unavailable — the loyalty configuration could not be read.</div>
+    ) : programme.active ? (
+      <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-900" data-programme-state="active">Programme active — customers are earning points.</div>
+    ) : (
+      <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" data-programme-state="dormant">
+        <strong>Programme dormant.</strong> Environment flag <code class="font-mono text-xs">LOYALTY_PROGRAMME_ENABLED</code> is <strong>{programme.envFlag ? "on" : "off"}</strong>, config switch is <strong>{programme.enabled ? "on" : "off"}</strong>. No points are being issued; any liability shown comes from earlier ledger entries.
+      </div>
+    )}
+
+    {liability === null ? (
+      <p class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-800" role="alert">{loadError} No figures are shown in its place.</p>
+    ) : (
+      <>
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ["Outstanding points", n(liability.totals.outstanding)],
+            ["Liability value", ugx(liability.liabilityUgx)],
+            ["Point value", ugx(liability.pointValueUgx)],
+            ["Budget cap (points)", liability.budgetCapPoints === null ? "Not set" : n(liability.budgetCapPoints)],
+            ["Issued", n(liability.totals.issued)],
+            ["Redeemed", n(liability.totals.redeemed)],
+            ["Expired", n(liability.totals.expired)],
+            ["Clawed back", n(liability.totals.clawedBack)],
+          ].map(([label, value]) => (
+            <article class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</p><p class="mt-2 text-xl font-black text-slate-950">{value}</p></article>
+          ))}
+        </div>
+        {liability.killSwitch && <p class="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">Kill switch on.</p>}
+
+        <section class="rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Daily snapshots (last 30)</h2>
+          {liability.snapshots.length === 0 ? (
+            <p class="mt-3 text-sm text-slate-500">No liability snapshots have been written yet.</p>
+          ) : (
+            <div class="mt-3 overflow-x-auto">
+              <table class="w-full min-w-[720px] text-left text-xs">
+                <thead class="bg-slate-950 text-white"><tr>{["Date", "Outstanding", "Issued", "Redeemed", "Expired", "Pending", "Liability (UGX)"].map((h) => <th class="px-3 py-2 font-black">{h}</th>)}</tr></thead>
+                <tbody class="divide-y divide-slate-100">
+                  {liability.snapshots.map((s) => (
+                    <tr>
+                      <td class="px-3 py-2 font-mono">{String(s.snapshot_date ?? "").slice(0, 10)}</td>
+                      <td class="px-3 py-2">{n(s.points_outstanding)}</td>
+                      <td class="px-3 py-2">{n(s.points_issued)}</td>
+                      <td class="px-3 py-2">{n(s.points_redeemed)}</td>
+                      <td class="px-3 py-2">{n(s.points_expired)}</td>
+                      <td class="px-3 py-2">{n(s.pending_points)}</td>
+                      <td class="px-3 py-2">{n(s.liability_ugx)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </>
+    )}
+  </div>
+</AdminLayout>

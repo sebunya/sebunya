@@ -8,6 +8,7 @@ import {
   validateEarn,
   validateRedeem,
   validateLoyaltyConfig,
+  earnExpiresAt,
 } from '../../../domain/loyalty/LoyaltyLedger';
 
 export type LoyaltyResult<T> = { ok: true; value: T } | { ok: false; code: string; message: string };
@@ -43,7 +44,7 @@ export class EarnLoyaltyPointsUseCase {
   ) {}
 
   /** Earn from a real paid order only; idempotent per order. */
-  async execute(input: { userId: string; orderId: string; orderTotalUgx: number }): Promise<LoyaltyResult<LoyaltyLedgerEntry>> {
+  async execute(input: { userId: string; orderId: string; orderTotalUgx: number; ruleVersion?: number }): Promise<LoyaltyResult<LoyaltyLedgerEntry>> {
     if (!(await this.gate.isActive())) return DISABLED;
     const config = await this.repo.getConfig();
     const points = computeEarnPoints(input.orderTotalUgx, config);
@@ -58,19 +59,20 @@ export class EarnLoyaltyPointsUseCase {
         : { ok: false, code: 'IDEMPOTENCY_CONFLICT', message: 'The order earn key was already used for different ledger facts.' };
     }
     const earnedOn = new Date();
-    const expiresAt = config.expiryDays > 0
-      ? new Date(Date.UTC(earnedOn.getUTCFullYear(), earnedOn.getUTCMonth(), earnedOn.getUTCDate() + config.expiryDays))
-      : null;
+    const expiresAt = earnExpiresAt(earnedOn, config.expiryDays);
     try {
       const { entry } = await this.repo.append({
         accountId: account.id,
         type: 'earn',
         points,
         orderId: input.orderId,
-        reason: `Earned on order (rate ${config.earnRatePer1000Ugx}/1000 UGX)`,
+        // The basis amount is recorded so the row alone re-derives the maths.
+        reason: `Earned on order total ${input.orderTotalUgx.toLocaleString('en-UG')} UGX (rate ${config.earnRatePer1000Ugx}/1000 UGX)`.slice(0, 300),
         idempotencyKey,
         expiresAt,
         reversedEntryId: null,
+        ruleCode: 'order_earn',
+        ruleVersion: input.ruleVersion ?? 1,
       });
       return { ok: true, value: entry };
     } catch (error) {
@@ -160,7 +162,7 @@ export class GetLoyaltyHistoryUseCase {
     const entries = account ? await this.repo.listEntries(account.id) : [];
     return {
       programmeActive: await this.gate.isActive(),
-      balance: computeBalance(entries, new Date()),
+      balance: computeBalance(entries, new Date(), await this.repo.lifetimeReductionsFrom()),
       entries,
     };
   }

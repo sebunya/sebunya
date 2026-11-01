@@ -30,7 +30,9 @@ const adminPage = readFileSync(resolve(root, "apps/web/src/pages/admin/loyalty.a
 const trustConfig = readFileSync(resolve(root, "apps/web/src/lib/admin-trust-centre.ts"), "utf8");
 const moduleCard = readFileSync(resolve(root, "apps/web/src/components/admin/AdminModuleCard.astro"), "utf8");
 const footer = readFileSync(resolve(root, "apps/web/src/layouts/BaseLayout.astro"), "utf8");
-const sitemap = readFileSync(resolve(root, "apps/web/src/pages/sitemap.xml.ts"), "utf8");
+// U6: the static sitemap URL list moved from pages/sitemap.xml.ts (now a
+// sitemap index) into the testable lib module.
+const sitemap = readFileSync(resolve(root, "apps/web/src/lib/sitemap.ts"), "utf8");
 
 describe("Slice 8-A programme and public truth", () => {
   it("keeps the programme inactive", () => expect(isLoyaltyProgrammeActive()).toBe(false));
@@ -58,7 +60,10 @@ describe("Slice 8-A quest concepts", () => {
   it("includes all ten safe quest concepts", () => expect(QUEST_CONCEPTS).toHaveLength(10));
   it("requires approved rules before a future quest benefit", () => expect(JSON.stringify(QUEST_CONCEPTS)).toMatch(/approved|policy/i));
   it("renders no quest completion or claim control", () => expect(publicPage).not.toMatch(/<button[^>]*>[^<]*(complete|claim|unlock)/i));
-  it("does not persist quest progress", () => expect(publicPage).not.toMatch(/localStorage|document\.cookie|setCookie|fetch\(/));
+  // Loyalty ACTIVATION made the public page read the live programme config via
+  // an SSR fetch — that is reading, not persisting. The guard keeps its intent:
+  // no client-side persistence of quest progress.
+  it("does not persist quest progress", () => expect(publicPage).not.toMatch(/localStorage|document\.cookie|setCookie/));
 });
 
 describe("Slice 8-A badges, tiers, progress and Memory Lane", () => {
@@ -89,7 +94,9 @@ describe("Slice 8-A utilisation-aware offer matrix", () => {
   });
 
   it("contains exactly the required eight planning signals", () => expect(UTILISATION_OFFER_RULES).toHaveLength(8));
-  it("uses no live order, inventory or customer reader", () => expect(publicPage).not.toMatch(/apiBase|fetch\(|\/orders|\/inventory|customerId/));
+  // Activation authorised the page to read the loyalty PROGRAMME config; it
+  // must still never read orders, inventory or anything customer-identifying.
+  it("uses no live order, inventory or customer reader", () => expect(publicPage).not.toMatch(/\/orders|\/inventory|customerId/));
   it("creates no discount or personalised price", () => expect(loyaltyFoundationSafetySummary().liveOffers).toBe(false));
   it("generates no coupon", () => expect(loyaltyFoundationSafetySummary().couponGeneration).toBe(false));
   it("keeps every scorecard row inactive or approval-gated", () => expect(UTILISATION_READINESS_SCORECARD.every((row) => ["Not active", "Needs approval", "Preview only"].includes(row.status))).toBe(true));
@@ -133,8 +140,17 @@ describe("Slice 8-A protected operator preview and discoverability", () => {
   });
   it("keeps the admin preview read-only and activation disabled", () => {
     expect(LOYALTY_ADMIN_PREVIEW).toMatchObject({ readOnly: true, activationStatus: "Disabled", activeFinancialMechanics: 0 });
-    expect(adminPage).toContain("Activation unavailable");
-    expect(adminPage).toContain("disabled");
+    // 2026-09-24: the header no longer hard-codes "not active / Activation
+    // unavailable" over a page that can save the config switch. It reads the
+    // real ledger state and falls back to the static preview only when that
+    // state cannot be read. Activation itself stays an env flag: no button here.
+    expect(adminPage).toContain("Activation status:");
+    expect(adminPage).toContain("ledgerConfig.active");
+    // 2026-09-27: when the state cannot be read the page shows an explicit
+    // unavailable state, never the static preview defaults as if they were real.
+    expect(adminPage).not.toContain("LOYALTY_ADMIN_PREVIEW");
+    expect(adminPage).toContain("Activation status: unavailable");
+    expect(adminPage).not.toMatch(/>\s*Activate programme\s*</i);
   });
   it("ranks mechanics rather than customers", () => {
     expect(GAMIFICATION_READINESS_LEADERBOARD.map((row) => row.rank)).toEqual([...GAMIFICATION_READINESS_LEADERBOARD.keys()].map((index) => index + 1));
@@ -149,7 +165,8 @@ describe("Slice 8-A protected operator preview and discoverability", () => {
     expect(moduleCard).toContain("module.previewHref");
   });
   it("adds a public footer and sitemap route", () => {
-    expect(footer).toContain('href="/loyalty"');
+    // Footer links are admin-managed content; the SSR fallback/seed is DEFAULT_HOMEPAGE_CONTENT.footer.
+    expect(readFileSync(resolve(root, "packages/shared/src/homepage/index.ts"), "utf8")).toContain("href: '/loyalty'");
     expect(sitemap).toContain("'/loyalty'");
   });
   it("keeps forbidden live claims out of public and admin copy", () => {

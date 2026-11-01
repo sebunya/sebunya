@@ -71,41 +71,89 @@ export interface LoyaltyBalance {
 export interface ExpirableEarn {
   entry: LoyaltyLedgerEntry;
   points: number;
+  /** Points of this earn already expired by earlier `expiry` entries. */
+  alreadyExpired: number;
 }
 
-/** FIFO liability allocation used to expire only the unspent remainder of an earn. */
-export function computeExpirableEarns(entries: LoyaltyLedgerEntry[], now: Date): ExpirableEarn[] {
-  const reversedSources = new Set(
-    entries.filter((entry) => entry.type === 'reversal' && entry.reversedEntryId).map((entry) => entry.reversedEntryId as string),
-  );
-  const expiryByEarn = new Map(
-    entries
-      .filter((entry) => entry.type === 'expiry' && entry.reversedEntryId)
-      .map((entry) => [entry.reversedEntryId as string, entry] as const),
-  );
-  let unallocatedRedemptions = entries
-    .filter((entry) => entry.type === 'redeem' && !reversedSources.has(entry.id))
-    .reduce((sum, entry) => sum + -entry.points, 0);
+/**
+ * FIFO liability allocation: what is still unspent of every live earn, oldest
+ * first.
+ *
+ * Each earn is a LOT: its points less what was taken off it directly — its
+ * clawbacks (reversals pointing at it, full or pro-rata, possibly several)
+ * and its expiries. Every other debit is spent from the lots oldest first:
+ * redemptions and negative adjustments, each net of any reversal of it (a
+ * refunded redemption gives its points back to the lots they came from, with
+ * their ORIGINAL expiry dates), plus `reservedPoints` (points held by open
+ * redemption reservations, which are not ledger entries yet). Positive
+ * adjustments are credits that never expire and are not lots, so debits fall
+ * on the expiring earns first — never the reverse, which would expire more.
+ *
+ * This used to skip any earn with ANY reversal pointing at it (a 50% clawback
+ * left the other half immortal), allocate only redemptions (a manual -300
+ * debit left the full earn to expire, so the balance went negative) and
+ * never re-expire points a later refund returned to an already-expired earn.
+ * Expiring every remainder can never take the balance below zero.
+ */
+export function computeEarnRemainders(entries: LoyaltyLedgerEntry[], reservedPoints = 0): ExpirableEarn[] {
+  const byId = new Map(entries.map((entry) => [entry.id, entry] as const));
+  const takenOffEarn = new Map<string, number>();
+  const expiredOfEarn = new Map<string, number>();
+  const undone = new Map<string, number>();
+  for (const entry of entries) {
+    if (!entry.reversedEntryId) continue;
+    const target = byId.get(entry.reversedEntryId);
+    if (entry.type === 'expiry') {
+      takenOffEarn.set(entry.reversedEntryId, (takenOffEarn.get(entry.reversedEntryId) ?? 0) - entry.points);
+      expiredOfEarn.set(entry.reversedEntryId, (expiredOfEarn.get(entry.reversedEntryId) ?? 0) - entry.points);
+    } else if (entry.type === 'reversal' && target?.type === 'earn') {
+      takenOffEarn.set(entry.reversedEntryId, (takenOffEarn.get(entry.reversedEntryId) ?? 0) - entry.points);
+    } else if (entry.type === 'reversal' && target) {
+      undone.set(target.id, (undone.get(target.id) ?? 0) + entry.points);
+    }
+  }
+  let debit = Math.max(0, Math.floor(reservedPoints) || 0);
+  for (const entry of entries) {
+    const poolEntry =
+      entry.type === 'redeem' ||
+      entry.type === 'adjustment' ||
+      // A reversal of something this ledger slice does not hold still moves the pool.
+      (entry.type === 'reversal' && !!entry.reversedEntryId && !byId.has(entry.reversedEntryId));
+    if (!poolEntry) continue;
+    const net = entry.points + (undone.get(entry.id) ?? 0);
+    if (net < 0) debit += -net;
+  }
   const earns = entries
     .filter((entry) => entry.type === 'earn')
     .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id));
-  const due: ExpirableEarn[] = [];
+  const out: ExpirableEarn[] = [];
   for (const earn of earns) {
-    if (reversedSources.has(earn.id)) continue;
-    const expiry = expiryByEarn.get(earn.id);
-    if (expiry) {
-      const consumedBeforeExpiry = Math.max(0, earn.points + expiry.points);
-      unallocatedRedemptions -= Math.min(consumedBeforeExpiry, unallocatedRedemptions);
-      continue;
-    }
-    const consumed = Math.min(earn.points, unallocatedRedemptions);
-    unallocatedRedemptions -= consumed;
-    const remaining = earn.points - consumed;
-    if (remaining > 0 && earn.expiresAt && earn.expiresAt.getTime() <= now.getTime()) {
-      due.push({ entry: earn, points: remaining });
-    }
+    const lot = earn.points - (takenOffEarn.get(earn.id) ?? 0);
+    if (lot <= 0) continue;
+    const consumed = Math.min(lot, debit);
+    debit -= consumed;
+    out.push({ entry: earn, points: lot - consumed, alreadyExpired: expiredOfEarn.get(earn.id) ?? 0 });
   }
-  return due;
+  return out;
+}
+
+/**
+ * The unspent remainder of every earn that is past its expiry. Points held by
+ * an open reservation are NOT expired: the customer committed them to an order
+ * before the date, and expiring them made the redemption fail at delivery.
+ */
+export function computeExpirableEarns(entries: LoyaltyLedgerEntry[], now: Date, reservedPoints = 0): ExpirableEarn[] {
+  return computeEarnRemainders(entries, reservedPoints).filter(
+    (earn) => earn.points > 0 && earn.entry.expiresAt !== null && earn.entry.expiresAt.getTime() <= now.getTime(),
+  );
+}
+
+/** The earliest future date on which points the customer still HOLDS expire, or null. */
+export function soonestUnspentExpiry(entries: LoyaltyLedgerEntry[], now: Date, reservedPoints = 0): Date | null {
+  const dates = computeEarnRemainders(entries, reservedPoints)
+    .filter((earn) => earn.points > 0 && earn.entry.expiresAt !== null && earn.entry.expiresAt.getTime() > now.getTime())
+    .map((earn) => (earn.entry.expiresAt as Date).getTime());
+  return dates.length ? new Date(Math.min(...dates)) : null;
 }
 
 /**
@@ -114,18 +162,70 @@ export function computeExpirableEarns(entries: LoyaltyLedgerEntry[], now: Date):
  * references it. This keeps every liability change attributable to one
  * immutable ledger event.
  */
-export function computeBalance(entries: LoyaltyLedgerEntry[], now: Date): LoyaltyBalance {
+/**
+ * Lifetime points: what tiers are assigned by and what "lifetime earned" shows.
+ * Every point ever credited counts, whatever its source (orders, referrals,
+ * missions, scans, birthday, scratch cards, counterfeit reports, phone
+ * verification, manual adjustments). A reversal of a credit (a refund
+ * clawback, a fraud reversal) and a negative manual correction take points
+ * back off. Spending (redeem) and expiry never do: a level is never lost by
+ * using or outliving points. Reversing a redemption returns spendable points,
+ * not lifetime ones. Never below zero.
+ *
+ * Not retroactive against the customer (loyalty terms §9: points already
+ * earned keep the rules in force when they were earned). Before this rule,
+ * levels counted order earns gross, so a reduction dated before
+ * `reductionsFrom` (loyalty_config.lifetime_reductions_from, stamped by
+ * migration 0174 at deploy) is ignored. Null means every reduction counts.
+ *
+ * LIFETIME_POINTS_SQL is the same rule for queries; keep the two in step.
+ */
+const LIFETIME_CREDIT_TYPES: ReadonlySet<LoyaltyEntryType> = new Set<LoyaltyEntryType>(['earn', 'adjustment']);
+
+export function computeLifetimePoints(entries: LoyaltyLedgerEntry[], reductionsFrom: Date | null): number {
+  const inForce = (entry: LoyaltyLedgerEntry) => entry.points > 0 || reductionsFrom === null || entry.createdAt >= reductionsFrom;
+  const countsAsCredit = (entry: LoyaltyLedgerEntry) => LIFETIME_CREDIT_TYPES.has(entry.type) && inForce(entry);
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  let total = 0;
+  for (const entry of entries) {
+    if (countsAsCredit(entry)) {
+      total += entry.points;
+    } else if (entry.type === 'reversal' && entry.reversedEntryId) {
+      const target = byId.get(entry.reversedEntryId);
+      if (target && countsAsCredit(target) && inForce(entry)) total += entry.points;
+    }
+  }
+  return Math.max(0, total);
+}
+
+/**
+ * SQL twin of computeLifetimePoints. Expects ledger rows aliased `le`, a LEFT
+ * JOIN of each row's reversal target aliased `rt` (`rt.id = le.reversed_entry_id`),
+ * and the cut-off as `cfg.reductions_from` (null = every reduction counts).
+ */
+const IN_FORCE = (alias: string) => `(${alias}.points > 0 or cfg.reductions_from is null or ${alias}.created_at >= cfg.reductions_from)`;
+export const LIFETIME_POINTS_SQL =
+  `greatest(0, coalesce(sum(le.points) filter (where ` +
+  `(le.type in ('earn','adjustment') and ${IN_FORCE('le')})` +
+  ` or (le.type = 'reversal' and rt.type in ('earn','adjustment') and ${IN_FORCE('rt')} and ${IN_FORCE('le')})` +
+  `), 0))`;
+/** The `cfg` relation LIFETIME_POINTS_SQL reads: one row, the cut-off or null. */
+export const LIFETIME_CUTOFF_SQL =
+  `(select (select lifetime_reductions_from from loyalty_config where singleton = 'config' limit 1) as reductions_from) cfg`;
+
+/**
+ * `lifetimeReductionsFrom` only shapes `lifetimeEarned` (see
+ * computeLifetimePoints); callers that show it pass the configured cut-off.
+ */
+export function computeBalance(entries: LoyaltyLedgerEntry[], now: Date, lifetimeReductionsFrom: Date | null = null): LoyaltyBalance {
   let signedTotal = 0;
   let pendingExpiry = 0;
-  let lifetimeEarned = 0;
   let lifetimeRedeemed = 0;
   for (const e of entries) {
     signedTotal += e.points;
-    if (e.type === 'earn') {
-      lifetimeEarned += e.points;
-    }
     if (e.type === 'redeem') lifetimeRedeemed += -e.points;
   }
+  const lifetimeEarned = computeLifetimePoints(entries, lifetimeReductionsFrom);
   pendingExpiry = computeExpirableEarns(entries, now).reduce((sum, earn) => sum + earn.points, 0);
   return { available: signedTotal, pendingExpiry, lifetimeEarned, lifetimeRedeemed };
 }
@@ -164,4 +264,147 @@ export function validateRedeem(points: number, balance: LoyaltyBalance): EntryVa
     return { ok: false, code: 'INSUFFICIENT_BALANCE', message: 'Redemption exceeds the available balance.' };
   }
   return { ok: true };
+}
+
+/* ── Loyalty completion (brief PARTs F–H, stage 2-4) ─────────────────────── */
+
+/**
+ * Programme configuration beyond the earn switch. EVERY value is null until
+ * Rob sets it (PART V) — null blocks the mechanic it governs. Nothing here
+ * ever defaults to a number.
+ */
+export interface LoyaltyProgrammeConfig extends LoyaltyConfig {
+  pointValueUgx: number | null;
+  redemptionMinPoints: number | null;
+  redemptionMaxShareBps: number | null;
+  budgetCapPoints: number | null;
+  killSwitch: boolean;
+  guestBackfillLookbackDays: number | null;
+  guestBackfillCapPoints: number | null;
+  // 0087 gamification values — null means that earn source is off.
+  referralReferrerPoints: number | null;
+  referralRefereePoints: number | null;
+  birthdayPoints: number | null;
+  streakTargetOrders: number | null;
+  streakWindowDays: number | null;
+  streakRewardPoints: number | null;
+  /** Chance mechanics: reserved, stays false until the PART P legal read. */
+  chanceEnabled: boolean;
+  termsVersion: string | null;
+}
+
+export type RedemptionPlan =
+  | { ok: true; points: number; valueUgx: number; pointValueUgx: number }
+  | { ok: false; code: 'REDEMPTION_UNAVAILABLE' | 'BELOW_MINIMUM' | 'EXCEEDS_MAX_SHARE' | 'BELOW_PRICE_FLOOR' | 'INSUFFICIENT_BALANCE' | 'INVALID_POINTS'; message: string };
+
+/**
+ * Plan a redemption against an order (PART G). Points convert to a discount at
+ * the configured value — never cash. Unset config = the mechanic is OFF with
+ * an explicit reason, never a silent default.
+ */
+export function planRedemption(input: {
+  points: number;
+  balanceAvailable: number;
+  orderGoodsTotalUgx: number;
+  /**
+   * Sum of Price A x quantity over the lines that HAVE a Price A (owner, 2026-10-15). Points may take the order down
+   * to it, never below: "no discount may take a product below its own Price A" now holds for points too.
+   * Omitted = no floor limit (callers without the basket).
+   */
+  orderFloorTotalUgx?: number;
+  config: LoyaltyProgrammeConfig;
+}): RedemptionPlan {
+  const { config } = input;
+  if (config.pointValueUgx === null || config.redemptionMinPoints === null || config.redemptionMaxShareBps === null) {
+    return { ok: false, code: 'REDEMPTION_UNAVAILABLE', message: 'Redemption is not configured yet — point value, minimum and maximum share must be set first.' };
+  }
+  if (!Number.isInteger(input.points) || input.points <= 0 || input.points > MAX_POINTS_PER_ENTRY) {
+    return { ok: false, code: 'INVALID_POINTS', message: 'Redeemed points must be a positive whole number.' };
+  }
+  if (input.points < config.redemptionMinPoints) {
+    return { ok: false, code: 'BELOW_MINIMUM', message: `Redeem at least ${config.redemptionMinPoints} points.` };
+  }
+  if (input.points > input.balanceAvailable) {
+    return { ok: false, code: 'INSUFFICIENT_BALANCE', message: 'Redemption exceeds the available balance.' };
+  }
+  const valueUgx = input.points * config.pointValueUgx;
+  const maxValueUgx = Math.floor((input.orderGoodsTotalUgx * config.redemptionMaxShareBps) / 10_000);
+  if (valueUgx > maxValueUgx) {
+    return { ok: false, code: 'EXCEEDS_MAX_SHARE', message: `Points can cover at most ${Math.floor(config.redemptionMaxShareBps / 100)}% of this order.` };
+  }
+  if (input.orderFloorTotalUgx !== undefined && input.orderFloorTotalUgx > 0) {
+    const roomUgx = Math.max(0, input.orderGoodsTotalUgx - input.orderFloorTotalUgx);
+    if (valueUgx > roomUgx) {
+      const maxPoints = Math.floor(roomUgx / config.pointValueUgx);
+      return {
+        ok: false,
+        code: 'BELOW_PRICE_FLOOR',
+        message: maxPoints >= config.redemptionMinPoints
+          ? `Points can bring this order down to its lowest price, not below it: use at most ${maxPoints.toLocaleString('en-UG')} points.`
+          : 'This order is already at its lowest price, so points cannot be used on it.',
+      };
+    }
+  }
+  return { ok: true, points: input.points, valueUgx, pointValueUgx: config.pointValueUgx };
+}
+
+/** Pro-rata clawback of an earn on partial refund: floor, never over-claw. */
+export function computeProRataClawback(earnPoints: number, refundShareBps: number): number {
+  if (!Number.isInteger(earnPoints) || earnPoints <= 0) return 0;
+  const share = Math.min(Math.max(refundShareBps, 0), 10_000);
+  return Math.floor((earnPoints * share) / 10_000);
+}
+
+/**
+ * Budget cap (PART N): when lifetime issued points reach the cap, earning
+ * pauses and an alert fires. Null cap = no cap configured (earning allowed,
+ * liability visible in the daily snapshot either way).
+ */
+export function budgetCapReached(lifetimeIssuedPoints: number, budgetCapPoints: number | null): boolean {
+  return budgetCapPoints !== null && lifetimeIssuedPoints >= budgetCapPoints;
+}
+
+/** Expiry-warning schedule (PART H): which notices are due for an earn. */
+export const EXPIRY_NOTICE_KINDS = [
+  { kind: '30d', daysBefore: 30 },
+  { kind: '7d', daysBefore: 7 },
+  { kind: '1d', daysBefore: 1 },
+] as const;
+
+export function dueExpiryNotices(earn: LoyaltyLedgerEntry, now: Date): string[] {
+  if (!earn.expiresAt || earn.type !== 'earn') return [];
+  const msLeft = earn.expiresAt.getTime() - now.getTime();
+  if (msLeft <= 0) return [];
+  return EXPIRY_NOTICE_KINDS.filter((n) => msLeft <= n.daysBefore * 24 * 3600 * 1000).map((n) => n.kind);
+}
+
+/**
+ * Where a customer stands among the active tiers, by the same rule EvaluateTiersUseCase assigns
+ * them (highest tier whose threshold the lifetime points reach). Read-only: what the customer is
+ * told (account, Goldie) can never disagree with the tier the nightly run will give them.
+ */
+export function tierStanding(
+  lifetime: number,
+  tiers: ReadonlyArray<{ code: string; name: string; thresholdLifetimePoints: number | null; rank: number }>,
+): { current: { code: string; name: string } | null; next: { code: string; name: string; pointsToGo: number } | null; lifetime: number } {
+  const ranked = tiers.filter((t) => t.thresholdLifetimePoints !== null).sort((a, b) => b.rank - a.rank);
+  const current = ranked.find((t) => lifetime >= (t.thresholdLifetimePoints as number)) ?? null;
+  const above = ranked.filter((t) => (t.thresholdLifetimePoints as number) > lifetime).sort((a, b) => (a.thresholdLifetimePoints as number) - (b.thresholdLifetimePoints as number))[0] ?? null;
+  return {
+    current: current ? { code: current.code, name: current.name } : null,
+    next: above ? { code: above.code, name: above.name, pointsToGo: (above.thresholdLifetimePoints as number) - lifetime } : null,
+    lifetime,
+  };
+}
+
+/**
+ * When points earned at `earnedAt` expire: `expiryDays` after the KAMPALA day they were earned (UTC+3, no DST),
+ * at the same instant every other earn of that day expires. It used to add the days to the UTC calendar day, so
+ * an order delivered between midnight and 03:00 in Kampala expired a day early (119 days against the promised 120).
+ * Null when points do not expire.
+ */
+export function earnExpiresAt(earnedAt: Date, expiryDays: number): Date | null {
+  if (!(expiryDays > 0)) return null;
+  const kampala = new Date(earnedAt.getTime() + 3 * 3_600_000);
+  return new Date(Date.UTC(kampala.getUTCFullYear(), kampala.getUTCMonth(), kampala.getUTCDate() + expiryDays));
 }

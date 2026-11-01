@@ -1,0 +1,446 @@
+import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+
+import { db } from '../client';
+import { LOYALTY_PAYMENT_QUALIFIES_SQL } from '../LoyaltyEarnEligibilitySql';
+import {
+  loyaltyAccounts,
+  loyaltyConfig,
+  loyaltyExpiryNotices,
+  loyaltyFraudSignals,
+  loyaltyLedgerEntries,
+  loyaltyLiabilitySnapshots,
+  loyaltyRedemptions,
+  loyaltyRules,
+} from '../schema/loyalty';
+import {
+  ILoyaltyCompletionRepository,
+  LoyaltyRedemptionRow,
+  LoyaltyRuleRow,
+} from '../../../application/ports/ILoyaltyCompletion';
+import { LoyaltyLedgerEntry, LoyaltyProgrammeConfig } from '../../../domain/loyalty/LoyaltyLedger';
+
+// Which statuses each settlement may legally follow. A reversal is the only
+// transition allowed out of 'applied'; everything else must still be reserved.
+const PRIOR_STATES: Record<'applied' | 'released' | 'reversed', string[]> = {
+  applied: ['reserved'],
+  released: ['reserved'],
+  reversed: ['reserved', 'applied'],
+};
+
+function toEntry(row: typeof loyaltyLedgerEntries.$inferSelect): LoyaltyLedgerEntry {
+  return {
+    id: row.id,
+    accountId: row.accountId,
+    type: row.type as LoyaltyLedgerEntry['type'],
+    points: row.points,
+    orderId: row.orderId,
+    reason: row.reason,
+    idempotencyKey: row.idempotencyKey,
+    expiresAt: row.expiresAt,
+    reversedEntryId: row.reversedEntryId,
+    createdAt: row.createdAt,
+  };
+}
+
+function toRedemption(row: typeof loyaltyRedemptions.$inferSelect): LoyaltyRedemptionRow {
+  return {
+    id: row.id,
+    accountId: row.accountId,
+    orderId: row.orderId,
+    pointsReserved: row.pointsReserved,
+    valueUgx: row.valueUgx,
+    pointValueUgx: row.pointValueUgx,
+    status: row.status as LoyaltyRedemptionRow['status'],
+    idempotencyKey: row.idempotencyKey,
+    ledgerEntryId: row.ledgerEntryId,
+    reservedUntil: row.reservedUntil,
+  };
+}
+
+/**
+ * An order placed signed out belongs to the account whose VERIFIED phone is its phone, however it was typed
+ * (0772…, +256 772…, 256772…). The same owner findLoyaltyEarnSource vests it to on delivery, so it shows as
+ * pending first instead of appearing only once delivered.
+ */
+const SIGNED_OUT_ORDER_OF_VERIFIED_PHONE = (userId: string) => sql`exists (
+  select 1 from users u
+  where u.id = ${userId} and u.phone_verified_at is not null and u.phone is not null
+    and regexp_replace(orders.customer_phone, '[\\s().-]', '', 'g') ~ '^(\\+?256|0)?[0-9]{9}$'
+    and u.phone = '+256' || right(regexp_replace(orders.customer_phone, '\\D', '', 'g'), 9))`;
+
+export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRepository {
+  async getProgrammeConfig(): Promise<LoyaltyProgrammeConfig> {
+    const row = await db.query.loyaltyConfig.findFirst();
+    return {
+      enabled: row?.enabled ?? false,
+      earnRatePer1000Ugx: row?.earnRatePer1000Ugx ?? 0,
+      expiryDays: row?.expiryDays ?? 0,
+      pointValueUgx: row?.pointValueUgx ?? null,
+      redemptionMinPoints: row?.redemptionMinPoints ?? null,
+      redemptionMaxShareBps: row?.redemptionMaxShareBps ?? null,
+      budgetCapPoints: row?.budgetCapPoints ?? null,
+      killSwitch: row?.killSwitch ?? false,
+      guestBackfillLookbackDays: row?.guestBackfillLookbackDays ?? null,
+      guestBackfillCapPoints: row?.guestBackfillCapPoints ?? null,
+      referralReferrerPoints: row?.referralReferrerPoints ?? null,
+      referralRefereePoints: row?.referralRefereePoints ?? null,
+      birthdayPoints: row?.birthdayPoints ?? null,
+      streakTargetOrders: row?.streakTargetOrders ?? null,
+      streakWindowDays: row?.streakWindowDays ?? null,
+      streakRewardPoints: row?.streakRewardPoints ?? null,
+      chanceEnabled: row?.chanceEnabled ?? false,
+      termsVersion: row?.termsVersion ?? null,
+    };
+  }
+
+  async getActiveRule(ruleCode: string): Promise<LoyaltyRuleRow | null> {
+    const row = await db.query.loyaltyRules.findFirst({
+      where: and(eq(loyaltyRules.ruleCode, ruleCode), eq(loyaltyRules.active, true)),
+      orderBy: (r, { desc }) => [desc(r.version)],
+    });
+    return row
+      ? { id: row.id, ruleCode: row.ruleCode, version: row.version, earnBasis: row.earnBasis, rate: row.rate, active: row.active }
+      : null;
+  }
+
+  async lifetimeIssuedPoints(): Promise<number> {
+    // Every point minted, not only order earns: referral, birthday, scan,
+    // mission and draw credits are 'adjustment' rows and are liability too.
+    const [row] = (await db.execute(sql`
+      select coalesce(sum(points), 0)::bigint as issued from loyalty_ledger_entries
+      where points > 0 and type in ('earn', 'adjustment')`)) as unknown as Array<{ issued: string | number }>;
+    return Number(row?.issued ?? 0);
+  }
+
+  async findEarnEntryForOrder(orderId: string): Promise<LoyaltyLedgerEntry | null> {
+    const row = await db.query.loyaltyLedgerEntries.findFirst({
+      where: and(eq(loyaltyLedgerEntries.orderId, orderId), eq(loyaltyLedgerEntries.type, 'earn')),
+    });
+    return row ? toEntry(row) : null;
+  }
+
+  /**
+   * Points already CLAWED BACK from this earn: reversal entries only. Expiry entries point at the earn too, and
+   * counting them made a refund after some points had lapsed take back too few (earn 1,000, spend 600, 400
+   * expire, refund half: 100 instead of 500). Lapsed points were never given back to the shop.
+   */
+  async sumReversedPointsForEntry(earnEntryId: string): Promise<number> {
+    const [row] = await db
+      .select({ total: sql<number>`coalesce(sum(-${loyaltyLedgerEntries.points}), 0)::int` })
+      .from(loyaltyLedgerEntries)
+      .where(and(eq(loyaltyLedgerEntries.reversedEntryId, earnEntryId), eq(loyaltyLedgerEntries.type, 'reversal')));
+    return row?.total ?? 0;
+  }
+
+  async createReservation(input: {
+    maxTotalReservedPoints?: number;
+    ledgerPointsAtRead?: number;
+    accountId: string;
+    orderId: string | null;
+    pointsReserved: number;
+    valueUgx: number;
+    pointValueUgx: number;
+    idempotencyKey: string;
+    reservedUntil: Date | null;
+  }): Promise<LoyaltyRedemptionRow | null> {
+    return db.transaction(async (tx) => {
+      // Lock the account so a concurrent reservation cannot read the same
+      // reserved total we are about to add to, then re-check capacity inside
+      // the transaction. The use case's own check happens before this and is
+      // only an early exit.
+      if (input.maxTotalReservedPoints !== undefined) {
+        await tx.execute(sql`select id from loyalty_accounts where id = ${input.accountId} for update`);
+        // The SAME lock every debit takes. The row lock alone never excluded a
+        // delivery consuming points between the caller's balance read and this
+        // insert, so a second order could reserve points just spent.
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`loyalty:${input.accountId}`}, 0))`);
+        let ceiling = input.maxTotalReservedPoints;
+        if (input.ledgerPointsAtRead !== undefined) {
+          const [now] = (await tx.execute(sql`
+            select coalesce(sum(points), 0)::bigint as pts from loyalty_ledger_entries
+            where account_id = ${input.accountId}
+               or account_id in (select merged_account_id from loyalty_account_merges where survivor_account_id = ${input.accountId})`)) as unknown as Array<{ pts: string | number }>;
+          const spentSince = input.ledgerPointsAtRead - Number(now?.pts ?? 0);
+          if (spentSince > 0) ceiling -= spentSince;
+        }
+        const [current] = (await tx.execute(sql`
+          select coalesce(sum(points_reserved), 0)::bigint as reserved
+          from loyalty_redemptions
+          where account_id = ${input.accountId} and status = 'reserved'
+            and idempotency_key <> ${input.idempotencyKey}`)) as unknown as Array<{ reserved: string | number }>;
+        const alreadyReserved = Number(current?.reserved ?? 0);
+        if (alreadyReserved + input.pointsReserved > ceiling) return null;
+      }
+      const [row] = await tx
+        .insert(loyaltyRedemptions)
+        .values({
+          accountId: input.accountId,
+          orderId: input.orderId,
+          pointsReserved: input.pointsReserved,
+          valueUgx: input.valueUgx,
+          pointValueUgx: input.pointValueUgx,
+          idempotencyKey: input.idempotencyKey,
+          reservedUntil: input.reservedUntil,
+        })
+        .onConflictDoNothing({ target: loyaltyRedemptions.idempotencyKey })
+        .returning();
+      if (row) return toRedemption(row);
+      const existing = await tx.query.loyaltyRedemptions.findFirst({
+        where: eq(loyaltyRedemptions.idempotencyKey, input.idempotencyKey),
+      });
+      return existing ? toRedemption(existing) : null;
+    });
+  }
+
+  async findReservation(id: string): Promise<LoyaltyRedemptionRow | null> {
+    const row = await db.query.loyaltyRedemptions.findFirst({ where: eq(loyaltyRedemptions.id, id) });
+    return row ? toRedemption(row) : null;
+  }
+
+  async findReservationByOrder(orderId: string): Promise<LoyaltyRedemptionRow | null> {
+    const row = await db.query.loyaltyRedemptions.findFirst({
+      where: eq(loyaltyRedemptions.orderId, orderId),
+      orderBy: (r, { desc }) => [desc(r.createdAt)],
+    });
+    return row ? toRedemption(row) : null;
+  }
+
+  async reservedPoints(accountId: string): Promise<number> {
+    const [row] = (await db.execute(sql`
+      select coalesce(sum(points_reserved), 0)::bigint as reserved
+      from loyalty_redemptions where account_id = ${accountId} and status = 'reserved'`)) as unknown as Array<{ reserved: string | number }>;
+    return Number(row?.reserved ?? 0);
+  }
+
+  async attachReservationToOrder(reservationId: string, orderId: string): Promise<void> {
+    await db
+      .update(loyaltyRedemptions)
+      .set({ orderId, updatedAt: new Date() })
+      .where(and(eq(loyaltyRedemptions.id, reservationId), eq(loyaltyRedemptions.status, 'reserved')));
+  }
+
+
+  async markReservation(reservationId: string, status: 'applied' | 'released' | 'reversed', ledgerEntryId?: string | null): Promise<boolean> {
+    const rows = await db
+      .update(loyaltyRedemptions)
+      .set({ status, updatedAt: new Date(), ...(ledgerEntryId !== undefined ? { ledgerEntryId } : {}) })
+      // A reservation settles once. Without this the sweeper could write
+      // 'released' over an 'applied' redemption, handing back points the
+      // customer had already spent on a paid order (or the reverse).
+      .where(and(eq(loyaltyRedemptions.id, reservationId), inArray(loyaltyRedemptions.status, PRIOR_STATES[status])))
+      .returning();
+    return rows.length > 0;
+  }
+
+  async listExpiredReservations(now: Date): Promise<LoyaltyRedemptionRow[]> {
+    const rows = await db.query.loyaltyRedemptions.findMany({
+      where: and(eq(loyaltyRedemptions.status, 'reserved'), isNull(loyaltyRedemptions.orderId), lt(loyaltyRedemptions.reservedUntil, now)),
+    });
+    return rows.map(toRedemption);
+  }
+
+  async listAccountIds(): Promise<Array<{ accountId: string; userId: string }>> {
+    const rows = await db.query.loyaltyAccounts.findMany();
+    return rows.map((r) => ({ accountId: r.id, userId: r.userId }));
+  }
+
+  async listEarnsNearingExpiry(withinDays: number, now: Date): Promise<Array<{ entry: LoyaltyLedgerEntry; userId: string }>> {
+    const horizon = new Date(now.getTime() + withinDays * 24 * 3600 * 1000);
+    const rows = (await db.execute(sql`
+      select e.*, a.user_id
+      from loyalty_ledger_entries e
+      join loyalty_accounts a on a.id = e.account_id
+      where e.type = 'earn' and e.expires_at is not null
+        and e.expires_at > ${now} and e.expires_at <= ${horizon}
+        -- A partly clawed-back earn still holds points that will expire; the
+        -- sweep warns about its FIFO remainder (zero for a full clawback).
+        and not exists (select 1 from loyalty_ledger_entries r where r.type = 'expiry' and r.reversed_entry_id = e.id)`)) as unknown as Array<
+      Record<string, unknown> & { user_id: string }
+    >;
+    return rows.map((r) => ({
+      userId: r.user_id,
+      entry: {
+        id: r.id as string,
+        accountId: r.account_id as string,
+        type: 'earn',
+        points: Number(r.points),
+        orderId: (r.order_id as string) ?? null,
+        reason: r.reason as string,
+        idempotencyKey: r.idempotency_key as string,
+        expiresAt: new Date(r.expires_at as string),
+        reversedEntryId: null,
+        createdAt: new Date(r.created_at as string),
+      },
+    }));
+  }
+
+  async noticeAlreadySent(earnEntryId: string, kind: string): Promise<boolean> {
+    // A suppressed notice is one that never reached the customer, so it does
+    // NOT count as sent. Treating it as sent meant a single suppression (a
+    // provider outage, a paused channel) permanently cancelled that warning:
+    // the customer's points expired with no notice they could have acted on.
+    const row = await db.query.loyaltyExpiryNotices.findFirst({
+      where: and(
+        eq(loyaltyExpiryNotices.earnEntryId, earnEntryId),
+        eq(loyaltyExpiryNotices.noticeKind, kind),
+        // Queued counts as sent: the outbox holds it under a unique key, so a
+        // second enqueue would be dropped anyway, and re-recording it every
+        // day would only churn the row.
+        inArray(loyaltyExpiryNotices.channel, ['notification', 'queued']),
+      ),
+    });
+    return Boolean(row);
+  }
+
+  /**
+   * 'queued' -> 'notification' once the warning's outbox event (key
+   * `loyexp:<earn>:<kind>`, Registry) was processed without an error. A
+   * dead-lettered or still-pending one stays 'queued'.
+   */
+  async confirmQueuedNotices(): Promise<number> {
+    const result: any = await db.execute(sql`
+      update loyalty_expiry_notices n
+         set channel = 'notification'
+        from outbox_events o
+       where n.channel = 'queued'
+         and o.idempotency_key = 'loyexp:' || n.earn_entry_id::text || ':' || n.notice_kind
+         and o.status = 'processed'
+         and o.last_error is null
+      returning n.id`);
+    const rows = Array.isArray(result) ? result : result?.rows ?? [];
+    return rows.length;
+  }
+
+  async recordNotice(input: { accountId: string; earnEntryId: string; kind: string; channel: string }): Promise<void> {
+    await db
+      .insert(loyaltyExpiryNotices)
+      .values({ accountId: input.accountId, earnEntryId: input.earnEntryId, noticeKind: input.kind, channel: input.channel })
+      // (earnEntryId, noticeKind) is unique, so a retry after a suppression has
+      // to UPDATE the existing row to record that it finally went out.
+      .onConflictDoUpdate({
+        target: [loyaltyExpiryNotices.earnEntryId, loyaltyExpiryNotices.noticeKind],
+        set: { channel: input.channel },
+      });
+  }
+
+  async ledgerTotals() {
+    const [row] = (await db.execute(sql`
+      select
+        coalesce(sum(points) filter (where points > 0 and type in ('earn', 'adjustment')), 0)::bigint as issued,
+        coalesce(sum(-points) filter (where type = 'redeem'), 0)::bigint as redeemed,
+        coalesce(sum(-points) filter (where type = 'expiry'), 0)::bigint as expired,
+        coalesce(sum(-points) filter (where type = 'reversal' and points < 0), 0)::bigint as clawed,
+        coalesce(sum(points), 0)::bigint as outstanding
+      from loyalty_ledger_entries`)) as unknown as Array<{ issued: unknown; redeemed: unknown; expired: unknown; clawed: unknown; outstanding: unknown }>;
+    return {
+      issued: Number(row?.issued ?? 0),
+      redeemed: Number(row?.redeemed ?? 0),
+      expired: Number(row?.expired ?? 0),
+      clawedBack: Number(row?.clawed ?? 0),
+      outstanding: Number(row?.outstanding ?? 0),
+    };
+  }
+
+  async writeLiabilitySnapshot(input: {
+    snapshotDate: string;
+    pointsOutstanding: number;
+    pointsIssued: number;
+    pointsRedeemed: number;
+    pointsExpired: number;
+    pointsClawedBack: number;
+    pendingPoints: number;
+    pointValueUgx: number | null;
+    liabilityUgx: number | null;
+    breakageEstimateBps: number | null;
+    redemptionRateBps: number | null;
+  }): Promise<void> {
+    await db
+      .insert(loyaltyLiabilitySnapshots)
+      .values({
+        snapshotDate: input.snapshotDate,
+        pointsOutstanding: input.pointsOutstanding,
+        pointsIssued: input.pointsIssued,
+        pointsRedeemed: input.pointsRedeemed,
+        pointsExpired: input.pointsExpired,
+        pointsClawedBack: input.pointsClawedBack,
+        pendingPoints: input.pendingPoints,
+        pointValueUgx: input.pointValueUgx,
+        liabilityUgx: input.liabilityUgx,
+        breakageEstimateBps: input.breakageEstimateBps,
+        redemptionRateBps: input.redemptionRateBps,
+      })
+      .onConflictDoUpdate({
+        target: loyaltyLiabilitySnapshots.snapshotDate,
+        set: {
+          pointsOutstanding: input.pointsOutstanding,
+          pointsIssued: input.pointsIssued,
+          pointsRedeemed: input.pointsRedeemed,
+          pointsExpired: input.pointsExpired,
+          pointsClawedBack: input.pointsClawedBack,
+          pendingPoints: input.pendingPoints,
+          pointValueUgx: input.pointValueUgx,
+          liabilityUgx: input.liabilityUgx,
+          breakageEstimateBps: input.breakageEstimateBps,
+          redemptionRateBps: input.redemptionRateBps,
+        },
+      });
+  }
+
+  async recordFraudSignal(input: {
+    accountId?: string | null;
+    userId?: string | null;
+    signalType: string;
+    severity?: 'low' | 'medium' | 'high';
+    details?: unknown;
+  }): Promise<void> {
+    await db.insert(loyaltyFraudSignals).values({
+      accountId: input.accountId ?? null,
+      userId: input.userId ?? null,
+      signalType: input.signalType,
+      severity: input.severity ?? 'medium',
+      details: input.details ?? null,
+    });
+  }
+
+  async pendingEarnOrders(userId: string): Promise<Array<{ orderId: string; totalUgx: number }>> {
+    const rows = (await db.execute(sql`
+      select id, total_amount
+      from orders
+      where (user_id = ${userId} or (user_id is null and ${SIGNED_OUT_ORDER_OF_VERIFIED_PHONE(userId)}))
+        and ${LOYALTY_PAYMENT_QUALIFIES_SQL}
+        and status in ('received', 'processing', 'dispatched', 'delivery_failed')`)) as unknown as Array<{ id: string; total_amount: string | number }>;
+    return rows.map((r) => ({ orderId: r.id, totalUgx: Number(r.total_amount) }));
+  }
+
+  // ── Admin reads and the dealer flag, moved out of the routes ────────────
+  // (routes/admin/loyalty.ts ran this SQL itself through dynamic imports.)
+
+  /** Referral oversight: the newest 200, with both parties' emails. */
+  async adminReferrals(): Promise<unknown[]> {
+    return (await db.execute(sql`
+      select r.id, r.code, r.status, r.rejection_reason, r.created_at, r.updated_at,
+             ref.email as referrer_email, ree.email as referee_email
+      from loyalty_referrals r
+      left join users ref on ref.id = r.referrer_user_id
+      left join users ree on ree.id = r.referee_user_id
+      order by r.created_at desc limit 200`)) as unknown as unknown[];
+  }
+
+  async adminFraudSignals(): Promise<unknown[]> {
+    return (await db.execute(sql`select * from loyalty_fraud_signals order by created_at desc limit 100`)) as unknown as unknown[];
+  }
+
+  /** The most recent daily liability snapshots, newest first. */
+  async recentLiabilitySnapshots(): Promise<unknown[]> {
+    return (await db.execute(sql`select * from loyalty_liability_snapshots order by snapshot_date desc limit 30`)) as unknown as unknown[];
+  }
+
+  /** Every daily snapshot, oldest first, in the finance export's columns. */
+  async liabilitySnapshotsForExport(): Promise<Array<Record<string, unknown>>> {
+    return (await db.execute(sql`select snapshot_date, points_outstanding, points_issued, points_redeemed, points_expired, points_clawed_back, pending_points, point_value_ugx, liability_ugx, breakage_estimate_bps, redemption_rate_bps from loyalty_liability_snapshots order by snapshot_date`)) as unknown as Array<Record<string, unknown>>;
+  }
+
+  async setDealerFlag(accountId: string, isDealer: boolean): Promise<void> {
+    await db.execute(sql`update loyalty_accounts set is_dealer = ${isDealer} where id = ${accountId}`);
+  }
+}

@@ -1,0 +1,26 @@
+---
+import { giftCardTheme } from '../lib/giftCardThemes';
+
+/** A miniature of an occasion's card for the picker: its field, its illustration and its band, so it is recognised. */
+interface Props { theme: string }
+const t = giftCardTheme(Astro.props.theme);
+---
+<span class={`gct gct-${t.variant}`} aria-hidden="true">
+  <span class="gct-field"></span>
+  <span class="gct-art"><img src={t.art} alt="" width="200" height="200" loading="lazy" /></span>
+  <span class="gct-band"></span>
+</span>
+
+<style>
+  .gct { display: grid; grid-template-columns: 1fr 52%; grid-template-rows: 1fr 18%; aspect-ratio: 1.586 / 1; width: 100%; border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 1px rgba(0, 0, 0, .1); }
+  .gct-dark { background: #000; }
+  .gct-light { background: #fff; }
+  .gct-field { grid-column: 1; grid-row: 1; }
+  .gct-art { grid-column: 2; grid-row: 1; display: grid; place-items: center; padding: 6% 8% 0; }
+  .gct-light .gct-art { background: #96CC06; padding: 8%; }
+  .gct-dark .gct-art { place-items: end center; }
+  .gct-art img { width: 100%; height: auto; max-height: 100%; }
+  .gct-band { grid-column: 1 / -1; grid-row: 2; }
+  .gct-dark .gct-band { background: #96CC06; }
+  .gct-light .gct-band { background: #000; }
+</style>
