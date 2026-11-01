@@ -1,5 +1,4 @@
 import { getRecentlyViewedLocal, type RecentlyViewedLocalItem } from "./recommendations";
-import { STALE_SLUGS } from "./catalog/catalog";
 
 const SEEN_MARKER_KEY = "goldplus_seen_before";
 
@@ -47,7 +46,7 @@ export function hasRecoveryHistory(): boolean {
  * Fetches user's historical activity.
  */
 export function getRecentlyViewedHistory(): RecentlyViewedLocalItem[] {
-  return getRecentlyViewedLocal().filter(item => item && item.slug && !STALE_SLUGS.has(item.slug));
+  return getRecentlyViewedLocal().filter(item => item && item.slug);
 }
 
 /**

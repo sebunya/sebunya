@@ -1,0 +1,97 @@
+import { apiBase } from './api';
+import { fetchApprovedCatalogue } from './catalogue';
+import { hasRealCover } from './productCover';
+
+/**
+ * The header's featured cross-sell cards, served by REAL data
+ * instead of a hardcoded name over a stock photo. Cached in-process (the header
+ * renders on every page; this must never add a fetch per view).
+ *
+ * Honesty rule: "Popular right now" is a popularity claim, so it is used only
+ * when the recommendation engine emits its evidence-gated POPULAR_NOW reason.
+ * Otherwise the card says "In stock now" — a plain stock fact. (Shopper words:
+ * the earlier "Most carried" / "worth carrying" was trade vocabulary.)
+ * Each menu panel shows a card from its OWN category (categoryName), so the
+ * Storage panel never features a phone battery.
+ */
+export interface NavFeaturedCard {
+  label: string;
+  name: string;
+  slug: string;
+  imageUrl: string;
+  blurb: string;
+  priceUgx: number | null;
+  /** The product's own floor (Price A); null = not discountable. */
+  floorPriceUgx: number | null;
+  /** The product's category, so each menu panel can show its own shelf. */
+  categoryName: string | null;
+}
+
+const TTL_MS = 120_000;
+let cached: NavFeaturedCard[] | null = null;
+let cachedAt = 0;
+let inflight: Promise<NavFeaturedCard[]> | null = null;
+
+async function fetchCards(): Promise<NavFeaturedCard[]> {
+  try {
+    // Evidence first: the engine's home_trending list, identity-free.
+    let popular: Array<{ productId: string; slug: string; name: string; imageUrl?: string; reasonCodes?: string[] }> = [];
+    try {
+      const res = await fetch(`${apiBase}/recommendations?placement=home_trending&limit=6`, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(2000),
+      });
+      const json: any = res.ok ? await res.json().catch(() => null) : null;
+      if (json?.success && Array.isArray(json.data?.items)) popular = json.data.items;
+    } catch { /* evidence is optional */ }
+
+    // The whole approved catalogue, paged, so the featured pick is made from
+    // everything the shop sells rather than whichever 50 came first.
+    const products: any[] = await fetchApprovedCatalogue(apiBase);
+    // A feature card is a photograph of the product or nothing: the generated
+    // sample frame ("Sample image (no photo of this product yet)") shrunk inside
+    // the arch frame is not a reason to open a product. No real cover in stock
+    // means no card, and the panel simply renders without one.
+    const imaged = products.filter((p) => hasRealCover(p) && p.availability?.kind === 'in_stock');
+    if (imaged.length === 0) return [];
+
+    const bySlug = new Map(imaged.map((p) => [p.slug, p]));
+    const cards: NavFeaturedCard[] = [];
+
+    // Card 1: evidence-based when possible.
+    const proven = popular.find((item) => (item.reasonCodes ?? []).includes('POPULAR_NOW') && bySlug.has(item.slug));
+    const first = proven ? bySlug.get(proven.slug) : imaged.slice().sort((a, b) => (b.availability?.quantity ?? 0) - (a.availability?.quantity ?? 0))[0];
+    const toCard = (p: any, label: string): NavFeaturedCard => ({
+      label,
+      name: p.name,
+      slug: p.slug,
+      imageUrl: p.primaryImageUrl,
+      blurb: p.categoryName ? `From our ${String(p.categoryName).toLowerCase()} shelf` : 'On the shelf now',
+      priceUgx: typeof p.retailPriceUgx === 'number' && p.retailPriceUgx > 0 ? p.retailPriceUgx : null,
+      floorPriceUgx: typeof p.floorPriceUgx === 'number' && p.floorPriceUgx > 0 ? p.floorPriceUgx : null,
+      categoryName: typeof p.categoryName === 'string' ? p.categoryName : null,
+    });
+
+    cards.push(toCard(first, proven ? 'Popular right now' : 'In stock now'));
+    const byStock = imaged.filter((x) => x.slug !== first.slug)
+      .sort((a, b) => (b.availability?.quantity ?? 0) - (a.availability?.quantity ?? 0));
+    for (const p of byStock.slice(0, 5)) cards.push(toCard(p, 'In stock now'));
+    // One photographed, in-stock product per category that has none yet.
+    for (const p of byStock) {
+      if (p.categoryName && !cards.some((c) => c.categoryName === p.categoryName)) cards.push(toCard(p, 'In stock now'));
+    }
+    return cards;
+  } catch {
+    return cached ?? [];
+  }
+}
+
+export async function getNavFeatured(): Promise<NavFeaturedCard[]> {
+  const now = Date.now();
+  if (cached && now - cachedAt < TTL_MS) return cached;
+  if (inflight) return inflight;
+  inflight = fetchCards()
+    .then((v) => { cached = v; cachedAt = Date.now(); inflight = null; return v; })
+    .catch(() => { inflight = null; return cached ?? []; });
+  return inflight;
+}

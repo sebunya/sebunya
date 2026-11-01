@@ -1,0 +1,116 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { fetchPublishedPosts, formatArticleDate } from '../../lib/blog';
+import { SITE_ORIGIN } from '../../lib/sitemap';
+import { serializeJsonLd, breadcrumbJsonLd } from '../../lib/jsonld';
+
+/**
+ * The blog index. The shop's answer to the questions people ask BEFORE they
+ * know what to buy — the demand the catalogue itself can never rank for.
+ */
+const pageParam = Number.parseInt(Astro.url.searchParams.get('page') ?? '1', 10);
+const page = Number.isFinite(pageParam) && pageParam > 0 ? Math.min(pageParam, 50) : 1;
+const PER_PAGE = 12;
+const { posts, total, error: unavailable } = await fetchPublishedPosts(PER_PAGE, (page - 1) * PER_PAGE);
+// Could not ask the blog service: a temporary 503, never "nothing published".
+// A crawler that met a noindex here during a slow moment would drop the index.
+if (unavailable) {
+  Astro.response.status = 503;
+  Astro.response.headers.set('Retry-After', '300');
+}
+const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+
+const canonical = page > 1 ? `${SITE_ORIGIN}/blog?page=${page}` : `${SITE_ORIGIN}/blog`;
+const title = page > 1 ? `Accessory buying guides & advice — page ${page} | GoldPlus` : 'Accessory Buying Guides & Advice | GoldPlus';
+const description = 'Understand charger ratings, power-bank capacity and phone-battery fit. GoldPlus guides help you ask the right questions before choosing a product.';
+
+// Nothing published yet: the page is a signpost, not content. It stays
+// reachable (the footer's admin-managed "Guides & advice" link) but asks not
+// to be indexed, and carries no breadcrumb markup, until there is an article.
+// The blog sitemap already leaves /blog out while it is empty.
+const empty = !unavailable && posts.length === 0;
+const breadcrumbs = serializeJsonLd(
+  breadcrumbJsonLd([
+    { name: 'Home', url: `${SITE_ORIGIN}/` },
+    { name: 'Guides & advice', url: `${SITE_ORIGIN}/blog` },
+  ]),
+);
+---
+<BaseLayout title={title} description={description} canonicalUrl={canonical} robotsMeta={empty ? 'noindex,follow' : undefined}>
+  <Fragment slot="head">
+    {!empty && !unavailable && <script type="application/ld+json" set:html={breadcrumbs} />}
+    {page > 1 && <link rel="prev" href={page === 2 ? `${SITE_ORIGIN}/blog` : `${SITE_ORIGIN}/blog?page=${page - 1}`} />}
+    {page < totalPages && <link rel="next" href={`${SITE_ORIGIN}/blog?page=${page + 1}`} />}
+  </Fragment>
+
+  <header class="bg-brand-dark text-white">
+    <div class="mx-auto max-w-5xl px-4 py-14">
+      <p class="text-xs font-bold uppercase tracking-[0.2em] text-brand-primary">Guides &amp; advice</p>
+      <h1 class="mt-3 text-3xl font-black tracking-tight sm:text-4xl">Know what you are buying</h1>
+      <p class="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
+        Honest explanations of the things people ask us every day — what a rating really means, how to spot a
+        fake, and which product actually fits. Written by the people who sell them.
+      </p>
+    </div>
+  </header>
+
+  <div class="mx-auto max-w-5xl px-4 py-12">
+    {unavailable ? (
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 text-center sm:p-10">
+        <h2 class="text-lg font-bold text-slate-900">Guides could not be loaded</h2>
+        <p class="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-600">
+          Please try again in a few minutes. The <a href="/faq" class="font-bold underline">FAQ</a> answers most questions in the meantime.
+        </p>
+      </div>
+    ) : empty ? (
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 text-center sm:p-10">
+        <h2 class="text-lg font-bold text-slate-900">No guides yet</h2>
+        <p class="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-600">
+          We have not published a guide here yet. Until we do, these answer most questions:
+        </p>
+        <div class="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+          <a href="/product-finder" class="inline-flex min-h-11 items-center justify-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white">Find the right product</a>
+          <a href="/faq" class="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-6 text-sm font-bold text-slate-800 hover:border-slate-900">Read the FAQ</a>
+          <a href="/shop" class="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-6 text-sm font-bold text-slate-800 hover:border-slate-900">Browse the shop</a>
+        </div>
+      </div>
+    ) : (
+      <div class="grid gap-8 sm:grid-cols-2">
+        {posts.map((post) => (
+          <article class="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <a href={`/blog/${post.slug}`} class="block aspect-[16/9] overflow-hidden bg-slate-100">
+              {post.coverImageUrl ? (
+                <img src={post.coverImageUrl} alt={post.coverImageAlt ?? ''} class="h-full w-full object-cover" loading="lazy" />
+              ) : (
+                <div class="flex h-full w-full items-center justify-center text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                  GoldPlus
+                </div>
+              )}
+            </a>
+            <div class="flex flex-1 flex-col p-6">
+              <h2 class="text-lg font-black leading-snug text-slate-900">
+                <a href={`/blog/${post.slug}`} class="hover:underline">{post.title}</a>
+              </h2>
+              {post.excerpt && <p class="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{post.excerpt}</p>}
+              <p class="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                {formatArticleDate(post.publishedAt)} · {post.readingMinutes} min read
+              </p>
+            </div>
+          </article>
+        ))}
+      </div>
+    )}
+
+    {totalPages > 1 && (
+      <nav class="mt-10 flex items-center justify-between text-sm font-bold" aria-label="Article pages">
+        {page > 1
+          ? <a class="rounded-full border border-slate-300 px-5 py-2.5 hover:border-slate-900" href={page === 2 ? '/blog' : `/blog?page=${page - 1}`}>← Newer</a>
+          : <span></span>}
+        <span class="text-slate-600">Page {page} of {totalPages}</span>
+        {page < totalPages
+          ? <a class="rounded-full border border-slate-300 px-5 py-2.5 hover:border-slate-900" href={`/blog?page=${page + 1}`}>Older →</a>
+          : <span></span>}
+      </nav>
+    )}
+  </div>
+</BaseLayout>

@@ -1,0 +1,363 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { SITE_ORIGIN } from '../lib/sitemap';
+import { getBusinessInfo } from '../lib/businessInfo';
+import ThisPhoneSuggestion from '../components/ThisPhoneSuggestion.astro';
+import CheckYourPhoneNote from '../components/CheckYourPhoneNote.astro';
+import { publicBattery, submitBatteryRequest, finderSessionId, DEVICE_COOKIE, serialiseDeviceCookie, ugx, FIT_BADGE } from '../lib/batteries';
+import { phoneBatteryPath } from '../lib/phoneBatteryPage';
+import type { BatteryFinderConfig, FinderBatteryResultDto, FinderBrandDto, FinderDeviceDto, FinderSeriesDto } from '@goldplus/shared';
+
+/**
+ * The public battery finder. It shows only fits an operator has verified and
+ * published, and it labels each one for what it is: verified, verified but out
+ * of stock, conditional, or from the supplier's compatibility list (owner policy 2026-10-28: a fit). It
+ * never presents a similar-looking code or phone name as a fit.
+ */
+const url = new URL(Astro.request.url);
+const q = (url.searchParams.get('q') ?? '').trim().slice(0, 120);
+// The search was pre-filled from the browser's own model code (a question the shopper accepted).
+const fromThisPhone = url.searchParams.get('from') === 'this-phone';
+const brandSlug = (url.searchParams.get('brand') ?? '').trim().slice(0, 80);
+const deviceSlug = (url.searchParams.get('device') ?? '').trim().slice(0, 160);
+// A phone's own page is its address now (/phone-batteries/<slug>): a plain ?device= view (an old or outside link) moves
+// there for good, rather than being a noindex page whose canonical names another (mixed signals, 2026-10-29 review).
+// The request form's view (&help=1) and any search or brand alongside stay here.
+if (Astro.request.method === 'GET' && deviceSlug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(deviceSlug) && !q && !brandSlug && !url.searchParams.has('help') && !fromThisPhone) {
+  return Astro.redirect(phoneBatteryPath(deviceSlug), 301);
+}
+const sessionId = finderSessionId(Astro.locals);
+
+let requestNotice: { kind: 'success' | 'error'; text: string } | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (String(form.get('website') ?? '') === '') {
+    const clip = (k: string, n: number) => String(form.get(k) ?? '').slice(0, n) || null;
+    const result = await submitBatteryRequest({
+      queryText: clip('queryText', 200),
+      brandText: clip('brandText', 80),
+      deviceText: clip('deviceText', 120),
+      modelNumberText: clip('modelNumberText', 80),
+      batteryCodeText: clip('batteryCodeText', 120),
+      contactName: clip('contactName', 120),
+      contactPhone: clip('contactPhone', 32),
+      notes: clip('notes', 1000),
+      source: 'FINDER_NO_RESULT',
+    });
+    requestNotice = { kind: result.ok ? 'success' : 'error', text: result.message };
+  } else {
+    requestNotice = { kind: 'success', text: 'Thank you.' };
+  }
+}
+
+
+type SearchResult =
+  | { kind: 'DEVICE'; device: FinderDeviceDto; results: FinderBatteryResultDto[]; query: string; config: BatteryFinderConfig }
+  | { kind: 'BATTERY'; battery: FinderBatteryResultDto; devices: FinderDeviceDto[]; query: string; config: BatteryFinderConfig }
+  | { kind: 'AMBIGUOUS_DEVICE'; devices: FinderDeviceDto[]; message: string; query: string; config: BatteryFinderConfig }
+  | { kind: 'SUGGESTIONS'; devices: FinderDeviceDto[]; batteries: Array<{ canonicalCode: string; slug: string; name: string }>; message: string; query: string; config: BatteryFinderConfig }
+  | { kind: 'NO_RESULT'; message: string; query: string; config: BatteryFinderConfig };
+
+const configRes = await publicBattery<{ config: BatteryFinderConfig; indexable: boolean }>('/finder/config', sessionId);
+const cfg = configRes.ok ? configRes.data.config : null;
+const indexable = configRes.ok ? configRes.data.indexable : false;
+const unavailable = !configRes.ok;
+
+const [brandsRes, searchRes, brandRes, deviceRes] = await Promise.all([
+  publicBattery<FinderBrandDto[]>('/finder/brands', sessionId),
+  q ? publicBattery<SearchResult>(`/finder/search?q=${encodeURIComponent(q)}`, sessionId) : Promise.resolve(null),
+  brandSlug ? publicBattery<{ brand: FinderBrandDto; series: FinderSeriesDto[]; devices: FinderDeviceDto[] }>(`/finder/brands/${encodeURIComponent(brandSlug)}`, sessionId) : Promise.resolve(null),
+  deviceSlug ? publicBattery<{ device: FinderDeviceDto; results: FinderBatteryResultDto[] }>(`/finder/devices/${encodeURIComponent(deviceSlug)}`, sessionId) : Promise.resolve(null),
+]);
+
+// The device the customer is shopping for travels with them. Set from the ONE
+// device fetch above: a second fetch of the same endpoint recorded two
+// DEVICE_SELECTED demand events for every view.
+if (deviceRes && deviceRes.ok) {
+  Astro.cookies.set(DEVICE_COOKIE, serialiseDeviceCookie({ slug: deviceRes.data.device.slug, label: deviceRes.data.device.label }), {
+    path: '/', httpOnly: false, sameSite: 'lax', secure: url.protocol === 'https:', maxAge: 60 * 60 * 24 * 30,
+  });
+}
+
+const brands = brandsRes.ok ? brandsRes.data : [];
+const search = searchRes && searchRes.ok ? searchRes.data : null;
+const brand = brandRes && brandRes.ok ? brandRes.data : null;
+const device = deviceRes && deviceRes.ok ? deviceRes.data : null;
+
+const biz = await getBusinessInfo();
+const waHref = (text: string) => `${biz.whatsappUrl}?text=${encodeURIComponent(text)}`;
+// A phone's own page (/phone-batteries/<slug>) is the indexable answer for that
+// phone; this view of it stays for old links and the cookie, and points there.
+const canonicalUrl = deviceSlug && device ? `${SITE_ORIGIN}${phoneBatteryPath(device.device.slug)}` : `${SITE_ORIGIN}/battery-finder`;
+const robotsMeta = indexable && !q && !brandSlug && !deviceSlug ? undefined : 'noindex,follow';
+const headline = cfg?.headline ?? 'Find the right battery for your phone';
+// A suggestion list that came back empty (every candidate was an unpublished
+// draft) is a no-result: "Did you mean one of these?" over nothing was a dead
+// end with no request form. The API now says NO_RESULT itself; this keeps the
+// page right against an older API too.
+const emptySuggestions = search?.kind === 'SUGGESTIONS' && search.devices.length === 0 && search.batteries.length === 0;
+const noResult: Extract<SearchResult, { kind: 'NO_RESULT' }> | null =
+  search?.kind === 'NO_RESULT'
+    ? search
+    : emptySuggestions
+      ? { kind: 'NO_RESULT', message: cfg?.noResultBody ?? search.message, query: search.query, config: search.config }
+      : null;
+// The menu's brand links (Tecno, Infinix …) arrive as ?q=<brand>. A brand is
+// not a phone, so the search cannot match one; instead of "not matched", ask
+// which model, with typical examples (plain text: they are naming examples,
+// not claims that a fit exists). The request form and WhatsApp stay below.
+const PHONE_BRANDS: Record<string, { label: string; examples: string[] }> = {
+  tecno: { label: 'Tecno', examples: ['Spark 10', 'Camon 19', 'Pop 5'] },
+  infinix: { label: 'Infinix', examples: ['Hot 12', 'Note 12', 'Smart 6'] },
+  itel: { label: 'itel', examples: ['A56', 'A70', 'S23'] },
+  samsung: { label: 'Samsung', examples: ['Galaxy A03', 'Galaxy A14', 'Galaxy A10s'] },
+  iphone: { label: 'iPhone', examples: ['iPhone 11', 'iPhone 13', 'iPhone XR'] },
+  apple: { label: 'iPhone', examples: ['iPhone 11', 'iPhone 13', 'iPhone XR'] },
+  redmi: { label: 'Redmi', examples: ['Redmi 9A', 'Redmi Note 10', 'Redmi 10C'] },
+  xiaomi: { label: 'Xiaomi', examples: ['Redmi 9A', 'Redmi Note 10', 'Poco X3'] },
+  huawei: { label: 'Huawei', examples: ['Y6', 'Y7', 'Nova 3i'] },
+  nokia: { label: 'Nokia', examples: ['C1', 'C20', '2.2'] },
+  oppo: { label: 'Oppo', examples: ['A57', 'A15', 'A5s'] },
+  vivo: { label: 'Vivo', examples: ['Y11', 'Y20', 'Y21'] },
+  realme: { label: 'Realme', examples: ['C11', 'C21', 'Narzo 50'] },
+};
+const brandOnly = noResult ? PHONE_BRANDS[q.trim().toLowerCase()] ?? null : null;
+// Once the finder holds that brand's phones, the prompt opens their list.
+const brandOnlyList = brandOnly
+  ? brands.find((b) => b.name.toLowerCase() === brandOnly.label.toLowerCase() && b.deviceCount > 0) ?? null
+  : null;
+const results: FinderBatteryResultDto[] = device?.results ?? (search?.kind === 'DEVICE' ? search.results : []);
+const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 'DEVICE' ? search.device : null);
+
+// Counters say what is on the page. Owner policy 2026-10-28: a fit from the supplier's
+// compatibility list counts as a fit, so checked and listed fits are one number.
+const brandCount = (b: { verifiedFits: number; coverageCount: number; deviceCount: number }): string => {
+  const fits = Math.max(b.verifiedFits, b.coverageCount);
+  return fits > 0 ? `${fits} ${fits === 1 ? 'fit' : 'fits'}` : `${b.deviceCount} phones`;
+};
+const deviceCount = (dv: { verifiedFits: number; listedFits: number }): string => {
+  const fits = dv.verifiedFits + dv.listedFits;
+  return fits > 0 ? `${fits} ${fits === 1 ? 'battery fits' : 'batteries fit'}` : 'No battery matched yet';
+};
+---
+
+<BaseLayout title={headline} description={cfg?.intro ?? 'Search your phone or a battery code to see the batteries that fit it.'} canonicalUrl={canonicalUrl} robotsMeta={robotsMeta}>
+  <div class="container mx-auto px-4 py-8 sm:py-10 max-w-4xl">
+    <h1 class="text-2xl sm:text-3xl font-black text-brand-dark tracking-tight">{headline}</h1>
+    {cfg && <p class="text-gray-600 mt-2 max-w-2xl text-sm sm:text-base">{cfg.intro}</p>}
+
+    {unavailable && (
+      <div role="status" class="mt-8 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">
+        The battery finder is temporarily unavailable. Call or <a href={waHref('Hello GoldPlus, I need a battery for my ')} class="font-bold underline">message us on WhatsApp</a> and we will check the fit for you.
+      </div>
+    )}
+
+    {!unavailable && (
+      <>
+        <form method="GET" role="search" class="mt-6 flex flex-wrap gap-2">
+          <label class="sr-only" for="q">{cfg?.searchByCodeLabel ?? 'Search by battery code'}</label>
+          <input id="q" name="q" value={brandOnly ? `${brandOnly.label} ` : q} maxlength="120" enterkeyhint="search" autocomplete="off"
+            placeholder={cfg?.searchPlaceholder ?? 'Phone model or battery code'}
+            class="flex-1 min-w-[220px] rounded-xl border border-gray-300 px-4 py-3 text-base" />
+          <button type="submit" class="rounded-xl bg-brand-dark px-6 py-3 font-bold text-white hover:opacity-90">Search</button>
+        </form>
+
+        {!q && !brandSlug && !deviceSlug && (
+          <ThisPhoneSuggestion class="mt-4" />
+        )}
+
+        {brands.length > 0 && !q && !brandSlug && !deviceSlug && (
+          <section class="mt-8" aria-labelledby="brands-heading">
+            <h2 id="brands-heading" class="text-sm font-black uppercase tracking-widest text-gray-600">{cfg?.findByPhoneLabel ?? 'Find by phone'}</h2>
+            <ul class="mt-3 flex flex-wrap gap-2">
+              {brands.map((b) => (
+                <li><a href={`/battery-finder?brand=${encodeURIComponent(b.slug)}`} class="inline-block rounded-full border border-gray-300 px-4 py-2 text-sm font-bold text-brand-dark hover:border-brand-primary">
+                  {b.name}<span class="text-gray-600 font-normal"> · {brandCount(b)}</span>
+                </a></li>
+              ))}
+            </ul>
+            <p class="mt-2 text-xs text-gray-600">The number is how many battery fits we list for that brand.</p>
+          </section>
+        )}
+
+        {brand && (
+          <section class="mt-8" aria-labelledby="brand-heading">
+            <h2 id="brand-heading" class="text-lg font-black text-brand-dark">Choose your {brand.brand.name}</h2>
+            {brand.devices.length > 0 ? (
+              <ul class="mt-3 grid gap-2 sm:grid-cols-2">
+                {brand.devices.map((dv) => (
+                  <li><a href={phoneBatteryPath(dv.slug)} class="block rounded-xl border border-gray-200 bg-white px-4 py-3 hover:border-brand-primary">
+                    <span class="font-bold text-brand-dark">{dv.model}</span>
+                    {dv.modelNumber && <span class="block text-xs text-gray-500 font-mono mt-0.5">{dv.modelNumber}{dv.variant ? ` · ${dv.variant}` : ''}</span>}
+                    <span class="block text-xs text-gray-500 mt-1">{deviceCount(dv)}</span>
+                  </a></li>
+                ))}
+              </ul>
+            ) : (
+              <p class="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">We have not listed any {brand.brand.name} phone yet. Tell us your model below and we will check it.</p>
+            )}
+            <p class="mt-3 text-xs text-gray-600">{cfg?.modelNumberHelp}</p>
+          </section>
+        )}
+
+        {search?.kind === 'AMBIGUOUS_DEVICE' && (
+          <section class="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-5" role="status">
+            <p class="font-bold text-amber-900">{search.message}</p>
+            <ul class="mt-3 grid gap-2 sm:grid-cols-2">
+              {search.devices.map((dv) => (
+                <li><a href={phoneBatteryPath(dv.slug)} class="block rounded-xl border border-amber-300 bg-white px-4 py-3 hover:border-brand-primary">
+                  <span class="font-bold text-brand-dark">{dv.label}</span>
+                </a></li>
+              ))}
+            </ul>
+            <p class="mt-3 text-xs text-amber-900">{cfg?.modelNumberHelp}</p>
+          </section>
+        )}
+
+        {search?.kind === 'SUGGESTIONS' && !emptySuggestions && (
+          <section class="mt-8 rounded-xl border border-gray-200 bg-white p-5" role="status">
+            <p class="font-bold text-brand-dark">{search.message}</p>
+            <ul class="mt-3 flex flex-wrap gap-2">
+              {search.devices.map((dv) => <li><a href={phoneBatteryPath(dv.slug)} class="inline-block rounded-full border border-gray-300 px-4 py-2 text-sm font-bold hover:border-brand-primary">{dv.label}</a></li>)}
+              {search.batteries.map((b) => <li><a href={`/products/${b.slug}`} class="inline-block rounded-full border border-gray-300 px-4 py-2 text-sm font-mono font-bold hover:border-brand-primary">{b.canonicalCode}</a></li>)}
+            </ul>
+          </section>
+        )}
+
+        {search?.kind === 'BATTERY' && (
+          <section class="mt-8" aria-labelledby="battery-heading">
+            <h2 id="battery-heading" class="text-lg font-black text-brand-dark">Battery <span class="font-mono">{search.battery.canonicalCode}</span></h2>
+            <article class="mt-3 rounded-2xl border border-gray-200 bg-white p-5 flex flex-wrap items-center gap-4">
+              {search.battery.imageUrl && <img src={search.battery.imageUrl} alt={search.battery.name} width="72" height="72" loading="lazy" class="rounded-xl object-cover" />}
+              <div class="flex-1 min-w-[200px]">
+                <p class="font-black text-brand-dark">{search.battery.name}</p>
+                <span class={`inline-block mt-2 rounded-full border px-3 py-1 text-[11px] font-bold ${FIT_BADGE[search.battery.fitState] ?? ''}`}>{search.battery.fitLabel}</span>
+              </div>
+              <div class="text-right">
+                {search.battery.regularPriceUgx != null && <p class="text-xs font-semibold text-slate-600 line-through tabular-nums"><span class="sr-only">Was </span>{ugx(search.battery.regularPriceUgx)}</p>}
+                <p class="font-black text-brand-dark">{search.battery.regularPriceUgx != null && <span class="sr-only">Now </span>}{ugx(search.battery.priceUgx)}</p>
+                <a href={`/products/${search.battery.slug}`} data-fit-product={search.battery.productId} data-finder-mode="SEARCH_CODE" class="mt-2 inline-block rounded-xl bg-brand-dark px-4 py-2 text-sm font-bold text-white hover:opacity-90">View</a>
+              </div>
+            </article>
+            {search.devices.length > 0 && (
+              <>
+                <h3 class="mt-6 text-sm font-black uppercase tracking-widest text-gray-500">Phones it fits</h3>
+                <ul class="mt-2 flex flex-wrap gap-2">
+                  {search.devices.map((dv) => <li><a href={phoneBatteryPath(dv.slug)} title={dv.fitLabel} class="inline-block rounded-full border border-gray-300 px-3 py-1.5 text-xs font-bold hover:border-brand-primary">{dv.label}</a></li>)}
+                </ul>
+              </>
+            )}
+          </section>
+        )}
+
+        {shownDevice && (
+          <section class="mt-8" aria-labelledby="results-heading">
+            <h2 id="results-heading" class="text-lg font-black text-brand-dark">Batteries for the {shownDevice.label}</h2>
+            {results.length > 0 ? (
+              <div class="mt-3 space-y-3">
+                {results.map((r) => (
+                  <article class="rounded-2xl border border-gray-200 bg-white p-5 flex flex-wrap items-center gap-4">
+                    {r.imageUrl && <img src={r.imageUrl} alt={r.name} width="72" height="72" loading="lazy" class="rounded-xl object-cover" />}
+                    <div class="flex-1 min-w-[200px]">
+                      <p class="font-black text-brand-dark">{r.name}</p>
+                      <p class="text-xs text-gray-500 mt-1">Battery reference <span class="font-mono">{r.canonicalCode}</span>{r.capacityMah ? ` · ${r.capacityMah} mAh` : ''}{r.nominalVoltageMv ? ` · ${(r.nominalVoltageMv / 1000).toFixed(2)} V` : ''}</p>
+                      <span class={`inline-block mt-2 rounded-full border px-3 py-1 text-[11px] font-bold ${FIT_BADGE[r.fitState] ?? ''}`}>{r.fitLabel}</span>
+                      {r.fitState === 'CONDITIONAL' && r.condition && <p class="mt-2 text-xs text-amber-900">{cfg?.conditionalNote} {r.condition}</p>}
+                      {r.fitState === 'AWAITING_VERIFICATION' && <p class="mt-2 text-xs text-blue-900">{cfg?.awaitingVerificationNote}</p>}
+                      {r.fitState === 'VERIFIED_OUT_OF_STOCK' && <p class="mt-2 text-xs text-gray-600">{cfg?.outOfStockNote}</p>}
+                    </div>
+                    <div class="text-right">
+                      {r.regularPriceUgx != null && <p class="text-xs font-semibold text-slate-600 line-through tabular-nums"><span class="sr-only">Was </span>{ugx(r.regularPriceUgx)}</p>}
+                      <p class="font-black text-brand-dark">{r.regularPriceUgx != null && <span class="sr-only">Now </span>}{ugx(r.priceUgx)}</p>
+                      <a href={`/products/${r.slug}?device=${encodeURIComponent(shownDevice.slug)}`} data-fit-product={r.productId} data-finder-mode="FIND_BY_PHONE" data-finder-device={shownDevice.slug} class="mt-2 inline-block rounded-xl bg-brand-dark px-4 py-2 text-sm font-bold text-white hover:opacity-90">View</a>
+                    </div>
+                  </article>
+                ))}
+                <CheckYourPhoneNote />
+                <p class="text-xs text-gray-600">
+                  "Verified fit" means we checked this battery against this phone ourselves. Anything else is labelled for
+                  what it is. Ask us before you buy if you are unsure.
+                </p>
+              </div>
+            ) : (
+              <div role="status" class="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
+                <p class="font-bold">{cfg?.noResultHeadline}</p>
+                <p class="mt-1">{cfg?.noResultBody}</p>
+              </div>
+            )}
+          </section>
+        )}
+
+        {noResult && brandOnly && (
+          <section class="mt-8 rounded-xl border border-slate-200 bg-white p-5" role="status">
+            <p class="font-bold text-slate-900">Which {brandOnly.label} phone?</p>
+            <p class="mt-1 text-sm text-slate-700">
+              Batteries are matched to the exact model, not the brand. Type it after “{brandOnly.label}” above, for
+              example {brandOnly.examples.slice(0, -1).join(', ')} or {brandOnly.examples[brandOnly.examples.length - 1]}.
+            </p>
+            {brandOnlyList && (
+              <p class="mt-3 text-sm"><a href={`/battery-finder?brand=${encodeURIComponent(brandOnlyList.slug)}`} class="font-bold underline text-brand-dark">See the {brandOnly.label} phones we have batteries for →</a></p>
+            )}
+            <p class="mt-3 text-xs text-slate-600">{cfg?.modelNumberHelp}</p>
+          </section>
+        )}
+        {noResult && !brandOnly && (
+          <section class="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-5" role="status">
+            <p class="font-bold text-amber-900">{cfg?.noResultHeadline}</p>
+            <p class="mt-1 text-sm text-amber-900">{noResult.message}</p>
+            <p class="mt-3 text-xs text-amber-900">{cfg?.modelNumberHelp}</p>
+          </section>
+        )}
+
+        {requestNotice && (
+          <div role="status" class={`mt-6 rounded-xl border px-4 py-3 text-sm font-bold ${requestNotice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-700'}`}>{requestNotice.text}</div>
+        )}
+
+        {(noResult || (shownDevice && results.length === 0) || (brand && brand.devices.length === 0) || url.searchParams.get('help') === '1') && !requestNotice && (
+          <section class="mt-6 rounded-2xl border border-gray-200 bg-white p-5" aria-labelledby="request-heading">
+            <h2 id="request-heading" class="text-sm font-black text-brand-dark">{cfg?.requestCta ?? 'Ask us to find this battery'}</h2>
+            <p class="text-xs text-gray-500 mt-1">Tell us the phone and we will confirm the right battery before you buy. Your phone number is only used to answer you.</p>
+            {/* The packs we stock stay one tap away while the fit is unconfirmed:
+                the brand chips used to land on a /shop text search that listed
+                them under "Nothing matched"; now they land here instead. */}
+            <p class="text-xs mt-2"><a href="/shop?category=power&subcategory=phone-batteries" class="font-bold underline text-brand-dark">Or browse every phone battery we stock →</a> <span class="text-gray-500">Check the battery code on the listing against your old battery.</span></p>
+            <p class="text-xs text-gray-500 mt-1">The model number is in Settings, under About phone. Please do not open a sealed phone or remove a swollen or damaged battery to find a code, and we never need your IMEI or serial number.</p>
+            <form method="POST" class="mt-4 grid gap-3 sm:grid-cols-2">
+              <input type="hidden" name="queryText" value={q} />
+              <input type="text" name="website" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true" />
+              <label class="block"><span class="text-xs font-bold text-gray-600">Phone brand</span>
+                <input name="brandText" maxlength="80" value={brand?.brand.name ?? brandOnly?.label ?? ''} class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base" /></label>
+              <label class="block"><span class="text-xs font-bold text-gray-600">Phone model</span>
+                <input name="deviceText" maxlength="120" value={shownDevice?.model ?? (brandOnly ? '' : q)} class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base" /></label>
+              <label class="block"><span class="text-xs font-bold text-gray-600">Exact model number, if you have it</span>
+                <input name="modelNumberText" maxlength="80" value={fromThisPhone ? q : ''} class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base font-mono" /></label>
+              <label class="block"><span class="text-xs font-bold text-gray-600">Battery code on the old battery</span>
+                <input name="batteryCodeText" maxlength="120" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base font-mono" /></label>
+              <label class="block"><span class="text-xs font-bold text-gray-600">Your name</span>
+                <input name="contactName" maxlength="120" autocomplete="name" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base" /></label>
+              <label class="block"><span class="text-xs font-bold text-gray-600">Your phone number</span>
+                <input name="contactPhone" maxlength="32" inputmode="tel" autocomplete="tel" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base" /></label>
+              <label class="block sm:col-span-2"><span class="text-xs font-bold text-gray-600">Anything else</span>
+                <input name="notes" maxlength="1000" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base" /></label>
+              <div class="sm:col-span-2 flex flex-wrap gap-3">
+                <button type="submit" class="rounded-xl bg-brand-dark px-6 py-3 font-bold text-white hover:opacity-90">Send it to us</button>
+                <a href={waHref(`${cfg?.whatsappPrefill ?? 'Hello GoldPlus, I need a battery for my '}${shownDevice?.label ?? q}`)} class="rounded-xl border border-gray-300 px-6 py-3 font-bold text-brand-dark hover:border-brand-primary">Or send a photo on WhatsApp</a>
+              </div>
+            </form>
+          </section>
+        )}
+      </>
+    )}
+  </div>
+</BaseLayout>
+
+<script>
+  // A battery opened from the finder's own results (the phone pages send the same event): the funnel's middle step.
+  import { sendFinderEvent } from '../lib/finderEvents';
+  document.addEventListener('click', (ev) => {
+    const a = (ev.target as Element | null)?.closest?.('a[data-fit-product]') as HTMLAnchorElement | null;
+    if (!a) return;
+    const mode = a.dataset.finderMode === 'SEARCH_CODE' ? 'SEARCH_CODE' : 'FIND_BY_PHONE';
+    sendFinderEvent({ eventType: 'PRODUCT_VIEWED', mode, productId: a.dataset.fitProduct || null, deviceSlug: a.dataset.finderDevice || null });
+  });
+</script>

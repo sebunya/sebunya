@@ -1,0 +1,240 @@
+/**
+ * The canonical 12-slide hero library (2026-08-07).
+ *
+ * ONE source of truth for the slides, used by three things that must never
+ * drift apart: the boot seed (so a fresh or production database always has the
+ * library), the storefront's SSR fallback (so the hero is never blank even if
+ * the API is unreachable), and the tests.
+ *
+ * The copy here is the initial migration content, verbatim from the approved
+ * reference build. After seeding it belongs to marketing via the CMS — the
+ * seed is idempotent on slide_key and never overwrites an operator's edit.
+ *
+ * `slideKey` is LOCKED. The client engine keys its eligibility and scoring off
+ * it (LIB[id]); renaming one silently drops a campaign from personalisation.
+ */
+
+export const HERO_THEMES = ['offer', 'logistics', 'loyalty', 'product', 'brand', 'trust'] as const;
+export type HeroTheme = (typeof HERO_THEMES)[number];
+
+export const HERO_TINTS = ['a', 'b', 'c', 'd'] as const;
+export type HeroTint = (typeof HERO_TINTS)[number];
+
+export const HERO_MEDIA = ['stage', 'bleed', 'card'] as const;
+export type HeroMedia = (typeof HERO_MEDIA)[number];
+
+export interface HeroSlideSeed {
+  slideKey: string;
+  position: number;
+  enabled: boolean;
+  theme: HeroTheme;
+  tint: HeroTint;
+  media: HeroMedia;
+  kicker: string;
+  /** May contain <em>…</em> accent wrapping ONLY; everything else is escaped on render. */
+  headline: string;
+  subcopy: string;
+  ctaLabel: string;
+  ctaUrl: string;
+  finePrint: string;
+  /** Media-library URL (bleed) or product image URL (stage). Empty = use fallback/none. */
+  imageUrl: string;
+  imageAlt: string;
+  priority: number;
+  /** Per-slide campaign data — see HeroSlideValidation for the per-key shapes. */
+  extras: Record<string, unknown>;
+}
+
+export interface HeroSettingsSeed {
+  slidesShown: number;
+  dwellMs: number;
+  autoplay: boolean;
+}
+
+export const HERO_SETTINGS_DEFAULT: HeroSettingsSeed = {
+  slidesShown: 4,
+  dwellMs: 6000,
+  autoplay: true,
+};
+
+/** Product cut-out images for stage slides — real GoldPlus catalogue shots. */
+// Same-origin path: an absolute apex-host URL was blocked by img-src on www.
+const P = (slug: string) => `/products/${slug}.webp`;
+
+export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
+  {
+    slideKey: 'flash', position: 1, enabled: true, theme: 'offer', tint: 'a', media: 'stage',
+    kicker: 'Sale on now',
+    // "on everything" is not true while a price floor exists: an item already
+    // at the floor comes down by nothing, so the campaign takes off less than
+    // the headline promises. "Up to" is the honest form of the same offer.
+    headline: 'Up to <em>{pct}% off</em>',
+    subcopy: 'It comes off at checkout. No code needed.',
+    ctaLabel: 'Get the discount', ctaUrl: '/shop',
+    finePrint: '',
+    imageUrl: P('goldplus-magnetic-power-bank-gp-03'),
+    imageAlt: 'GoldPlus magnetic power bank',
+    priority: 0,
+    // No deadline and no prices here: the API derives both from the live promotion.
+    extras: {},
+  },
+  {
+    slideKey: 'welcome', position: 2, enabled: false, theme: 'offer', tint: 'c', media: 'stage',
+    kicker: 'First time here',
+    headline: "<em>10% discount</em>, because you don't know us yet",
+    subcopy: 'Fair enough. Buy one thing and judge us on how it holds up.',
+    ctaLabel: 'Start with one', ctaUrl: '/shop',
+    finePrint: 'First order only · One use per customer',
+    imageUrl: P('goldplus-built-in-cable-power-bank-gp-pd-w3'),
+    imageAlt: 'GoldPlus built-in cable power bank',
+    priority: 0,
+    extras: {},
+  },
+  {
+    slideKey: 'referral', position: 3, enabled: true, theme: 'loyalty', tint: 'c', media: 'stage',
+    kicker: 'Welcome back',
+    headline: 'Introduce a friend. <em>You both earn points</em>',
+    subcopy: 'Someone you know has been sold a fake. Send them here. When their first order is delivered, you both get points.',
+    ctaLabel: 'Get your link', ctaUrl: '/account/rewards#refer',
+    finePrint: 'Points land when their first order is delivered',
+    imageUrl: P('goldplus-digital-display-power-bank-gp-p07'),
+    imageAlt: 'GoldPlus digital display power bank',
+    priority: 0,
+    extras: {},
+  },
+  {
+    slideKey: 'sameday', position: 4, enabled: true, theme: 'logistics', tint: 'b', media: 'stage',
+    kicker: 'Same-day dispatch',
+    headline: 'Order before {cutoff} and it <em>goes out today</em>',
+    // Upcountry goes by bus to a parcel office (docs/delivery/MODEL.md 3.6a);
+    // "next day everywhere else" was a promise nothing kept. The cutoff is a
+    // token filled from business_info, so it can never disagree with the nav.
+    subcopy: 'Same-day dispatch in Kampala and Wakiso; when it arrives depends on the area. Upcountry orders go by bus to a parcel office for collection.',
+    ctaLabel: 'Order for today', ctaUrl: '/shop',
+    finePrint: 'Cut-off {cutoff} on days the shop is open',
+    imageUrl: P('goldplus-power-bank-with-handle-gp-x03'),
+    imageAlt: 'GoldPlus power bank with carry handle',
+    priority: 0,
+    extras: { cutoffHour: 17 },
+  },
+  {
+    slideKey: 'fees', position: 5, enabled: true, theme: 'logistics', tint: 'd', media: 'stage',
+    kicker: 'Delivery, priced upfront',
+    headline: 'No haggling with the <em>boda guy</em>',
+    subcopy: 'You see the fee before you pay. We settle the rider. You just open the door.',
+    ctaLabel: 'How delivery works', ctaUrl: '/delivery/kampala-wakiso',
+    finePrint: 'Exact fee shown at checkout. Or collect free from Zainab Aziza Building, Burton Street.',
+    imageUrl: P('goldplus-100w-portable-power-station-gp-09'),
+    imageAlt: 'GoldPlus 100W portable power station',
+    priority: 0,
+    // Areas are content; the fees are read from the delivery quoting service at render.
+    extras: {
+      sampleAreas: [
+        { slug: 'kampala-nakasero-i-10105', label: 'Nakasero' },
+        { slug: 'kampala-ntinda-10302', label: 'Ntinda' },
+        { slug: 'wakiso-kira-31340', label: 'Kira' },
+      ],
+    },
+  },
+  {
+    slideKey: 'ambassador', position: 6, enabled: true, theme: 'brand', tint: 'a', media: 'bleed',
+    kicker: 'Carried every day',
+    headline: 'The people you know <em>already carry it</em>',
+    subcopy: "Musicians, riders, traders, students. The ones who can't afford a battery that lies to them.",
+    ctaLabel: 'See the range', ctaUrl: '/shop',
+    finePrint: '',
+    imageUrl: '/hero/ambassador.jpg',
+    imageAlt: 'GoldPlus product in everyday use',
+    priority: 0,
+    extras: {},
+  },
+  {
+    slideKey: 'newarrivals', position: 7, enabled: true, theme: 'product', tint: 'b', media: 'bleed',
+    kicker: 'Just landed',
+    // No freshness claim the data does not check ("new this month",
+    // "restocked weekly" were asserted with nothing behind them).
+    headline: 'New lines, <em>verified on arrival</em>',
+    subcopy: 'Every new line is opened, tested and coded before it reaches the shelf.',
+    ctaLabel: "See what's new", ctaUrl: '/shop',
+    finePrint: '',
+    imageUrl: '/hero/new-arrivals.jpg',
+    imageAlt: 'GoldPlus power bank charging a phone and laptop on a train table',
+    priority: 0,
+    extras: {},
+  },
+  {
+    slideKey: 'range', position: 8, enabled: true, theme: 'product', tint: 'd', media: 'bleed',
+    kicker: 'The full range',
+    headline: 'Power, sound, storage, <em>car</em>',
+    subcopy: "One shop, one standard. If we wouldn't use it, we don't stock it.",
+    ctaLabel: 'Browse everything', ctaUrl: '/shop',
+    finePrint: 'Five families · One verification promise',
+    imageUrl: '/hero/range.jpg',
+    imageAlt: 'The GoldPlus range in everyday use',
+    priority: 0,
+    extras: {},
+  },
+  {
+    slideKey: 'loyalty', position: 9, enabled: true, theme: 'loyalty', tint: 'b', media: 'stage',
+    kicker: 'GoldPlus rewards',
+    headline: 'Every shilling <em>earns its way back</em>',
+    // No member pricing exists and no account page lists warranties; the
+    // balance and history do.
+    subcopy: 'Points on every delivered order, and your balance and history in one place.',
+    ctaLabel: 'Join free', ctaUrl: '/loyalty',
+    finePrint: 'Free to join · Use your points before they expire',
+    imageUrl: P('goldplus-100w-portable-power-station-gp-09'),
+    imageAlt: 'GoldPlus 100W portable power station',
+    priority: 0,
+    extras: {},
+  },
+  // Disabled: it dealt percentage codes (GP5..GP20) that no promotion honours,
+  // and its button led to /rewards, which does not exist. The real scratch card
+  // pays points and lives on the rewards page.
+  {
+    slideKey: 'scratch', position: 10, enabled: false, theme: 'offer', tint: 'd', media: 'card',
+    kicker: 'Scratch & save',
+    headline: 'Scratch to reveal <em>your price</em>',
+    subcopy: 'One scratch, one member discount. Reveal it, then keep it with a free rewards account.',
+    ctaLabel: 'Join to claim', ctaUrl: '/loyalty',
+    finePrint: 'One scratch per visitor',
+    imageUrl: '',
+    imageAlt: '',
+    priority: 0,
+    extras: {
+      prizes: [
+        { pct: 5, code: 'GP5', w: 45 },
+        { pct: 10, code: 'GP10', w: 32 },
+        { pct: 15, code: 'GP15', w: 18 },
+        { pct: 20, code: 'GP20', w: 5 },
+      ],
+    },
+  },
+  {
+    slideKey: 'nostories', position: 11, enabled: true, theme: 'trust', tint: 'a', media: 'stage',
+    kicker: 'The no stories campaign',
+    headline: 'No stories. <em>Just real specs.</em>',
+    subcopy: 'If a capacity isn’t verified, we say so on the page. Real numbers, real warranty, a real person on the phone.',
+    ctaLabel: 'Read the promise', ctaUrl: '/verification',
+    finePrint: 'Verified capacity · Report a counterfeit',
+    imageUrl: P('goldplus-digital-display-power-bank-gp-p07'),
+    imageAlt: 'GoldPlus digital display power bank',
+    priority: 0,
+    extras: {},
+  },
+  {
+    slideKey: 'authentic', position: 12, enabled: true, theme: 'trust', tint: 'c', media: 'stage',
+    kicker: 'Guaranteed authenticity',
+    headline: '<em>Verified</em> original electronics',
+    subcopy: 'Every unit carries a code you can check before you trust it. Built for how Uganda actually uses power.',
+    ctaLabel: 'Shop all products', ctaUrl: '/shop',
+    finePrint: 'Originality verified · Direct local support',
+    imageUrl: P('goldplus-power-bank-with-handle-gp-x03'),
+    imageAlt: 'GoldPlus power bank with carry handle',
+    priority: 0,
+    extras: {},
+  },
+];
+
+/** The evergreen slide the hero falls back to if everything is disabled (§2.5). */
+export const HERO_FALLBACK_KEY = 'authentic';

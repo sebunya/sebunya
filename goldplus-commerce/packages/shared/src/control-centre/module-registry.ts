@@ -1,3 +1,4 @@
+import { PERMISSIONS } from '../permissions';
 /**
  * GoldPlus Control Centre — canonical module registry.
  *
@@ -102,6 +103,16 @@ export interface ControlCentreModule {
   readonly dataDependencies: readonly ModuleDataDependency[];
   /** External providers. Absent credentials => DORMANT, never UNAVAILABLE. */
   readonly providerDependencies: readonly string[];
+  /**
+   * Named checks on what the capability is actually ACHIEVING, as opposed to
+   * whether it is reachable and switched on.
+   *
+   * A table that answers and credentials that exist are not the same thing as
+   * work getting done: notifications reported LIVE while every admin order
+   * email of the last three weeks was dead-lettering at the provider. A failing
+   * check degrades the module and says why.
+   */
+  readonly healthChecks?: readonly string[];
   readonly activationPolicy: ModuleActivationPolicy;
   readonly supportedActions: readonly ModuleAction[];
   readonly riskClass: ModuleRiskClass;
@@ -114,25 +125,30 @@ export interface ControlCentreModule {
   readonly runbookLink: string;
 }
 
+// Canonical permission names (dotted) — the SAME vocabulary sessions carry.
+// The old constant-style literals (PERMISSIONS.ORDERS_READ) never matched a session's
+// 'orders.read', so every Trust Centre module read as permission-denied.
 const P = {
-  PRODUCTS_READ: 'PRODUCTS_READ',
-  ORDERS_READ: 'ORDERS_READ',
-  RECOMMENDATIONS_READ: 'RECOMMENDATIONS_READ',
-  REPORTS_READ: 'REPORTS_READ',
-  SETTINGS_MANAGE: 'SETTINGS_MANAGE',
-  CUSTOMER_DNA_READ: 'CUSTOMER_DNA_READ',
-  NBA_READ: 'NBA_READ',
-  DECISION_INTELLIGENCE_READ: 'DECISION_INTELLIGENCE_READ',
-  AUTOMATION_READ: 'AUTOMATION_READ',
-  SURVEYS_READ: 'SURVEYS_READ',
-  COPY_QUALITY_READ: 'COPY_QUALITY_READ',
-  INTERVENTIONS_READ: 'INTERVENTIONS_READ',
-  EXPERIMENTS_READ: 'EXPERIMENTS_READ',
-  PRICING_READ: 'PRICING_READ',
-  FRAUD_READ: 'FRAUD_READ',
-  PIM_READ: 'PIM_READ',
-  INVENTORY_READ: 'INVENTORY_READ',
-  AUDIT_READ: 'AUDIT_READ',
+  PRODUCTS_READ: PERMISSIONS.PRODUCTS_READ,
+  ORDERS_READ: PERMISSIONS.ORDERS_READ,
+  RECOMMENDATIONS_READ: PERMISSIONS.RECOMMENDATIONS_READ,
+  REPORTS_READ: PERMISSIONS.REPORTS_READ,
+  NOTIFICATIONS_READ: PERMISSIONS.NOTIFICATIONS_READ,
+  SETTINGS_MANAGE: PERMISSIONS.SETTINGS_MANAGE,
+  CUSTOMER_DNA_READ: PERMISSIONS.CUSTOMER_DNA_READ,
+  NBA_READ: PERMISSIONS.NBA_READ,
+  DECISION_INTELLIGENCE_READ: PERMISSIONS.DECISION_INTELLIGENCE_READ,
+  AUTOMATION_READ: PERMISSIONS.AUTOMATION_READ,
+  SURVEYS_READ: PERMISSIONS.SURVEYS_READ,
+  COPY_QUALITY_READ: PERMISSIONS.COPY_QUALITY_READ,
+  INTERVENTIONS_READ: PERMISSIONS.INTERVENTIONS_READ,
+  EXPERIMENTS_READ: PERMISSIONS.EXPERIMENTS_READ,
+  PRICING_READ: PERMISSIONS.PRICING_READ,
+  FRAUD_READ: PERMISSIONS.FRAUD_READ,
+  PIM_READ: PERMISSIONS.PIM_READ,
+  INVENTORY_READ: PERMISSIONS.INVENTORY_READ,
+  AUDIT_READ: PERMISSIONS.AUDIT_READ,
+  ANALYTICS_READ: PERMISSIONS.ANALYTICS_READ,
 } as const;
 
 export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
@@ -146,7 +162,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     apiMount: '/admin/products',
     primaryApiEndpoints: ['/admin/products', '/products'],
     requiredPermissions: [P.PRODUCTS_READ],
-    optionalPermissions: ['PRODUCTS_WRITE', 'PRODUCTS_PUBLISH'],
+    optionalPermissions: [PERMISSIONS.PRODUCTS_WRITE, PERMISSIONS.PRODUCTS_PUBLISH],
     dataDependencies: [{ name: 'postgres', table: 'products' }],
     providerDependencies: [],
     activationPolicy: 'AUTOMATIC',
@@ -167,7 +183,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     apiMount: '/governance',
     primaryApiEndpoints: ['/governance/admin/orders', '/governance/admin/stats'],
     requiredPermissions: [P.ORDERS_READ],
-    optionalPermissions: ['ORDERS_MANAGE', 'PAYMENTS_READ'],
+    optionalPermissions: [PERMISSIONS.ORDERS_MANAGE, PERMISSIONS.PAYMENTS_READ],
     dataDependencies: [{ name: 'postgres', table: 'orders' }],
     providerDependencies: [],
     activationPolicy: 'AUTOMATIC',
@@ -188,7 +204,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     apiMount: '/admin/recommendations',
     primaryApiEndpoints: ['/admin/recommendations', '/recommendations'],
     requiredPermissions: [P.RECOMMENDATIONS_READ],
-    optionalPermissions: ['RECOMMENDATIONS_MANAGE'],
+    optionalPermissions: [PERMISSIONS.RECOMMENDATIONS_MANAGE],
     dataDependencies: [{ name: 'postgres', table: 'products' }],
     providerDependencies: [],
     activationPolicy: 'AUTOMATIC',
@@ -210,7 +226,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     primaryApiEndpoints: ['/admin/measurement-control-tower', '/admin/measurement'],
     requiredPermissions: [P.REPORTS_READ],
     optionalPermissions: [P.SETTINGS_MANAGE],
-    dataDependencies: [{ name: 'postgres', table: 'measurement_events' }],
+    dataDependencies: [{ name: 'postgres', table: 'purchase_measurement_events' }],
     providerDependencies: ['meta', 'google', 'tiktok'],
     activationPolicy: 'PROVIDER_CONFIG',
     supportedActions: [
@@ -219,6 +235,35 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     riskClass: 'HIGH',
     liveMode: true,
     owner: 'measurement',
+    runbookLink: '/docs/handover/claude/CONTROL_CENTRE_PRODUCTION_RUNBOOK.md',
+  },
+  {
+    // The console listed 27 modules and none of them was messaging, so a shop
+    // that could not send a single email still reported every capability LIVE.
+    // 33 admin order emails had dead-lettered on the provider's HTTP 429 and
+    // nothing in the Trust Centre said so.
+    key: 'notifications',
+    displayName: 'Customer and admin messaging',
+    description: 'Order, verification and loyalty messages leaving the shop by email and SMS, with the outbox that carries them.',
+    category: 'TRUST_CENTRE',
+    adminRoute: '/admin/notifications',
+    apiMount: '/admin/notifications',
+    primaryApiEndpoints: ['/admin/notifications/health-check'],
+    requiredPermissions: [P.NOTIFICATIONS_READ],
+    optionalPermissions: [P.SETTINGS_MANAGE],
+    dataDependencies: [{ name: 'postgres', table: 'outbox_events' }],
+    // Credentials being PRESENT is all an env probe can honestly answer; whether
+    // the provider then accepts the send is the outbox's business, and its dead
+    // letters are the evidence for that.
+    providerDependencies: ['email', 'sms'],
+    healthChecks: ['notification_delivery'],
+    activationPolicy: 'AUTOMATIC',
+    supportedActions: [
+      { key: 'open', label: 'Open notification outbox', target: '/admin/notifications', requiredPermission: P.NOTIFICATIONS_READ, kind: 'READ' },
+    ],
+    riskClass: 'MEDIUM',
+    liveMode: true,
+    owner: 'support',
     runbookLink: '/docs/handover/claude/CONTROL_CENTRE_PRODUCTION_RUNBOOK.md',
   },
   {
@@ -231,7 +276,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     primaryApiEndpoints: ['/governance/admin/support/inbox'],
     requiredPermissions: [P.REPORTS_READ],
     optionalPermissions: [P.SETTINGS_MANAGE],
-    dataDependencies: [{ name: 'postgres', table: 'support_cases' }],
+    dataDependencies: [{ name: 'postgres', table: 'support_issues' }],
     providerDependencies: [],
     activationPolicy: 'AUTOMATIC',
     supportedActions: [
@@ -264,6 +309,27 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     runbookLink: '/docs/handover/claude/CONTROL_CENTRE_PRODUCTION_RUNBOOK.md',
   },
   {
+    key: 'locations',
+    displayName: 'Locations and delivery addresses',
+    description: 'Verified gazetteer, address capture, search learning loop, landmarks, pickup points and zone policy.',
+    category: 'COMMERCE_OS',
+    adminRoute: '/admin/locations',
+    apiMount: '/admin/locations',
+    primaryApiEndpoints: ['/admin/locations/misses', '/admin/locations/review-queue'],
+    requiredPermissions: [P.REPORTS_READ],
+    optionalPermissions: [P.SETTINGS_MANAGE, P.ORDERS_READ],
+    dataDependencies: [{ name: 'postgres', table: 'ug_area' }],
+    providerDependencies: [],
+    activationPolicy: 'AUTOMATIC',
+    supportedActions: [
+      { key: 'open', label: 'Open locations workspace', target: '/admin/locations', requiredPermission: P.REPORTS_READ, kind: 'READ' },
+    ],
+    riskClass: 'MEDIUM',
+    liveMode: true,
+    owner: 'discovery',
+    runbookLink: '/docs/location-module-brief.md',
+  },
+  {
     key: 'loyalty',
     displayName: 'Loyalty and rewards',
     description: 'Points ledger, earn and redemption rules, balances, liability and adjustments.',
@@ -289,6 +355,27 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
 
   // ─── Commerce OS ──────────────────────────────────────────────────────────
   {
+    key: 'commerce-analytics',
+    displayName: 'Commerce Analytics',
+    description: 'Decision-grade business metrics, trends, comparisons, actions and data quality from the canonical metric catalogue.',
+    category: 'COMMERCE_OS',
+    adminRoute: '/admin/analytics',
+    apiMount: '/admin/analytics',
+    primaryApiEndpoints: ['/admin/analytics/overview', '/admin/analytics/quality', '/admin/analytics/actions', '/admin/analytics/catalogue'],
+    requiredPermissions: [P.ANALYTICS_READ],
+    optionalPermissions: [],
+    dataDependencies: [{ name: 'postgres' }],
+    providerDependencies: [],
+    activationPolicy: 'AUTOMATIC',
+    supportedActions: [
+      { key: 'open', label: 'Open commerce analytics', target: '/admin/analytics', requiredPermission: P.ANALYTICS_READ, kind: 'READ' },
+    ],
+    riskClass: 'LOW',
+    liveMode: false,
+    owner: 'intelligence',
+    runbookLink: '/docs/handover/claude/CONTROL_CENTRE_PRODUCTION_RUNBOOK.md',
+  },
+  {
     key: 'decision-intelligence',
     displayName: 'Decision Intelligence',
     description: 'Decision requests, outputs, reason codes, input snapshots and manual review.',
@@ -297,7 +384,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     apiMount: '/admin/decision-intelligence',
     primaryApiEndpoints: ['/admin/decision-intelligence'],
     requiredPermissions: [P.DECISION_INTELLIGENCE_READ],
-    optionalPermissions: ['DECISION_INTELLIGENCE_EVALUATE', 'DECISION_INTELLIGENCE_MANAGE'],
+    optionalPermissions: [PERMISSIONS.DECISION_INTELLIGENCE_EVALUATE, PERMISSIONS.DECISION_INTELLIGENCE_MANAGE],
     dataDependencies: [{ name: 'postgres' }],
     providerDependencies: [],
     activationPolicy: 'AUTOMATIC',
@@ -318,7 +405,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     apiMount: '/admin/customer-dna',
     primaryApiEndpoints: ['/admin/customer-dna'],
     requiredPermissions: [P.CUSTOMER_DNA_READ],
-    optionalPermissions: [P.NBA_READ, 'CUSTOMER_DNA_MANAGE'],
+    optionalPermissions: [P.NBA_READ, PERMISSIONS.CUSTOMER_DNA_MANAGE],
     dataDependencies: [{ name: 'postgres' }],
     providerDependencies: [],
     activationPolicy: 'AUTOMATIC',
@@ -360,7 +447,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     apiMount: '/admin/automation',
     primaryApiEndpoints: ['/admin/automation'],
     requiredPermissions: [P.AUTOMATION_READ],
-    optionalPermissions: ['AUTOMATION_APPROVE', 'AUTOMATION_EXECUTE'],
+    optionalPermissions: [PERMISSIONS.AUTOMATION_APPROVE, PERMISSIONS.AUTOMATION_EXECUTE],
     dataDependencies: [{ name: 'postgres' }],
     providerDependencies: [],
     // The engine runs; outbound delivery stays approval-gated.
@@ -382,7 +469,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     apiMount: '/admin/surveys',
     primaryApiEndpoints: ['/admin/surveys'],
     requiredPermissions: [P.SURVEYS_READ],
-    optionalPermissions: ['SURVEYS_APPROVE', 'SURVEYS_ACTIVATE'],
+    optionalPermissions: [PERMISSIONS.SURVEYS_APPROVE, PERMISSIONS.SURVEYS_ACTIVATE],
     dataDependencies: [{ name: 'postgres' }],
     providerDependencies: [],
     activationPolicy: 'OPERATOR_APPROVAL',
@@ -403,7 +490,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     apiMount: '/admin/copy-quality',
     primaryApiEndpoints: ['/admin/copy-quality'],
     requiredPermissions: [P.COPY_QUALITY_READ],
-    optionalPermissions: ['COPY_QUALITY_EXPORT'],
+    optionalPermissions: [PERMISSIONS.COPY_QUALITY_EXPORT],
     dataDependencies: [{ name: 'postgres' }],
     providerDependencies: [],
     activationPolicy: 'AUTOMATIC',
@@ -424,7 +511,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     apiMount: '/admin/behavioural-interventions',
     primaryApiEndpoints: ['/admin/behavioural-interventions'],
     requiredPermissions: [P.INTERVENTIONS_READ],
-    optionalPermissions: ['INTERVENTIONS_APPROVE', 'INTERVENTIONS_ACTIVATE'],
+    optionalPermissions: [PERMISSIONS.INTERVENTIONS_APPROVE, PERMISSIONS.INTERVENTIONS_ACTIVATE],
     dataDependencies: [{ name: 'postgres' }],
     providerDependencies: [],
     activationPolicy: 'OPERATOR_APPROVAL',
@@ -445,7 +532,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     apiMount: '/admin/experiments',
     primaryApiEndpoints: ['/admin/experiments'],
     requiredPermissions: [P.EXPERIMENTS_READ],
-    optionalPermissions: ['EXPERIMENTS_MANAGE'],
+    optionalPermissions: [PERMISSIONS.EXPERIMENTS_MANAGE],
     dataDependencies: [{ name: 'postgres' }],
     providerDependencies: [],
     activationPolicy: 'OPERATOR_APPROVAL',
@@ -466,7 +553,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     apiMount: '/admin/pricing',
     primaryApiEndpoints: ['/admin/pricing'],
     requiredPermissions: [P.PRICING_READ],
-    optionalPermissions: ['PRICING_APPROVE', 'PRICING_ACTIVATE'],
+    optionalPermissions: [PERMISSIONS.PRICING_APPROVE, PERMISSIONS.PRICING_ACTIVATE],
     dataDependencies: [{ name: 'postgres' }],
     providerDependencies: [],
     activationPolicy: 'OPERATOR_APPROVAL',
@@ -487,7 +574,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     apiMount: '/admin/fraud',
     primaryApiEndpoints: ['/admin/fraud'],
     requiredPermissions: [P.FRAUD_READ],
-    optionalPermissions: ['FRAUD_DECIDE', 'FRAUD_ASSIGN'],
+    optionalPermissions: [PERMISSIONS.FRAUD_DECIDE, PERMISSIONS.FRAUD_ASSIGN],
     dataDependencies: [{ name: 'postgres' }],
     providerDependencies: [],
     activationPolicy: 'AUTOMATIC',
@@ -508,7 +595,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     apiMount: '/admin/pim-imports',
     primaryApiEndpoints: ['/admin/pim-imports'],
     requiredPermissions: [P.PIM_READ],
-    optionalPermissions: ['PIM_APPROVE', 'PIM_APPLY', 'PIM_ROLLBACK'],
+    optionalPermissions: [PERMISSIONS.PIM_APPROVE, PERMISSIONS.PIM_APPLY, PERMISSIONS.PIM_ROLLBACK],
     dataDependencies: [{ name: 'postgres' }],
     providerDependencies: [],
     activationPolicy: 'OPERATOR_APPROVAL',
@@ -573,7 +660,7 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     apiMount: '/admin/inventory',
     primaryApiEndpoints: ['/admin/inventory', '/admin/fulfilment'],
     requiredPermissions: [P.INVENTORY_READ],
-    optionalPermissions: ['INVENTORY_ADJUST'],
+    optionalPermissions: [PERMISSIONS.INVENTORY_ADJUST],
     dataDependencies: [{ name: 'postgres' }],
     providerDependencies: [],
     activationPolicy: 'AUTOMATIC',
@@ -584,6 +671,44 @@ export const CONTROL_CENTRE_MODULES: readonly ControlCentreModule[] = [
     riskClass: 'HIGH',
     liveMode: true,
     owner: 'operations',
+    runbookLink: '/docs/handover/claude/CONTROL_CENTRE_PRODUCTION_RUNBOOK.md',
+  },
+  {
+    key: 'seo-organic-growth',
+    displayName: 'SEO & Organic Growth',
+    description: 'Competitor intelligence, query universe, SERP evidence, first-party crawl audits, opportunities and AEO coverage.',
+    category: 'COMMERCE_OS',
+    adminRoute: '/admin/seo',
+    apiMount: '/admin/seo',
+    primaryApiEndpoints: ['/admin/seo/overview', '/admin/seo/market-share', '/admin/seo/opportunities'],
+    requiredPermissions: [PERMISSIONS.SEO_VIEW],
+    optionalPermissions: [
+      PERMISSIONS.SEO_AUDIT_RUN,
+      PERMISSIONS.SEO_COMPETITORS_MANAGE,
+      PERMISSIONS.SEO_SERP_MANAGE,
+      PERMISSIONS.SEO_EXPERIMENTS_MANAGE,
+      PERMISSIONS.SEO_INTEGRATIONS_MANAGE,
+      PERMISSIONS.SEO_APPROVE_HIGH_RISK,
+    ],
+    dataDependencies: [
+      // `name` identifies the DEPENDENCY, not the table — the probe only knows
+      // how to reach 'postgres' and returns false for anything else, so naming
+      // these after their tables made the Trust Centre report SEO as DEGRADED
+      // permanently, against tables that exist and hold data. Every other
+      // module declares it this way.
+      { name: 'postgres', table: 'seo_competitors' },
+      { name: 'postgres', table: 'seo_queries' },
+    ],
+    providerDependencies: [],
+    activationPolicy: 'AUTOMATIC',
+    supportedActions: [
+      { key: 'open', label: 'Open SEO workspace', target: '/admin/seo', requiredPermission: PERMISSIONS.SEO_VIEW, kind: 'READ' },
+      { key: 'crawl-start', label: 'Start site crawl', target: '/admin/seo/crawl/start', requiredPermission: PERMISSIONS.SEO_AUDIT_RUN, kind: 'WRITE' },
+      { key: 'opportunity-generate', label: 'Generate opportunities', target: '/admin/seo/opportunities/generate', requiredPermission: PERMISSIONS.SEO_AUDIT_RUN, kind: 'WRITE' },
+    ],
+    riskClass: 'MEDIUM',
+    liveMode: false,
+    owner: 'discovery',
     runbookLink: '/docs/handover/claude/CONTROL_CENTRE_PRODUCTION_RUNBOOK.md',
   },
 

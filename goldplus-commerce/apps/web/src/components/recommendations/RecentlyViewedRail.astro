@@ -1,19 +1,20 @@
 ---
-import { apiBase } from "../../lib/api";
-import { LOCAL_SEED_PRODUCTS } from "../../lib/catalog/catalog";
-import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
+import { getStorefrontDiscount } from "../../lib/storefrontDiscount";
+
 
 interface Props {
   title?: string;
   subtitle?: string;
   alwaysRender?: boolean;
+  /** The product on the current page: never recommended to itself. */
+  excludeProductId?: string;
   fallbackProducts?: Array<{
     productId: string;
     slug: string;
     name: string;
     imageUrl?: string;
     price?: number;
-    availability?: { kind: "in_stock" | "out_of_stock" | "pre_order" | "unknown" };
+    availability?: { kind: "in_stock" | "out_of_stock" | "pre_order" | "unknown"; quantity?: number };
   }>;
 }
 
@@ -21,25 +22,21 @@ const {
   title = "Pick Up Where You Left Off",
   subtitle = "Your recently viewed GoldPlus products are still here.",
   alwaysRender = false,
+  excludeProductId = "",
   fallbackProducts = []
 } = Astro.props;
 
-let validIds: string[] = [];
-try {
-  const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
-  if (res.ok) {
-    const json = await res.json() as ApiResponse<ProductPublicDto[]>;
-    if (json.success && json.data) {
-      validIds = json.data.map(p => p.id).filter((id): id is string => typeof id === "string");
-    }
-  }
-} catch {
-  // Graceful fallback
-}
+// Fresh server truth per product (price, stock, image) is fetched by the
+// client from /api/catalogue-live only when the rail is about to render: local
+// history is a bookmark, not a price list. It was stamped here as
+// data-live-products on every page (34 KB of HTML) — see that endpoint.
 
-if (validIds.length === 0) {
-  validIds = LOCAL_SEED_PRODUCTS.map(p => p.id);
-}
+// R1: when the catalogue cannot be fetched, the rail stays hidden rather
+// than validating against fabricated seed IDs (retired 2026-08-06).
+
+// The SAME campaign discount every server-rendered card shows, stamped for the
+// client-side card builder so this rail is uniform with the rest of the site.
+const railDiscount = await getStorefrontDiscount();
 ---
 
 <section
@@ -47,16 +44,25 @@ if (validIds.length === 0) {
   style="display: none;"
   aria-labelledby="recommendation-recently-viewed"
   data-recently-viewed-rail
-  data-valid-ids={JSON.stringify(validIds)}
   data-always-render={alwaysRender ? "true" : "false"}
-  data-fallback-products={JSON.stringify(fallbackProducts)}
+  data-exclude-product-id={excludeProductId || undefined}
+  data-fallback-products={JSON.stringify(fallbackProducts.map(({ productId, slug, name, imageUrl, price, availability }) => ({ productId, slug, name, imageUrl, price, availability })))}
+  data-sale-bps={railDiscount.active ? String(railDiscount.percentBps) : ""}
+  data-sale-percent={railDiscount.active ? String(railDiscount.percent) : ""}
+  data-sale-ends-iso={railDiscount.active ? (railDiscount.endsIso ?? "") : ""}
 >
-  <div class="mb-6">
-    <h2 id="recommendation-recently-viewed" class="text-2xl font-black tracking-tight text-brand-charcoal">
-      {title}
-    </h2>
-    <p class="text-brand-mutedGrey text-sm mt-1 font-medium">{subtitle}</p>
-  </div>
+  {/* The heading waits in a <template> until the rail has products to show:
+      the section starts hidden, but text readers and crawlers read hidden
+      markup and reported "Pick Up Where You Left Off" to every new visitor
+      (2026-10-08 design audit, 02). */}
+  <template data-recently-viewed-head>
+    <div class="mb-6">
+      <h2 id="recommendation-recently-viewed" class="text-2xl font-black tracking-tight text-brand-charcoal">
+        {title}
+      </h2>
+      <p class="text-brand-mutedGrey text-sm mt-1 font-medium">{subtitle}</p>
+    </div>
+  </template>
 
   <ul class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6" data-recently-viewed-list>
      {/* Hydrated dynamically on client mount */}
@@ -65,8 +71,9 @@ if (validIds.length === 0) {
 
 <script>
   import { shouldShowPickUpWhereYouLeftOff, getRecentlyViewedHistory } from "../../lib/returning-user";
+  import { composeRecentlyViewedItems } from "./recentlyViewedItems";
 
-  document.addEventListener("DOMContentLoaded", () => {
+  document.addEventListener("DOMContentLoaded", async () => {
     const rail = document.querySelector("[data-recently-viewed-rail]") as HTMLElement | null;
     const list = document.querySelector("[data-recently-viewed-list]");
 
@@ -79,8 +86,6 @@ if (validIds.length === 0) {
       return;
     }
 
-    const validIdsAttr = rail.getAttribute("data-valid-ids");
-    const validIds: string[] = validIdsAttr ? JSON.parse(validIdsAttr) : [];
     const safeSlug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
     const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({
       "&": "&amp;",
@@ -94,33 +99,73 @@ if (validIds.length === 0) {
       return /^https?:\/\//i.test(candidate) || /^\/(?!\/)/.test(candidate) ? candidate : "";
     };
 
-    const rawHistory = getRecentlyViewedHistory();
-    let items = rawHistory
-      .filter((item) => validIds.length === 0 || validIds.includes(item.productId))
-      .filter((item) => safeSlug.test(String(item.slug ?? "")))
-      .slice(0, 4);
-
-    let isUsingFallback = false;
-    if (items.length === 0) {
-      if (alwaysRender) {
-        const fallbackAttr = rail.getAttribute("data-fallback-products");
-        items = fallbackAttr ? JSON.parse(fallbackAttr) : [];
-        isUsingFallback = true;
-      }
-      
-      if (items.length === 0) {
-        return;
-      }
+    // Overlay fresh server truth (price, stock, image) onto local history —
+    // a bookmark from last week must not show last week's price.
+    // Nothing to show and nothing to fetch: the returning-visitor rail with no history.
+    if (!alwaysRender && getRecentlyViewedHistory().length === 0) return;
+    let liveByProduct: Record<string, { price?: number; sale?: number | null; availability?: { kind: string; quantity?: number }; imageUrl?: string }> = {};
+    // Without the live read, a stored price is last week's price: the cards
+    // then show no price, no stock and no buy button, only "View product".
+    let liveOk = false;
+    try {
+      const res = await fetch("/api/catalogue-live", { credentials: "same-origin" });
+      const body = await res.json();
+      if (body && body.success && body.data && typeof body.data === "object") { liveByProduct = body.data; liveOk = true; }
+    } catch {
+      // No overlay and no id filter; prices and stock are withheld below.
     }
+    // The live map's keys ARE the approved catalogue; a separate id list was the same
+    // 184 ids stamped a second time into every page.
+    const validIds: string[] = Object.keys(liveByProduct);
+    // Same rule as lib/imageSrcset.ts for media-library masters: the card box is
+    // 160–320 px wide, the master is 1024 px.
+    const srcsetOf = (url: string) => { const m = url.match(/^(\/uploads\/assets\/[^?#]+\/)pdp\.webp$/); return m ? ` srcset="${m[1]}thumb.webp 160w, ${m[1]}card.webp 480w, ${url} 1024w" sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px"` : ""; };
+    const overlay = (item: any) => {
+      if (!liveOk) return { ...item, price: undefined, sale: null, availability: undefined };
+      const live = liveByProduct[item.productId];
+      return live ? { ...item, price: live.price ?? item.price, sale: live.sale ?? null, availability: live.availability ?? item.availability, imageUrl: live.imageUrl ?? item.imageUrl } : { ...item, sale: null };
+    };
+
+    // The same checks for history and the server fallback: in the approved
+    // catalogue (when known), a safe slug, fresh price and stock.
+    const eligible = (list: any[]) => list
+      .map(overlay)
+      .filter((item) => validIds.length === 0 || validIds.includes(item.productId))
+      .filter((item) => safeSlug.test(String(item.slug ?? "")));
+    let fallbackList: any[] = [];
+    if (alwaysRender) {
+      try { fallbackList = JSON.parse(rail.getAttribute("data-fallback-products") || "[]"); } catch { fallbackList = []; }
+    }
+    // The page's own product is never recommended to itself, and a short
+    // history is topped up from the server fallback (see recentlyViewedItems.ts).
+    const composed = composeRecentlyViewedItems(eligible(getRecentlyViewedHistory()), eligible(Array.isArray(fallbackList) ? fallbackList : []), {
+      excludeProductId: rail.getAttribute("data-exclude-product-id") || "",
+      alwaysRender,
+      max: 4,
+    });
+    if (composed.length === 0) return;
 
     // Unhide section now that all gating rules passed and we have data
+    const head = rail.querySelector<HTMLTemplateElement>("template[data-recently-viewed-head]");
+    if (head) head.replaceWith(head.content.cloneNode(true));
     rail.style.display = "block";
 
-    list.innerHTML = items
-      .map((item) => {
+    // The SAME campaign discount every server-rendered card shows (stamped by
+    // the frontmatter); the evaluator's exact per-line formula, to the shilling.
+    const saleBps = Number(rail.getAttribute("data-sale-bps") || 0);
+    const salePercent = Number(rail.getAttribute("data-sale-percent") || 0);
+    const saleEndsIso = rail.getAttribute("data-sale-ends-iso") || "";
+    const saleActive = Number.isFinite(saleBps) && saleBps > 0;
+    // The sale price is computed on the server by /api/catalogue-live with the
+    // evaluator's exact per-line formula, INCLUDING the product's floor (Price
+    // A), which never reaches the browser. No live sale = full price.
+
+    const sharedRailRenderId = crypto.randomUUID();
+    list.innerHTML = composed
+      .map(({ item, source }) => {
         const priceLabel = (typeof item.price === "number" && item.price > 0) 
-          ? `USh ${item.price.toLocaleString("en-UG")}` 
-          : "Price on request";
+          ? `UGX ${item.price.toLocaleString("en-US")}`
+          : liveOk ? "Price on request" : "See today's price";
         
         const itemName = String(item.name ?? "Product");
         const escapedName = escapeHtml(itemName);
@@ -136,49 +181,117 @@ if (validIds.length === 0) {
           : "Accessory";
 
         const img = imageUrl
-           ? `<img src="${escapeHtml(imageUrl)}" alt="${escapedName} product image" loading="lazy" class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105" />`
-           : `<div class="absolute inset-0 flex flex-col items-center justify-center bg-brand-softGrey p-4 text-center select-none">
+           ? `<img src="${escapeHtml(imageUrl)}"${srcsetOf(imageUrl)} alt="${escapedName} product image" loading="lazy" class="object-cover w-full h-full" />`
+           : `<div class="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 p-4 text-center select-none">
                 <svg class="w-10 h-10 mb-2 text-brand-mutedGrey/20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                <span class="text-[10px] font-bold text-brand-mutedGrey tracking-wider uppercase">${productType}</span>
-                <span class="text-[9px] font-bold text-brand-mutedGrey/40 mt-1 uppercase tracking-tight">Image unavailable</span>
+                <span class="text-[11px] font-bold text-slate-600 tracking-wider uppercase">${productType}</span>
+                <span class="text-[11px] font-bold text-slate-600 mt-1 uppercase tracking-tight">Image unavailable</span>
               </div>`;
 
-        const availabilityLabel = item.availability?.kind === "in_stock" ? "In stock"
-          : item.availability?.kind === "out_of_stock" ? "Out of stock"
+        // Stock STATE only, never a number (owner decision 2026-09-24).
+        const availabilityLabel = item.availability?.kind === "in_stock"
+          ? "In stock"
+          : item.availability?.kind === "out_of_stock" ? "Sold out"
           : item.availability?.kind === "pre_order" ? "Pre-order"
           : "Confirm availability";
 
-        const priceSizeClass = (typeof item.price === 'number' && item.price > 0) ? 'text-lg text-brand-charcoal' : 'text-xs text-brand-mutedGrey font-bold';
+        const hasPrice = typeof item.price === "number" && item.price > 0;
+        // A campaign is not a sale unless this product's price actually
+        // drops. At the floor the cut is nothing, and "145,000 was 145,000,
+        // 10% discount" is a claim the basket does not honour.
+        const onSale = saleActive && hasPrice && typeof item.sale === "number" && item.sale > 0 && item.sale < item.price;
+        // The link's label replaces its content for assistive technology, so
+        // it must say the price the card shows: the sale price when there is one.
+        const spokenPrice = onSale ? `UGX ${item.sale.toLocaleString("en-US")}, reduced from ${priceLabel}` : priceLabel;
+        const priceHtml = onSale
+          ? `<span class="flex flex-col min-w-0">
+               <span class="flex flex-wrap items-baseline gap-x-2">
+                 <span class="font-black tracking-tight tabular-nums text-lg text-brand-charcoal">UGX ${item.sale.toLocaleString("en-US")}</span>
+                 <span class="text-[11px] font-semibold text-slate-600 line-through tabular-nums">UGX ${item.price.toLocaleString("en-US")}</span>
+                 <span class="text-[11px] font-black uppercase tracking-wider rounded-full px-1.5 py-0.5" style="background:#93D500;color:#0A0A0A">${salePercent}% discount</span>
+               </span>
+               ${saleEndsIso && item.availability?.kind !== "out_of_stock" ? `<span class="mt-0.5 text-[11px] font-bold text-amber-700 tabular-nums" data-card-sale-ends="${escapeHtml(saleEndsIso)}">Discounted price. Limited time</span>` : ""}
+             </span>`
+          : `<span class="font-black tracking-tight ${hasPrice ? 'text-lg text-brand-charcoal' : 'text-xs text-brand-mutedGrey font-bold'}">${priceLabel}</span>`;
 
-        const attributionId = "loc_" + Math.random().toString(36).substring(2, 11);
-        const railRenderId = "loc_rail_" + Date.now();
+
+        // R7: real UUIDs — the old "loc_"-prefixed values failed the API's
+        // uuid columns, so every event from this rail was silently rejected.
+        const attributionId = crypto.randomUUID();
+        const railRenderId = sharedRailRenderId;
+
+        // The SAME server-handled add/buy the PDP and every other card use.
+        const canBuy = item.availability?.kind === "in_stock" && hasPrice;
+        const ctaHtml = canBuy
+          ? `<form method="POST" action="/cart" class="mt-3 flex flex-wrap gap-2">
+               <input type="hidden" name="action" value="add" />
+               <input type="hidden" name="productId" value="${escapedProductId}" />
+               <input type="hidden" name="slug" value="${escapedSlug}" />
+               <input type="hidden" name="name" value="${escapedName}" />
+               <input type="hidden" name="priceUgx" value="${Number(item.price) || 0}" />
+               <button type="submit" aria-label="Add ${escapedName} to cart" class="flex-1 min-h-11 px-3 whitespace-nowrap rounded-full text-[11px] font-black uppercase tracking-wider outline-none transition hover:shadow-md hover:shadow-brand-primary/25 focus-visible:ring-2 focus-visible:ring-brand-primaryInk active:scale-[0.98]" style="background:#93D500;color:#0A0A0A">Add to cart</button>
+               <button type="submit" name="buyNow" value="1" aria-label="Buy ${escapedName} now" class="flex-1 min-h-11 px-3 whitespace-nowrap rounded-full border border-slate-300 text-[11px] font-black uppercase tracking-wider text-gray-800 outline-none transition hover:border-gray-900 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-primaryInk active:scale-[0.98]">Buy now</button>
+             </form>`
+          : `<a href="/products/${escapedSlug}" class="mt-3 flex min-h-11 items-center justify-center rounded-full border border-slate-300 text-[11px] font-black uppercase tracking-wider text-gray-800 outline-none transition hover:border-gray-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">View product</a>`;
 
         return `
           <li class="group list-none h-full">
-            <a href="/products/${escapedSlug}"
-               aria-label="View ${escapedName}. ${priceLabel}. ${availabilityLabel}."
-               data-recommendation-click 
-               data-placement="recently_viewed" 
-               data-product-id="${escapedProductId}"
-               data-attribution-id="${attributionId}"
-               data-rail-render-id="${railRenderId}"
-               data-reason-code="${isUsingFallback ? 'RECENTLY_VIEWED_FALLBACK' : 'RECENTLY_VIEWED'}"
-               class="flex flex-col h-full border border-brand-borderGrey rounded-3xl p-5 hover:border-brand-primary hover:shadow-xl transition-all duration-300 bg-white outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30">
-              <div class="aspect-square bg-brand-softGrey rounded-2xl overflow-hidden mb-4 relative border border-brand-borderGrey/50">
+            <div class="flex flex-col h-full border border-slate-200/80 rounded-2xl p-3 sm:p-5 hover:border-brand-primary hover:-translate-y-0.5 transition-[transform,border-color] duration-200 bg-white">
+              <a href="/products/${escapedSlug}"
+                 aria-label="View ${escapedName}. ${spokenPrice}. ${availabilityLabel}."
+                 data-recommendation-click 
+                 data-placement="recently_viewed" 
+                 data-product-id="${escapedProductId}"
+                 data-attribution-id="${attributionId}"
+                 data-rail-render-id="${railRenderId}"
+                 data-reason-code="${source === 'fallback' ? 'RECENTLY_VIEWED_FALLBACK' : 'RECENTLY_VIEWED'}"
+                 class="block aspect-square bg-slate-50 rounded-xl overflow-hidden mb-4 relative border border-slate-100 outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk">
                  ${img}
-              </div>
+                 ${item.availability?.kind === "out_of_stock" ? `<span class="absolute inset-0 flex items-center justify-center bg-slate-900/55 pointer-events-none" aria-hidden="true" data-sold-out-overlay><span class="text-white text-xl font-black tracking-tight drop-shadow-md">Sold out</span></span>` : ""}
+              </a>
               <div class="flex flex-col flex-grow">
-                <h3 class="text-base font-bold text-brand-charcoal leading-tight mb-2 group-hover:text-brand-primary transition-colors line-clamp-2 min-h-[2.5rem]">${escapedName}</h3>
+                <h3 class="text-[15px] font-bold text-gray-900 leading-snug mb-2 group-hover:text-brand-primaryInk transition-colors line-clamp-2 min-h-[2.5rem]"><a href="/products/${escapedSlug}" class="outline-none focus-visible:underline">${escapedName}</a></h3>
                 <p class="mb-3 text-[11px] font-semibold text-brand-mutedGrey">${availabilityLabel}</p>
                 <div class="mt-auto pt-4 border-t border-brand-borderGrey flex items-center justify-between gap-3">
-                  <span class="font-black tracking-tight ${priceSizeClass}">${priceLabel}</span>
-                  <span class="px-4 py-2 rounded-xl font-bold text-xs transition-all duration-300 bg-brand-softGrey text-brand-charcoal group-hover:bg-brand-charcoal group-hover:text-white">View</span>
+                  ${priceHtml}
                 </div>
+                ${ctaHtml}
               </div>
-            </a>
+            </div>
           </li>
         `;
       })
       .join("");
+
+    // R7/R9: this rail injects its cards AFTER the shared observer in
+    // RecommendationRail took its static snapshot, so it observes its own —
+    // with the SAME 0.30 visibility contract as every other rail, because an
+    // impression fired on DOM injection is not comparable to one fired on
+    // actual sight, and cross-placement CTRs must compare like with like.
+    import("../../lib/recommendations").then(({ trackRecommendationImpression }) => {
+      const seen = new WeakSet<Element>();
+      const observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting || seen.has(entry.target)) continue;
+            seen.add(entry.target);
+            const productId = entry.target.getAttribute("data-product-id");
+            if (!productId) continue;
+            trackRecommendationImpression({
+              placement: "recently_viewed",
+              productId,
+              attributionId: entry.target.getAttribute("data-attribution-id") || undefined,
+              railRenderId: entry.target.getAttribute("data-rail-render-id") || undefined,
+              reasonCode: entry.target.getAttribute("data-reason-code") || undefined,
+              source: "recommendation_rail",
+            });
+          }
+        },
+        { threshold: 0.3 },
+      );
+      for (const el of Array.from(list.querySelectorAll("[data-recommendation-click]"))) {
+        observer.observe(el);
+      }
+    }).catch(() => undefined);
   });
 </script>

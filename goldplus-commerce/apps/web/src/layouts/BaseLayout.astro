@@ -1,99 +1,112 @@
 ---
 import '../styles/global.css';
-import Header from '../components/Header.astro';
+import { ANALYTICS_REDACTED_PARAMS, loaderRules } from '@goldplus/shared';
+import { DECLARED } from '../lib/declaredAutomation';
+import GpNav from '../components/GpNav.astro';
+import WebMcpTools from '../components/WebMcpTools.astro';
+import ShopAssistant from '../components/ShopAssistant.astro';
+import BackToTop from '../components/BackToTop.astro';
+import { indexableCategoryHref } from '../lib/indexableLinks';
 
 import { whatsappSupportNumber } from '../lib/api';
+import { getBusinessInfo } from '../lib/businessInfo';
+import { getSiteVerification } from '../lib/siteVerification';
+import { getHomepageContent } from '../lib/homepageContent';
+import { DEFAULT_HOMEPAGE_CONTENT, xHandleFromSocials, jpegRendition } from '@goldplus/shared';
+import { SITE_ORIGIN } from '../lib/sitemap';
+import { resolveMeasurementConfig } from '../lib/measurement';
+import DeclarativeActions from '../components/DeclarativeActions.astro';
+import { inviteNoteWords } from '../lib/referralInvite';
+
+// Business/contact info — admin-editable, DB-backed (falls back to DEFAULT).
+const biz = await getBusinessInfo();
+const siteVerification = await getSiteVerification();
+const xHandle = xHandleFromSocials(biz.socials);
+// Footer copy + links — admin-editable via homepage_content (falls back to DEFAULT).
+const homepageContentForFooter = await getHomepageContent();
+const whatsappChannel = homepageContentForFooter.whatsappChannel ?? DEFAULT_HOMEPAGE_CONTENT.whatsappChannel;
+const footer = homepageContentForFooter.footer ?? DEFAULT_HOMEPAGE_CONTENT.footer;
 
 interface Props {
   title: string;
   description?: string;
   image?: string;
   canonicalUrl?: string;
+  /** U6 — optional robots directive (e.g. "noindex,follow"). Omitted = default index,follow. */
+  robotsMeta?: string;
+  /**
+   * A product page: what Facebook, Instagram and WhatsApp show for a shared
+   * link, and what Meta's catalogue reads from the page. `id` is the same id
+   * the catalogue feed and the conversion events name.
+   */
+  product?: { id: string; priceUgx: number; inStock: boolean };
+  /**
+   * The 404 and 500 pages. The URL they answer is not a page, so they name no
+   * canonical and no og:url (a 404 used to declare the broken URL itself as
+   * canonical) and are noindex unless the page says otherwise.
+   */
+  errorPage?: boolean;
 }
 
 const {
   title,
-  description = 'GoldPlus — Premium electronics in Uganda',
-  image = '/icon-512.svg',
+  description = 'GoldPlus. Premium electronics in Uganda',
+  image = '/og-default.png',
   canonicalUrl,
+  robotsMeta: robotsMetaProp,
+  product: ogProduct,
+  errorPage = false,
 } = Astro.props;
+const robotsMeta = robotsMetaProp ?? (errorPage ? 'noindex,follow' : undefined);
 
-const footerSocialLinks = [
-  {
-    key: "instagram",
-    label: "Follow GoldPlus on Instagram",
-    href: "https://instagram.com/shopgoldplus",
-    iconPath: "M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.051C.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z",
-    type: "social",
-    enabled: true
-  },
-  {
-    key: "x",
-    label: "Follow GoldPlus on X",
-    href: "https://x.com/shopgoldplus",
-    iconPath: "M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z",
-    type: "social",
-    enabled: true
-  },
-  {
-    key: "facebook",
-    label: "Follow GoldPlus on Facebook",
-    href: "https://facebook.com/shopgoldplus",
-    iconPath: "M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z",
-    type: "social",
-    enabled: true
-  },
-  {
-    key: "youtube",
-    label: "Subscribe to GoldPlus on YouTube",
-    href: "https://youtube.com/@shopgoldplus",
-    iconPath: "M23.498 6.163a3.003 3.003 0 00-2.11-2.11C19.518 3.545 12 3.545 12 3.545s-7.518 0-9.388.507a3.003 3.003 0 00-2.11 2.11C0 8.033 0 12 0 12s0 3.967.502 5.837a3.003 3.003 0 002.11 2.11c1.87.507 9.388.507 9.388.507s7.518 0 9.388-.507a3.003 3.003 0 002.11-2.11C24 15.967 24 12 24 12s0-3.967-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z",
-    type: "social",
-    enabled: true
-  },
-  {
-    key: "tiktok",
-    label: "Follow GoldPlus on TikTok",
-    href: "https://tiktok.com/@shopgoldplus",
-    iconPath: "M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z",
-    type: "social",
-    enabled: true
-  },
-  {
-    key: "linkedin",
-    label: "Follow GoldPlus on LinkedIn",
-    href: "https://linkedin.com/company/shopgoldplus",
-    iconPath: "M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z",
-    type: "social",
-    enabled: true
-  },
-  {
-    key: "threads",
-    label: "Follow GoldPlus on Threads",
-    href: "https://threads.net/@shopgoldplus",
-    iconPath: "M12.186 24h-.007c-3.581-.024-6.334-1.205-8.184-3.509C2.35 18.44 1.5 15.586 1.472 12.01v-.017c.03-3.579.879-6.43 2.525-8.482C5.845 1.205 8.6.024 12.18 0h.014c2.746.02 5.043.725 6.826 2.098 1.677 1.29 2.858 3.13 3.509 5.467l-2.04.569c-1.104-3.96-3.898-5.984-8.304-6.015-2.91.022-5.11.936-6.54 2.717C4.307 6.504 3.616 8.914 3.589 12c.027 3.086.718 5.496 2.057 7.164 1.43 1.783 3.631 2.698 6.54 2.717 2.623-.02 4.358-.631 5.8-2.045 1.647-1.613 1.618-3.593 1.09-4.798-.31-.71-.873-1.3-1.634-1.75-.192 1.352-.622 2.446-1.284 3.272-.886 1.102-2.14 1.704-3.73 1.79-1.202.065-2.361-.218-3.259-.801-1.063-.689-1.685-1.74-1.752-2.964-.065-1.19.408-2.285 1.33-3.082.88-.76 2.119-1.207 3.583-1.291a13.853 13.853 0 0 1 3.02.142c-.126-.742-.375-1.332-.75-1.757-.513-.586-1.308-.883-2.359-.89h-.029c-.844 0-1.992.232-2.721 1.32L7.734 7.847c.98-1.454 2.568-2.256 4.478-2.256h.044c3.194.02 5.097 1.975 5.287 5.388.108.046.216.094.321.142 1.49.7 2.58 1.761 3.154 3.07.797 1.82.871 4.79-1.548 7.158-1.85 1.81-4.094 2.628-7.277 2.65Zm1.003-11.69c-.242 0-.487.007-.739.021-1.836.103-2.98.946-2.916 2.143.067 1.256 1.452 1.839 2.784 1.767 1.224-.065 2.818-.543 3.086-3.71a10.5 10.5 0 0 0-2.215-.221z",
-    type: "social",
-    enabled: true
-  },
-  {
-    key: "pinterest",
-    label: "Follow GoldPlus on Pinterest",
-    href: "https://pinterest.com/shopgoldplus",
-    iconPath: "M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.162-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.663.967-2.911 2.168-2.911 1.024 0 1.518.769 1.518 1.688 0 1.029-.653 2.567-.992 3.992-.285 1.193.6 2.165 1.775 2.165 2.128 0 3.768-2.245 3.768-5.487 0-2.861-2.063-4.869-5.008-4.869-3.41 0-5.409 2.562-5.409 5.199 0 1.033.394 2.143.889 2.741.099.12.112.225.085.345-.09.375-.293 1.199-.334 1.363-.053.225-.172.271-.401.165-1.495-.69-2.433-2.878-2.433-4.646 0-3.776 2.748-7.252 7.92-7.252 4.158 0 7.392 2.967 7.392 6.923 0 4.135-2.607 7.462-6.233 7.462-1.214 0-2.354-.629-2.758-1.379l-.749 2.848c-.269 1.045-1.004 2.352-1.498 3.146 1.123.345 2.306.535 3.55.535 6.607 0 11.985-5.365 11.985-11.987C23.97 5.39 18.592.026 11.985.026L12.017 0z",
-    type: "social",
-    enabled: true
-  },
-  {
-    key: "whatsapp-chat",
-    label: "Chat with GoldPlus on WhatsApp",
-    href: "https://wa.me/256705004545",
-    iconPath: "M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z",
-    type: "contact",
-    enabled: true
-  }
-];
+// Footer social/contact icons live in ONE cached sprite (public/nav/social-v1.svg,
+// a <symbol> per key) instead of ~6.4 KB of path data inlined into every
+// document (about 2.4 KB brotli of the home budget, 2026-09-25). Bump the file
+// name when an icon changes: there is no edge purge token.
+const FOOTER_ICON_SPRITE = '/nav/social-v1.svg';
+const footerIconKeys = new Set(['instagram', 'x', 'facebook', 'youtube', 'tiktok', 'linkedin', 'threads', 'pinterest', 'whatsapp-chat']);
 
-const canonical = canonicalUrl ?? Astro.url.toString();
+// Default canonical is origin + path. The query string is never part of it:
+// it carried payment-return parameters (and, once, provider text) into
+// <link rel="canonical"> and og:url. Pages whose query IS the resource
+// (/shop filters, via crawlPolicy) pass canonicalUrl explicitly.
+// SITE_ORIGIN, not the origin this request happened to arrive on. Search
+// Console shows the shop indexed under BOTH https://www.shopgoldplus.com and
+// https://shopgoldplus.com, because a request-derived canonical simply agrees
+// with whichever host the crawler used, so each page competed with its own
+// twin and the ranking signals split between them. Every page now names one
+// canonical host — the same one the sitemaps and the pages that already pass
+// canonicalUrl explicitly use.
+const canonical = canonicalUrl ?? `${SITE_ORIGIN}${Astro.url.pathname}`;
+// Share-card crawlers (WhatsApp, Facebook, X) ignore a relative og:image; always emit an absolute URL.
+// A product photo is shared as its JPEG rendition: every share-card crawler reads JPEG.
+const shareImage = jpegRendition(/^https?:\/\//i.test(image) ? image : `${SITE_ORIGIN}${image.startsWith('/') ? '' : '/'}${image}`);
+const measurement = resolveMeasurementConfig(import.meta.env);
+// Loads /fonts/faces.css right after the first paint (see the <head> comment).
+// Loads Cloudflare Web Analytics after load + idle (see the <head> comment), on the shop's own host only: anywhere
+// else (a local or CI copy) its beacon is refused by CORS and only adds console errors and stray visits.
+const CF_BEACON_LOADER = `(function(){if(!/(^|\\.)shopgoldplus\\.com$/.test(location.hostname))return;function go(){var s=document.createElement('script');s.defer=true;s.src='https://static.cloudflareinsights.com/beacon.min.js';s.setAttribute('data-cf-beacon','{"token":"6288c9e8fae24ebcbc432462132ae7bd"}');document.body.appendChild(s);}function idle(){(window.requestIdleCallback||function(f){setTimeout(f,1500);})(go,{timeout:4000});}if(document.readyState==='complete'){idle();}else{addEventListener('load',idle);}})();`;
+// Returning-visitor flag on <html> before first paint (see the <head> comment).
+const SEEN_FLAG = `try{if(localStorage.getItem('goldplus_seen_before')==='true')document.documentElement.classList.add('gp-seen')}catch(e){}`;
+// Recently-viewed flag, same timing: the homepage trust strip hides only when the
+// "Pick up where you left off" rail will take its place (not for every returner).
+const RV_FLAG = `try{var r=JSON.parse(localStorage.getItem('goldplus_recently_viewed')||'[]');if(Array.isArray(r)&&r.length)document.documentElement.classList.add('gp-rv')}catch(e){}`;
+const FONT_LOADER = `(function(){var d=0;function go(){if(d)return;d=1;var l=document.createElement('link');l.rel='stylesheet';l.href='/fonts/faces.css?v=20261021';document.head.appendChild(l);}try{var o=new PerformanceObserver(function(){o.disconnect();setTimeout(go,0);});o.observe({type:'paint',buffered:true});}catch(e){}addEventListener('load',function(){setTimeout(go,0);});setTimeout(go,3000);})();`;
+const clarityId = /^[a-z0-9]{6,20}$/.test(import.meta.env.PUBLIC_CLARITY_ID ?? '') ? import.meta.env.PUBLIC_CLARITY_ID : null;
+// Clarity records page TEXT, not only inputs: everything is masked except the
+// public catalogue (home, shop, products, categories, blog, info pages), so a
+// name, phone or quote shown back on any other page is never recorded.
+// Public catalogue routes by their real names: the hubs (/power, /audio, /storage, /phone-batteries …),
+// the finder and the local pages were masked whole because this list named a `batteries` route that
+// never existed (found 2026-10-28). Inputs stay masked by Clarity's own default either way.
+// Catalogue sections keep their pages below them (/products/x, /blog/x, /power/chargers, /phone-batteries/x); info
+// pages and tools match exactly, so /returns/start (an order's own items) and /support/issue stay masked. Routes
+// that do not exist (about, contact, brands, deals) are gone; the finders, compare and loyalty pages were added.
+// Goldie's panel and the account greeting carry their own data-clarity-mask on every page (2026-10-29 review).
+const clarityMaskAll = !/^\/(?:$|(?:shop|products|blog|battery-finder|phone-batteries|power|audio|storage|computer-accessories|car-accessories|locations)(?:\/|$)|(?:faq|returns|warranty|support|loyalty|compare|charger-finder|product-finder|delivery\/kampala-wakiso)$)/.test(Astro.url.pathname);
+/** The attribution rulebook (packages/shared/src/attribution/arrival.ts) as data for the inline tag loader. */
+const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, bots: DECLARED.source };
+
 ---
 
 <!doctype html>
@@ -105,192 +118,493 @@ const canonical = canonicalUrl ?? Astro.url.toString();
     <title>{title.includes('GoldPlus') ? title : `${title} | GoldPlus`}</title>
 
     {/* Open Graph */}
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content={Astro.url} />
+    <meta property="og:type" content={ogProduct ? "product" : "website"} />
+    {ogProduct && (
+      <Fragment>
+        <meta property="product:retailer_item_id" content={ogProduct.id} />
+        <meta property="product:price:amount" content={String(ogProduct.priceUgx)} />
+        <meta property="product:price:currency" content="UGX" />
+        <meta property="product:availability" content={ogProduct.inStock ? "in stock" : "out of stock"} />
+        <meta property="product:condition" content="new" />
+        <meta property="product:brand" content="GoldPlus" />
+      </Fragment>
+    )}
+    {!errorPage && <meta property="og:url" content={canonical} />}
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta property="og:image" content={image} />
+    <meta property="og:image" content={shareImage} />
 
-    {/* Twitter */}
-    <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:url" content={Astro.url} />
-    <meta property="twitter:title" content={title} />
-    <meta property="twitter:description" content={description} />
-    <meta property="twitter:image" content={image} />
-    <link rel="canonical" href={canonical} />
+    <meta property="og:image:alt" content={title} />
+    <meta property="og:site_name" content="GoldPlus" />
+
+    {/* X (Twitter) cards. These are `name` tags, not Open Graph `property`
+        tags: X reads twitter:* by name and only falls back to og:* for the
+        rest. twitter:site names the account the card belongs to, taken from
+        the same X link the footer shows. */}
+    {siteVerification.meta && <meta name="facebook-domain-verification" content={siteVerification.meta} />}
+    <meta name="twitter:card" content="summary_large_image" />
+    {xHandle && <meta name="twitter:site" content={xHandle} />}
+    {xHandle && <meta name="twitter:creator" content={xHandle} />}
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={shareImage} />
+    <meta name="twitter:image:alt" content={title} />
+    {!errorPage && <link rel="canonical" href={canonical} />}
+    {robotsMeta && <meta name="robots" content={robotsMeta} />}
     <slot name="head" />
 
-    {/* Server-Side Google Tag Manager */}
-    <script define:vars={{ metricsUrl: import.meta.env.PUBLIC_METRICS_URL || 'https://metrics.shopgoldplus.com', gtmId: import.meta.env.PUBLIC_GTM_ID || 'GTM-MOCKID' }}>
-      (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-      new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-      j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-      metricsUrl+'/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-      })(window,document,'script','dataLayer',gtmId);
-    </script>
+    {/* Server-Side Google Tag Manager — R7 (§32): only rendered when a REAL
+        container id is configured. The old fallback shipped GTM-MOCKID in
+        production HTML: a tracking loader firing for a container that does
+        not exist, on every page, before any consent consideration.
 
-
-    {/* PostHog Analytics */}
-    <script>
-      !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.async=!0,p.src=s.api_host+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="capture identify alias people.set people.set_once set_config register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getActiveMatchingSurveys getSurveys onSessionId".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
-      posthog.init(
-        import.meta.env.PUBLIC_POSTHOG_KEY || 'phc_mock_key_for_telemetry',
-        {
-          api_host: import.meta.env.PUBLIC_POSTHOG_HOST || 'https://app.posthog.com',
-          loaded: (posthog) => {
-            if (!import.meta.env.PUBLIC_POSTHOG_KEY) posthog.opt_out_capturing();
+        The endpoint is now part of the same readiness condition. It used to
+        default to https://metrics.shopgoldplus.com, which has no DNS record —
+        so setting the id alone would have shipped a loader aimed at nothing. */}
+    {/* Microsoft Clarity (heatmaps, session recordings): only with a project id,
+        never for robots, our probes or staff (same gate as the GA4 tag). Clarity masks typed input by default; checkout and
+        account pages are masked entirely (data-clarity-mask on <body>).
+        Clarity records the address itself, and masking never applies to it: a gift card's spendable code rides
+        the #fragment of its text link (stripped only once the page's own script runs), and order references,
+        tokens and codes ride query strings. Such a visit is not recorded at all (same list GA4 redacts).
+        Our own share token (#s=<6>, the tag loader's dark-social marker) is random and nobody's: not a secret.
+        (Notes here, not in the script: inline scripts ship as written.) */}
+    {clarityId && (
+      <script nonce={Astro.locals.cspNonce} define:vars={{ clarityId, bots: arrivalRules.bots, red: arrivalRules.red, share: arrivalRules.share.frag }}>
+        (function () {
+          if (navigator.webdriver === true || new RegExp(bots, 'i').test(navigator.userAgent || '')
+            || /(?:^|; )(?:gp_probe|gp_staff)=/.test(document.cookie)) return;
+          var secret = location.hash.length > 1 && !new RegExp(share).test(location.hash), rx = new RegExp(red, 'i');
+          new URLSearchParams(location.search).forEach(function (v, k) { if (rx.test(k)) secret = true; });
+          if (secret) return;
+          (function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+          t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+          y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script",clarityId);
+        })();
+      </script>
+    )}
+    {/* The tag script's notes live here, not in the script, so they are not shipped
+        in every document (2026-09-25).
+        Our own robots are not customers: the performance audit, Lighthouse
+        Watch and the compatibility/synthetic probes drive real browsers
+        against production (with a spoofed phone user agent, so GA4's bot
+        list misses them). Automation is detected by what it cannot hide.
+        Consent Mode v2 defaults, set BEFORE the container loads. Owner
+        decision 2026-09-19: measurement is always on and runs server-side.
+        The one choice a shopper makes here (preference centre, gp_consent=a0)
+        is about analytics COOKIES in their browser: with it, Google's tag
+        runs cookieless. Advertising signals (2026-10-17, owner: retargeting through
+        Google Ads) are granted only while the Google Ads card is Live with
+        retargeting on, so GA4 audiences can be retargeted; a shopper who turned
+        advertising off (gp_ads=0, Preference Centre) never is, and one who refused
+        analytics cookies gets no advertising cookies either.
+        One visitor id for the tag AND the server (GA client_id = `_fp_cid`,
+        set by our server in middleware; written here only as a fallback). */}
+    {/* GTM loads after window load + idle, for every visitor (2026-10-08): the
+        container (gtm.js ~120 KB + gtag ~175 KB) requested in the head shared the
+        link with the hero image and cost mobile LCP. gtm.start keeps the real
+        page-start time and dataLayer queues anything pushed meanwhile, so no event
+        is lost; sales events are sent server-side regardless. */}
+    {/* Tag loader notes (kept out of the script: inline scripts ship as written). Audit 2026-10-23: 94.6% "Direct".
+        - Not loaded for automation (same list as lib/declaredAutomation.ts, plus the gp_probe cookie) or for staff
+          (gp_staff, set when the admin opens).
+        - Where the visit came from, settled before anything reads the URL:
+          1. Our own links carry ?ch=<channel>.<campaign> (shared/links/shopLinkTag; short because SMS is paid by the
+             character), rewritten to utm_source/utm_medium/utm_campaign (the rulebook's CHANNEL_TAGS: SMS, WhatsApp,
+             email, Messenger, Instagram, the installed app, print/QR).
+          2. A social app's own browser sends no referrer but names itself (lib/inAppBrowser.ts, same list, kept in
+             step by a test): the landing is credited to that network. So is an untagged link carrying Facebook's
+             fbclid: it is added to shares too, so it says "from Facebook", never "an ad" (no ad has ever run; 10 of
+             10 fbclid arrivals were shares, 2026-10-23). GA4 ignores it: without a referrer it filed those as Direct.
+          3. The tag loads late (mobile LCP), so a visitor who taps on before it loads used to lose the landing. Until
+             GA4 has seen the visit (sessionStorage gp_ga_seen, set when gtm.js loads), the landing's campaign and
+             click ids (gp_land, 30 minutes) are put on the next page's URL and its referrer is set as page_referrer.
+        - What GA4 may see (shared/links/analyticsSafeUrl, same list): the values of order references, payment links,
+          codes and tokens in this page's address and its referrer are replaced by "redacted". A return from Pesapal
+          is not an arrival: its referrer is our own origin (GA4 would otherwise start a "pesapal.com / referral" visit).
+          A page that carried the landing's campaign is marked (__gpCarried) so our own landing touch is not filed twice.
+        - Dark social (the rulebook's SHARE_*): a shareable page's address carries this visitor's own random token after
+          the # (#s=xxxxxx; localStorage gp_st), added before the tag loads so GA4 sees no change. A link copied into
+          WhatsApp, Telegram or SMS and opened by someone else, untagged and with no outside referrer, gets the
+          rulebook's SHARE_TAGS (a friend referral); its owner reopening it is nothing. The # never reaches the server.
+        - The _fp_cid fallback is Domain-scoped like the server's (visitorCookieDomain): a host-only copy beside it
+          made two ids, read differently by the tag and the collector.
+        - The tag loads after load + idle, or at the first touch, key or scroll if sooner (the hero has painted). */}
+    {measurement.configured && (
+      <script nonce={Astro.locals.cspNonce} define:vars={{ metricsUrl: measurement.metricsUrl, gtmId: measurement.gtmId, userId: Astro.locals.gpUserId ?? null, adSignals: siteVerification.googleAdsRemarketing, rules: arrivalRules }}>
+        (function () {
+        var ua = navigator.userAgent || '';
+        if (navigator.webdriver === true || new RegExp(rules.bots, 'i').test(ua)
+          || /(?:^|; )(?:gp_probe|gp_staff)=/.test(document.cookie)) return;
+        var CAMPAIGN = new RegExp(rules.campaign, 'i');
+        var CH = rules.ch;
+        try {
+          var u = new URL(location.href), gt = u.searchParams.get('ch');
+          var g = gt && new RegExp('^([' + Object.keys(CH).join('') + '])\\.([a-z0-9_-]{1,40})$').exec(gt);
+          if (g && !u.searchParams.has('utm_source')) {
+            u.searchParams.delete('ch');
+            u.searchParams.set('utm_source', CH[g[1]][0]); u.searchParams.set('utm_medium', CH[g[1]][1]); u.searchParams.set('utm_campaign', g[2]);
+            history.replaceState(history.state, '', u.toString());
           }
+          var here = new URL(location.href), q = [];
+          here.searchParams.forEach(function (v, k) { if (CAMPAIGN.test(k)) q.push([k, v]); });
+          var ref = '';
+          var PAY = new RegExp(rules.pay, 'i'), rh = '';
+          try { rh = new URL(document.referrer).hostname; if (!/(^|\.)shopgoldplus\.com$/.test(rh) && !PAY.test(rh)) ref = document.referrer; } catch (e) {}
+          var TAGGED = new RegExp(rules.tagged, 'i'), tagged = false;
+          here.searchParams.forEach(function (v, k) { if (v && TAGGED.test(k)) tagged = true; });
+          var own = null;
+          try { own = localStorage.getItem('gp_st'); if (!/^[a-z0-9]{6}$/.test(own || '')) { own = (Math.random().toString(36).slice(2) + '000000').slice(0, 6); localStorage.setItem('gp_st', own); } } catch (e) { own = null; }
+          var sm = new RegExp(rules.share.frag).exec(location.hash);
+          if (sm) {
+            here.hash = '';
+            if (sm[1] !== own && !tagged && !ref) {
+              Object.keys(rules.share.tags).forEach(function (k) { here.searchParams.set(k, rules.share.tags[k]); q.push([k, rules.share.tags[k]]); });
+              tagged = true;
+            }
+            history.replaceState(history.state, '', here.toString());
+          }
+          if (!ref && !tagged && !document.referrer) {
+            var soc = '';
+            Object.keys(rules.soc).forEach(function (k) { if (!soc && here.searchParams.get(k)) soc = rules.soc[k]; });
+            for (var i = 0; i < rules.iab.length; i++) if (new RegExp(rules.iab[i][0], rules.iab[i][1]).test(ua)) { ref = 'https://' + rules.iab[i][2] + '/'; window.__gpLandingReferrer = ref; break; }
+            if (!ref && soc) { ref = 'https://' + soc + '/'; window.__gpLandingReferrer = ref; }
+          }
+          var land = null; try { land = JSON.parse(sessionStorage.getItem('gp_land') || 'null'); } catch (e) {}
+          if (land && Date.now() - land.t > 30 * 60e3) { land = null; sessionStorage.removeItem('gp_land'); }
+          if (sessionStorage.getItem('gp_ga_seen') !== '1') {
+            if (q.length || ref) sessionStorage.setItem('gp_land', JSON.stringify({ q: q, r: ref, t: Date.now() }));
+            else if (land) {
+              if (land.q.length) { land.q.forEach(function (kv) { here.searchParams.set(kv[0], kv[1]); }); history.replaceState(history.state, '', here.toString()); window.__gpCarried = true; }
+              if (land.r) window.__gpLandingReferrer = land.r;
+            }
+          }
+          if (own && !location.hash && !new RegExp(rules.share.deny).test(location.pathname)) history.replaceState(history.state, '', location.href.replace(/#$/, '') + '#s=' + own);
+        } catch (e) {}
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = window.gtag || function () { dataLayer.push(arguments); };
+        var noCookies = /(?:^|; )gp_consent=a0/.test(document.cookie);
+        var ads = adSignals === true && !/(?:^|; )gp_ads=0/.test(document.cookie) ? 'granted' : 'denied';
+        gtag('consent', 'default', {
+          analytics_storage: noCookies ? 'denied' : 'granted',
+          ad_storage: noCookies ? 'denied' : ads, ad_user_data: ads, ad_personalization: ads,
+          functionality_storage: 'granted', security_storage: 'granted',
+        });
+        var m = document.cookie.match(/(?:^|; )_fp_cid=([^;]*)/);
+        var cid = m ? decodeURIComponent(m[1]) : null;
+        if (!cid) {
+          cid = 'fp.' + Date.now() + '.' + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+          var dom = /(^|\.)shopgoldplus\.com$/.test(location.hostname) ? '; Domain=shopgoldplus.com' : '';
+          document.cookie = '_fp_cid=' + cid + '; expires=' + new Date(Date.now() + 365 * 864e5).toUTCString() + '; path=/' + dom + '; SameSite=Lax; Secure';
         }
-      );
-    </script>
+        dataLayer.push(userId ? { fp_client_id: cid, user_id: userId } : { fp_client_id: cid });
+        var RED = new RegExp(rules.red, 'i');
+        function safeUrl(h) {
+          try { var x = new URL(h), keys = []; x.searchParams.forEach(function (v, k) { if (RED.test(k) && keys.indexOf(k) < 0) keys.push(k); });
+            if (!keys.length) return null; keys.forEach(function (k) { x.searchParams.set(k, 'redacted'); }); return x.toString(); } catch (e) { return null; }
+        }
+        var safePl = safeUrl(location.href);
+        if (safePl) gtag('set', { page_location: safePl });
+        var pr = window.__gpLandingReferrer || null;
+        if (!pr && document.referrer) { try { if (new RegExp(rules.pay, 'i').test(new URL(document.referrer).hostname)) pr = location.origin + '/'; } catch (e) {} }
+        if (!pr && document.referrer) pr = safeUrl(document.referrer);
+        if (pr) gtag('set', { page_referrer: pr });
+        window.dataLayer.push({'gtm.start': new Date().getTime(), event: 'gtm.js'});
+        var gtmLoaded = false;
+        function loadGtm(){
+          if (gtmLoaded) return; gtmLoaded = true;
+          var j = document.createElement('script'); j.async = true;
+          j.src = metricsUrl + '/gtm.js?id=' + gtmId;
+          j.onload = function () { try { sessionStorage.setItem('gp_ga_seen', '1'); sessionStorage.removeItem('gp_land'); } catch (e) {} };
+          document.head.appendChild(j);
+        }
+        function whenIdle(){ (window.requestIdleCallback || function(f){ setTimeout(f, 1); })(loadGtm, { timeout: 2500 }); }
+        if (document.readyState === 'complete') whenIdle(); else addEventListener('load', whenIdle);
+        ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(function (t) { addEventListener(t, loadGtm, { once: true, passive: true }); });
+        })();
+      </script>
+    )}
+
+
+    {/* PostHog — R7 (§32): only loaded with a REAL key. The old version
+        loaded the SDK and connected to app.posthog.com with a mock key on
+        every page (opt-out only stopped capture, not the connection). */}
+    {/* define:vars, like Clarity and GTM above: in an inline script the literal
+        text `import.meta.env` reached the browser and was a SyntaxError. */}
+    {import.meta.env.PUBLIC_POSTHOG_KEY && <script nonce={Astro.locals.cspNonce} define:vars={{ posthogKey: import.meta.env.PUBLIC_POSTHOG_KEY, posthogHost: import.meta.env.PUBLIC_POSTHOG_HOST || 'https://app.posthog.com' }}>
+      !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.async=!0,p.src=s.api_host+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="capture identify alias people.set people.set_once set_config register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getActiveMatchingSurveys getSurveys onSessionId".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+      posthog.init(posthogKey, { api_host: posthogHost });
+    </script>}
+    {/* Crawlers and browsers request /favicon.ico by convention whatever the
+        link tags say, and Apple devices ignore an SVG apple-touch-icon — both
+        were 404ing for Googlebot and Applebot until 2026-09-02. */}
+    {/* Web fonts load right after the first paint (2026-09-13). The page paints in the
+        metric-matched fallbacks that stay inline, then /fonts/faces.css swaps the brand
+        fonts in without moving the layout. Before, all eight files (~88 KB) were
+        requested with the document and, on Lighthouse's throttled mobile link, pushed
+        FCP and LCP back ~300 ms each (bench: FCP 1.36 s -> 1.06 s, LCP 1.68 s -> 1.39 s,
+        CLS 0.001 -> 0.000). A real visitor sees the fonts about one frame later than
+        before. Fallbacks: the load event, a 3 s timer, and <noscript>. */}
+    {/* data-cfasync="false": Cloudflare Rocket Loader otherwise rewrites this script to run
+        after window.load, and the fonts swapped late (PSI: speed index 2.0 s -> 3.2 s). */}
+    <script nonce={Astro.locals.cspNonce} is:inline data-cfasync="false" set:html={FONT_LOADER}></script>
+    {/* Returning-visitor flag set BEFORE first paint (2026-09-14). The homepage trust strip
+        is for new visitors; hiding it at DOMContentLoaded moved everything below it after the
+        first paint (Cloudflare RUM: CLS 0.106 on the section under it). Same localStorage
+        key as lib/returning-user.ts. */}
+    <script nonce={Astro.locals.cspNonce} is:inline data-cfasync="false" set:html={SEEN_FLAG + RV_FLAG}></script>
+    <noscript><link rel="stylesheet" href="/fonts/faces.css?v=20261021" /></noscript>
+    {/* Cloudflare Web Analytics (real-user LCP/INP/CLS), installed manually and loaded after
+        window.load when the browser is idle (2026-09-14). Cloudflare's automatic injection
+        put the 10 KB beacon beside the document before first paint on every page view.
+        The beacon's observers are buffered, so paints and shifts before it loads are still
+        reported. The token is the site's public beacon token (it was already in every page). */}
+    <script nonce={Astro.locals.cspNonce} is:inline data-cfasync="false" set:html={CF_BEACON_LOADER}></script>
     <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
-    <link rel="apple-touch-icon" href="/icon-192.svg" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
+    <link rel="alternate" type="application/rss+xml" title="GoldPlus guides and advice" href="/rss.xml" />
     <meta name="theme-color" content="#0A0A0A" />
   </head>
-  <body class="bg-brand-softGrey text-brand-charcoal flex flex-col min-h-screen font-sans selection:bg-brand-primary selection:text-brand-charcoal">
+  <body id="top" data-clarity-mask={clarityMaskAll ? "true" : undefined} class="bg-brand-softGrey text-brand-charcoal flex flex-col min-h-screen font-sans selection:bg-brand-primary selection:text-brand-charcoal">
 
     {/* Slice 13: keyboard users skip repeated navigation. Visible on focus only. */}
     <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded-lg focus:bg-slate-950 focus:px-4 focus:py-2 focus:text-sm focus:font-bold focus:text-white">Skip to content</a>
 
-    {/* GTM noscript fallback — required for users with JS disabled */}
-    <noscript>
-      <iframe
-        src={`${import.meta.env.PUBLIC_METRICS_URL || 'https://metrics.shopgoldplus.com'}/ns.html?id=${import.meta.env.PUBLIC_GTM_ID || 'GTM-MOCKID'}`}
-        height="0"
-        width="0"
-        style="display:none;visibility:hidden"
-        title="Google Tag Manager"
-      ></iframe>
-    </noscript>
+    {/* GTM noscript fallback — rendered only alongside a real container id */}
+    {measurement.configured && (
+      <noscript>
+        <iframe
+          src={`${measurement.metricsUrl}/ns.html?id=${measurement.gtmId}`}
+          height="0"
+          width="0"
+          style="display:none;visibility:hidden"
+          title="Google Tag Manager"
+        ></iframe>
+      </noscript>
+    )}
 
-    {/* Header */}
-    <Header />
+    {/* Header — the GoldPlus navigation system */}
+    <GpNav />
+    <WebMcpTools />
+    <ShopAssistant whatsappUrl={biz.whatsappUrl} cutoffHour={biz.sameDayCutoffHour} />
 
     {/* Slice 13: uniform skip-link landing point for every page */}
     <div id="main" tabindex="-1"></div>
 
     <main class="flex-grow flex flex-col">
+      {(() => {
+        // A friend's invite was just added to this account, or could not be (lib/referralInvite): said once.
+        const invite = inviteNoteWords(Astro.locals.gpInviteNote ?? null);
+        return invite ? (
+          <div class={`mx-auto mt-4 w-full max-w-3xl px-4 text-sm`} role="status" data-invite-note>
+            <p class={`rounded-xl border px-4 py-3 ${invite.kind === 'success' ? 'border-green-200 bg-green-50 text-green-900' : 'border-slate-200 bg-slate-50 text-slate-800'}`}>{invite.text}</p>
+          </div>
+        ) : null;
+      })()}
       <slot />
     </main>
 
     <footer class="bg-[#0A0A0A] text-slate-400 border-t border-zinc-800/50 mt-auto">
       <div class="container mx-auto px-4 lg:px-8 py-16 md:py-20">
         
-        {/* TOP GRID */}
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1.45fr_0.75fr_1fr_1.35fr] gap-10 lg:gap-8">
-          
-          {/* Column 1: Newsletter */}
-          <div class="flex flex-col lg:col-span-1 order-1">
-            <div class="flex items-center gap-2 mb-2">
-              <h3 class="text-white text-base font-black tracking-tight">Stay ahead of the fakes.</h3>
-            </div>
-            <p class="text-xs text-slate-400 leading-relaxed mb-4">
-              New arrivals, verification tips and dealer news — straight to your inbox.
-            </p>
-            <div class="inline-flex items-center gap-2 bg-zinc-900/60 border border-zinc-800/80 rounded-full px-4 py-2.5 text-xs text-slate-500 font-semibold w-fit">
-              <svg class="w-3.5 h-3.5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-              Email updates opening soon
-            </div>
-          </div>
+        {/* TOP GRID: brand + visit/hours | Shop | Buying | Help */}
+        <div class="grid grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_1fr_1.05fr] gap-10 lg:gap-8">
 
-          {/* Column 2: Buying */}
-          <div class="flex flex-col lg:col-span-1 order-3 lg:order-2">
-            <h4 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">Buying</h4>
-            <ul class="space-y-3.5 text-xs">
-              <li><a href="/cart" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Cart</a></li>
-              <li><a href="/checkout" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Checkout</a></li>
-              <li><a href="/quote-request" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Request a Quote</a></li>
-              <li><a href="/track-order" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Track Order</a></li>
-            </ul>
-          </div>
-
-          {/* Column 3: Customer Service */}
-          <div class="flex flex-col lg:col-span-1 order-4 lg:order-3">
-            <h4 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">Customer Service</h4>
-            <ul class="space-y-3.5 text-xs">
-              <li><a href="/verification" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Product Verification</a></li>
-              <li><a href="/support" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Contact Support</a></li>
-              <li><a href="/preferences" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Preference Centre</a></li>
-              <li><a href="/loyalty" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Rewards Preview</a></li>
-              <li><a href="/support/issue" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Report an Issue</a></li>
-              <li>
-                <a href="/support/fake" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Report Counterfeit</a>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 4: WhatsApp Channel CTA */}
-          <div class="flex flex-col lg:col-span-1 order-2 lg:order-4 lg:items-end lg:text-right">
-            <h3 class="text-white text-base font-black tracking-tight mb-2">Follow GoldPlus on WhatsApp.</h3>
-            <p class="text-xs text-slate-400 mb-4 leading-relaxed">
-              Get product drops, verification tips and dealer updates direct to your community feed.
-            </p>
-            <a
-              href="https://whatsapp.com/channel/0029VbByb56KmCPSiisvMs44"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Follow GoldPlus on WhatsApp Channel"
-              class="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-primary text-gray-950 rounded-full font-bold text-xs tracking-wider uppercase transition-all hover:scale-[1.015] active:scale-95 hover:shadow-lg hover:shadow-brand-primary/20 w-fit"
-            >
-              <svg class="w-4 h-4 text-gray-950" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.513 2.262 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.754-1.458L0 24zM6.59 5.86c-.22-.492-.452-.503-.66-.512-.17-.008-.364-.007-.56-.007-.195 0-.514.073-.783.366-.268.293-1.026 1.002-1.026 2.441 0 1.439 1.047 2.829 1.193 3.023.147.195 2.059 3.145 4.988 4.41.698.302 1.242.482 1.668.618.7.223 1.34.191 1.844.116.563-.083 1.732-.708 1.977-1.393.243-.684.243-1.27.17-1.393-.073-.122-.268-.195-.561-.341-.293-.146-1.732-.853-2.001-.951-.269-.098-.464-.147-.66.146-.195.293-.757.951-.928 1.147-.171.195-.342.22-.635.073-.293-.146-1.238-.457-2.36-1.457-.872-.777-1.46-1.738-1.631-2.03-.171-.293-.018-.452.129-.597.132-.131.293-.342.44-.512.146-.17.195-.293.293-.488.097-.195.048-.366-.024-.512-.072-.147-.66-1.59-.904-2.18z"></path></svg>
-              Follow our WhatsApp Channel
+          {/* Two link columns side by side on a phone (the brand block spans
+              both), not 28 links stacked in one ~2,000px column. */}
+          <div class="flex flex-col max-lg:col-span-2">
+            <h2 class="text-white text-base font-black tracking-tight">{whatsappChannel.heading}</h2>
+            <p class="text-xs text-slate-400 leading-relaxed mt-2 mb-4">{whatsappChannel.body}</p>
+            <a href={biz.whatsappChannelUrl} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold w-fit outline-none focus-visible:ring-4 focus-visible:ring-brand-primary transition-colors" style="background:#93D500;color:#0A0A0A">
+              <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 004.79 1.22h.01c5.46 0 9.9-4.45 9.9-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0012.04 2z"/></svg>
+              Follow on WhatsApp
             </a>
+            <div class="mt-7 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-6 text-xs">
+              <div>
+                <p class="font-bold text-white mb-1.5">{footer.visitHeading}</p>
+                {biz.addressLine1 && <p class="text-slate-400 leading-relaxed">{biz.addressLine1}</p>}
+                {biz.addressLine2 && <p class="text-slate-400 leading-relaxed">{biz.addressLine2}</p>}
+                {biz.phoneDisplay && <a href={biz.phoneDial || `tel:${biz.phoneDisplay}`} class="mt-2 inline-block font-bold text-slate-300 hover:text-brand-primary transition-colors">{biz.phoneDisplay}</a>}
+              </div>
+              <div>
+                <p class="font-bold text-white mb-1.5">{footer.openHeading}</p>
+                {biz.shopHours && <p class="text-slate-400">Shop &middot; {biz.shopHours}</p>}
+                {biz.deliveryHours && <p class="text-slate-400">Delivery &middot; {biz.deliveryHours}</p>}
+                {biz.openDays && <p class="text-slate-400">{biz.openDays}</p>}
+                {biz.deliveryNote && <p class="text-slate-400 mt-1.5">{biz.deliveryNote}</p>}
+              </div>
+            </div>
           </div>
-        </div>
-        
-        {/* SOCIAL, CONTACT & COMMUNITY ICON ROW */}
-        <div class="border-t border-zinc-800/50 mt-16 pt-8 flex flex-wrap items-center justify-start gap-3">
-          {footerSocialLinks.filter(link => link.enabled).map((link) => (
-            <a
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="w-11 h-11 bg-zinc-900 border border-zinc-800/80 hover:border-brand-primary text-zinc-400 hover:text-brand-primary rounded-full flex items-center justify-center transition-all hover:bg-zinc-850 focus:ring-2 focus:ring-brand-primary outline-none"
-              aria-label={link.label}
-              title={link.label}
-            >
-              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d={link.iconPath}></path>
-              </svg>
-            </a>
+
+          {footer.columns.map((col) => (
+            <div class="flex flex-col">
+              <h3 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">{col.heading}</h3>
+              <ul class="space-y-3.5 text-xs">
+                {col.links.map((l) => (
+                  <li><a href={indexableCategoryHref(l.href)} class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">{l.label}</a></li>
+                ))}
+              </ul>
+            </div>
           ))}
         </div>
 
+        {/* SOCIAL, CONTACT & COMMUNITY ICON ROW */}
+        <div class="border-t border-zinc-800/50 mt-16 pt-8 flex flex-wrap items-center justify-start gap-3">
+          {biz.socials.filter((s) => s.enabled && s.href).map((s) => {
+            if (!footerIconKeys.has(s.key)) return null;
+            return (
+              <a
+                href={s.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="w-11 h-11 bg-zinc-900 border border-zinc-700 hover:border-brand-primary text-zinc-200 hover:text-brand-primary rounded-full flex items-center justify-center transition-all hover:bg-zinc-800 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-brand-primary outline-none"
+                aria-label={`GoldPlus on ${s.label}`}
+                title={s.label}
+              >
+                <svg class="w-5 h-5" fill="currentColor" aria-hidden="true"><use href={`${FOOTER_ICON_SPRITE}#${s.key}`} /></svg>
+              </a>
+            );
+          })}
+        </div>
+
         {/* LOWER BRAND & LEGAL ROW */}
-        <div class="border-t border-zinc-900 mt-10 pt-10 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-8 text-xs text-slate-500">
+        <div class="border-t border-zinc-900 mt-10 pt-10 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-8 text-xs text-slate-400">
           <div class="max-w-sm">
-            <h4 class="font-bold text-xs uppercase tracking-wider mb-4 text-white">We Accept</h4>
-            <div class="flex flex-wrap items-center gap-3 mb-6">
-              <img src="/payment/mtn-momo.svg" alt="MTN MoMo" class="h-6 w-auto object-contain" />
-              <img src="/payment/airtel-money.svg" alt="Airtel Money" class="h-6 w-auto object-contain" />
-              <img src="/payment/visa.svg" alt="Visa" class="h-6 w-auto object-contain" />
-              <img src="/payment/mastercard.svg" alt="MasterCard" class="h-6 w-auto object-contain" />
-              <img src="/payment/unionpay.svg" alt="UnionPay" class="h-6 w-auto object-contain" />
+            <h3 class="font-bold text-xs uppercase tracking-wider mb-4 text-white">{footer.paymentHeading}</h3>
+            <div class="flex flex-wrap items-center gap-2.5 mb-6">
+              {/* Sized and lazy: they sit below the fold on every page. The MTN mark was a 120 KB SVG wrapping a bitmap; it is now a 2 KB WebP. */}
+              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="MTN Mobile Money"><img src="/payment/mtn-momo.webp" alt="MTN Mobile Money" width="36" height="36" loading="lazy" decoding="async" class="h-9 w-auto object-contain" /></span>
+              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="Airtel Money"><img src="/payment/airtel-money.svg" alt="Airtel Money" width="36" height="36" loading="lazy" decoding="async" class="h-9 w-auto object-contain" /></span>
+              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="Visa"><img src="/payment/visa.svg" alt="Visa" width="62" height="20" loading="lazy" decoding="async" class="h-5 w-auto object-contain" /></span>
+              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="Mastercard"><img src="/payment/mastercard.svg" alt="Mastercard" width="45" height="28" loading="lazy" decoding="async" class="h-7 w-auto object-contain" /></span>
             </div>
-            <p>&copy; {new Date().getFullYear()} GoldPlus. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} {footer.copyrightNotice}</p>
           </div>
           <div class="flex flex-wrap items-center gap-x-6 gap-y-3 justify-start md:justify-end">
-            <a href="/privacy" class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">Privacy Policy</a>
-            <a href="/preferences" class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">Preferences</a>
-            <a href="/terms" class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">Terms of Service</a>
-            <a href="/returns" class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">Returns</a>
-            <a href="/warranty" class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">Warranty</a>
-            <a href="/cookies" class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">Cookies</a>
+            {footer.legalLinks.map((l) => (
+              <a href={l.href} class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">{l.label}</a>
+            ))}
             <a
-              href="https://www.tenxafrica.com"
+              href={footer.attribution.href}
               target="_blank"
               rel="noopener noreferrer"
               class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4 inline-flex items-center gap-1"
             >
-              Built by Ten-X Africa
+              {footer.attribution.label}
+            </a>
+            <a href="#top" class="inline-flex items-center gap-1.5 font-semibold text-slate-300 hover:text-brand-primary transition-colors">
+              Back to top
+              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
             </a>
           </div>
         </div>
       </div>
     </footer>
 
+    <BackToTop />
+
     <script>
+      // Capture marketing attribution (last-touch UTM + external referrer) on every
+      // page, so an order can be attributed to where it came from.
+      import { captureAttribution, recordAdClick } from '../lib/attribution';
+      captureAttribution();
+      recordAdClick();
+      import { recordLandingTouch, captureClickIdsServerSide } from '../lib/telemetry';
+      recordLandingTouch();
+      // Stitch the ad click id to this visitor on the landing page itself —
+      // not only on product and checkout pages — so the identity graph can
+      // hand it to the ad platforms for every later event (2026-10-01).
+      captureClickIdsServerSide();
+      // A product search, a new account, the shop's map opened (lib/siteSignals).
+      import { recordSiteSignals } from '../lib/siteSignals';
+      recordSiteSignals();
+      // WhatsApp chat taps on EVERY page (the header, the footer, /wa): each gets
+      // its reference code and is counted as a contact (lib/whatsappClicks).
+      import { installWhatsAppClicks } from '../lib/whatsappClicks';
+      installWhatsAppClicks();
+    </script>
+
+    <script>
+      // ONE sale-countdown ticker for every [data-card-sale-ends] chip on the
+      // page — product cards, recommendation rails, client-injected cards alike.
+      // Counts down to the campaign end so the customer knows exactly when the
+      // price returns to normal. Re-scans each tick because rails inject cards
+      // after load. Scoped attribute: the header owns data-sale-ends.
+      const tickSaleChips = () => {
+        for (const el of Array.from(document.querySelectorAll<HTMLElement>('[data-card-sale-ends]'))) {
+          const end = new Date(el.getAttribute('data-card-sale-ends') ?? '').getTime();
+          if (!Number.isFinite(end)) continue;
+          const ms = end - Date.now();
+          if (ms <= 0) { el.textContent = 'Sale ended. Regular price applies'; continue; }
+          const d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000), m = Math.floor((ms % 3600000) / 60000);
+          el.textContent = d > 0 ? `Sale ends in ${d}d ${h}h` : h > 0 ? `Sale ends in ${h}h ${m}m` : `Sale ends in ${m}m`;
+        }
+      };
+      tickSaleChips();
+      document.addEventListener('DOMContentLoaded', tickSaleChips);
+      setInterval(tickSaleChips, 60_000);
+      // Rails inject cards after load in whatever order their scripts ran —
+      // tick the moment new chips appear rather than up to a minute later.
+      // Guarded to ELEMENT insertions that carry a chip: the ticker's own
+      // textContent writes add bare text nodes, which must not re-trigger it.
+      new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          for (const node of Array.from(m.addedNodes)) {
+            if (node instanceof Element && (node.matches('[data-card-sale-ends]') || node.querySelector('[data-card-sale-ends]'))) {
+              tickSaleChips();
+              return;
+            }
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    </script>
+
+    <script>
+      // An image whose source dies must degrade to an honest placeholder, never
+      // to the browser's broken-image glyph. Delegated on window in the capture
+      // phase because `error` does not bubble: this covers every <img> on the
+      // page including the ones rails inject after load, with no per-site
+      // onerror attributes to keep in sync.
+      const IMAGE_FALLBACK = '/products/image-unavailable.svg';
+
+      function applyFallback(image) {
+        // Guard the fallback itself, so a missing placeholder cannot loop.
+        if (image.dataset.imageFallbackApplied === 'true') return;
+        if (image.getAttribute('src') === IMAGE_FALLBACK) return;
+        image.dataset.imageFallbackApplied = 'true';
+        image.removeAttribute('srcset');
+        image.src = IMAGE_FALLBACK;
+      }
+
+      window.addEventListener(
+        'error',
+        (event) => {
+          if (event.target instanceof HTMLImageElement) applyFallback(event.target);
+        },
+        true,
+      );
+
+      // The listener above only catches failures that happen AFTER this module
+      // runs, and Astro defers it — by then the images in the initial HTML have
+      // usually already failed, and `error` does not replay. So sweep for
+      // images that are finished loading with no intrinsic width, which is what
+      // a broken image looks like once the event is gone. Run at both moments:
+      // DOM ready catches most, `load` catches the stragglers.
+      function sweepBrokenImages() {
+        for (const image of document.querySelectorAll('img')) {
+          if (image.complete && image.naturalWidth === 0) applyFallback(image);
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', sweepBrokenImages);
+      } else {
+        sweepBrokenImages();
+      }
+      window.addEventListener('load', sweepBrokenImages);
+
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js').catch((error) => {
@@ -299,5 +613,6 @@ const canonical = canonicalUrl ?? Astro.url.toString();
         });
       }
     </script>
+    <DeclarativeActions />
   </body>
 </html>

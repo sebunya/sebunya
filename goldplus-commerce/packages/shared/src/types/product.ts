@@ -25,12 +25,22 @@ export interface ProductPublicDto {
   name: string;
   /** Category display name, not the internal UUID. */
   categoryName: string;
+  /** One-line product summary (DB-owned, admin-editable). Null if not set. */
+  shortDescription: string | null;
+  /** Full product description (DB-owned, admin-editable). Null if not set. */
+  longDescription: string | null;
   /** SKU or `null` if the source row is "Missing. Requires admin review." */
   sku: string | null;
   /** Model number or `null` if missing. Never invent one. */
   modelNumber: string | null;
   /** Retail price in UGX minor units (no decimals). `null` if hasRetailPrice is false. */
   retailPriceUgx: number | null;
+  /**
+   * The lowest price any discount may take this product to (its Price A).
+   * `null` = no floor set = not discountable. Every price a surface shows is
+   * `salePriceUgx(retail, bps, effectiveFloorUgx(...))` so display equals charge.
+   */
+  floorPriceUgx: number | null;
   availability: ProductAvailability;
   /** `true` only when the source row has hasImage=true. */
   hasImage: boolean;

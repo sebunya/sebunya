@@ -1,14 +1,23 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { serializeJsonLd, breadcrumbJsonLd, schemaAvailability } from '../lib/jsonld';
 import ProductCard from '../components/ProductCard.astro';
 import Notice from '../components/Notice.astro';
-import { apiBase } from '../lib/api';
-import { LOCAL_SEED_PRODUCTS, getCleanCatalog } from '../lib/catalog/catalog';
+import { apiBase, publicApiBase } from '../lib/api';
+import { isDeclaredAutomation } from '../lib/declaredAutomation';
+import { getCleanCatalog } from '../lib/catalog/catalog';
 import {
-  DISCOVERY_TAXONOMY,
   categoryNameForSlug,
   dedupeProductsById,
-  filterDiscoveryProducts,
+  searchDiscoveryProducts,
+  applyShopFacets,
+  buildShopFacets,
+  parseShopFacets,
+  writeShopFacets,
+  toggleShopFacet,
+  hasShopFacets,
+  PRICE_BANDS,
+  type ShopFacetSelection,
   getProductSubcategory,
   isApprovedDiscoveryProduct,
   normalizeCategoryParam,
@@ -18,81 +27,310 @@ import {
   sortDiscoveryProducts,
   subcategoryNameForSlug,
 } from '../lib/product-discovery';
+import { getTaxonomy } from '../lib/taxonomy';
+import { categoryHasUniqueCopy, shopCrawlDirective } from '../lib/crawlPolicy';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
+import { SITE_ORIGIN } from '../lib/sitemap';
+import { offerPriceUgx } from '../lib/offerPrice';
+import { chargedPriceUgx } from '../lib/productStructuredData';
+import { hubForCategory } from '../lib/indexableLinks';
+import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../lib/storefrontDiscount';
+import { fetchApprovedCatalogueWithStatus } from '../lib/catalogue';
+import { isListableProduct } from '../lib/product-discovery';
+import { isLikelyHuman } from '../lib/humanTraffic';
+import { getBusinessInfo } from '../lib/businessInfo';
 
+// Operator-editable discovery taxonomy (admin/categories); drives filters + labels.
+const taxonomy = await getTaxonomy();
 const search = normalizeSearchParam(Astro.url.searchParams.get('search') ?? Astro.url.searchParams.get('q'));
-const category = normalizeCategoryParam(Astro.url.searchParams.get('category'));
-const subcategory = normalizeSubcategoryParam(Astro.url.searchParams.get('subcategory'), category);
+const category = normalizeCategoryParam(Astro.url.searchParams.get('category'), taxonomy);
+const subcategory = normalizeSubcategoryParam(Astro.url.searchParams.get('subcategory'), category, taxonomy);
 const sort = normalizeSortParam(Astro.url.searchParams.get('sort'));
-const selectedCategory = DISCOVERY_TAXONOMY.find((item) => item.slug === category);
+// Gap analysis #5: price and verified-specification filters, contextual to what is on screen.
+const facetSelection = parseShopFacets(Astro.url.searchParams);
+// Pagination. The grid used to render the WHOLE catalogue on one page — fine
+// at eight products, a 777 KB page of 192 cards at the real catalogue.
+const PAGE_SIZE = 24;
+const pageParam = Number.parseInt(Astro.url.searchParams.get('page') ?? '1', 10);
+const requestedPage = Number.isFinite(pageParam) && pageParam > 0 ? Math.min(pageParam, 500) : 1;
+const selectedCategory = taxonomy.find((item) => item.slug === category);
 
-function shopUrl(overrides: Partial<{ search: string; category: string; subcategory: string; sort: string }> = {}) {
-  const state = { search, category, subcategory, sort, ...overrides };
+// U6 AC5 — facet crawl policy (mirrors apps/api/src/domain/seo/CrawlPolicy.ts):
+// category alone (with operator copy) is indexable; search results, stacked
+// filters and sort variants are noindex,follow with a cleaned canonical.
+const crawlParams: Record<string, string> = {};
+if (search) crawlParams.search = search;
+if (category) crawlParams.category = category;
+if (subcategory) crawlParams.subcategory = subcategory;
+if (sort && sort !== 'default') crawlParams.sort = sort;
+if (requestedPage > 1) crawlParams.page = String(requestedPage);
+const { robotsMeta: shelfRobotsMeta, canonicalUrl } = shopCrawlDirective({
+  params: crawlParams,
+  // Search results never have unique editorial copy; a category page has it
+  // only when the operator wrote a description in the taxonomy.
+  hasUniqueCopy: search ? false : selectedCategory ? categoryHasUniqueCopy(selectedCategory) : undefined,
+  // One canonical host, not whichever host this request arrived on.
+  origin: SITE_ORIGIN,
+});
+// A filtered view is never its own indexable page: the canonical (built without the filters) is the shelf.
+const robotsMeta = hasShopFacets(facetSelection) ? 'noindex,follow' : shelfRobotsMeta;
+// A plain category view that has its own hub page (/power, /audio …) names the hub as canonical: one indexable URL per
+// category, not two competing for the same searches (2026-10-22).
+const categoryHub = category && !search && !subcategory && (!sort || sort === 'default') && requestedPage <= 1 && !hasShopFacets(facetSelection)
+  ? hubForCategory(category)
+  : null;
+const shopCanonicalUrl = categoryHub ? `${SITE_ORIGIN}${categoryHub}` : canonicalUrl;
+
+function shopUrl(overrides: Partial<{ search: string; category: string; subcategory: string; sort: string; page: number; facets: ShopFacetSelection }> = {}) {
+  // Changing any filter returns to page 1; only an explicit page keeps one.
+  // A new shelf or search starts with no spec filters: they belong to what was on screen.
+  const shelfChanged = 'search' in overrides || 'category' in overrides || 'subcategory' in overrides;
+  const state = { search, category, subcategory, sort, facets: shelfChanged ? { price: [], specs: {} } : facetSelection, page: 1, ...overrides };
   const params = new URLSearchParams();
   if (state.search) params.set('search', normalizeSearchParam(state.search));
   if (state.category) params.set('category', state.category);
   if (state.subcategory) params.set('subcategory', state.subcategory);
   if (state.sort && state.sort !== 'default') params.set('sort', state.sort);
+  writeShopFacets(params, state.facets);
+  if (state.page && state.page > 1) params.set('page', String(state.page));
+  // The shopper's choice of the standard order survives paging.
+  if (Astro.url.searchParams.get('order') === 'standard') params.set('order', 'standard');
+  if (state.page && state.page > 1 && preferredCategories.length > 0) params.set('lead', preferredCategories.join(','));
   const query = params.toString();
   return query ? `/shop?${query}` : '/shop';
 }
 
 let rawProducts: ProductPublicDto[] = [];
 let catalogueNotice = '';
-try {
-  const response = await fetch(`${apiBase}/products`, { signal: AbortSignal.timeout(3000) });
-  if (response.ok) {
-    const body = await response.json() as ApiResponse<ProductPublicDto[]>;
-    if (body.success && Array.isArray(body.data)) rawProducts = body.data;
-  }
-} catch {
-  // The existing listed-product fallback below keeps browsing available without inventing new data.
-}
+// Whether the list is WHOLE: a page that timed out mid-way used to leave a
+// truncated catalogue that looked complete, so a search answered "nothing
+// matched" (and recorded zero-result demand) for a product on the shelf.
+const catalogueFetch = await fetchApprovedCatalogueWithStatus(apiBase);
+rawProducts = catalogueFetch.products;
+const cataloguePartial = rawProducts.length > 0 && !catalogueFetch.complete;
+const partialNotice = cataloguePartial ? 'Some products could not be loaded just now, so this list may be incomplete. Please refresh the page.' : '';
+if (cataloguePartial) Astro.response.headers.set('Cache-Control', 'no-store');
 
 if (rawProducts.length === 0) {
-  rawProducts = LOCAL_SEED_PRODUCTS;
-  catalogueNotice = 'Live catalogue updates are temporarily unavailable. Browse the currently listed products and confirm availability on the product page.';
+  // R1: the fabricated LOCAL_SEED_PRODUCTS fallback is retired — an
+  // unreachable catalogue is said plainly, never replaced with invented stock.
+  catalogueNotice = 'The live catalogue is temporarily unavailable. Please try again shortly.';
 }
 
-const availableProducts = dedupeProductsById(getCleanCatalog(rawProducts)).filter(isApprovedDiscoveryProduct);
-const filteredProducts = filterDiscoveryProducts(availableProducts, { search, category, subcategory });
-const products = sortDiscoveryProducts(filteredProducts, sort);
+const availableProducts = dedupeProductsById(getCleanCatalog(rawProducts, taxonomy)).filter(isListableProduct);
+// Synonyms, plurals, joined words and typos (2026-10-20): "powerbank", "chager" and "earpods" used to find nothing.
+const searchResult = searchDiscoveryProducts(availableProducts, { search, category, subcategory }, taxonomy);
+const filteredProducts = searchResult.products;
+// Said, never silent: a fixed typo, or words dropped because nothing matched with them.
+const searchNote = !search || filteredProducts.length === 0
+  ? ''
+  : searchResult.dropped.length > 0
+    ? `Nothing matched every word, so these match “${searchResult.searchedFor}” (left out: ${searchResult.dropped.join(', ')}).`
+    : searchResult.corrections.length > 0
+      ? `Showing results for “${searchResult.searchedFor}”.`
+      : '';
+// A relaxed result is still a miss for what was asked, so demand for the dropped words stays visible.
+const demandResultCount = searchResult.dropped.length > 0 ? 0 : filteredProducts.length;
+// The default browse order leads with what THIS visitor has been looking at.
+// Only for a returning browser (a first visit and every crawler get the
+// standard order), only when nothing else was chosen, and `?order=standard`
+// turns it off. A pure read: it creates no profile and records nothing.
+let preferredCategories: string[] = [];
+const standardOrderChosen = Astro.url.searchParams.get('order') === 'standard';
+const personalOrderEligible = process.env.SHOP_PERSONAL_ORDER !== 'false'
+  && sort === 'default' && !search && !category && !subcategory && !standardOrderChosen;
+// Paging must not reshuffle: page 1 decides the lead categories and every page
+// link carries them (`lead`), so interest that changes mid-browse cannot
+// duplicate or drop a product between pages. The value is only ever matched
+// against the taxonomy, never echoed.
+const leadParam = Astro.url.searchParams.get('lead');
+if (personalOrderEligible && leadParam !== null) {
+  preferredCategories = leadParam.split(',').map((v) => normalizeCategoryParam(v, taxonomy)).filter(Boolean).slice(0, 3);
+} else if (personalOrderEligible && Astro.locals.gpVisit) {
+  try {
+    const res = await fetch(`${apiBase}/hero/affinity`, { headers: { 'x-gp-visit': Astro.locals.gpVisit }, signal: AbortSignal.timeout(1200) });
+    const body = await res.json().catch(() => null);
+    const affinity = res.ok && Array.isArray(body?.data?.categoryAffinity) ? body.data.categoryAffinity : [];
+    preferredCategories = affinity
+      // One glance at a product is not an interest: a view scores 1 and fades,
+      // so 2 needs a click/add-to-cart or several recent views.
+      .filter((a: { score?: unknown }) => Number(a.score) >= 2)
+      .map((a: { categorySlug?: unknown }) => normalizeCategoryParam(String(a.categorySlug ?? ''), taxonomy))
+      .filter(Boolean).slice(0, 3);
+  } catch {
+    // The standard order is always a fine answer.
+  }
+}
+// The price the card shows (the sale price while a campaign runs) is what the price filter and sort use.
+const shopDiscount = await getStorefrontDiscount();
+const shopPrice = (p: ProductPublicDto) => chargedPriceUgx(p, shopDiscount);
+const facetedProducts = applyShopFacets(filteredProducts, facetSelection, shopPrice);
+const shopFacets = buildShopFacets(filteredProducts, facetSelection, shopPrice);
+const facetsChosen = hasShopFacets(facetSelection);
+const standardLead = sortDiscoveryProducts(facetedProducts, sort, taxonomy, [], shopPrice)[0]?.categoryName;
+const products = sortDiscoveryProducts(facetedProducts, sort, taxonomy, preferredCategories, shopPrice);
+// Said plainly, and only when it actually changed what is on top.
+const personalLead = preferredCategories.length > 0 && products[0] && products[0].categoryName !== standardLead ? products[0].categoryName : '';
+if (personalLead) Astro.response.headers.set('Cache-Control', 'private, no-store');
+const totalPages = Math.max(1, Math.ceil(products.length / PAGE_SIZE));
+// A page past the end shows the last page rather than an empty grid.
+const page = Math.min(requestedPage, totalPages);
+const pageProducts = products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+const pageStart = products.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+const pageEnd = Math.min(page * PAGE_SIZE, products.length);
 const browseFallback = products.length === 0 ? availableProducts.slice(0, 6) : [];
 
+// R4: the search fact enters the profile's own event stream, server-side —
+// the identity-free search aggregates stay identity-free; this is the
+// profile-attached copy that lets recommendations respond to recent intent
+// (§5A.10). Fire-and-forget: search results never wait on telemetry.
+// Our own probes keep cookies; a search THEY run is not a shopper's search.
+if (search && Astro.locals.gpVisit && !isDeclaredAutomation(Astro.request.headers)) {
+  fetch(`${apiBase}/recommendations/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-gp-visit': Astro.locals.gpVisit },
+    body: JSON.stringify({
+      eventType: 'PRODUCT_SEARCHED',
+      searchQuery: search,
+      source: 'shop_search',
+      pagePath: '/shop',
+      metadata: { resultCount: products.length },
+    }),
+    signal: AbortSignal.timeout(2000),
+  }).catch(() => undefined);
+}
+
 // Slice 4: anonymous search telemetry — query + result count only, no identifiers.
-if (search) {
-  await fetch(`${apiBase}/products/search-events`, {
+// Only people are counted: this feeds the admin demand queue that decides what
+// stock to buy, and a crawler or a curl loop is not a customer who wanted
+// something. See lib/humanTraffic.ts.
+if (search && !cataloguePartial && isLikelyHuman(Astro.request.headers.get('user-agent'))) {
+  // Fire-and-forget, like the profile event above it: awaiting this made every
+  // search wait up to half a second on telemetry before rendering results.
+  fetch(`${apiBase}/products/search-events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: search, resultCount: filteredProducts.length, rankedProductIds: products.map((product) => product.id) }),
+    body: JSON.stringify({ query: search, resultCount: demandResultCount, rankedProductIds: products.map((product) => product.id) }),
     signal: AbortSignal.timeout(500),
   }).catch(() => {});
 }
-const hasFilters = Boolean(search || category || subcategory || sort !== 'default');
-const categoryLabel = categoryNameForSlug(category);
-const subcategoryLabel = subcategoryNameForSlug(subcategory);
+const hasFilters = Boolean(search || category || subcategory || sort !== 'default' || facetsChosen);
+const categoryLabel = categoryNameForSlug(category, taxonomy);
+const subcategoryLabel = subcategoryNameForSlug(subcategory, taxonomy);
+
+// One title per page, not one title for thirteen. A category page is named
+// after the category, a search after the search, so tabs, history and search
+// engines can tell them apart.
+const titleScope = [subcategoryLabel, categoryLabel].filter(Boolean).join(' | ');
+const pageTitle = search
+  ? `Search: ${search}${categoryLabel ? ` in ${categoryLabel}` : ''} | GoldPlus`
+  : titleScope
+    ? `${titleScope} | Shop | GoldPlus`
+    : 'Shop products | GoldPlus';
+const pageDescription = search
+  ? `GoldPlus products matching "${search}"${categoryLabel ? ` in ${categoryLabel}` : ''}.`
+  : titleScope
+    // A category the operator described in the taxonomy says what it sells in
+    // its own words (the same text the page header shows); a subcategory or an
+    // undescribed category falls back to the generic line.
+    ? (!subcategoryLabel && selectedCategory?.description) ||
+      `Browse ${titleScope.replace(' | ', ' in ')} at GoldPlus. Same-day dispatch in Kampala and Wakiso.`
+    : 'Search and browse GoldPlus products by category and subcategory.';
+
+// A search that found nothing: the category chips must not carry the failed
+// query (every tap would be another zero), and the first way forward is a
+// person, on the channel the shop uses everywhere else — not a bulk quote form.
+const zeroResults = !catalogueNotice && !cataloguePartial && products.length === 0;
+const chipSearch = zeroResults ? '' : search;
+const biz = await getBusinessInfo();
+const askOnWhatsApp = search
+  ? `${biz.whatsappUrl}?text=${encodeURIComponent(`Hello GoldPlus, do you have "${search}"?`)}`
+  : biz.whatsappUrl;
+
+// The page says where the shopper is: the category (or subcategory) name, in
+// the shop's own words, rather than one heading for every shelf.
+const heading = search ? '' : subcategoryLabel || categoryLabel || 'Find a GoldPlus product';
+const resultCountLine = filteredProducts.length === 0
+  ? `Nothing matched “${search}”.`
+  : filteredProducts.length === 1
+    ? '1 product matches your search.'
+    : `${filteredProducts.length} products match your search. Browse the categories below to narrow it further.`;
+const intro = search
+  ? [searchNote, resultCountLine].filter(Boolean).join(' ')
+  : selectedCategory?.description || (categoryLabel ? `Everything we sell in ${categoryLabel}.` : 'Search everything we sell, or browse by category.');
+
+// Numbered pages (first, last, and the neighbours of this one), so 141
+// products are not only "Page 1 of 6 · Next".
+const pageNumbers = Array.from(new Set([1, page - 1, page, page + 1, totalPages]))
+  .filter((n) => n >= 1 && n <= totalPages)
+  .sort((a, b) => a - b);
 
 const activeFilters = [
   search ? { label: `Search: “${search}”`, href: shopUrl({ search: '' }) } : null,
   category ? { label: categoryLabel, href: shopUrl({ category: '', subcategory: '' }) } : null,
   subcategory ? { label: subcategoryLabel, href: shopUrl({ subcategory: '' }) } : null,
   sort !== 'default' ? { label: 'Custom sort', href: shopUrl({ sort: 'default' }) } : null,
+  ...facetSelection.price.map((b) => ({ label: PRICE_BANDS.find((x) => x.key === b)?.label ?? b, href: shopUrl({ facets: toggleShopFacet(facetSelection, 'price', b) }) })),
+  ...Object.entries(facetSelection.specs).flatMap(([attr, values]) => values.map((v) => ({ label: `${attr}: ${v}`, href: shopUrl({ facets: toggleShopFacet(facetSelection, attr, v) }) }))),
 ].filter((item): item is { label: string; href: string } => Boolean(item));
+const onlyCategoryFilter = Boolean(category) && !search && !subcategory && sort === 'default' && !facetsChosen;
+
+// The same campaign the cards render, so the ItemList offer says what the card says.
+const shopCampaignRunning = shopDiscount.active && shopDiscount.percentBps > 0;
+const shopItemList = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  name: pageTitle,
+  numberOfItems: pageProducts.length,
+  itemListElement: pageProducts.map((p, i) => ({
+    '@type': 'ListItem',
+    position: (page - 1) * PAGE_SIZE + i + 1,
+    item: {
+      '@type': 'Product',
+      name: p.name,
+      url: `${SITE_ORIGIN}/products/${p.slug}`,
+      ...(p.primaryImageUrl ? { image: /^https?:\/\//i.test(p.primaryImageUrl) ? p.primaryImageUrl : `${SITE_ORIGIN}${p.primaryImageUrl}` } : {}),
+      ...(p.retailPriceUgx != null ? { offers: { '@type': 'Offer', priceCurrency: 'UGX', price: offerPriceUgx(p.retailPriceUgx, shopCampaignRunning ? salePriceUgx(p.retailPriceUgx, shopDiscount.percentBps, effectiveFloorUgx(shopDiscount.priceFloorUgx, p.floorPriceUgx, p.retailPriceUgx)) : null), ...(schemaAvailability(p.availability?.kind) ? { availability: schemaAvailability(p.availability?.kind) } : {}), url: `${SITE_ORIGIN}/products/${p.slug}` } } : {}),
+    },
+  })),
+};
+const shopBreadcrumb = breadcrumbJsonLd([
+  { name: 'GoldPlus', url: SITE_ORIGIN },
+  { name: 'Shop', url: `${SITE_ORIGIN}/shop` },
+]);
 ---
 
-<BaseLayout title="Shop products | GoldPlus" description="Search and browse GoldPlus products by category and subcategory.">
-  <header class="border-b border-slate-800 bg-slate-950 py-10 text-white sm:py-12">
+<BaseLayout title={pageTitle} description={pageDescription} robotsMeta={robotsMeta} canonicalUrl={shopCanonicalUrl}>
+  <Fragment slot="head">
+    {page > 1 && <link rel="prev" href={`${SITE_ORIGIN}${shopUrl({ page: page - 1 })}`} />}
+    {page < totalPages && <link rel="next" href={`${SITE_ORIGIN}${shopUrl({ page: page + 1 })}`} />}
+    {/* What this page actually lists, in the order a visitor sees it, so an
+        engine answering "which chargers does GoldPlus sell" reads products
+        rather than guessing from link text. Prices are the real ones. */}
+    <script type="application/ld+json" is:inline set:html={serializeJsonLd(shopItemList)} />
+    <script type="application/ld+json" is:inline set:html={serializeJsonLd(shopBreadcrumb)} />
+  </Fragment>
+  <header class="border-b border-slate-800 bg-slate-950 py-6 text-white sm:py-10">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <h1 class="text-3xl font-black tracking-tight sm:text-4xl">Find a GoldPlus product</h1>
-      <p class="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">Search the current catalogue or browse the approved product categories.</p>
+      {/* A customer arriving on a search result should see their own words, not
+          a generic shop heading — especially when the link came from outside the
+          site and they have no other confirmation of what was searched. */}
+      <h1 class="text-3xl font-black tracking-tight sm:text-4xl">
+        {search ? <>Search results for “{search}”</> : heading}
+      </h1>
+      <p class="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">{intro}</p>
     </div>
   </header>
 
   <main class="mx-auto w-full min-w-0 max-w-7xl overflow-hidden px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
     {catalogueNotice && <Notice kind="info" title="Catalogue notice" message={catalogueNotice} />}
+    {partialNotice && <Notice kind="info" title="Catalogue notice" message={partialNotice} />}
 
-    <form action="/shop" method="get" role="search" class="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs sm:p-5">
-      <label for="shop-search" class="mb-2 block text-sm font-bold text-slate-900">Search products</label>
+    {/* The header search is on screen from 981px, so a second search box is
+        only shown below that (the scoped style at the foot of this page; lg:
+        starts at 1024px and showed both between 981 and 1023px). */}
+    <form action="/shop" method="get" role="search" class="shop-search rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+      <label for="shop-search" class="sr-only">Search products</label>
       <div class="flex flex-col gap-3 sm:flex-row">
         <input
           id="shop-search"
@@ -103,62 +341,102 @@ const activeFilters = [
           placeholder="Search by product name, category, or model"
           list="shop-suggest"
           autocomplete="off"
-          class="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/20"
+          class="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-brand-primaryInk focus:ring-4 focus:ring-brand-primaryInk"
         />
         <datalist id="shop-suggest"></datalist>
         {category && <input type="hidden" name="category" value={category} />}
         {subcategory && <input type="hidden" name="subcategory" value={subcategory} />}
-        <button type="submit" class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950 focus-visible:ring-4 focus-visible:ring-brand-primary/30">Search</button>
+        <button type="submit" class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white outline-none hover:bg-brand-primary hover:text-slate-950 focus-visible:ring-4 focus-visible:ring-brand-primaryInk">Search</button>
       </div>
     </form>
 
-    <section aria-labelledby="category-filters-heading" class="mt-7">
+    <section aria-labelledby="category-filters-heading" class="mt-5">
       <div class="flex items-center justify-between gap-4">
         <h2 id="category-filters-heading" class="text-base font-black text-slate-900">Browse categories</h2>
         {hasFilters && <a href="/shop" class="text-sm font-bold text-slate-700 underline hover:text-slate-950">Clear all filters</a>}
       </div>
       <div class="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-2 sm:mx-0 sm:flex-wrap sm:px-0" aria-label="Product categories">
-        <a href={shopUrl({ category: '', subcategory: '' })} aria-current={!category ? 'page' : undefined} class={`shrink-0 rounded-full border px-4 py-2 text-sm font-bold ${!category ? 'border-brand-primary bg-brand-primary text-slate-950' : 'border-slate-300 bg-white text-slate-700'}`}>All products</a>
-        {DISCOVERY_TAXONOMY.map((item) => (
-          <a href={shopUrl({ category: item.slug, subcategory: '' })} aria-current={category === item.slug ? 'page' : undefined} aria-label={`Filter by ${item.name}`} class={`shrink-0 rounded-full border px-4 py-2 text-sm font-bold ${category === item.slug ? 'border-brand-primary bg-brand-primary text-slate-950' : 'border-slate-300 bg-white text-slate-700'}`}>{item.name}</a>
+        <a href={shopUrl({ search: chipSearch, category: '', subcategory: '' })} aria-current={!category ? 'page' : undefined} class={`shrink-0 inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-bold ${!category ? 'border-brand-primary bg-brand-primary text-slate-950' : 'border-slate-300 bg-white text-slate-700'}`}>All products</a>
+        {taxonomy.map((item) => (
+          <a href={shopUrl({ search: chipSearch, category: item.slug, subcategory: '' })} aria-current={category === item.slug ? 'page' : undefined} aria-label={`Filter by ${item.name}`} class={`shrink-0 inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-bold ${category === item.slug ? 'border-brand-primary bg-brand-primary text-slate-950' : 'border-slate-300 bg-white text-slate-700'}`}>{item.name}</a>
         ))}
       </div>
 
+      {/* One row of subcategory chips, not a panel: it scrolls sideways on a
+          phone instead of pushing the products further down. */}
       {selectedCategory && (
-        <div class="mt-4 rounded-xl bg-slate-50 p-4" aria-labelledby="subcategory-filters-heading">
-          <h3 id="subcategory-filters-heading" class="text-sm font-bold text-slate-900">{selectedCategory.name} subcategories</h3>
-          <div class="mt-3 flex flex-wrap gap-2">
+        <div class="mt-2" aria-labelledby="subcategory-filters-heading">
+          <h3 id="subcategory-filters-heading" class="sr-only">{selectedCategory.name} subcategories</h3>
+          <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-2 sm:mx-0 sm:flex-wrap sm:px-0">
             {selectedCategory.subcategories.map((item) => (
-              <a href={shopUrl({ subcategory: item.slug })} aria-current={subcategory === item.slug ? 'page' : undefined} aria-label={`Filter by ${item.name}`} class={`rounded-lg border px-3 py-2 text-sm font-semibold ${subcategory === item.slug ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{item.name}</a>
+              <a href={shopUrl({ search: chipSearch, subcategory: item.slug })} aria-current={subcategory === item.slug ? 'page' : undefined} aria-label={`Filter by ${item.name}`} class={`shrink-0 inline-flex min-h-11 items-center rounded-lg border px-3 text-sm font-semibold ${subcategory === item.slug ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{item.name}</a>
             ))}
           </div>
         </div>
       )}
     </section>
 
-    {activeFilters.length > 0 && (
+    {activeFilters.length > 0 && !onlyCategoryFilter && (
       <section aria-label="Active filters" class="mt-5 flex flex-wrap items-center gap-2">
-        <span class="text-xs font-bold uppercase tracking-wide text-slate-500">Active filters</span>
+        <span class="text-xs font-bold uppercase tracking-wide text-slate-600">Active filters</span>
         {activeFilters.map((item) => <a href={item.href} aria-label={`Remove filter ${item.label}`} class="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">{item.label} <span aria-hidden="true">×</span></a>)}
       </section>
     )}
 
-    <div class="mt-7 flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
-      <p aria-live="polite" class="text-sm font-semibold text-slate-700">{products.length} matching product{products.length === 1 ? '' : 's'}</p>
-      <label class="flex items-center gap-2 text-sm font-bold text-slate-700">
-        Sort products
-        <select onchange="window.location.href = this.value" class="rounded-lg border border-slate-300 bg-white px-3 py-2" aria-label="Sort products">
-          <option value={shopUrl({ sort: 'default' })} selected={sort === 'default'}>Default order</option>
-          <option value={shopUrl({ sort: 'price-low-high' })} selected={sort === 'price-low-high'}>Price: low to high</option>
-          <option value={shopUrl({ sort: 'price-high-low' })} selected={sort === 'price-high-low'}>Price: high to low</option>
-          <option value={shopUrl({ sort: 'name-a-z' })} selected={sort === 'name-a-z'}>Name: A–Z</option>
-        </select>
-      </label>
+    {personalLead && (
+      <p class="mt-5 text-sm text-slate-700">
+        Showing <strong>{personalLead}</strong> first, based on your recent activity on GoldPlus.
+        {' '}<a href="/shop?order=standard" class="font-bold underline">Show the standard order</a>
+      </p>
+    )}
+
+    {shopFacets.length > 0 && (
+      <details class="mt-5 rounded-xl border border-slate-200 bg-white" open={facetsChosen} data-shop-filters>
+        <summary class="flex min-h-11 cursor-pointer items-center justify-between px-4 text-sm font-bold text-slate-900">
+          <span>Filter by price and specification{facetsChosen ? ` (${facetSelection.price.length + Object.values(facetSelection.specs).flat().length} chosen)` : ''}</span>
+          <span aria-hidden="true" class="text-slate-500">▾</span>
+        </summary>
+        <div class="grid gap-4 border-t border-slate-100 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3">
+          {shopFacets.map((facet) => (
+            <fieldset>
+              <legend class="mb-2 text-xs font-black uppercase tracking-wide text-slate-600">{facet.label}</legend>
+              <div class="flex flex-wrap gap-2">
+                {facet.options.map((o) => (
+                  <a
+                    href={shopUrl({ facets: toggleShopFacet(facetSelection, facet.key, o.value) })}
+                    aria-pressed={o.selected ? 'true' : 'false'}
+                    role="button"
+                    aria-label={`${facet.label}: ${o.label}, ${o.count} product${o.count === 1 ? '' : 's'}${o.selected ? ', chosen' : ''}`}
+                    class={`inline-flex min-h-11 items-center gap-1 rounded-lg border px-3 text-sm ${o.selected ? 'border-slate-950 bg-slate-950 font-bold text-white' : o.count === 0 ? 'border-slate-200 bg-slate-50 text-slate-400' : 'border-slate-300 bg-white text-slate-700'}`}
+                  >{o.selected && <span aria-hidden="true">✓</span>}{o.label}<span class={o.selected ? 'text-white/70' : 'text-slate-500'}>({o.count})</span></a>
+                ))}
+              </div>
+            </fieldset>
+          ))}
+        </div>
+        <p class="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">Only specifications our staff have checked. Choosing two values of one filter shows either.</p>
+      </details>
+    )}
+
+    <div class="mt-5 flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+      <p aria-live="polite" class="text-sm font-semibold text-slate-700">{catalogueNotice ? 'Products could not be loaded' : `${products.length} matching product${products.length === 1 ? '' : 's'}${totalPages > 1 ? ` · showing ${pageStart}–${pageEnd}` : ''}`}</p>
+      {products.length > 1 && (
+        <label class="flex items-center gap-2 text-sm font-bold text-slate-700">
+          Sort products
+          <select data-navigate-on-change class="min-h-11 rounded-lg border border-slate-300 bg-white px-3" aria-label="Sort products">
+            <option value={shopUrl({ sort: 'default' })} selected={sort === 'default'}>Default order</option>
+            <option value={shopUrl({ sort: 'price-low-high' })} selected={sort === 'price-low-high'}>Price: low to high</option>
+            <option value={shopUrl({ sort: 'price-high-low' })} selected={sort === 'price-high-low'}>Price: high to low</option>
+            <option value={shopUrl({ sort: 'name-a-z' })} selected={sort === 'name-a-z'}>Name: A to Z</option>
+          </select>
+        </label>
+      )}
     </div>
 
+    {/* Two compact cards per row on a phone (owner decision 2026-09-24). */}
     {products.length > 0 ? (
-      <section aria-label="Product results" class="mt-7 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {products.map((product, index) => <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product))} searchQuery={search} searchRank={index + 1} />)}
+      <section aria-label="Product results" class="mt-6 grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
+        {pageProducts.map((product, index) => <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy)} searchQuery={search} searchRank={(page - 1) * PAGE_SIZE + index + 1} eager={index < 4} />)}
       </section>
     ) : (
       <section class="mt-7 rounded-2xl border border-slate-200 bg-white p-6 text-center sm:p-10" aria-labelledby="no-results-heading">
@@ -166,35 +444,68 @@ const activeFilters = [
         <p class="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-slate-600">
           {search ? <>No products matched “{search}”. </> : null}
           {subcategoryLabel || categoryLabel ? <>The selected {subcategoryLabel || categoryLabel} filter has no matching products. </> : null}
+          {facetsChosen && filteredProducts.length > 0 ? <>The filters you chose leave nothing here. <a href={shopUrl({ facets: { price: [], specs: {} } })} class="font-bold underline">Remove the filters</a> to see all {filteredProducts.length}. </> : null}
           Try another search or browse the categories.
+          {search && <> For a battery, check the spelling or try the code printed on your old one.</>}
         </p>
+        {/*
+          One obvious next step. Four equal pills used to compete, with the
+          most useful one (capturing what the customer actually wanted) third;
+          and the "browse" anchor pointed at a section that is not rendered
+          when the catalogue itself is down.
+        */}
         <div class="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
-          <a href="/shop" class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Reset filters</a>
-          <a href="#browse-available-products" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">Browse available products</a>
-          {search && (
-            <a href={`/quote-request?requested=${encodeURIComponent(search)}`} class="rounded-full border border-brand-primary bg-brand-primary/10 px-6 py-3 text-sm font-bold text-slate-900 hover:bg-brand-primary hover:text-slate-950">Request this product</a>
+          {search ? (
+            <a href={askOnWhatsApp} class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Ask us on WhatsApp</a>
+          ) : (
+            <a href="/shop" class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Clear filters</a>
           )}
-          {search && (
-            <a href="/support" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">Ask support</a>
+          {search && <a href={`/battery-finder?q=${encodeURIComponent(search)}`} class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">Find a battery by phone</a>}
+          {search && <a href="/shop" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">Clear search</a>}
+          {browseFallback.length > 0 && (
+            <a href="#browse-available-products" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">See what is in stock</a>
           )}
         </div>
+        {search && <p class="mt-4 text-xs text-slate-600">Buying in bulk? <a href={`/quote-request?requested=${encodeURIComponent(search)}`} class="font-bold underline">Request a quote</a></p>}
       </section>
+    )}
+
+    {totalPages > 1 && (
+      <nav class="mt-10 flex flex-wrap items-center justify-center gap-2 text-sm font-bold" aria-label="Product pages">
+        {page > 1 && <a class="rounded-full border border-slate-300 px-5 py-2.5 hover:border-slate-900" href={shopUrl({ page: page - 1 })}>← Previous</a>}
+        <span class="sr-only">Page {page} of {totalPages}</span>
+        <ol class="flex items-center gap-1">
+          {pageNumbers.map((n, i) => (
+            <>
+              {i > 0 && n - pageNumbers[i - 1] > 1 && <li aria-hidden="true" class="text-slate-500">…</li>}
+              <li>{n === page
+                ? <span aria-current="page" class="inline-flex h-11 w-11 items-center justify-center rounded-full bg-slate-950 text-white">{n}</span>
+                : <a href={shopUrl({ page: n })} aria-label={`Page ${n}`} class="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-300 hover:border-slate-900">{n}</a>}</li>
+            </>
+          ))}
+        </ol>
+        {page < totalPages && <a class="rounded-full border border-slate-300 px-5 py-2.5 hover:border-slate-900" href={shopUrl({ page: page + 1 })}>Next →</a>}
+      </nav>
     )}
 
     {browseFallback.length > 0 && (
       <section id="browse-available-products" class="mt-10" aria-labelledby="browse-available-heading">
         <h2 id="browse-available-heading" class="text-xl font-black text-slate-900">Browse available products</h2>
         <p class="mt-1 text-sm text-slate-600">These are currently listed products, not personalised recommendations.</p>
-        <div class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {browseFallback.map((product) => <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product))} />)}
+        <div class="mt-5 grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3">
+          {browseFallback.map((product) => <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy)} />)}
         </div>
       </section>
     )}
   </main>
 
-  <script is:inline define:vars={{ apiBase }}>
-    // Slice 4: progressive autocomplete. The form works without JavaScript;
-    // this only fills the datalist with catalogue names on capable browsers.
+  <style>
+    @media (min-width: 981px) { .shop-search { display: none; } }
+  </style>
+
+  {/* Progressive autocomplete: the form works without JavaScript; this only
+      fills the datalist with catalogue names on capable browsers. */}
+  <script nonce={Astro.locals.cspNonce} is:inline define:vars={{ apiBase: publicApiBase }}>
     (function () {
       var input = document.getElementById('shop-search');
       var list = document.getElementById('shop-suggest');

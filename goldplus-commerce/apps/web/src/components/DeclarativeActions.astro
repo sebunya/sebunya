@@ -1,0 +1,68 @@
+---
+/**
+ * Behaviour that used to live in inline event-handler attributes
+ * (onclick="return confirm(…)", onchange="this.form.submit()", …).
+ *
+ * A strict Content-Security-Policy blocks EVERY inline handler, whatever the
+ * nonce, so they are declared with data attributes and handled here by one
+ * bundled script instead:
+ *
+ *   data-confirm="Question?"   on a submit button or a form: submits only if the person confirms
+ *   data-submit-on-change      on a select: submits its form when the value changes
+ *   data-navigate-on-change    on a select: goes to the chosen same-site path
+ *   data-action="reload"       on a button: reloads the page
+ *   data-action="print"        on a button: opens the print dialog
+ *   data-fallback-src="url"    on an img: swaps to that source once if the first one fails
+ */
+---
+<script>
+  const confirmed = (el: Element | null): boolean => {
+    const question = el?.getAttribute('data-confirm');
+    return !question || window.confirm(question);
+  };
+
+  document.addEventListener('click', (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const confirmer = target?.closest('button[data-confirm], input[type="submit"][data-confirm]');
+    if (confirmer && !confirmed(confirmer)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+    const action = target?.closest('[data-action]')?.getAttribute('data-action');
+    if (action === 'reload') window.location.reload();
+    else if (action === 'print') window.print();
+  }, true);
+
+  document.addEventListener('submit', (event) => {
+    const form = event.target instanceof HTMLFormElement ? event.target : null;
+    if (form?.hasAttribute('data-confirm') && !confirmed(form)) event.preventDefault();
+  }, true);
+
+  document.addEventListener('change', (event) => {
+    const select = event.target instanceof HTMLSelectElement ? event.target : null;
+    if (!select) return;
+    if (select.hasAttribute('data-submit-on-change')) {
+      select.form?.requestSubmit();
+    } else if (select.hasAttribute('data-navigate-on-change')) {
+      // Same-site paths only: a value is never allowed to send the visitor elsewhere.
+      const to = select.value;
+      if (to.startsWith('/') && !to.startsWith('//')) window.location.assign(to);
+    }
+  });
+
+  // Image fallback. `error` does not bubble, so it is caught on the way down;
+  // an image that failed before this script ran is found by the sweep below.
+  const fallBack = (img: HTMLImageElement) => {
+    const next = img.getAttribute('data-fallback-src');
+    if (!next) return;
+    img.removeAttribute('data-fallback-src'); // once: a missing fallback must not loop
+    img.src = next;
+  };
+  document.addEventListener('error', (event) => {
+    if (event.target instanceof HTMLImageElement) fallBack(event.target);
+  }, true);
+  document.querySelectorAll<HTMLImageElement>('img[data-fallback-src]').forEach((img) => {
+    if (img.complete && img.naturalWidth === 0 && img.currentSrc) fallBack(img);
+  });
+</script>

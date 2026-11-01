@@ -1,29 +1,72 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import EmptyState from '../components/EmptyState.astro';
+import { apiBase } from '../lib/api';
+import { safeReturnTo } from '../lib/safeReturnTo';
+import { carryQuery } from '../lib/carryQuery';
+
+// U6 AC6 — before giving up with a 404, ask the API whether this path has a
+// recorded redirect (product slug changes create 301s). Only the 404 path pays
+// this cost — healthy pages never hit the endpoint. Fail-open with a short
+// timeout: any error or miss renders the normal 404.
+const requestPath = Astro.url.pathname;
+if (requestPath && requestPath !== '/404') {
+  try {
+    const res = await fetch(`${apiBase}/seo/resolve-redirect?path=${encodeURIComponent(requestPath)}`, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(400),
+    });
+    if (res.ok) {
+      const json: any = await res.json().catch(() => null);
+      const to = json?.data?.to;
+      const statusCode = json?.data?.statusCode;
+      // startsWith('/') alone still admits "//evil.example" and "/\evil.example",
+      // both of which a browser resolves to another origin. This is the exact
+      // check safeReturnTo was written to replace, so use it: a redirect target
+      // that is not same-origin falls through to the 404 rather than leaving
+      // the site. An admin-configured redirect is still data, not a licence.
+      if (json?.success && typeof to === 'string' && to.startsWith('/')) {
+        const target = safeReturnTo(to, '');
+        if (target) return Astro.redirect(carryQuery(target, Astro.url.search), statusCode === 302 ? 302 : 301);
+      }
+    }
+  } catch {
+    /* fail open — render the 404 */
+  }
+}
 
 Astro.response.status = 404;
 Astro.response.headers.set('Cache-Control', 'no-store');
 ---
 
-<BaseLayout title="Page not found" description="The page you were looking for could not be found.">
+<BaseLayout title="Page not found" description="The page you were looking for could not be found." errorPage>
   <div class="container mx-auto px-4 lg:px-8 py-16 md:py-24">
     <div class="max-w-xl mx-auto">
       <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-4 text-center">Error 404</p>
-      <EmptyState
-        title="We could not find that page"
-        message="It may have been moved or the link may be wrong. Try the shop, or head back to the home page."
-        hint="If you arrived here from a search engine result, the page has likely been retired."
-      >
-        <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <a href="/" class="inline-block w-full sm:w-auto px-6 py-3 bg-brand-primary text-brand-charcoal rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none">
+      {/* EmptyState's markup, with the title as the page's h1 (it renders a <p>). */}
+      <div class="border border-dashed border-gray-300 rounded-2xl p-10 md:p-12 text-center bg-white">
+        <h1 class="text-lg font-bold text-brand-dark mb-2">We could not find that page</h1>
+        <p class="text-sm text-gray-600 max-w-md mx-auto leading-relaxed">It may have been moved or the link may be wrong. Search for what you wanted, or try the shop.</p>
+        <form action="/shop" method="get" role="search" class="mt-6 flex gap-2 max-w-md mx-auto">
+          <label for="nf-q" class="sr-only">Search products</label>
+          <input id="nf-q" name="q" type="search" autocomplete="off" placeholder="Search products" class="min-w-0 flex-1 px-4 py-3 bg-white border border-gray-500 rounded-lg placeholder:text-gray-500 focus:ring-2 focus:ring-brand-primaryInk focus:border-brand-primaryInk outline-none" />
+          <button type="submit" class="px-5 py-3 bg-brand-charcoal text-white rounded-lg font-bold hover:bg-black focus-visible:ring-4 focus-visible:ring-brand-primaryInk outline-none">Search</button>
+        </form>
+        <div class="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+          <a href="/" class="inline-block w-full sm:w-auto px-6 py-3 bg-brand-primary text-brand-charcoal rounded-lg font-bold hover:opacity-90 focus-visible:ring-4 focus-visible:ring-brand-primaryInk outline-none">
             Go to home
           </a>
-          <a href="/shop" class="inline-block w-full sm:w-auto px-6 py-3 bg-white text-brand-charcoal border-2 border-brand-borderGrey rounded-lg font-bold hover:border-brand-charcoal focus-visible:ring-4 focus-visible:ring-brand-charcoal/10 outline-none">
+          <a href="/shop" class="inline-block w-full sm:w-auto px-6 py-3 bg-white text-brand-charcoal border-2 border-brand-borderGrey rounded-lg font-bold hover:border-brand-charcoal focus-visible:ring-4 focus-visible:ring-brand-primaryInk outline-none">
             Browse shop
           </a>
         </div>
-      </EmptyState>
+        <nav aria-label="Popular pages" class="mt-6 flex flex-wrap justify-center gap-x-4 gap-y-2 text-sm font-bold">
+          <a href="/shop?category=power" class="text-brand-charcoal underline underline-offset-4">Power</a>
+          <a href="/shop?category=sound" class="text-brand-charcoal underline underline-offset-4">Sound</a>
+          <a href="/shop?category=storage" class="text-brand-charcoal underline underline-offset-4">Storage</a>
+          <a href="/track-order" class="text-brand-charcoal underline underline-offset-4">Track an order</a>
+        </nav>
+        <p class="mt-6 text-xs text-gray-600 italic">If you arrived here from a search engine result, the page has likely been retired.</p>
+      </div>
     </div>
   </div>
 </BaseLayout>

@@ -1,0 +1,485 @@
+{
+  "/products/goldplus-100w-portable-power-station-gp-09.webp": {
+    "width": 1254,
+    "height": 1254,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-100w-portable-power-station-gp-09-320.webp",
+        "bytes": 4952
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-100w-portable-power-station-gp-09-640.webp",
+        "bytes": 11680
+      },
+      {
+        "w": 1254,
+        "url": "/products/goldplus-100w-portable-power-station-gp-09.webp",
+        "bytes": 32210
+      }
+    ]
+  },
+  "/products/goldplus-16gb-usb-flash-drive.webp": {
+    "width": 1024,
+    "height": 1024,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-16gb-usb-flash-drive-320.webp",
+        "bytes": 1498
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-16gb-usb-flash-drive-640.webp",
+        "bytes": 3578
+      },
+      {
+        "w": 1024,
+        "url": "/products/goldplus-16gb-usb-flash-drive.webp",
+        "bytes": 25256
+      }
+    ]
+  },
+  "/products/goldplus-32gb-memory-card.webp": {
+    "width": 2048,
+    "height": 2048,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-32gb-memory-card-320.webp",
+        "bytes": 3748
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-32gb-memory-card-640.webp",
+        "bytes": 7804
+      },
+      {
+        "w": 2048,
+        "url": "/products/goldplus-32gb-memory-card.webp",
+        "bytes": 37736
+      }
+    ]
+  },
+  "/products/goldplus-50w-pd-charger-kit-gp-105.webp": {
+    "width": 2048,
+    "height": 2048,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-50w-pd-charger-kit-gp-105-320.webp",
+        "bytes": 4284
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-50w-pd-charger-kit-gp-105-640.webp",
+        "bytes": 11086
+      },
+      {
+        "w": 2048,
+        "url": "/products/goldplus-50w-pd-charger-kit-gp-105.webp",
+        "bytes": 96468
+      }
+    ]
+  },
+  "/products/goldplus-50w-pps-charger-kit-gp-107.webp": {
+    "width": 1024,
+    "height": 1024,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-50w-pps-charger-kit-gp-107-320.webp",
+        "bytes": 7032
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-50w-pps-charger-kit-gp-107-640.webp",
+        "bytes": 18564
+      },
+      {
+        "w": 1024,
+        "url": "/products/goldplus-50w-pps-charger-kit-gp-107.webp",
+        "bytes": 84772
+      }
+    ]
+  },
+  "/products/goldplus-built-in-cable-power-bank-gp-pd-w3.webp": {
+    "width": 1254,
+    "height": 1254,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-built-in-cable-power-bank-gp-pd-w3-320.webp",
+        "bytes": 5616
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-built-in-cable-power-bank-gp-pd-w3-640.webp",
+        "bytes": 13830
+      },
+      {
+        "w": 1254,
+        "url": "/products/goldplus-built-in-cable-power-bank-gp-pd-w3.webp",
+        "bytes": 38220
+      }
+    ]
+  },
+  "/products/goldplus-charger-gp-101.webp": {
+    "width": 2048,
+    "height": 2048,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-charger-gp-101-320.webp",
+        "bytes": 3596
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-charger-gp-101-640.webp",
+        "bytes": 8898
+      },
+      {
+        "w": 2048,
+        "url": "/products/goldplus-charger-gp-101.webp",
+        "bytes": 117704
+      }
+    ]
+  },
+  "/products/goldplus-compact-usb-wall-charger-gp-106.webp": {
+    "width": 2048,
+    "height": 2048,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-compact-usb-wall-charger-gp-106-320.webp",
+        "bytes": 2050
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-compact-usb-wall-charger-gp-106-640.webp",
+        "bytes": 5090
+      },
+      {
+        "w": 2048,
+        "url": "/products/goldplus-compact-usb-wall-charger-gp-106.webp",
+        "bytes": 64990
+      }
+    ]
+  },
+  "/products/goldplus-digital-display-power-bank-gp-p07.webp": {
+    "width": 1254,
+    "height": 1254,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-digital-display-power-bank-gp-p07-320.webp",
+        "bytes": 7166
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-digital-display-power-bank-gp-p07-640.webp",
+        "bytes": 18982
+      },
+      {
+        "w": 1254,
+        "url": "/products/goldplus-digital-display-power-bank-gp-p07.webp",
+        "bytes": 54868
+      }
+    ]
+  },
+  "/products/goldplus-dual-usb-car-charger-gp-ca03.webp": {
+    "width": 1254,
+    "height": 1254,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-dual-usb-car-charger-gp-ca03-320.webp",
+        "bytes": 5548
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-dual-usb-car-charger-gp-ca03-640.webp",
+        "bytes": 14544
+      },
+      {
+        "w": 1254,
+        "url": "/products/goldplus-dual-usb-car-charger-gp-ca03.webp",
+        "bytes": 37634
+      }
+    ]
+  },
+  "/products/goldplus-dual-usb-wall-charger-gp-103.webp": {
+    "width": 1254,
+    "height": 1254,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-dual-usb-wall-charger-gp-103-320.webp",
+        "bytes": 2494
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-dual-usb-wall-charger-gp-103-640.webp",
+        "bytes": 5948
+      },
+      {
+        "w": 1254,
+        "url": "/products/goldplus-dual-usb-wall-charger-gp-103.webp",
+        "bytes": 28526
+      }
+    ]
+  },
+  "/products/goldplus-magnetic-power-bank-gp-03.webp": {
+    "width": 1254,
+    "height": 1254,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-magnetic-power-bank-gp-03-320.webp",
+        "bytes": 8044
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-magnetic-power-bank-gp-03-640.webp",
+        "bytes": 19612
+      },
+      {
+        "w": 1254,
+        "url": "/products/goldplus-magnetic-power-bank-gp-03.webp",
+        "bytes": 63388
+      }
+    ]
+  },
+  "/products/goldplus-power-bank-with-handle-gp-x03.webp": {
+    "width": 1254,
+    "height": 1254,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-power-bank-with-handle-gp-x03-320.webp",
+        "bytes": 5912
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-power-bank-with-handle-gp-x03-640.webp",
+        "bytes": 14806
+      },
+      {
+        "w": 1254,
+        "url": "/products/goldplus-power-bank-with-handle-gp-x03.webp",
+        "bytes": 43670
+      }
+    ]
+  },
+  "/products/goldplus-slim-power-bank-gp-04.webp": {
+    "width": 1254,
+    "height": 1254,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-slim-power-bank-gp-04-320.webp",
+        "bytes": 3832
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-slim-power-bank-gp-04-640.webp",
+        "bytes": 11728
+      },
+      {
+        "w": 1254,
+        "url": "/products/goldplus-slim-power-bank-gp-04.webp",
+        "bytes": 67392
+      }
+    ]
+  },
+  "/products/goldplus-super-fast-charger-kit-gp-108.webp": {
+    "width": 796,
+    "height": 1024,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-super-fast-charger-kit-gp-108-320.webp",
+        "bytes": 7726
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-super-fast-charger-kit-gp-108-640.webp",
+        "bytes": 20006
+      },
+      {
+        "w": 796,
+        "url": "/products/goldplus-super-fast-charger-kit-gp-108.webp",
+        "bytes": 56832
+      }
+    ]
+  },
+  "/products/goldplus-usb-c-charger-kit-gp-104.webp": {
+    "width": 2048,
+    "height": 2048,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-usb-c-charger-kit-gp-104-320.webp",
+        "bytes": 3130
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-usb-c-charger-kit-gp-104-640.webp",
+        "bytes": 7186
+      },
+      {
+        "w": 2048,
+        "url": "/products/goldplus-usb-c-charger-kit-gp-104.webp",
+        "bytes": 62142
+      }
+    ]
+  },
+  "/products/goldplus-usb-mouse.webp": {
+    "width": 1024,
+    "height": 1024,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-usb-mouse-320.webp",
+        "bytes": 2788
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-usb-mouse-640.webp",
+        "bytes": 6318
+      },
+      {
+        "w": 1024,
+        "url": "/products/goldplus-usb-mouse.webp",
+        "bytes": 47088
+      }
+    ]
+  },
+  "/products/goldplus-usb-sound-card.webp": {
+    "width": 1024,
+    "height": 1024,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-usb-sound-card-320.webp",
+        "bytes": 4370
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-usb-sound-card-640.webp",
+        "bytes": 10372
+      },
+      {
+        "w": 1024,
+        "url": "/products/goldplus-usb-sound-card.webp",
+        "bytes": 193998
+      }
+    ]
+  },
+  "/products/goldplus-wireless-earbuds-gp-001.webp": {
+    "width": 1024,
+    "height": 1024,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-wireless-earbuds-gp-001-320.webp",
+        "bytes": 4946
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-wireless-earbuds-gp-001-640.webp",
+        "bytes": 11400
+      },
+      {
+        "w": 1024,
+        "url": "/products/goldplus-wireless-earbuds-gp-001.webp",
+        "bytes": 123428
+      }
+    ]
+  },
+  "/products/goldplus-wireless-earbuds-gp-002.webp": {
+    "width": 1024,
+    "height": 1001,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-wireless-earbuds-gp-002-320.webp",
+        "bytes": 5926
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-wireless-earbuds-gp-002-640.webp",
+        "bytes": 13988
+      },
+      {
+        "w": 1024,
+        "url": "/products/goldplus-wireless-earbuds-gp-002.webp",
+        "bytes": 132860
+      }
+    ]
+  },
+  "/products/goldplus-wireless-earbuds-gp-003.webp": {
+    "width": 975,
+    "height": 1024,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-wireless-earbuds-gp-003-320.webp",
+        "bytes": 5522
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-wireless-earbuds-gp-003-640.webp",
+        "bytes": 12428
+      },
+      {
+        "w": 975,
+        "url": "/products/goldplus-wireless-earbuds-gp-003.webp",
+        "bytes": 196958
+      }
+    ]
+  },
+  "/products/goldplus-wireless-earbuds-gp-004.webp": {
+    "width": 1024,
+    "height": 1024,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-wireless-earbuds-gp-004-320.webp",
+        "bytes": 5342
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-wireless-earbuds-gp-004-640.webp",
+        "bytes": 11684
+      },
+      {
+        "w": 1024,
+        "url": "/products/goldplus-wireless-earbuds-gp-004.webp",
+        "bytes": 219964
+      }
+    ]
+  },
+  "/products/goldplus-wireless-earbuds-gp-007.webp": {
+    "width": 1024,
+    "height": 1024,
+    "variants": [
+      {
+        "w": 320,
+        "url": "/products/goldplus-wireless-earbuds-gp-007-320.webp",
+        "bytes": 5836
+      },
+      {
+        "w": 640,
+        "url": "/products/goldplus-wireless-earbuds-gp-007-640.webp",
+        "bytes": 14688
+      },
+      {
+        "w": 1024,
+        "url": "/products/goldplus-wireless-earbuds-gp-007.webp",
+        "bytes": 244288
+      }
+    ]
+  }
+}

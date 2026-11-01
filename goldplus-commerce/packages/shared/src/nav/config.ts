@@ -1,0 +1,273 @@
+import { HERO_SLIDE_LIBRARY } from '../hero/library';
+import type { NavConfig } from './types';
+
+/**
+ * DEFAULT_NAV_CONFIG — the single source of truth for the header content, used by
+ * BOTH the idempotent boot seed and the SSR fallback (the role HERO_SLIDE_LIBRARY
+ * plays for the hero). After seeding it belongs to marketing via the admin editor;
+ * the seed is add-only and never overwrites an operator's edits.
+ *
+ * Three seed-time corrections vs. the previous hardcoded header:
+ *  1. The refer-a-friend link is the canonical /account/rewards (the old header
+ *     had a /account/account/rewards double-`account` bug).
+ *  2. The first-order estimate is ONE field (settings.firstOrderEstimateUgx),
+ *     not four duplicated literals.
+ *  3. settings.saleEndsIso is DERIVED from the hero flash deadline so the header
+ *     countdown can never fork into a second, contradictory clock.
+ */
+
+const WA = 'https://wa.me/256705004545';
+// A MESSAGE, not a URL: the header builds the wa.me link around the one
+// admin-owned number. A stored URL is unwrapped by whatsappHref, never nested.
+const WA_BATTERY = 'Hi GoldPlus, I need a battery for my phone. My phone model is: ';
+const FEAT = '/nav/featured-default.png';
+const flashSlide = HERO_SLIDE_LIBRARY.find((s) => s.slideKey === 'flash');
+// No deadline is typed anywhere any more: the header reads the live promotion
+// (/commerce/storefront-discount) and so does the hero. Kept as a field for
+// older stored documents; always empty in the seed.
+const SALE_ENDS_ISO = '';
+
+const brandChips = [
+  { label: 'Tecno', href: '/battery-finder?q=Tecno' },
+  { label: 'Infinix', href: '/battery-finder?q=Infinix' },
+  { label: 'itel', href: '/battery-finder?q=itel' },
+  { label: 'Samsung', href: '/battery-finder?q=Samsung' },
+  { label: 'iPhone', href: '/battery-finder?q=iPhone' },
+  { label: 'Redmi', href: '/battery-finder?q=Redmi' },
+  { label: 'Xiaomi', href: '/battery-finder?q=Xiaomi' },
+  { label: 'Huawei', href: '/battery-finder?q=Huawei' },
+  { label: 'Nokia', href: '/battery-finder?q=Nokia' },
+  { label: 'Oppo', href: '/battery-finder?q=Oppo' },
+  { label: 'All brands →', href: '/battery-finder', style: 'green' as const },
+];
+
+// The capacity chips search by SIZE within the storage category, exactly as the
+// rendered header markup does (the per-row allSizes link carries the kind). Kept
+// in lock-step with that markup so the seed and the page never diverge.
+const caps = () => {
+  const sizes = ['1gb', '2gb', '4gb', '8gb', '16gb', '32gb', '64gb', '128gb', '256gb', '512gb'];
+  return sizes.map((s) => ({ label: s.toUpperCase(), href: `/shop?category=storage&q=${s}` }));
+};
+
+export const DEFAULT_NAV_CONFIG: NavConfig = {
+  contact: {
+    phoneDisplay: '0705 004545',
+    tel: 'tel:+256705004545',
+    telNumber: '+256705004545',
+    whatsappUrl: WA,
+    whatsappNumber: '256705004545',
+    whatsappBatteryPrefill: WA_BATTERY,
+    businessHoursNote: '',
+    reachCallLabel: 'Call us',
+    reachWhatsappLabel: 'WhatsApp',
+  },
+  brand: {
+    logoSrc: '/nav/gp-wordmark-cream.png',
+    logoAlt: 'GoldPlus',
+    logoHref: '/',
+    logoAriaLabel: 'GoldPlus home',
+    featuredDefaultImage: FEAT,
+  },
+  search: {
+    formAction: '/shop',
+    inputName: 'q',
+    placeholderDesktop: 'Search a phone model, a size, or a product…',
+    placeholderMobile: 'Search a phone model or product…',
+    scanLink: { href: '/verification', ariaLabel: 'Check if a product is genuine' },
+    sheetHeadings: { recent: 'Recent', recentClear: 'Clear', trending: 'Trending in Kampala', products: 'Products' },
+    footerCtaLabel: 'Ask us on WhatsApp',
+    footerCtaHref: WA,
+    zeroResultCopy: 'No match for <b>{q}</b>. Try a phone model, a size, or a category, or ask us directly.',
+    trendingTerms: [],
+  },
+  rail: [
+    { key: 'all', label: 'Shop All', href: '/shop' },
+    { key: 'power', label: 'Power', href: '/shop?category=power' },
+    { key: 'sound', label: 'Sound', href: '/shop?category=sound' },
+    { key: 'storage', label: 'Storage', href: '/shop?category=storage' },
+    { key: 'car', label: 'Car', href: '/shop?category=car' },
+    { key: 'pc', label: 'PC', href: '/shop?category=pc' },
+    { key: 'flash', label: 'On sale', href: '/shop', tag: 'Live' },
+  ],
+  panels: [
+    {
+      key: 'all',
+      shape: 'wide',
+      tiles: [
+        { label: 'Power', descriptor: 'Banks, batteries, chargers', href: '/shop?category=power' },
+        { label: 'Sound', descriptor: 'Earbuds and headphones', href: '/shop?category=sound' },
+        { label: 'Storage', descriptor: 'Flash drives and memory cards', href: '/shop?category=storage' },
+        { label: 'Car', descriptor: 'Car chargers', href: '/shop?category=car' },
+        { label: 'PC', descriptor: 'Mouse and sound cards', href: '/shop?category=pc' },
+        { label: 'Everything →', descriptor: 'The full range', href: '/shop', variant: 'go' },
+      ],
+      featColumn: {
+        heading: 'Start here',
+        rows: [
+          { label: 'New this month', href: '/shop' },
+          { label: 'Best sellers', href: '/shop' },
+          { label: 'Best value picks', href: '/shop' },
+          { label: 'Verify a product', href: '/verification' },
+        ],
+      },
+      featured: null,
+    },
+    {
+      key: 'power',
+      shape: 'list',
+      heading: 'Power',
+      listRows: [
+        { label: 'Power banks', href: '/shop?category=power&q=power+bank' },
+        { label: 'Wall chargers', href: '/shop?category=power&q=wall+charger' },
+        { label: 'Adapters', href: '/shop?category=power&q=adapter' },
+        { label: 'Cables', href: '/shop?category=power&q=cable' },
+        { label: 'All Power →', href: '/shop?category=power', bold: true },
+      ],
+      batteryFinder: {
+        heading: 'Phone batteries',
+        note: 'Find yours by phone model',
+        formAction: '/battery-finder',
+        inputName: 'q',
+        inputPlaceholder: 'Type your phone, e.g. Tecno Spark 10',
+        brandChips,
+        askAction: { label: "Can't find your model? Send us a photo of the old one", href: `https://wa.me/256705004545?text=${encodeURIComponent(WA_BATTERY)}` },
+      },
+      featured: {
+        eyebrow: 'Most carried', name: 'Magnetic Power Bank', line: 'Clips to the back of your phone',
+        href: '/shop?category=power&q=power+bank', alt: 'Magnetic Power Bank', img: FEAT,
+      },
+    },
+    {
+      key: 'sound',
+      shape: 'wide',
+      tiles: [
+        { label: 'Earbuds', descriptor: 'True wireless, with a charging case', href: '/shop?category=sound&q=earbuds' },
+        { label: 'Earphones', descriptor: 'Wired, with a mic for calls', href: '/shop?category=sound&q=earphones' },
+        { label: 'Headphones', descriptor: 'For everyday listening', href: '/shop?category=sound&q=headphones' },
+      ],
+      featured: {
+        eyebrow: 'Also worth carrying', name: 'Digital Display Power Bank', line: '20,000mAh, with a charge level you can read',
+        href: '/shop?category=power&q=power+bank', alt: 'Digital Display Power Bank', img: FEAT,
+      },
+    },
+    {
+      key: 'storage',
+      shape: 'wide',
+      capacityMatrix: [
+        { rowLabel: 'Flash drives', allSizes: { label: 'All sizes →', href: '/shop?category=storage&q=flash+drive' }, caps: caps() },
+        { rowLabel: 'Memory cards', allSizes: { label: 'All sizes →', href: '/shop?category=storage&q=memory+card' }, caps: caps() },
+      ],
+      note: 'Every genuine GoldPlus card carries a hologram code you can check. <b>A card that does not hold its size is replaced or refunded.</b>',
+      featured: {
+        eyebrow: 'Also worth carrying', name: 'Power Bank with Built-in Cables', line: 'No cable to forget at home',
+        href: '/shop?category=power&q=power+bank', alt: 'Power Bank with Built-in Cables', img: FEAT,
+      },
+    },
+    {
+      key: 'car',
+      shape: 'wide',
+      tiles: [
+        { label: 'Car chargers', descriptor: 'Charge on the road from the 12V socket', href: '/shop?category=car&q=charger' },
+      ],
+      featured: {
+        eyebrow: 'Also worth carrying', name: 'Power Bank with Carry Handle', line: 'Enough charge for the whole car',
+        href: '/shop?category=power&q=power+bank', alt: 'Power Bank with Carry Handle', img: FEAT,
+      },
+    },
+    {
+      key: 'pc',
+      shape: 'wide',
+      tiles: [
+        { label: 'Mouse', descriptor: 'For desktop and laptop', href: '/shop?category=pc&q=mouse' },
+        { label: 'Sound cards', descriptor: 'Headphone and mic jacks over USB', href: '/shop?category=pc&q=sound+card' },
+      ],
+      featured: {
+        eyebrow: 'Also worth carrying', name: '100W Portable Power Station', line: 'Keeps a desk running through a blackout',
+        href: '/shop?category=power', alt: '100W Portable Power Station', img: FEAT,
+      },
+    },
+  ],
+  flash: {
+    countdownHeading: 'Ends in',
+    countdownLabels: { d: 'Days', h: 'Hrs', m: 'Min', s: 'Sec' },
+    noteDefault: 'Same verified stock. Less money, until the clock runs out.',
+    noteFinalHours: 'Final hours. Same verified stock, less money.',
+    cta: { label: "See what's on sale →", href: '/shop' },
+    featured: {
+      eyebrow: 'Best seller, on sale', name: 'Magnetic Power Bank', line: 'On sale now',
+      href: '/shop', alt: 'Magnetic Power Bank', img: FEAT,
+    },
+  },
+  mobile: {
+    quickLinks: [
+      { key: 'all', label: 'Shop All', href: '/shop' },
+      { key: 'flash', label: 'On sale', href: '/shop', tag: 'Live' },
+    ],
+    mflashPrefix: 'Sale ends in',
+    mflashGo: 'Shop →',
+    mflashHref: '/shop',
+    batteryAccordionHeading: 'Phone batteries',
+  },
+  popover: {
+    signedIn: {
+      subTemplate: 'You have <b>{points} points</b>. That is {money} off your next order.',
+      links: [
+        { label: 'Your orders', href: '/account' },
+        { label: 'Rewards', value: '{points} pts', href: '/account/rewards' },
+        { label: 'Refer a friend', value: 'Earn points', href: '/account/rewards#refer' },
+        { label: 'Account settings', href: '/account#settings' },
+        { label: 'Sign out', href: '/logout' },
+      ],
+      mobileRow: [
+        { label: 'Your rewards', href: '/account/rewards' },
+        { label: 'Your orders', href: '/account' },
+      ],
+    },
+    returning: {
+      heading: 'Welcome back',
+      holdTag: 'On now',
+      holdTitle: 'Up to {discountPct}% off',
+      holdSubManyVisits: 'Comes off at checkout. No code needed',
+      holdSubDefault: 'Comes off at checkout. No code needed',
+      formAction: '/register',
+      formInputPlaceholder: '07XX XXX XXX',
+      submit: 'Claim it',
+      altLink: { label: 'Sign in instead', href: '/account' },
+      mobileSub: '<b>Up to {discountPct}% off</b> right now. It comes off at checkout. Points start counting from today.',
+    },
+    firstTime: {
+      holdTag: 'On now',
+      holdTitle: 'Up to {discountPct}% off',
+      holdSub: 'Comes off at checkout. No code needed',
+      formAction: '/register',
+      formInputPlaceholder: '07XX XXX XXX',
+      submit: 'Claim it',
+      joinNote: 'Next, an email and a password. You sign in with your email.',
+      altLink: { label: 'I already have an account', href: '/account' },
+      mobileSub: '<b>Up to {discountPct}% off</b> right now. It comes off at checkout.',
+    },
+  },
+  miniCart: {
+    heading: 'In your cart',
+    subtotalLabel: 'Subtotal',
+    checkoutCta: { label: 'Checkout', href: '/checkout' },
+    viewCartCta: { label: 'View cart', href: '/cart' },
+    cutoffSunday: 'Closed Sunday. This order goes out <b>Monday morning</b>',
+    cutoffAfter: "Today's run has left. This order goes out <b>tomorrow morning</b>",
+    cutoffBefore: 'Check out in <b>{left}</b> and we deliver <b>today</b>.',
+  },
+  settings: {
+    firstOrderEstimateUgx: 'UGX 18,500',
+    firstOrderDiscountPct: 10,
+    pointsToUgxRate: 10,
+    referralPct: 10,
+    saleEndsIso: SALE_ENDS_ISO,
+    cutoffTimeLabel: '5:00pm',
+    nbaVisible: 1,
+    searchSuggestions: 6,
+    recentSearches: 5,
+    miniCartItems: 4,
+    dayStartHour: 6.5,
+    dayEndHour: 18.75,
+  },
+};

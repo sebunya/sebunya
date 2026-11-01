@@ -1,0 +1,50 @@
+{
+  "/hero/ambassador.jpg": {
+    "width": 760,
+    "height": 460,
+    "variants": [
+      {
+        "w": 480,
+        "url": "/hero/ambassador-480.webp",
+        "bytes": 6938
+      },
+      {
+        "w": 760,
+        "url": "/hero/ambassador.webp",
+        "bytes": 12458
+      }
+    ]
+  },
+  "/hero/new-arrivals.jpg": {
+    "width": 760,
+    "height": 507,
+    "variants": [
+      {
+        "w": 480,
+        "url": "/hero/new-arrivals-480.webp",
+        "bytes": 9814
+      },
+      {
+        "w": 760,
+        "url": "/hero/new-arrivals.webp",
+        "bytes": 16640
+      }
+    ]
+  },
+  "/hero/range.jpg": {
+    "width": 760,
+    "height": 507,
+    "variants": [
+      {
+        "w": 480,
+        "url": "/hero/range-480.webp",
+        "bytes": 12174
+      },
+      {
+        "w": 760,
+        "url": "/hero/range.webp",
+        "bytes": 22240
+      }
+    ]
+  }
+}
