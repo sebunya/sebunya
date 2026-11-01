@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -862,13 +863,52 @@ def prune_build_cache(policy: dict, apply: bool, state: "State | None" = None) -
     return size - after, f"build cache {human(size)} → {human(after)} ({flag}, bound {bound_gb} GB)"
 
 
+BACKUP_CLASSES = (
+    ("database_dump", re.compile(r"^goldplus-prod-nightly-.*\.dump$")),
+    ("photo_archive", re.compile(r"^goldplus-media-nightly-.*\.tar\.gz$")),
+    ("pre_migration_dump", re.compile(r"^goldplus-prod-pre-.*\.(dump|sql)$")),
+)
+
+
+def backup_class(path: str) -> str | None:
+    """Which kind of recovery point a file is; None for anything unrecognised."""
+    name = os.path.basename(path)
+    for kind, pattern in BACKUP_CLASSES:
+        if pattern.match(name):
+            return kind
+    return None
+
+
+def retention_keep(entries: list[dict], cfg: dict) -> set[str]:
+    """The pyramid for ONE class: newest N, then one per day, then one per week."""
+    entries = sorted(entries, key=lambda e: e["mtime"], reverse=True)
+    keep: set[str] = {e["path"] for e in entries[: max(cfg["keep_recent"], cfg["min_keep_always"])]}
+    seen_days: set[str] = set()
+    seen_weeks: set[str] = set()
+    for entry in entries:
+        stamp = datetime.fromtimestamp(entry["mtime"], timezone.utc)
+        day = stamp.strftime("%Y-%m-%d")
+        week = stamp.strftime("%G-W%V")
+        if day not in seen_days and len(seen_days) < cfg["keep_daily"]:
+            seen_days.add(day)
+            keep.add(entry["path"])
+        if week not in seen_weeks and len(seen_weeks) < cfg["keep_weekly"]:
+            seen_weeks.add(week)
+            keep.add(entry["path"])
+    return keep
+
+
 def backup_retention(state: State, policy: dict, apply: bool) -> list[str]:
     """Retention by recovery point, never by age alone.
 
     Three refusals are deliberate:
       * the newest recovery point is never expired;
       * without a verified remote, local copies below the floor are kept;
-      * anything uncertain is left alone.
+      * anything uncertain is left alone (a file of no known kind is never expired).
+
+    Database dumps, photo archives and pre-migration dumps are separate classes,
+    each with its own keep_recent / keep_daily / keep_weekly (policy
+    backups.classes.<kind> may override the shared numbers).
     """
     cfg = policy["backups"]
     notes: list[str] = []
@@ -896,19 +936,20 @@ def backup_retention(state: State, policy: dict, apply: bool) -> list[str]:
         return notes
     notes.append(why)
 
-    keep: set[str] = {e["path"] for e in entries[: max(cfg["keep_recent"], cfg["min_keep_always"])]}
-    seen_days: set[str] = set()
-    seen_weeks: set[str] = set()
+    # Each KIND of recovery point has its own pyramid. They were one list sorted
+    # by time: the photo archive pg-backup.sh writes seconds after the dump was
+    # that day's newest file, so it took the daily and weekly slots and the
+    # day's database dump was expired (review 2026-11). A photo archive must
+    # never take a dump's slot.
+    classes: dict[str, list[dict]] = {}
     for entry in entries:
-        stamp = datetime.fromtimestamp(entry["mtime"], timezone.utc)
-        day = stamp.strftime("%Y-%m-%d")
-        week = stamp.strftime("%G-W%V")
-        if day not in seen_days and len(seen_days) < cfg["keep_daily"]:
-            seen_days.add(day)
-            keep.add(entry["path"])
-        if week not in seen_weeks and len(seen_weeks) < cfg["keep_weekly"]:
-            seen_weeks.add(week)
-            keep.add(entry["path"])
+        kind = backup_class(entry["path"])
+        if kind is None:
+            continue  # unknown file: uncertain, so it is left alone
+        classes.setdefault(kind, []).append(entry)
+    keep: set[str] = {e["path"] for e in entries if backup_class(e["path"]) is None}
+    for kind, items in classes.items():
+        keep |= retention_keep(items, {**cfg, **(cfg.get("classes", {}).get(kind) or {})})
     expire = [e for e in entries if e["path"] not in keep]
     if not expire:
         return notes + [f"{len(entries)} recovery points, all within the retention pyramid"]

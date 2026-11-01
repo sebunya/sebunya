@@ -8,7 +8,8 @@ import { HERO_SLIDE_LIBRARY, HERO_SETTINGS_DEFAULT } from '@goldplus/shared';
  */
 
 const URL = process.env.COMMERCE_TEST_DATABASE_URL;
-const suite = URL && process.env.DATABASE_URL ? describe : describe.skip;
+// The app db client connects to DATABASE_URL: run only when that IS the test database, never a dev or prod-clone one.
+const suite = URL && process.env.DATABASE_URL === URL ? describe : describe.skip;
 
 suite('hero content on real PostgreSQL', () => {
   let pg: typeof import('../../apps/api/src/infrastructure/db/client').client;
@@ -36,7 +37,7 @@ suite('hero content on real PostgreSQL', () => {
 
   it('seeds the whole library once, and is a no-op the second time', async () => {
     const first = await repo.seedMissing(HERO_SLIDE_LIBRARY, HERO_SETTINGS_DEFAULT);
-    expect(first.inserted).toBe(12);
+    expect(first.inserted).toBe(HERO_SLIDE_LIBRARY.length);
     const second = await repo.seedMissing(HERO_SLIDE_LIBRARY, HERO_SETTINGS_DEFAULT);
     expect(second.inserted).toBe(0);
     expect(await repo.listAll()).toHaveLength(12);

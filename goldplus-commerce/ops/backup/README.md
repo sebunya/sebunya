@@ -5,7 +5,7 @@ and proves it arrived, the third proves it can become a working database again.
 All are installed ON the production host (owner action). Any failure posts to
 the owner through `goldplus-alert@.service` → `ops/backup/alert.sh` (ALERT_WEBHOOK_URL).
 
-    02:15 UTC       goldplus-pg-backup.timer      ops/backup/pg-backup.sh       dump + media tar, kept 14 days locally
+    02:15 UTC       goldplus-pg-backup.timer      ops/backup/pg-backup.sh       dump + media tar; expiry only by the Storage Steward (rule 4)
     02:50 UTC       goldplus-offsite-sync.timer   ops/backup/offsite-sync.sh    rsync to the Storage Box, then verify
     1st Sun 03:30   goldplus-restore-drill.timer  ops/backup/restore-drill.sh   pull newest dump from the Box, restore, compare with live
 
