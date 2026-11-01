@@ -87,6 +87,10 @@ export const FULFILMENT_STATUSES: readonly FulfilmentStatus[] = [
   'ON_HOLD',
 ];
 
+/** Appended when a cancelled task is brought back: stock is no longer held. */
+export const REINSTATED_WARNING =
+  'REINSTATED after cancellation — stock was released when this task was cancelled; re-confirm availability before picking.';
+
 /** Terminal states never transition further. */
 export const TERMINAL_FULFILMENT_STATUSES: readonly FulfilmentStatus[] = ['DELIVERED', 'CANCELLED'];
 
@@ -178,8 +182,24 @@ export function maskContact(phone: string | null | undefined, email: string | nu
 export class FulfilmentTask {
   private constructor(private snap: FulfilmentTaskSnapshot) {}
 
+  /** The task as it was read, so a write changes only what this change changed (see loadedSnapshot). */
+  private loaded: FulfilmentTaskSnapshot | null = null;
+
   static rehydrate(snapshot: FulfilmentTaskSnapshot): FulfilmentTask {
-    return new FulfilmentTask({ ...snapshot, items: [...snapshot.items], warnings: [...snapshot.warnings] });
+    const task = new FulfilmentTask({ ...snapshot, items: [...snapshot.items], warnings: [...snapshot.warnings] });
+    task.loaded = { ...snapshot };
+    return task;
+  }
+
+  /**
+   * What this task looked like when it was read; null for one never persisted. Every task change is
+   * read-change-write, and writing the whole row back let two changes overwrite each other: a claim put an
+   * OUT_FOR_DELIVERY task back over DELIVERED, a payment update wiped an acknowledgement and its assignee, two
+   * staff both "won" the same claim. The repository writes only the fields that differ from this, and only while
+   * the row still has this status (and, when the assignee is being changed, this assignee).
+   */
+  loadedSnapshot(): FulfilmentTaskSnapshot | null {
+    return this.loaded;
   }
 
   /**
@@ -298,6 +318,47 @@ export class FulfilmentTask {
     }
     this.snap = { ...this.snap, status: 'CANCELLED', updatedAt: now };
     return true;
+  }
+
+  /**
+   * Bring a CANCELLED task back into the work queue.
+   *
+   * Cancelling is terminal by design (`FORWARD.CANCELLED = []`) and the create
+   * path is keyed on a unique order_id, so before this existed a task cancelled
+   * against a still-open order could never return: the order stayed open to the
+   * customer while vanishing from every operational surface, recoverable only
+   * by hand-written SQL. Harmless while nothing has ever been paid; the moment
+   * payments work it is money taken for goods no queue will ever pick.
+   *
+   * Deliberately NOT part of `FORWARD`/`canTransitionFulfilment`: the generic
+   * transition stays strictly forward-only so the audit trail keeps its
+   * meaning. This is a separate, explicitly-named recovery action, and the
+   * caller is responsible for refusing it when the parent ORDER is terminal.
+   *
+   * Returns to NEW, unassigned — the previous assignee may be long gone, and a
+   * reinstated task must be picked up deliberately rather than silently
+   * reappearing in someone's list.
+   */
+  reinstate(now: Date = new Date()): void {
+    if (this.snap.status !== 'CANCELLED') {
+      throw new Error(`INVALID_REINSTATE: only a CANCELLED task can be reinstated, this one is ${this.snap.status}`);
+    }
+    // Cancelling released any held stock (the route's CANCELLED branch runs
+    // ReleaseInventoryForOrder). Reinstating deliberately does NOT re-reserve
+    // it — silently re-holding stock that may since have been sold to someone
+    // else is how you oversell — so the picker is told to confirm it first.
+    const warnings = this.snap.warnings.includes(REINSTATED_WARNING)
+      ? this.snap.warnings
+      : [...this.snap.warnings, REINSTATED_WARNING];
+
+    this.snap = {
+      ...this.snap,
+      status: 'NEW',
+      assignedTo: null,
+      assignedAt: null,
+      warnings,
+      updatedAt: now,
+    };
   }
 
   /** Assign (or unassign with null) the task to a staff member. Refuses on terminal tasks. */

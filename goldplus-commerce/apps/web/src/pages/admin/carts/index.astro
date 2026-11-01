@@ -16,13 +16,12 @@ let lookupResult: any = null;
 let lookupError: string | null = null;
 let apiLive = false;
 
+// Liveness from the unauthenticated health probe. The old probe hit
+// /governance/admin/stats (reports.read), so a support user WITH orders.read —
+// the permission the cart route needs — was told the API was offline.
 try {
-  const probe = await fetch(`${apiBase}/governance/admin/stats`, {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  if (probe.ok) {
-    apiLive = true;
-  }
+  const probe = await fetch(`${apiBase}/health`, { signal: AbortSignal.timeout(4000) });
+  apiLive = probe.ok;
 } catch {
   apiLive = false;
 }
@@ -32,14 +31,12 @@ const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-
 if (lookupId) {
   if (!uuidRegex.test(lookupId)) {
     lookupError = 'Format Violation: Cart IDs must be 36-character UUID strings.';
-  } else if (!apiLive) {
-    lookupError = 'Connectivity Alert: The commerce API backend is offline and cannot process lookups.';
   } else {
     try {
       // The guarded admin route. The customer-facing read is now credential-scoped and
       // cannot serve an arbitrary id — and the route this used to call had no
       // permission guard at all, so the bearer token below was decorative.
-      const res = await fetch(`${apiBase}/commerce/admin/carts/${lookupId}`, {
+      const res = await fetch(`${apiBase}/governance/admin/carts/${lookupId}`, {
         headers: { 
           'Accept': 'application/json',
           'Authorization': `Bearer ${token}`
@@ -55,7 +52,11 @@ if (lookupId) {
         }
       } else {
         const errJson = await res.json().catch(() => null);
-        lookupError = errJson?.error?.message || `Connection error: Server responded with ${res.status}.`;
+        lookupError = res.status === 404
+          ? 'No cart exists with this id.'
+          : res.status === 401 || res.status === 403
+            ? 'Your role cannot read carts (orders.read required).'
+            : errJson?.error?.message || `The API answered HTTP ${res.status}.`;
       }
     } catch {
       apiLive = false;
@@ -64,7 +65,34 @@ if (lookupId) {
   }
 }
 
-const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
+
+// Abandonment totals from the scheduled evaluator (GET /admin/carts/abandonment,
+// orders.read). Read-only; a failure shows a notice, never invented numbers.
+let abandonment: { summary: { open: number; expired: number; recovered: number; resumed?: number; remindersSent7d?: number; last24h: number }; recent: Array<{ id: string; cartId: string; status: string; itemCount: number; subtotalUgx: number; classifiedAt: string; reminderOutcome?: string | null }> } | null = null;
+let abandonmentError: string | null = null;
+try {
+  const res = await fetch(`${apiBase}/admin/carts/abandonment?limit=10`, {
+    headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+    signal: AbortSignal.timeout(5000),
+  });
+  const json = await res.json().catch(() => null);
+  if (res.ok && json?.success) abandonment = json.data;
+  else abandonmentError = res.status === 401 || res.status === 403
+    ? 'Your role cannot read cart abandonment (orders.read required).'
+    : json?.error?.message || `The API answered HTTP ${res.status}.`;
+} catch {
+  abandonmentError = 'The commerce API could not be reached.';
+}
+
+import { formatUgx } from '../../../lib/money';
+// UGX code format via the single money source (en-UG's currency symbol is "USh").
+const formatter = { format: (n: unknown) => formatUgx(n) };
+/** The basket reminder's outcome, in words (cart_abandonments.reminder_outcome, SendBasketRemindersUseCase). */
+const REMINDER_WORDS: Record<string, string> = {
+  sending: 'being sent', sent: 'sent', failed: 'failed to queue', not_opted_in: 'not asked for', no_phone: 'no phone on the account',
+  suppressed: 'stopped by the customer', unverified: 'phone not verified', inactive: 'account closed', nothing_left: 'nothing left to buy',
+  held_out: 'held back (control group)', phone_changed: 'number changed since they said yes', no_evidence: 'consent record incomplete',
+};
 ---
 
 <AdminLayout 
@@ -89,22 +117,22 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
       <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm relative overflow-hidden flex flex-col justify-between">
         <div>
-          <p class="text-[10px] font-black text-brand-green uppercase tracking-widest">Where to find Cart IDs</p>
+          <p class="text-[10px] font-black text-brand-primaryInk uppercase tracking-widest">Where to find Cart IDs</p>
           <p class="text-xs text-gray-500 mt-2 leading-relaxed">
-            Retrieve from customer session cookies (<span class="font-mono bg-gray-100 px-1 rounded">goldplus_cart_id</span>), database auditing logs, or active Redis sessions.
+            Retrieve from customer session cookies (<span class="font-mono bg-gray-100 text-gray-700 px-1 rounded">goldplus_cart_id</span>), database auditing logs, or active Redis sessions.
           </p>
         </div>
       </div>
 
       <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm relative overflow-hidden">
-        <p class="text-[10px] font-black text-blue-500 uppercase tracking-widest">Expiration</p>
-        <h4 class="text-2xl font-black text-brand-dark mt-2">90 Days</h4>
-        <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">Guest carts are kept for 90 days so customers can return and continue shopping.</p>
+        <p class="text-[10px] font-black text-blue-700 uppercase tracking-widest">Expiration</p>
+        <h4 class="text-2xl font-black text-brand-dark mt-2">180 Days</h4>
+        <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">Guest carts are kept for 180 days so customers can return and continue shopping.</p>
       </div>
 
       <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm relative overflow-hidden">
-        <p class="text-[10px] font-black text-brand-gold uppercase tracking-widest">API connection</p>
-        <h4 class={`text-2xl font-black mt-2 uppercase flex items-center gap-2 ${apiLive ? 'text-brand-green' : 'text-red-600'}`}>
+        <p class="text-[10px] font-black text-brand-primaryInk uppercase tracking-widest">API connection</p>
+        <h4 class={`text-2xl font-black mt-2 uppercase flex items-center gap-2 ${apiLive ? 'text-brand-primaryInk' : 'text-red-600'}`}>
           {apiLive ? 'Active' : 'Offline'}
           <span class={`inline-block w-2.5 h-2.5 rounded-full ${apiLive ? 'bg-brand-green animate-pulse' : 'bg-red-500'}`}></span>
         </h4>
@@ -112,6 +140,49 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
           {apiLive ? "Direct real-time connection verified." : "The commerce API is unreachable."}
         </p>
       </div>
+    </div>
+
+
+    {/* Cart abandonment totals */}
+    <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-8">
+      <div class="flex items-center justify-between gap-4 mb-4">
+        <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Cart abandonment</h3>
+        <span class="text-[10px] text-gray-400">A cart with items and no activity, classified hourly</span>
+      </div>
+      {abandonmentError ? (
+        <p class="text-xs text-red-600">{abandonmentError}</p>
+      ) : abandonment ? (
+        <>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div><p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Open</p><p class="text-2xl font-black text-brand-dark mt-1">{abandonment.summary.open}</p></div>
+            {/* "Recovered" was always 0: the platform records no checkout-to-cart link. "Came back" counts baskets changed after they were classified. */}
+            <div><p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Came back</p><p class="text-2xl font-black text-brand-primaryInk mt-1">{abandonment.summary.resumed ?? 0}</p></div>
+            <div><p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Expired</p><p class="text-2xl font-black text-gray-500 mt-1">{abandonment.summary.expired}</p></div>
+            <div><p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">New in last 24h</p><p class="text-2xl font-black text-brand-dark mt-1">{abandonment.summary.last24h}</p></div>
+          </div>
+          <p class="text-xs text-gray-500 mt-3">Basket reminders sent in the last 7 days: <span class="font-bold text-brand-dark">{abandonment.summary.remindersSent7d ?? 0}</span>. Only to signed-in customers who ticked the box, on a number known to be theirs (verified, or an order was delivered to it); switch off with BASKET_REMINDERS=off.</p>
+          {abandonment.recent.length > 0 ? (
+            <div class="overflow-x-auto mt-5">
+              <table class="w-full text-xs">
+                <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400"><th class="py-2">Cart</th><th>Status</th><th class="text-right">Items</th><th class="text-right">Subtotal</th><th class="text-right">Classified</th></tr></thead>
+                <tbody>
+                  {abandonment.recent.map((r) => (
+                    <tr class="border-t border-gray-100">
+                      <td class="py-2"><a class="font-mono text-brand-primaryInk hover:underline" href={`/admin/carts?id=${r.cartId}`}>{r.cartId.slice(0, 8)}…</a></td>
+                      <td>{r.status === 'RESUMED' ? 'CAME BACK' : r.status}{r.reminderOutcome ? <span class="text-gray-500"> · reminder {REMINDER_WORDS[r.reminderOutcome] ?? r.reminderOutcome}</span> : null}</td>
+                      <td class="text-right">{r.itemCount}</td>
+                      <td class="text-right">{formatter.format(r.subtotalUgx)}</td>
+                      <td class="text-right text-gray-500">{new Date(r.classifiedAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p class="text-xs text-gray-500 mt-4">No carts have been classified as abandoned yet.</p>
+          )}
+        </>
+      ) : null}
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -138,15 +209,15 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
                   </a>
                 </div>
               ) : (
-                <p class="text-[10px] text-blue-500 italic font-medium">No cart ID found for this browser session.</p>
+                <p class="text-[10px] text-blue-700 italic font-medium">No cart ID found for this browser session.</p>
               )}
             </div>
 
             <form method="GET" class="space-y-4" id="cart-lookup-form">
               <div>
-                <label for="id" class="block text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2 flex justify-between items-center">
+                <label for="id" class="block text-[10px] font-black uppercase tracking-wide text-gray-500 mb-2 flex justify-between items-center">
                   <span>Cart UUID</span>
-                  <span class="text-red-500 font-bold">* Required</span>
+                  <span class="text-red-700 font-bold">* Required</span>
                 </label>
                 <input 
                   type="text" 
@@ -155,9 +226,9 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
                   required
                   value={lookupId}
                   placeholder="e.g. a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
-                  class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs font-mono font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold transition-colors"
+                  class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs font-mono font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk transition-colors"
                 />
-                <p class="text-[9px] text-red-500 hidden font-bold mt-1" id="input-error-msg">Format: must be a 36-char UUID string.</p>
+                <p class="text-[9px] text-red-700 hidden font-bold mt-1" id="input-error-msg">Format: must be a 36-char UUID string.</p>
               </div>
               <button 
                 type="submit" 
@@ -182,7 +253,7 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
           <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
             <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Cart details</h3>
             {lookupResult && (
-              <span class="text-[9px] bg-brand-green/10 text-brand-green border border-brand-green/20 font-black px-2 py-0.5 rounded uppercase">Success</span>
+              <span class="text-[9px] bg-brand-green/10 text-brand-primaryInk border border-brand-green/20 font-black px-2 py-0.5 rounded uppercase">Success</span>
             )}
           </div>
 
@@ -194,13 +265,13 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
                   <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">
                     Submit a valid cart UUID using the left panel to fetch real-time server diagnostics, including:
                   </p>
-                  <ul class="text-[10px] text-gray-400 list-disc list-inside mt-2 text-left space-y-1 max-w-xs mx-auto font-medium">
+                  <ul class="text-[10px] text-gray-500 list-disc list-inside mt-2 text-left space-y-1 max-w-xs mx-auto font-medium">
                     <li>Number of active cart items</li>
                     <li>Individual product names & quantities</li>
                     <li>Calculated subtotal and unit prices</li>
                   </ul>
                 </div>
-                <p class="text-[10px] text-gray-400 italic">No diagnostic queries have been performed yet.</p>
+                <p class="text-[10px] text-gray-500 italic">No diagnostic queries have been performed yet.</p>
               </div>
             )}
 
@@ -220,14 +291,14 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
                 {/* Expanded Metadata Grid */}
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div class="bg-gray-50 border border-gray-100 rounded-2xl p-5">
-                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Cart Identification</p>
+                    <p class="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-1">Cart Identification</p>
                     <div class="space-y-2">
                       <div>
-                        <span class="text-[8px] font-bold text-gray-400 uppercase">UUID</span>
+                        <span class="text-[8px] font-bold text-gray-500 uppercase">UUID</span>
                         <h5 class="text-[11px] font-mono font-bold text-brand-dark break-all">{lookupResult.id}</h5>
                       </div>
                       <div>
-                        <span class="text-[8px] font-bold text-gray-400 uppercase">Bound Session ID</span>
+                        <span class="text-[8px] font-bold text-gray-500 uppercase">Bound Session ID</span>
                         <h5 class="text-[11px] font-mono font-bold text-brand-dark break-all">{lookupResult.sessionId || 'No linked session'}</h5>
                       </div>
                     </div>
@@ -236,12 +307,12 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
                   <div class="bg-gray-50 border border-gray-100 rounded-2xl p-5 flex flex-col justify-between">
                     <div class="flex justify-between items-start">
                       <div>
-                        <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Subtotal (UGX)</p>
+                        <p class="text-[9px] font-black text-gray-500 uppercase tracking-widest">Subtotal (UGX)</p>
                         <p class="text-lg font-black text-brand-dark mt-0.5">{formatter.format(lookupResult.subtotalUgx || 0)}</p>
                       </div>
-                      <span class="px-2 py-0.5 bg-brand-gold/10 text-brand-gold border border-brand-gold/20 font-black text-[8px] uppercase rounded">Active Status</span>
+                      <span class="px-2 py-0.5 bg-brand-gold/10 text-brand-primaryInk border border-brand-gold/20 font-black text-[8px] uppercase rounded">Active Status</span>
                     </div>
-                    <div class="border-t border-gray-200/50 pt-2 mt-2 flex justify-between items-center text-[9px] text-gray-400 font-medium">
+                    <div class="border-t border-gray-200/50 pt-2 mt-2 flex justify-between items-center text-[9px] text-gray-500 font-medium">
                       <span>Retention: 90-day lifespan</span>
                       <span class="font-mono text-[8px]">Device Tracking</span>
                     </div>
@@ -249,11 +320,11 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
 
                   <div class="bg-gray-50 border border-gray-100 rounded-2xl p-5 grid grid-cols-2 gap-4 md:col-span-2">
                     <div>
-                      <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Record Created</span>
+                      <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Record Created</span>
                       <span class="text-xs text-gray-500 font-medium italic">Not tracked yet</span>
                     </div>
                     <div>
-                      <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Last Activity</span>
+                      <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Last Activity</span>
                       <span class="text-xs text-gray-500 font-medium italic">Not tracked yet</span>
                     </div>
                   </div>
@@ -262,11 +333,11 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
                 {/* Table */}
                 {lookupResult.items && lookupResult.items.length > 0 ? (
                   <div>
-                    <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Cart items</p>
+                    <p class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-3">Cart items</p>
                     <div class="border border-gray-100 rounded-xl overflow-hidden">
                       <table class="w-full text-left border-collapse text-xs">
                         <thead>
-                          <tr class="bg-gray-50 font-black uppercase text-[9px] text-gray-400 border-b border-gray-100">
+                          <tr class="bg-gray-50 font-black uppercase text-[9px] text-gray-500 border-b border-gray-100">
                             <th class="px-4 py-3">Product Reference</th>
                             <th class="px-4 py-3 text-center">Qty</th>
                             <th class="px-4 py-3 text-right">Unit Price</th>
@@ -277,9 +348,9 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
                             <tr>
                               <td class="px-4 py-3">
                                 <div class="font-bold text-brand-dark">{it.name}</div>
-                                <div class="text-[9px] text-gray-400 mt-0.5 flex gap-2">
+                                <div class="text-[9px] text-gray-500 mt-0.5 flex gap-2">
                                   <span>/{it.slug}</span>
-                                  <span class="bg-gray-100 border border-gray-200 text-gray-500 px-1 rounded inline-block text-[8px] uppercase tracking-wide font-bold">{it.categoryName || 'Power'}</span>
+                                  <span class="bg-gray-100 border border-gray-200 text-gray-600 px-1 rounded inline-block text-[8px] uppercase tracking-wide font-bold">{it.categoryName || 'Power'}</span>
                                 </div>
                               </td>
                               <td class="px-4 py-3 text-center font-black font-mono text-gray-700">{it.quantity}</td>
@@ -298,7 +369,7 @@ const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 
                 ) : (
                   <div class="flex-1 flex flex-col items-center justify-center text-center py-8 border border-dashed border-gray-200 rounded-2xl bg-gray-50/50">
                     <h5 class="font-bold text-brand-dark text-sm">Cart is empty</h5>
-                    <p class="text-xs text-gray-400 mt-1 leading-relaxed max-w-xs">
+                    <p class="text-xs text-gray-500 mt-1 leading-relaxed max-w-xs">
                       This cart has no items in it.
                     </p>
                   </div>

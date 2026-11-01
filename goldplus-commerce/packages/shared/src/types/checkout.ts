@@ -58,6 +58,10 @@ export type CheckoutErrorCode =
   | 'CHECKOUT_INTENT_INVALID'
   | 'CHECKOUT_INTENT_REVOKED'
   | 'IDEMPOTENCY_CONFLICT'
+  /** The intent was already spent; the storefront re-mints and resubmits. */
+  | 'CHECKOUT_INTENT_SPENT'
+  /** The intent already produced an order, named in `existingOrder`. */
+  | 'CHECKOUT_ALREADY_ORDERED'
   | 'CHECKOUT_IN_PROGRESS'
   | 'STOCK_NOT_RESERVED'
   | 'CHECKOUT_FAILED'
@@ -66,6 +70,14 @@ export type CheckoutErrorCode =
   | 'PRICE_UNAVAILABLE'
   | 'PRICE_CHANGED'
   | 'PROMOTION_CHANGED'
+  /** An offer's usage limit is used up (for everyone, this code, or this customer). */
+  | 'PROMOTION_LIMIT_REACHED'
+  /** Pay on delivery refused for this destination or above its ceiling: pay online. */
+  | 'PAY_ON_DELIVERY_UNAVAILABLE'
+  /** The points could not be used on this order. */
+  | 'LOYALTY_REDEMPTION_REFUSED'
+  /** 0196: the gift card / store credit cannot pay this order (nothing was ordered or charged). */
+  | 'STORE_CREDIT_UNAVAILABLE'
   | 'ORDER_FAILED'
   | 'CHECKOUT_SESSION_UNAVAILABLE'
   | 'DB_NOT_CONFIGURED';
@@ -96,6 +108,8 @@ export interface CheckoutCustomerDetailsDto {
   deliveryArea: string;
   deliveryAddress: string;
   deliveryLocation?: CheckoutDeliveryLocationDto | null;
+  /** Collect from one of our own shops (active, non-carrier pickup point): no delivery fee. */
+  pickupPointId?: string | null;
 }
 
 export interface CheckoutLineItemDto {
@@ -118,6 +132,25 @@ export interface CheckoutRequestDto {
   paymentMethod?: 'pesapal' | 'offline' | null;
   cartId?: string | null;
   cartVersion?: number | null;
+  /** Loyalty redemption (PART G): points to convert to a discount, server-validated. */
+  redeemPoints?: number;
+  /** Optional "How did you hear about us?" answer (HEARD_ABOUT_ANSWERS); reporting only. */
+  heardAbout?: string | null;
+  /**
+   * Marketing attribution (last-touch UTM + referrer), captured client-side.
+   * Recorded best-effort after the order for reporting only — never influences
+   * pricing, stock or payment.
+   */
+  attribution?: {
+    source?: string | null;
+    medium?: string | null;
+    campaign?: string | null;
+    term?: string | null;
+    content?: string | null;
+    landingPath?: string | null;
+    referrer?: string | null;
+    firstAt?: string | null;
+  } | null;
 }
 
 export interface PaymentStartRequestDto {
@@ -149,6 +182,10 @@ export type PaymentStartErrorCode =
   | 'ORDER_NOT_FOUND'
   | 'ORDER_ALREADY_PAID'
   | 'ORDER_NOT_PAYABLE'
+  /** The shop closed this order (cancelled or failed); nothing can be collected for it. */
+  | 'ORDER_CANCELLED'
+  /** The order's stock hold expired and its units went back on sale; it must be placed again. */
+  | 'ORDER_HOLD_EXPIRED'
   | 'OFFLINE_DRAFT_NOT_PAYABLE'
   | 'PAYMENT_NOT_CONFIGURED'
   | 'PAYMENT_PROVIDER_UNAVAILABLE'

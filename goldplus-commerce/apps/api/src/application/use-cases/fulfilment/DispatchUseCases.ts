@@ -13,9 +13,11 @@ import { IFulfilmentDispatchRepository } from '../../ports/IFulfilmentDispatchRe
 import { IInventoryRepository } from '../../ports/IInventoryRepository';
 import { IAuditRepository } from '../../ports/IAuditRepository';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
+import { IOrderTransitionPort } from '../../ports/IOrderTransitionPort';
 
 export type DispatchError =
   | 'NOT_FOUND'
+  | 'VARIANCE_AGREEMENT_PENDING'
   | 'TASK_ON_HOLD'
   | 'TASK_NOT_DISPATCHABLE'
   | 'NOT_READY_FOR_DISPATCH'
@@ -29,6 +31,57 @@ const fail = (code: DispatchError, message: string): Fail => ({ ok: false, code,
 
 async function audit(auditRepo: IAuditRepository, actorId: string, action: string, entityId: string, newState: unknown, previousState?: unknown) {
   await new CreateAuditLogUseCase(auditRepo).execute({ actorId, action, entity: 'fulfilment_dispatch', entityId, previousState, newState });
+}
+
+/**
+ * Mirror a dispatch onto the order: `dispatched`, reached the legal way.
+ *
+ * A cash-on-delivery order is created 'received' and stays there — only a
+ * confirmed ONLINE payment moves an order to 'processing' by itself — and the
+ * state machine allows 'received' only into processing or cancelled. So every
+ * COD dispatch mirror was refused and recorded 'skipped', the later delivered
+ * mirror was refused too, and a delivered COD order read "Order placed"
+ * forever: no loyalty vesting, no calibration observation.
+ *
+ * When the dispatch passed the COD policy (the operator confirmed cash on
+ * delivery), the order is first confirmed into 'processing' and then
+ * dispatched. Two ledgered, legal hops; the state machine is not widened.
+ * Returns what happened, so the operator can be told.
+ *
+ * A PAID order can be unconfirmed too: a late payment waiting for the owner's
+ * review, a payment recorded by hand, a payment that met a lifecycle conflict.
+ * It used to be skipped here ("not cash on delivery"), so the rider delivered
+ * it, the task said Delivered, and the order stayed 'received' with no way left
+ * to say delivered (owner, 2026-10-22). It is confirmed the same way, as paid,
+ * with no payment switch; the state machine still refuses an unpaid online
+ * order that was not confirmed as cash on delivery.
+ */
+export async function mirrorOrderDispatched(
+  orderTransitions: IOrderTransitionPort,
+  orderId: string,
+  ctx: { actorId: string; note: string; cashOnDelivery: boolean; /** The order is paid: it may be confirmed without a COD confirmation. */ paid?: boolean },
+): Promise<'dispatched' | 'skipped'> {
+  const base = { actorId: ctx.actorId, actorType: 'administrator' as const, source: 'fulfilment' as const };
+  try {
+    await orderTransitions.transition(orderId, 'dispatched', { ...base, reasonCode: 'dispatch_recorded', note: ctx.note });
+    return 'dispatched';
+  } catch {
+    // Not dispatchable as it stands: confirm it first, but only with payment cleared (paid, or COD confirmed).
+    if (!ctx.cashOnDelivery && !ctx.paid) return 'skipped';
+  }
+  try {
+    await orderTransitions.transition(orderId, 'processing', ctx.cashOnDelivery ? {
+      ...base,
+      reasonCode: 'cod_dispatch_confirmed',
+      note: `Cash on delivery confirmed at dispatch. ${ctx.note}`,
+      // The operator confirmed cash on delivery at dispatch: an online order that was never paid becomes COD here.
+      switchToPayOnDelivery: true,
+    } : { ...base, reasonCode: 'dispatch_confirmed', note: `Confirmed at dispatch (already paid). ${ctx.note}` });
+    await orderTransitions.transition(orderId, 'dispatched', { ...base, reasonCode: 'dispatch_recorded', note: ctx.note });
+    return 'dispatched';
+  } catch {
+    return 'skipped';
+  }
 }
 
 export class GetDispatchUseCase {
@@ -58,7 +111,16 @@ export class RecordDispatchUseCase {
     private readonly tasks: IFulfilmentRepository,
     private readonly dispatches: IFulfilmentDispatchRepository,
     private readonly inventory: IInventoryRepository,
-    private readonly audit: IAuditRepository
+    private readonly audit: IAuditRepository,
+    private readonly orderTransitions?: IOrderTransitionPort,
+    /**
+     * Fee variances awaiting the customer's agreement. A variance above the
+     * absorption threshold is recorded as 'pending' and the fee is unchanged
+     * until the customer agrees; dispatching before that sent the rider out
+     * with the OLD total on the card, and the agreement could still be recorded
+     * after the rider had left. Optional so existing callers construct unchanged.
+     */
+    private readonly variances?: { listForOrder(orderId: string): Promise<Array<{ agreement: string }>> },
   ) {}
 
   async execute(input: {
@@ -67,12 +129,25 @@ export class RecordDispatchUseCase {
     method: FulfilmentDispatchMethod;
     carrierName?: string | null;
     riderName?: string | null;
+    /** 0190: the rider's record, so their WhatsApp location at the door is a handover for this stop. */
+    riderId?: string | null;
+    /** 0191: stops on this trip (1–50), when known at dispatch. */
+    stopsOnTrip?: number | null;
     contact?: string | null;
     estimatedDeliveryAt?: Date | null;
     notes?: string | null;
     allowCashOnDelivery?: boolean;
     now?: Date;
-  }): Promise<{ ok: true; dispatch: FulfilmentDispatchSnapshot; created: boolean } | Fail> {
+  }): Promise<
+    | {
+        ok: true;
+        dispatch: FulfilmentDispatchSnapshot;
+        created: boolean;
+        /** Whether the ORDER followed the task. 'skipped' is shown to the operator, never swallowed. */
+        orderMirror?: 'dispatched' | 'skipped' | 'not_wired';
+      }
+    | Fail
+  > {
     const now = input.now ?? new Date();
     const snapshot = await this.tasks.findById(input.taskId);
     if (!snapshot) return fail('NOT_FOUND', 'Fulfilment task not found.');
@@ -81,6 +156,11 @@ export class RecordDispatchUseCase {
     // record, no re-transition, no inventory effect.
     const existing = await this.dispatches.getByTask(input.taskId);
     if (existing) return { ok: true, dispatch: existing, created: false };
+
+    if (this.variances) {
+      const pending = (await this.variances.listForOrder(snapshot.orderId)).some((v) => v.agreement === 'pending');
+      if (pending) return fail('VARIANCE_AGREEMENT_PENDING', 'The customer has not yet agreed the changed delivery fee. Record their agreement before dispatching.');
+    }
 
     const guard = canDispatch({
       status: snapshot.status,
@@ -107,6 +187,8 @@ export class RecordDispatchUseCase {
       method: input.method,
       carrierName: input.carrierName?.trim() || null,
       riderName: input.riderName?.trim() || null,
+      riderId: input.riderId ?? null,
+      stopsOnTrip: input.stopsOnTrip && Number.isInteger(input.stopsOnTrip) && input.stopsOnTrip >= 1 && input.stopsOnTrip <= 50 ? input.stopsOnTrip : null,
       contactMasked: maskDispatchContact(input.contact),
       paymentPolicy: guard.paymentPolicy,
       trackingStatus: 'DISPATCHED',
@@ -121,11 +203,33 @@ export class RecordDispatchUseCase {
 
     // Advance the lifecycle READY_FOR_DISPATCH → OUT_FOR_DELIVERY (single point).
     const task = FulfilmentTask.rehydrate(snapshot);
+    let taskAdvanced = false;
     try {
       task.transition('OUT_FOR_DELIVERY', { now });
       await this.tasks.update(task);
+      taskAdvanced = true;
     } catch {
       // Dispatch is recorded; the status advance is best-effort and audited below.
+    }
+
+    // MIRROR THE ORDER, exactly as TransitionFulfilmentTaskUseCase does.
+    //
+    // This path, the one that enforces the cash-on-delivery policy and is the
+    // one ops actually use, moved the TASK and left the ORDER at 'processing'.
+    // The order state machine allows 'delivered' only from 'dispatched', so when
+    // the rider came back and delivery was recorded, the order mirror was refused
+    // and recorded as 'skipped' for every properly dispatched order. The order
+    // never reached 'delivered': loyalty never vested, the delivery quote never
+    // received its observation, calibration counted zero deliveries, and the
+    // awaiting-cost queue filled with skipped mirrors.
+    let orderMirror: 'dispatched' | 'skipped' | 'not_wired' = 'not_wired';
+    if (this.orderTransitions && taskAdvanced) {
+      orderMirror = await mirrorOrderDispatched(this.orderTransitions, snapshot.orderId, {
+        actorId: input.actorId,
+        note: `Dispatch ${dispatch.dispatchReference} recorded`,
+        cashOnDelivery: guard.paymentPolicy === 'CASH_ON_DELIVERY',
+        paid: guard.paymentPolicy === 'PAID',
+      });
     }
 
     await audit(this.audit, input.actorId, 'FULFILMENT_DISPATCHED', input.taskId, {
@@ -133,8 +237,9 @@ export class RecordDispatchUseCase {
       method: dispatch.method,
       paymentPolicy: dispatch.paymentPolicy,
       stockConsumed: dispatch.stockConsumed,
+      orderMirror,
     });
-    return { ok: true, dispatch, created: true };
+    return { ok: true, dispatch, created: true, orderMirror };
   }
 }
 

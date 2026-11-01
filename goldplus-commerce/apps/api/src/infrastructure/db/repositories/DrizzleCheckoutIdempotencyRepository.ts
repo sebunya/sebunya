@@ -222,6 +222,8 @@ export class DrizzleCheckoutIdempotencyRepository implements ICheckoutIdempotenc
    * `order_id` is uniquely indexed (migration 0057), so this is at most one row.
    */
   async findByOrderId(orderId: string): Promise<IdempotencyRecord | null> {
+    // order_id is uuid; a non-uuid (an order number) cannot match and used to raise 22P02.
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId)) return null;
     const rows = await db
       .select()
       .from(checkoutIdempotency)

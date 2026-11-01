@@ -4,6 +4,7 @@ import { eq, inArray, sql } from 'drizzle-orm';
 import { CheckoutUseCase } from '../application/use-cases/commerce/CheckoutUseCase';
 import { StartPesaPalPaymentUseCase } from '../application/use-cases/payments/StartPesaPalPaymentUseCase';
 import { VerifyPesaPalPaymentUseCase } from '../application/use-cases/payments/VerifyPesaPalPaymentUseCase';
+import { OrderTransitionService } from '../infrastructure/orders/OrderTransitionService';
 import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
 import { EvaluateCartPricingUseCase } from '../application/use-cases/pricing/EvaluateCartPricingUseCase';
 import { ManagePromotionCapacityUseCase } from '../application/use-cases/pricing/ManagePromotionCapacityUseCase';
@@ -35,6 +36,9 @@ class ControlledPesaPal implements IPesaPalClient {
     this.statusCalls += 1;
     const submission = this.submissions.at(-1)!;
     return { order_tracking_id: orderTrackingId, merchant_reference: submission.id, amount: submission.amount, currency: submission.currency, status_code: 1, payment_status_description: 'COMPLETED' };
+  }
+  async requestRefund(): Promise<{ status: string; message: string }> {
+    throw new Error('PESAPAL_REFUND_UNAVAILABLE: the controlled proof harness does not refund.');
   }
 }
 
@@ -113,7 +117,7 @@ async function main() {
     const paymentOne = await startPayment.execute({ orderId: first.order.id });
     await startPayment.execute({ orderId: first.order.id });
     assert(provider.submissions.length === 2 && provider.submissions.every((call) => call.amount === 180_000 && call.currency === 'UGX'), 'PesaPal retries did not use the immutable attempt amount');
-    const verified = await new VerifyPesaPalPaymentUseCase(paymentRepo, provider).execute({ orderTrackingId: 'proof-tracking-2', merchantReference: paymentOne.merchantReference, source: 'callback' });
+    const verified = await new VerifyPesaPalPaymentUseCase(paymentRepo, provider, new OrderTransitionService()).execute({ orderTrackingId: 'proof-tracking-2', merchantReference: paymentOne.merchantReference, source: 'callback' });
     assert(verified.ok && verified.amount === 180_000, 'authoritative payment verification failed');
     const paidOrder = await orderRepo.findById(first.order.id);
     assert(paidOrder?.paymentStatus === 'paid' && paidOrder.pricingSnapshot?.finalTotalUgx === 180_000, 'payment update changed immutable pricing evidence');

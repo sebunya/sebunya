@@ -4,6 +4,7 @@ import { readSessionToken } from "../../../lib/session";
 import { apiBase, whatsappSupportNumber, getOrderNotificationTimeline } from "../../../lib/api";
 import NotificationChannelPanel from "../../../components/admin/NotificationChannelPanel.astro";
 import NotificationTimeline from "../../../components/admin/NotificationTimeline.astro";
+import OrderSourcePanel from "../../../components/admin/OrderSourcePanel.astro";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -19,6 +20,69 @@ let actionSuccess = '';
 if (Astro.request.method === 'POST') {
   try {
     const formData = await Astro.request.formData();
+    const action = formData.get('action')?.toString() || 'fulfillment';
+
+    if (action === 'lifecycle') {
+      // Wave 2E-2: lifecycle transitions ride the canonical OrderTransitionService —
+      // a refused move surfaces the state machine's own message (409/403), never a
+      // generic failure. Reason is mandatory and lands in the order_events ledger.
+      const toStatus = formData.get('toStatus')?.toString().trim() || '';
+      const reason = formData.get('reason')?.toString().trim() || '';
+      const switchToPayOnDelivery = formData.get('payOnDelivery') === 'on';
+      const res = await fetch(`${apiBase}/admin/orders/${id}/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ toStatus, reason, switchToPayOnDelivery }),
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success) {
+        actionSuccess = `Order moved ${json.data.fromStatus} → ${json.data.toStatus}${json.data.idempotentReplay ? ' (idempotent replay)' : ''}.`;
+      } else {
+        actionError = json?.error?.message || 'Transition refused by backend validation.';
+      }
+    } else if (action === 'resolve_refund') {
+      // A refund left 'requested' (the provider call failed, or PesaPal's
+      // REVERSED status could not say which refund landed) is closed by a
+      // person who checked PesaPal. The API re-checks that the refund belongs
+      // to this order, needs the refund permission and a written reason.
+      const orderId = formData.get('orderId')?.toString().trim() || '';
+      const refundId = formData.get('refundId')?.toString().trim() || '';
+      const resolution = formData.get('resolution')?.toString().trim() || '';
+      const reason = formData.get('reason')?.toString().trim() || '';
+      const res = await fetch(`${apiBase}/admin/payments/orders/${encodeURIComponent(orderId)}/refunds/${encodeURIComponent(refundId)}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ resolution, reason }),
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success) {
+        actionSuccess = json.data?.status === 'settled'
+          ? 'Refund recorded as paid out. The order and loyalty points were updated to match.'
+          : 'Refund recorded as not paid. Its amount can be refunded again.';
+      } else {
+        actionError = json?.error?.message || 'The refund could not be resolved.';
+      }
+    } else if (action === 'complete_delivered') {
+      // The rider delivered (the task says Delivered) but the order never followed (2026-10-22).
+      const orderId = formData.get('orderId')?.toString().trim() || '';
+      const res = await fetch(`${apiBase}/admin/fulfilment/by-order/${encodeURIComponent(orderId)}/complete-delivered`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success) actionSuccess = 'The order now says delivered, matching the delivery the rider made.';
+      else actionError = json?.error?.message || 'The order could not be moved to delivered.';
+    } else if (action === 'note') {
+      const note = formData.get('note')?.toString().trim() || '';
+      const res = await fetch(`${apiBase}/admin/orders/${id}/note`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ note }),
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success) actionSuccess = 'Note recorded in the audit trail.';
+      else actionError = json?.error?.message || 'Note refused.';
+    } else {
     const nextStatus = formData.get('status')?.toString().trim() || '';
 
     const patchRes = await fetch(`${apiBase}/governance/admin/orders/${id}/fulfillment`, {
@@ -36,37 +100,29 @@ if (Astro.request.method === 'POST') {
     } else {
       actionError = patchJson?.error?.message || 'Transition blocked by backend validation controls.';
     }
+    }
   } catch {
-    actionError = 'Unreachable: Network error when submitting fulfillment change.';
+    actionError = 'Unreachable: Network error when submitting the order action.';
   }
 }
 
 // Fetch current order state and payment attempts
 let order: any = null;
 let paymentAttempts: any[] = [];
-let isSample = false;
-let apiError = '';
-
-const fallbackOrder = {
-  id: id || "fallback-1",
-  orderNumber: "GP-FALLBACK-1",
-  customerName: "Sample John",
-  customerPhone: "0788000000",
-  customerEmail: "john@example.com",
-  buyerType: "retail",
-  totalUgx: 150000,
-  deliveryArea: "Kampala Central",
-  deliveryAddress: "Plot 12, Kampala Road",
-  paymentStatus: "unpaid",
-  orderStatus: "received",
-  createdAt: new Date().toISOString(),
-  items: [
-    { sku: "GP-CHARGER-SAMPLE", productName: "GoldPlus Fast Charger", quantity: 1, unitPrice: 150000 }
-  ]
-};
+let refunds: any[] = [];
+let refundsLoaded = false;
+// No invented order is ever shown. A missing, forbidden or unreachable order
+// renders an error panel with no forms, no WhatsApp/tel links and no preview —
+// a made-up "Sample John" once sat here with live action forms and a wa.me
+// link to a real-format stranger's number.
+let loadError: { title: string; detail: string } | null = null;
+let fulfilmentTaskId: string | null = null;
+let fulfilmentTaskStatus = '';
+// Place memory: what riders learned the last times we delivered to this customer in this area (our own records).
+let placeMemory: null | { deliveredBefore: number; riderLine: string | null; handoverPin: { lat: number; lng: number; accuracyM: number | null; orderNumber: string } | null } = null;
 
 try {
-  const res = await fetch(`${apiBase}/governance/admin/orders/${id}`, {
+  const res = await fetch(`${apiBase}/governance/admin/orders/${encodeURIComponent(String(id ?? ''))}`, {
     headers: { 
       'Accept': 'application/json',
       'Authorization': `Bearer ${token}` 
@@ -75,23 +131,35 @@ try {
 
   if (res.ok) {
     const json = await res.json().catch(() => null);
-    if (json && json.success && json.data) {
+    if (json && json.success && json.data?.order) {
       order = json.data.order;
       paymentAttempts = json.data.paymentAttempts || [];
+      // Refund ledger for this order (existing payments endpoint). Hidden if the
+      // operator lacks PAYMENTS_READ; never blocks the order page.
+      try {
+        const rr = await fetch(`${apiBase}/admin/payments/orders/${encodeURIComponent(order.id)}/refunds`, { headers: { Authorization: `Bearer ${token}` } });
+        const rj = rr.ok ? await rr.json().catch(() => null) : null;
+        if (rj?.success && Array.isArray(rj.data?.refunds)) { refunds = rj.data.refunds; refundsLoaded = true; }
+      } catch { /* refunds are context, not the order */ }
+      // Dispatch and delivery are recorded on the fulfilment task, not here.
+      try {
+        const fr = await fetch(`${apiBase}/admin/fulfilment/by-order/${encodeURIComponent(order.id)}`, { headers: { Authorization: `Bearer ${token}` } });
+        const fj = fr.ok ? await fr.json().catch(() => null) : null;
+        if (fj?.success && typeof fj.data?.id === 'string') { fulfilmentTaskId = fj.data.id; fulfilmentTaskStatus = String(fj.data.status ?? ''); }
+      } catch { /* the link is a convenience */ }
+      try {
+        const pr = await fetch(`${apiBase}/admin/orders/${encodeURIComponent(order.id)}/place-memory`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(3000) });
+        const pj = pr.ok ? await pr.json().catch(() => null) : null;
+        if (pj?.success && pj.data) placeMemory = pj.data;
+      } catch { /* memory is a help, never a dependency */ }
     } else {
-      order = fallbackOrder;
-      isSample = true;
-      apiError = 'Unexpected schema returned from active API route.';
+      loadError = orderLoadError(0);
     }
   } else {
-    order = fallbackOrder;
-    isSample = true;
-    apiError = `API query responded with HTTP ${res.status}.`;
+    loadError = orderLoadError(res.status);
   }
 } catch {
-  order = fallbackOrder;
-  isSample = true;
-  apiError = 'Commerce API is currently unreachable.';
+  loadError = orderLoadError(null);
 }
 
 // Fetch dynamic notification preview
@@ -101,7 +169,7 @@ let previewData = {
   whatsappText: ''
 };
 
-try {
+if (order) try {
   const selectedTemplate = previewData.template;
   const previewRes = await fetch(`${apiBase}/governance/admin/orders/${id}/communication-preview${selectedTemplate ? `?template=${selectedTemplate}` : ''}`, {
     headers: {
@@ -123,7 +191,7 @@ try {
 // Fetch actual outbox events and attempts for this order
 let timelineItems: any[] = [];
 try {
-  if (id) {
+  if (id && order) {
     const timelineRes = await getOrderNotificationTimeline(id, token);
     timelineItems = timelineRes.items;
   }
@@ -142,19 +210,36 @@ function escapeHtml(str: string | null | undefined): string {
     .replace(/'/g, '&#39;');
 }
 
-const formatter = new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 });
+import { formatUgx } from '../../../lib/money';
+import { orderLoadError, orderFulfilmentTransitionOptions, DISPATCH_ON_TASK_STATUSES } from '../../../lib/adminOrderPage';
+import { tagShopLinks } from '@goldplus/shared';
+// UGX code format via the single money source (en-UG's currency symbol is "USh").
+const formatter = { format: (n: unknown) => formatUgx(n) };
 
-if (!previewData.emailHtml) {
+/**
+ * An order line as the API sends it: the domain OrderItem has `name` and `price`
+ * (and `finalLineTotal` after discounts). This page read `productName` and
+ * `unitPrice`, which do not exist, so every order showed a blank product and
+ * UGX 0. Older shapes are still accepted.
+ */
+const lineOf = (item: any) => {
+  const unit = Number(item?.price ?? item?.unitPrice ?? 0) || 0;
+  const qty = Number(item?.quantity ?? 1) || 1;
+  const total = Number(item?.finalLineTotal ?? item?.lineTotalUgx ?? unit * qty) || 0;
+  return { name: String(item?.name ?? item?.productName ?? item?.sku ?? 'Item'), sku: item?.sku ?? '', qty, unit, total };
+};
+
+if (order && !previewData.emailHtml) {
   const formattedTotal = formatter.format(order.totalUgx);
-  const itemsHtml = (order.items || []).map((item: any) => `
+  const itemsHtml = (order.items || []).map(lineOf).map((item: any) => `
     <tr>
       <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; font-weight: bold; color: #0A0A0A; border-bottom: 1px solid #E5E7EB; text-align: left;">
-        ${escapeHtml(item.productName)}
+        ${escapeHtml(item.name)}
         <div style="font-size: 10px; font-weight: normal; color: #6B7280; margin-top: 2px;">SKU: ${escapeHtml(item.sku || 'N/A')}</div>
       </td>
-      <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; font-weight: bold; color: #374151; border-bottom: 1px solid #E5E7EB; text-align: center;">${item.quantity}</td>
-      <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; color: #4B5563; border-bottom: 1px solid #E5E7EB; text-align: right;">${escapeHtml(formatter.format(item.unitPrice))}</td>
-      <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; font-weight: 800; color: #0A0A0A; border-bottom: 1px solid #E5E7EB; text-align: right;">${escapeHtml(formatter.format(item.unitPrice * item.quantity))}</td>
+      <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; font-weight: bold; color: #374151; border-bottom: 1px solid #E5E7EB; text-align: center;">${item.qty}</td>
+      <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; color: #4B5563; border-bottom: 1px solid #E5E7EB; text-align: right;">${escapeHtml(formatter.format(item.unit))}</td>
+      <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; font-weight: 800; color: #0A0A0A; border-bottom: 1px solid #E5E7EB; text-align: right;">${escapeHtml(formatter.format(item.total))}</td>
     </tr>
   `).join('');
 
@@ -191,7 +276,7 @@ if (!previewData.emailHtml) {
     ctaLabel = 'View Order';
   }
 
-  const dateStr = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB');
+  const dateStr = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' }) : new Date().toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' });
   const bannerBg = isSuccessColor ? '#F3FBF2' : '#FCFAF2';
   const borderBg = isSuccessColor ? '#E1F3DF' : '#F7F3E1';
   const fontColor = isSuccessColor ? '#2B6A25' : '#8A6D1C';
@@ -353,8 +438,8 @@ if (!previewData.emailHtml) {
 </html>`;
 }
 
-if (!previewData.whatsappText) {
-  let fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nWe have received your order! Placed status is currently *Awaiting Payment*.\n\nTotal Amount: *${formatter.format(order.totalUgx || 0)}*\n\nTo complete your checkout securely, please review your Mobile Money window or use our tracking URL: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
+if (order && !previewData.whatsappText) {
+  let fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nWe have received your order! Placed status is currently *Awaiting Payment*.\n\nTotal Amount: *${formatter.format(order.totalUgx || 0)}*${Number(order.storeCreditAppliedUgx ?? 0) > 0 ? `\nPaid by gift card: *${formatter.format(Number(order.storeCreditAppliedUgx))}*\nTo pay: *${formatter.format(Math.max(0, Number(order.totalUgx || 0) - Number(order.storeCreditAppliedUgx)))}*` : ''}\n\nTo complete your checkout securely, please review your Mobile Money window or use our tracking URL: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
   
   if (previewData.template === 'ORDER_PAYMENT_PENDING') {
     fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nYour Mobile Money checkout has been initiated and is *Pending verification*.\n\nOnce verified, our team will prepare your GoldPlus order.\n\nTrack status live: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
@@ -365,6 +450,8 @@ if (!previewData.whatsappText) {
   } else if (previewData.template === 'ORDER_FULFILLMENT_COMPLETED') {
     fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nYour order has been *Delivered and Settled* successfully.\n\nThank you for choosing GoldPlus Online Store!`;
   }
+  // The customer taps these in WhatsApp: tagged so the visit is not counted as Direct (shared/links/shopLinkTag).
+  fallbackWaText = tagShopLinks(fallbackWaText, 'w');
   
   previewData.whatsappText = fallbackWaText;
 }
@@ -383,33 +470,43 @@ function getStatusColor(status: string) {
   }
 }
 
-// Compute allowed transition options
-const currentStatus = order.orderStatus;
-const transitionOptions: string[] = [];
+// Only moves the governance fulfillment route accepts. Dispatch and delivery
+// are recorded on the fulfilment task (the route refuses them as INVALID_STATUS).
+const currentStatus = order?.orderStatus ?? '';
+const transitionOptions: string[] = order ? orderFulfilmentTransitionOptions(currentStatus, order.paymentStatus) : [];
+const dispatchOnTask = order ? DISPATCH_ON_TASK_STATUSES.includes(currentStatus) : false;
+// Money already collected vs given back — what an operator must know before a refund.
+// A fully refunded attempt moves to 'reversed'; its money WAS collected.
+const collectedUgx = paymentAttempts.filter((a: any) => a.status === 'completed' || a.status === 'reversed').reduce((n: number, a: any) => n + (Number(a.amount) || 0), 0);
+const refundedUgx = refunds.filter((r: any) => r.status === 'requested' || r.status === 'settled').reduce((n: number, r: any) => n + (Number(r.amountUgx) || 0), 0);
+const remainingRefundableUgx = Math.max(0, collectedUgx - refundedUgx);
+const completedAttempt = paymentAttempts.find((a: any) => a.status === 'completed');
+const orderHistoryHref = order ? `/admin/audit?entity=order&entityId=${encodeURIComponent(order.id)}` : '';
+const orderPaymentsHref = order ? `/admin/payments?q=${encodeURIComponent(order.orderNumber || order.id)}` : '';
+const customerHref = order?.userId ? `/admin/customers/${encodeURIComponent(order.userId)}` : null;
 
-if (currentStatus === 'received') {
-  transitionOptions.push('processing', 'cancelled');
-} else if (currentStatus === 'pending_payment') {
-  transitionOptions.push('cancelled');
-  if (order.paymentStatus === 'paid') {
-    transitionOptions.push('processing');
-  }
-} else if (currentStatus === 'pending_owner_review') {
-  transitionOptions.push('processing', 'cancelled');
-} else if (currentStatus === 'processing') {
-  transitionOptions.push('completed', 'cancelled');
-}
 ---
 
 <AdminLayout 
-  title={`Order Control — ${order.orderNumber}`} 
+  title={order ? `Order Control — ${order.orderNumber}` : 'Order unavailable'} 
   description="Admin operations workspace for customer order fulfillment stages and transactional history lookup."
 >
+  {!order ? (
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <a href="/admin/orders" class="text-xs font-bold text-gray-500 hover:text-brand-dark transition-colors mb-4 inline-block">&larr; Back to Order Registry</a>
+    {actionError && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl mb-6 text-xs font-bold">{actionError}</div>}
+    <div role="alert" class="bg-red-50 border border-red-200 text-red-900 px-6 py-5 rounded-2xl">
+      <h2 class="text-base font-black">{loadError?.title ?? 'Order unavailable'}</h2>
+      <p class="text-xs mt-1 leading-relaxed">{loadError?.detail}</p>
+      <p class="text-[11px] mt-2 font-mono text-red-700">Order id: {id}</p>
+    </div>
+  </div>
+  ) : (
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     
     <div class="mb-8 pb-6 border-b border-gray-200 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
       <div>
-        <a href="/admin/orders" class="text-xs font-bold text-gray-400 hover:text-brand-dark transition-colors mb-2 inline-block">
+        <a href="/admin/orders" class="text-xs font-bold text-gray-500 hover:text-brand-dark transition-colors mb-2 inline-block">
           &larr; Back to Order Registry
         </a>
         <h2 class="text-2xl font-black text-brand-dark tracking-tight flex items-center gap-3">
@@ -417,19 +514,20 @@ if (currentStatus === 'received') {
           <span class={`inline-block px-2.5 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wide border ${getStatusColor(order.orderStatus)}`}>
             {order.orderStatus.replace(/_/g, ' ')}
           </span>
+          {order.reservationState === 'BACKORDERED' && (
+            <span class="inline-block px-2.5 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wide border bg-purple-50 text-purple-800 border-purple-200" title="Placed while stock was short; waiting on stock before it can be fulfilled.">Backordered</span>
+          )}
         </h2>
       </div>
       <div class="flex items-center gap-2">
-        <span class="text-xs text-gray-400 font-medium font-mono">ID: {order.id}</span>
+        <span class="text-xs text-gray-500 font-medium font-mono">ID: {order.id}</span>
+        <nav aria-label="Related records" class="mt-2 flex flex-wrap gap-2 text-[11px] font-bold">
+          <a href={orderHistoryHref} class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">History</a>
+          <a href={orderPaymentsHref} class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Payments</a>
+          {customerHref && <a href={customerHref} class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Customer</a>}
+        </nav>
       </div>
     </div>
-
-    {isSample && (
-      <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex flex-col gap-1">
-        <div class="text-xs font-black uppercase tracking-wider">Interactive Fallback Mode</div>
-        <div class="text-xs leading-relaxed"><strong>System note:</strong> {apiError} Displaying fallback data.</div>
-      </div>
-    )}
 
     {actionSuccess && (
       <div class="bg-green-50 border border-green-200 text-green-800 px-6 py-4 rounded-2xl mb-8 flex items-center gap-3">
@@ -455,19 +553,69 @@ if (currentStatus === 'received') {
           </div>
           <div class="p-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
-              <span class="text-[9px] font-black text-gray-400 uppercase tracking-wider block mb-1">Buyer Name</span>
+              <span class="text-[9px] font-black text-gray-500 uppercase tracking-wider block mb-1">Buyer Name</span>
               <p class="text-sm font-bold text-brand-dark">{order.customerName}</p>
             </div>
             <div>
-              <span class="text-[9px] font-black text-gray-400 uppercase tracking-wider block mb-1">Buyer Coordinates</span>
+              <span class="text-[9px] font-black text-gray-500 uppercase tracking-wider block mb-1">Buyer Coordinates</span>
               <p class="text-sm font-bold text-brand-dark">{order.customerPhone}</p>
-              {order.customerEmail && <p class="text-xs font-medium text-gray-400 mt-0.5">{order.customerEmail}</p>}
+              {order.customerEmail && <p class="text-xs font-medium text-gray-500 mt-0.5">{order.customerEmail}</p>}
             </div>
             <div class="sm:col-span-2 border-t border-gray-100 pt-4">
-              <span class="text-[9px] font-black text-gray-400 uppercase tracking-wider block mb-1">Delivery Destination</span>
+              <span class="text-[9px] font-black text-gray-500 uppercase tracking-wider block mb-1">Delivery Destination</span>
               <p class="text-xs font-black text-brand-dark">{order.deliveryArea}</p>
               <p class="text-xs font-medium text-gray-500 mt-1">{order.deliveryAddress}</p>
             </div>
+          </div>
+        </div>
+
+        {/* Rider delivery card (location-module brief I.1): printable slip,
+            WhatsApp copy block, wa.me deep link. COD amount = what the rider
+            actually collects (total already net of any loyalty discount). */}
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden" id="rider-card">
+          <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+            <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Rider Delivery Card</h3>
+            <div class="flex gap-2 print:hidden">
+              <button type="button" id="rider-print" class="text-[10px] font-black uppercase tracking-wide border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50">Print slip</button>
+              <button type="button" id="rider-copy" class="text-[10px] font-black uppercase tracking-wide border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50">Copy for WhatsApp</button>
+              {String(order.customerPhone || '').trim() && (
+                <a
+                  id="rider-wa"
+                  class="text-[10px] font-black uppercase tracking-wide bg-[#25D366] text-white rounded px-3 py-1.5"
+                  target="_blank"
+                  rel="noopener"
+                  href={`https://wa.me/${String(order.customerPhone).replace(/[^0-9]/g, '').replace(/^0/, '256')}?text=${encodeURIComponent(`Hello ${order.customerName}, this is GoldPlus. Your order ${order.orderNumber} is on its way. The rider will call you shortly.`)}`}
+                >WhatsApp customer</a>
+              )}
+            </div>
+          </div>
+          <div class="p-6">
+            <pre id="rider-card-text" class="whitespace-pre-wrap text-sm font-mono bg-gray-50 border border-gray-200 rounded-xl p-4">{[
+              `ORDER ${order.orderNumber}`,
+              `Recipient: ${order.customerName}`,
+              `Phone: ${order.customerPhone}`,
+              `Area: ${order.deliveryArea}`,
+              `Landmark/directions: ${order.deliveryAddress}`,
+              (order.deliveryLocation && typeof order.deliveryLocation === 'object' && (order.deliveryLocation as any).gpsLat)
+                ? `Map pin: https://maps.google.com/?q=${(order.deliveryLocation as any).gpsLat},${(order.deliveryLocation as any).gpsLng}`
+                : null,
+              // A building the customer picked from Google Places: this link opens that exact place, and keeps working
+              // after its coordinates are purged (day 29): Google's terms let us keep the place ID.
+              (order.deliveryLocation && typeof order.deliveryLocation === 'object' && typeof (order.deliveryLocation as any).placeId === 'string')
+                ? `Building on Google Maps: https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(order.deliveryAddress || order.deliveryArea || 'Delivery'))}&query_place_id=${encodeURIComponent((order.deliveryLocation as any).placeId)}`
+                : null,
+              // Place memory from our own earlier deliveries here (same customer, same area).
+              placeMemory?.riderLine ? `Before: ${placeMemory.riderLine}` : null,
+              placeMemory?.handoverPin
+                ? `Where the last rider handed over (${placeMemory.handoverPin.orderNumber}): https://maps.google.com/?q=${placeMemory.handoverPin.lat},${placeMemory.handoverPin.lng}`
+                : null,
+              `Items: ${(order.items || []).reduce((n: number, i: any) => n + (Number(i.quantity) || 0), 0)}`,
+              order.paymentStatus === 'paid'
+                ? 'Payment: PAID — collect nothing'
+                // 0196: a gift card / store credit already paid part of it; the rider collects only the rest.
+                : `COLLECT ON DELIVERY: UGX ${Math.max(0, Number(order.totalUgx ?? order.totalAmount ?? 0) - Number(order.storeCreditAppliedUgx ?? 0)).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}${Number(order.storeCreditAppliedUgx ?? 0) > 0 ? ` (gift card already paid UGX ${Number(order.storeCreditAppliedUgx).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })})` : ''}`,
+            ].filter(Boolean).join('\n')}</pre>
+            <p class="text-[10px] text-gray-500 mt-2 print:hidden">The copy button places this block on the clipboard, formatted for WhatsApp.</p>
           </div>
         </div>
 
@@ -483,7 +631,7 @@ if (currentStatus === 'received') {
             <div class="border border-gray-100 rounded-xl overflow-hidden mb-6">
               <table class="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr class="bg-gray-50 font-black uppercase text-[9px] text-gray-400 border-b border-gray-100">
+                  <tr class="bg-gray-50 font-black uppercase text-[9px] text-gray-500 border-b border-gray-100">
                     <th class="px-4 py-3">Product Name</th>
                     <th class="px-4 py-3 text-center">SKU</th>
                     <th class="px-4 py-3 text-center">Qty</th>
@@ -492,13 +640,13 @@ if (currentStatus === 'received') {
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                  {(order.items || []).map((item: any) => (
+                  {(order.items || []).map(lineOf).map((item: any) => (
                     <tr>
-                      <td class="px-4 py-3 font-bold text-brand-dark">{item.productName}</td>
+                      <td class="px-4 py-3 font-bold text-brand-dark">{item.name}</td>
                       <td class="px-4 py-3 text-center font-mono font-bold text-gray-500">{item.sku || 'N/A'}</td>
-                      <td class="px-4 py-3 text-center font-black font-mono text-gray-700">{item.quantity}</td>
-                      <td class="px-4 py-3 text-right font-medium text-gray-500">{formatter.format(item.unitPrice)}</td>
-                      <td class="px-4 py-3 text-right font-black text-brand-dark">{formatter.format(item.quantity * item.unitPrice)}</td>
+                      <td class="px-4 py-3 text-center font-black font-mono text-gray-700">{item.qty}</td>
+                      <td class="px-4 py-3 text-right font-medium text-gray-500">{formatter.format(item.unit)}</td>
+                      <td class="px-4 py-3 text-right font-black text-brand-dark">{formatter.format(item.total)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -520,12 +668,82 @@ if (currentStatus === 'received') {
                   <span>Total Amount</span>
                   <span>{formatter.format(order.totalUgx)}</span>
                 </div>
+                {Number(order.storeCreditAppliedUgx ?? 0) > 0 && (
+                  <>
+                    <div class="flex justify-between text-gray-600" data-admin-store-credit>
+                      <span>Gift card or store credit</span>
+                      <span class="font-bold">−{formatter.format(Number(order.storeCreditAppliedUgx))}</span>
+                    </div>
+                    {order.paymentStatus === 'paid' && (
+                      <a class="block text-right text-[11px] font-bold underline print:hidden" href={`/admin/credit?return=${encodeURIComponent(order.orderNumber)}`}>Give part back to the card</a>
+                    )}
+                    <div class="flex justify-between font-black text-sm text-brand-dark">
+                      <span>{order.paymentStatus === 'paid' ? 'Paid by Mobile Money or card' : 'Still to pay'}</span>
+                      <span>{formatter.format(Math.max(0, Number(order.totalUgx) - Number(order.storeCreditAppliedUgx)))}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
         </div>
 
         {/* Relational PesaPal Payment Attempts */}
+        {refundsLoaded && (
+          <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-3">
+              <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Refunds</h3>
+              <span class="text-[10px] font-bold text-gray-500">Collected {formatter.format(collectedUgx)} · Refunded {formatter.format(refundedUgx)} · Remaining {formatter.format(remainingRefundableUgx)}</span>
+            </div>
+            <div class="p-6 text-xs">
+              {refunds.length > 0 ? (
+                <ul class="space-y-2">
+                  {refunds.map((r: any) => (
+                    <li class="flex flex-wrap justify-between gap-2 border-b border-gray-50 pb-2">
+                      <span class="font-mono">{new Date(r.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' })}</span>
+                      <span class="font-black">{formatter.format(Number(r.amountUgx) || 0)}</span>
+                      <span class="uppercase font-bold text-[10px]">{r.status}</span>
+                      <span class="text-gray-500 basis-full">{r.reason}</span>
+                      {(r.providerStatus || r.providerMessage) && (
+                        <span class="text-gray-500 basis-full">PesaPal: {r.providerStatus ?? 'no answer'}{r.providerMessage ? ` · ${r.providerMessage}` : ''}</span>
+                      )}
+                      {r.status === 'requested' && (
+                        <form method="POST" class="basis-full mt-1 rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                          <p class="font-bold text-amber-900">
+                            {r.providerStatus === '200'
+                              ? 'PesaPal accepted this refund, but has not confirmed paying it out. Check PesaPal, then record what happened.'
+                              : 'It is not known whether this refund was paid: the request to PesaPal did not get an answer. Check PesaPal, then record what happened.'}
+                          </p>
+                          <input type="hidden" name="action" value="resolve_refund" />
+                          <input type="hidden" name="orderId" value={order.id} />
+                          <input type="hidden" name="refundId" value={r.id} />
+                          <label class="block">
+                            <span class="font-bold">What PesaPal shows</span>
+                            <select name="resolution" required class="mt-1 block w-full rounded border border-gray-300 px-2 py-1">
+                              <option value="">Choose…</option>
+                              <option value="settled">Paid out to the customer</option>
+                              <option value="rejected">Not paid (the amount becomes refundable again)</option>
+                            </select>
+                          </label>
+                          <label class="block">
+                            <span class="font-bold">Reason (at least 10 characters)</span>
+                            <input name="reason" required minlength="10" maxlength="500" class="mt-1 block w-full rounded border border-gray-300 px-2 py-1" />
+                          </label>
+                          <button type="submit" class="rounded-full bg-slate-900 px-4 py-1.5 font-bold text-white">Record outcome</button>
+                        </form>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : <p class="text-gray-500">No refunds recorded on this order.</p>}
+              <p class="mt-4">
+                {completedAttempt && remainingRefundableUgx > 0
+                  ? <a href={`/admin/payments?q=${encodeURIComponent(completedAttempt.merchantReference)}`} class="inline-flex rounded-full bg-slate-900 px-4 py-2 font-bold text-white">Refund on the payments page →</a>
+                  : <span class="font-bold text-gray-600">{collectedUgx === 0 ? 'Nothing has been collected on this order, so there is nothing to refund.' : refundedUgx >= collectedUgx ? 'Fully refunded. No refundable balance remains.' : 'No refundable balance remains.'}</span>}
+              </p>
+            </div>
+          </div>
+        )}
         <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
           <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
             <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Relational Payment Attempts (Read-Only)</h3>
@@ -537,7 +755,7 @@ if (currentStatus === 'received') {
                   <div class="bg-gray-50 border border-gray-200 rounded-xl p-5 relative overflow-hidden">
                     <div class="flex justify-between items-start mb-4">
                       <div>
-                        <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest block mb-0.5">ATTEMPT #{paymentAttempts.length - index}</span>
+                        <span class="text-[8px] font-bold text-gray-500 uppercase tracking-widest block mb-0.5">ATTEMPT #{paymentAttempts.length - index}</span>
                         <h4 class="text-xs font-black text-brand-dark">Merchant Reference: {attempt.merchantReference}</h4>
                       </div>
                       <span class={`px-2 py-0.5 border font-black text-[9px] uppercase rounded-lg ${
@@ -552,59 +770,59 @@ if (currentStatus === 'received') {
 
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
                       <div>
-                        <span class="text-[8px] font-bold text-gray-400 uppercase block mb-0.5">Tracking ID</span>
+                        <span class="text-[8px] font-bold text-gray-500 uppercase block mb-0.5">Tracking ID</span>
                         <span class="font-mono font-bold text-brand-dark break-all">{attempt.orderTrackingId || 'None'}</span>
                       </div>
                       <div>
-                        <span class="text-[8px] font-bold text-gray-400 uppercase block mb-0.5">Provider</span>
+                        <span class="text-[8px] font-bold text-gray-500 uppercase block mb-0.5">Provider</span>
                         <span class="font-black uppercase text-[10px] tracking-wide text-brand-dark">{attempt.provider}</span>
                       </div>
                       <div>
-                        <span class="text-[8px] font-bold text-gray-400 uppercase block mb-0.5">Authorized Sum</span>
+                        <span class="text-[8px] font-bold text-gray-500 uppercase block mb-0.5">Authorized Sum</span>
                         <span class="font-black text-brand-dark">{formatter.format(attempt.amount)}</span>
                       </div>
                       <div>
-                        <span class="text-[8px] font-bold text-gray-400 uppercase block mb-0.5">Created At</span>
-                        <span class="font-medium text-gray-500">{new Date(attempt.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                        <span class="text-[8px] font-bold text-gray-500 uppercase block mb-0.5">Created At</span>
+                        <span class="font-medium text-gray-500">{new Date(attempt.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala',  day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                     </div>
 
-                    <div class="border-t border-gray-200/50 pt-3 mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-[10px] font-medium text-gray-400">
+                    <div class="border-t border-gray-200/50 pt-3 mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-[10px] font-medium text-gray-500">
                       <div>
-                        <span class="font-bold">IPN Callback Registered:</span> {attempt.ipnReceivedAt ? new Date(attempt.ipnReceivedAt).toLocaleString('en-GB') : 'No IPN received'}
+                        <span class="font-bold">IPN Callback Registered:</span> {attempt.ipnReceivedAt ? new Date(attempt.ipnReceivedAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' }) : 'No IPN received'}
                       </div>
                       <div>
-                        <span class="font-bold">Callback URL Hit:</span> {attempt.callbackReceivedAt ? new Date(attempt.callbackReceivedAt).toLocaleString('en-GB') : 'No callback hit'}
+                        <span class="font-bold">Callback URL Hit:</span> {attempt.callbackReceivedAt ? new Date(attempt.callbackReceivedAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' }) : 'No callback hit'}
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div class="p-8 text-center text-gray-400 italic bg-gray-50 border border-gray-100 rounded-xl">
+              <div class="p-8 text-center text-gray-500 italic bg-gray-50 border border-gray-100 rounded-xl">
                 No active PesaPal transactional records associated with this order.
               </div>
             )}
           </div>
         </div>
 
-        <!-- Customer Communication Preview Workspace (Tabbed) -->
+        {/* Customer Communication Preview Workspace (Tabbed) */}
         <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mt-8">
           <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center flex-wrap gap-2">
             <div>
               <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Customer Communication Hub</h3>
-              <p class="text-[9px] text-gray-400 mt-0.5">Real-time preview of transactional receipts and WhatsApp message builders.</p>
+              <p class="text-[9px] text-gray-500 mt-0.5">Real-time preview of transactional receipts and WhatsApp message builders.</p>
             </div>
             
-            <!-- Template Toggle Select -->
+            {/* Template Toggle Select */}
             <div>
               <form method="GET" class="flex items-center gap-2">
-                <label for="template" class="text-[8px] font-black uppercase tracking-wider text-gray-400">Template:</label>
+                <label for="template" class="text-[8px] font-black uppercase tracking-wider text-gray-500">Template:</label>
                 <select 
                   name="template" 
                   id="template-select" 
-                  onchange="this.form.submit()"
-                  class="bg-white border border-gray-200 rounded-lg px-2.5 py-1 text-[10px] font-black text-brand-dark outline-none focus:border-brand-gold"
+                  data-submit-on-change
+                  class="bg-white border border-gray-200 rounded-lg px-2.5 py-1 text-[10px] font-black text-brand-dark outline-none focus:border-brand-primaryInk"
                 >
                   <option value="ORDER_RECEIVED_UNPAID" selected={previewData.template === 'ORDER_RECEIVED_UNPAID' || previewData.template === ''}>Received & Unpaid</option>
                   <option value="ORDER_PAYMENT_PENDING" selected={previewData.template === 'ORDER_PAYMENT_PENDING'}>Payment Pending</option>
@@ -620,25 +838,25 @@ if (currentStatus === 'received') {
           
           <div class="p-6">
             
-            <!-- Tabs Controls -->
+            {/* Tabs Controls */}
             <div class="flex border-b border-gray-200 mb-6">
               <button 
                 id="btn-tab-email" 
                 class="px-4 py-2 text-xs font-black border-b-2 border-brand-gold text-brand-dark focus:outline-none transition-all duration-200"
-                onclick="switchTab('email')"
+                type="button"
               >
                 HTML Email Receipt
               </button>
               <button 
                 id="btn-tab-whatsapp" 
-                class="px-4 py-2 text-xs font-black border-b-2 border-transparent text-gray-400 hover:text-brand-dark focus:outline-none transition-all duration-200"
-                onclick="switchTab('whatsapp')"
+                class="px-4 py-2 text-xs font-black border-b-2 border-transparent text-gray-500 hover:text-brand-dark focus:outline-none transition-all duration-200"
+                type="button"
               >
                 WhatsApp Handoff
               </button>
             </div>
 
-             <!-- TAB 1: HTML Email Preview -->
+             {/* TAB 1: HTML Email Preview */}
              <div id="tab-panel-email" class="block space-y-4">
                <div class="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden relative shadow-inner" style="height: 380px;">
                  <iframe 
@@ -649,7 +867,7 @@ if (currentStatus === 'received') {
                  ></iframe>
                </div>
                
-               <!-- Design & Safety Status Badges -->
+               {/* Design & Safety Status Badges */}
                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-gray-50 border border-gray-200 rounded-xl p-4">
                  <div class="flex items-center gap-2">
                    <span class="w-2 h-2 rounded-full bg-blue-500"></span>
@@ -669,21 +887,21 @@ if (currentStatus === 'received') {
                  </div>
                </div>
 
-               <div class="flex justify-between items-center text-[10px] font-medium text-gray-400">
+               <div class="flex justify-between items-center text-[10px] font-medium text-gray-500">
                  <span>Transactional HTML Receipt (Auto-Generated per Order Status)</span>
                  <span class="text-green-500 font-bold">✓ Responsive & Mobile Optimized</span>
                </div>
              </div>
 
-             <!-- TAB 2: WhatsApp Handoff Preview -->
+             {/* TAB 2: WhatsApp Handoff Preview */}
              <div id="tab-panel-whatsapp" class="hidden space-y-4">
                <div class="grid grid-cols-2 gap-4 text-xs">
                  <div class="bg-gray-50 border border-gray-200 rounded-xl p-3">
-                   <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Support Number Configured</div>
+                   <div class="text-[10px] font-bold uppercase tracking-wider text-gray-500">Support Number Configured</div>
                    <div class="font-mono mt-1 font-bold text-gray-700">{whatsappSupportNumber === '256705004545' ? 'Yes (256705004545)' : whatsappSupportNumber}</div>
                  </div>
                  <div class="bg-gray-50 border border-gray-200 rounded-xl p-3">
-                   <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">System Dispatch Mode</div>
+                   <div class="text-[10px] font-bold uppercase tracking-wider text-gray-500">System Dispatch Mode</div>
                    <div class="font-mono mt-1 font-bold text-amber-600">Preview Only, Not Sent</div>
                  </div>
                </div>
@@ -701,7 +919,7 @@ if (currentStatus === 'received') {
                  <button 
                    id="btn-copy-wa" 
                    class="flex-1 bg-gray-100 hover:bg-gray-200 text-brand-dark text-xs font-black py-3 rounded-xl transition-all flex items-center justify-center gap-2 border border-gray-200"
-                   onclick="copyWhatsAppText()"
+                   type="button"
                  >
                    <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 002 2h2a2 2 0 002-2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
                    Copy Template Text
@@ -726,8 +944,8 @@ if (currentStatus === 'received') {
                </div>
              </div>
 
-            <!-- Client Script for UI Controls -->
-            <script is:inline>
+            {/* Client Script for UI Controls */}
+            <script nonce={Astro.locals.cspNonce} is:inline>
               function switchTab(activeTab) {
                 const btnEmail = document.getElementById('btn-tab-email');
                 const btnWa = document.getElementById('btn-tab-whatsapp');
@@ -736,9 +954,9 @@ if (currentStatus === 'received') {
                 
                 if (activeTab === 'email') {
                   btnEmail.classList.add('border-brand-gold', 'text-brand-dark');
-                  btnEmail.classList.remove('border-transparent', 'text-gray-400');
+                  btnEmail.classList.remove('border-transparent', 'text-gray-500');
                   
-                  btnWa.classList.add('border-transparent', 'text-gray-400');
+                  btnWa.classList.add('border-transparent', 'text-gray-500');
                   btnWa.classList.remove('border-brand-gold', 'text-brand-dark');
                   
                   panelEmail.classList.remove('hidden');
@@ -748,9 +966,9 @@ if (currentStatus === 'received') {
                   panelWa.classList.remove('block');
                 } else {
                   btnWa.classList.add('border-brand-gold', 'text-brand-dark');
-                  btnWa.classList.remove('border-transparent', 'text-gray-400');
+                  btnWa.classList.remove('border-transparent', 'text-gray-500');
                   
-                  btnEmail.classList.add('border-transparent', 'text-gray-400');
+                  btnEmail.classList.add('border-transparent', 'text-gray-500');
                   btnEmail.classList.remove('border-brand-gold', 'text-brand-dark');
                   
                   panelWa.classList.remove('hidden');
@@ -776,18 +994,26 @@ if (currentStatus === 'received') {
                   btn.innerHTML = originalHtml;
                 }, 2000);
               }
+
+              // Bound here rather than in onclick attributes: a strict Content-Security-Policy blocks inline handlers.
+              document.getElementById('btn-tab-email')?.addEventListener('click', () => switchTab('email'));
+              document.getElementById('btn-tab-whatsapp')?.addEventListener('click', () => switchTab('whatsapp'));
+              document.getElementById('btn-copy-wa')?.addEventListener('click', () => copyWhatsAppText());
             </script>
 
           </div>
         </div>
 
-        <!-- Notification Channel Status Panels -->
+        {/* Notification Channel Status Panels */}
         <div class="mt-8">
           <NotificationChannelPanel items={timelineItems} />
         </div>
 
-        <!-- Chronological Audit Timeline Log -->
+        {/* Chronological Audit Timeline Log */}
         <NotificationTimeline items={timelineItems} />
+
+        {/* Attribution (0156): recorded visits, codes, answers; staff record the source / WhatsApp ref. */}
+        {order?.id && <OrderSourcePanel orderId={String(order.id)} token={token} />}
 
       </div>
 
@@ -804,7 +1030,7 @@ if (currentStatus === 'received') {
             {/* Status Grid */}
             <div class="grid grid-cols-2 gap-4">
               <div class="bg-gray-50 border border-gray-100 rounded-xl p-4">
-                <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Payment Status</span>
+                <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Payment Status</span>
                 <span class={`inline-block px-2 py-0.5 font-black text-[9px] uppercase tracking-wide border rounded ${
                   order.paymentStatus === 'paid' ? 'bg-green-50 text-green-700 border-green-100' :
                   order.paymentStatus === 'failed' ? 'bg-red-50 text-red-700 border-red-100' :
@@ -815,25 +1041,43 @@ if (currentStatus === 'received') {
                 </span>
               </div>
               <div class="bg-gray-50 border border-gray-100 rounded-xl p-4">
-                <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Fulfillment State</span>
+                <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Fulfillment State</span>
                 <span class={`inline-block px-2 py-0.5 font-black text-[9px] uppercase tracking-wide border rounded ${getStatusColor(order.orderStatus)}`}>
                   {order.orderStatus.replace(/_/g, ' ')}
                 </span>
               </div>
             </div>
 
+            {/* The rider delivered but the order never followed (2026-10-22): one button brings it up to date. */}
+            {fulfilmentTaskStatus === 'DELIVERED' && !['delivered', 'completed', 'cancelled', 'failed'].includes(currentStatus) && (
+              <form method="POST" class="bg-amber-50 border border-amber-200 p-4 rounded-xl text-xs text-amber-900 space-y-3">
+                <input type="hidden" name="action" value="complete_delivered" />
+                <input type="hidden" name="orderId" value={order.id} />
+                <p class="font-medium">The rider's delivery is recorded on the fulfilment task, but this order still says <strong>{currentStatus.replace(/_/g, ' ')}</strong>.</p>
+                <button type="submit" class="w-full bg-brand-dark hover:bg-black text-white text-xs font-black py-3 rounded-xl">Mark the order delivered</button>
+              </form>
+            )}
+
             {/* Transition Controls Form */}
+            {dispatchOnTask && (
+              <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl text-xs font-medium text-blue-900">
+                Dispatch and delivery are recorded on the fulfilment task.{' '}
+                {fulfilmentTaskId
+                  ? <a class="font-black underline" href={`/admin/fulfilment/${fulfilmentTaskId}/dispatch`}>Open the fulfilment task →</a>
+                  : <a class="font-black underline" href="/admin/fulfilment">Open the fulfilment queue →</a>}
+              </div>
+            )}
             {transitionOptions.length > 0 ? (
               <form method="POST" class="space-y-4">
                 <div>
-                  <label for="status" class="block text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">
+                  <label for="status" class="block text-[10px] font-black uppercase tracking-wide text-gray-500 mb-2">
                     Select Logistical Transition
                   </label>
                   <select 
                     name="status" 
                     id="status" 
                     required
-                    class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold transition-colors appearance-none"
+                    class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk transition-colors appearance-none"
                   >
                     <option value="" disabled selected>Choose target status...</option>
                     {transitionOptions.map(opt => (
@@ -848,13 +1092,40 @@ if (currentStatus === 'received') {
                   Commit Logistical Update
                 </button>
               </form>
-            ) : (
+            ) : dispatchOnTask ? null : (
               <div class="bg-gray-50 border border-gray-100 p-4 rounded-xl text-center text-xs font-medium text-gray-500">
                 Fulfillment workflow completed, failed, or cancelled. Operational status cannot be updated in this phase.
               </div>
             )}
 
-            <div class="border-t border-gray-100 pt-4 text-[9px] leading-relaxed text-gray-400 font-medium">
+            {/* Wave 2E-2: order LIFECYCLE transition (state-machine governed) */}
+            <div class="border-t border-gray-100 pt-4">
+              <p class="text-[10px] font-black uppercase tracking-wide text-gray-500 mb-2">Order lifecycle</p>
+              <form method="POST" class="space-y-3">
+                <input type="hidden" name="action" value="lifecycle" />
+                <select name="toStatus" aria-label="Move order to status" required class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk appearance-none">
+                  <option value="" disabled selected>Move order to…</option>
+                  <option value="processing">processing</option>
+                  <option value="completed">completed</option>
+                  <option value="cancelled">cancelled</option>
+                </select>
+                <input name="reason" required maxlength="450" placeholder="Reason (required — recorded in the order ledger)" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk" />
+                <label class="flex items-start gap-2 text-[11px] font-medium text-gray-600"><input type="checkbox" name="payOnDelivery" class="mt-0.5" /> Unpaid online order: the customer will pay on delivery or at the shop (switches it to pay on delivery)</label>
+                <button type="submit" class="w-full bg-brand-dark hover:bg-black text-white text-xs font-black py-3 rounded-xl transition-colors tracking-wide">Apply lifecycle transition</button>
+              </form>
+              <p class="mt-2 text-[9px] leading-relaxed text-gray-400 font-medium">Illegal moves and unpaid-order processing are refused by the state machine with the exact reason shown above.</p>
+            </div>
+
+            <div class="border-t border-gray-100 pt-4">
+              <p class="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">Operator note</p>
+              <form method="POST" class="space-y-3">
+                <input type="hidden" name="action" value="note" />
+                <textarea name="note" required maxlength="1000" rows="2" placeholder="Note for the audit trail…" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk"></textarea>
+                <button type="submit" class="w-full bg-white border border-gray-200 hover:border-brand-gold text-brand-dark text-xs font-black py-3 rounded-xl transition-colors tracking-wide">Record note</button>
+              </form>
+            </div>
+
+            <div class="border-t border-gray-100 pt-4 text-[9px] leading-relaxed text-gray-500 font-medium">
               <strong>Control Rule:</strong> Logistical operations are completely decoupled from payment settlement workflows. Manual override of payment status is strictly blocked to maintain system data truthfulness.
             </div>
 
@@ -866,4 +1137,16 @@ if (currentStatus === 'received') {
     </div>
 
   </div>
+  )}
+<script>
+  document.getElementById('rider-copy')?.addEventListener('click', async () => {
+    const text = document.getElementById('rider-card-text')?.textContent ?? '';
+    try {
+      await navigator.clipboard.writeText(text);
+      const btn = document.getElementById('rider-copy');
+      if (btn) btn.textContent = 'Copied ✓';
+    } catch { /* clipboard blocked — the text stays selectable */ }
+  });
+  document.getElementById('rider-print')?.addEventListener('click', () => window.print());
+</script>
 </AdminLayout>

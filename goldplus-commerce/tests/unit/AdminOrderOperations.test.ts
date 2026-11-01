@@ -56,7 +56,11 @@ describe('Admin Order Operations Unit Tests', () => {
           createdAt: new Date().toISOString()
         }
       ]),
-      findById: vi.fn()
+      findById: vi.fn(),
+      findAdminFacts: vi.fn().mockResolvedValue(new Map([
+        ['order-1', { reservationState: 'BACKORDERED', paymentMethod: 'pesapal' }],
+        ['order-2', { reservationState: 'RESERVED', paymentMethod: 'offline' }],
+      ])),
     };
 
     mockPaymentRepo = {
@@ -97,6 +101,18 @@ describe('Admin Order Operations Unit Tests', () => {
     const json = await res.json();
     expect(json.success).toBe(true);
     expect(json.data.length).toBe(2);
+    expect(json.data[0].reservationState).toBe('BACKORDERED');
+    expect(json.data[0].isBackordered).toBe(true);
+    expect(json.data[1].isBackordered).toBe(false);
+  });
+
+  it('should filter the order list to backordered orders', async () => {
+    const res = await app.request('/governance/admin/orders?reservation=backordered', {
+      headers: { Authorization: 'Bearer valid-token-123' }
+    });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.data.map((o: any) => o.id)).toEqual(['order-1']);
   });
 
   it('should support search query filter on order list', async () => {

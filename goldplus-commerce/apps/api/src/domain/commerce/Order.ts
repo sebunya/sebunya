@@ -1,8 +1,34 @@
 import { createHash } from 'node:crypto';
+import { canTransitionOrder } from './OrderStateMachine';
+import { DomainError } from '../errors/DomainError';
 
-export type OrderStatus = 'received' | 'pending_payment' | 'pending_owner_review' | 'processing' | 'completed' | 'cancelled' | 'failed';
+export type OrderStatus = 'received' | 'pending_payment' | 'pending_owner_review' | 'processing' | 'dispatched' | 'delivered' | 'delivery_failed' | 'completed' | 'cancelled' | 'failed';
 export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'failed';
 export type BuyerType = 'retail' | 'wholesale' | 'corporate';
+
+/**
+ * Where a new order starts. Wholesale/corporate always wait for the owner.
+ * A retail order does too when an operator has set an owner-review threshold
+ * (UGX, payments ops config) and the order total reaches it. No threshold
+ * (null, the default) means retail starts at `received`, as it always did.
+ * Both starting states have the same exits in the state machine.
+ */
+export function initialOrderStatus(
+  buyerType: BuyerType,
+  totalUgx: number,
+  ownerReviewThresholdUgx: number | null | undefined,
+): OrderStatus {
+  if (buyerType === 'wholesale' || buyerType === 'corporate') return 'pending_owner_review';
+  if (
+    typeof ownerReviewThresholdUgx === 'number' &&
+    Number.isInteger(ownerReviewThresholdUgx) &&
+    ownerReviewThresholdUgx > 0 &&
+    totalUgx >= ownerReviewThresholdUgx
+  ) {
+    return 'pending_owner_review';
+  }
+  return 'received';
+}
 
 export interface OrderItem {
   productId: string;
@@ -46,6 +72,18 @@ export interface OrderCustomerDetails {
 export interface OrderDeliveryLocation {
   district: string;
   region?: string;
+  /** Structured area link + optional customer pin (location module PART G). */
+  areaSlug?: string;
+  gpsLat?: number;
+  gpsLng?: number;
+  gpsAccuracyM?: number;
+  gpsSource?: 'device' | 'pasted_link' | 'map_place';
+  /**
+   * A building picked from Google Places: its place ID, which Google's terms allow us to keep indefinitely. Its
+   * coordinates (gpsLat/gpsLng, source map_place) are removed by the nightly purge after 29 days (terms: 30 max);
+   * the ID keeps a "find it on Google Maps" link working after that.
+   */
+  placeId?: string;
   countyOrMunicipality?: string;
   subcountyDivisionTc?: string;
   parishWard?: string;
@@ -74,8 +112,48 @@ export class Order {
     public readonly deliveryLocation: OrderDeliveryLocation | null = null,
     /** True only when the fee came from an enabled configured delivery zone. */
     public readonly deliveryFeeConfirmed: boolean = false,
-    public readonly pricingSnapshot: OrderPricingSnapshot | null = null
+    public readonly pricingSnapshot: OrderPricingSnapshot | null = null,
+    /**
+     * The account this order belongs to, or null for a guest.
+     *
+     * This is the identity link everything account-facing hangs off: "my
+     * orders", and the loyalty earn boundary, which attributes points by
+     * orders.userId. Until this existed the entity silently dropped the
+     * checkout principal, so no order ever belonged to anyone — signed-in
+     * customers saw an empty order history and loyalty could never credit a
+     * point to the very customers the programme was activated for.
+     */
+    public readonly userId: string | null = null,
+    /**
+     * Loyalty redemption applied at checkout (loyalty brief PART G): points
+     * convert to a discount INSIDE the order total so payment initiation and
+     * provider amount verification all see one truth. The pricing snapshot
+     * keeps the pre-redemption quote; the pair records the difference.
+     */
+    public readonly loyaltyDiscountUgx: number = 0,
+    public readonly loyaltyRedemptionId: string | null = null,
+    /**
+     * Store credit or a gift card paying part of this order (gap analysis #17). A TENDER, not a discount:
+     * totalUgx stays the full sale (revenue, analytics, the money invariants), and what Pesapal is asked for is
+     * amountDueUgx. Held in the same transaction that saves the order.
+     */
+    public readonly storeCreditAppliedUgx: number = 0
   ) {}
+
+  /** What the customer still has to pay after store credit: the Pesapal amount. */
+  get amountDueUgx(): number {
+    return Math.max(0, this.totalUgx - (this.storeCreditAppliedUgx ?? 0));
+  }
+
+  /** The same order with store credit recorded (used right after the save transaction applied it). */
+  withStoreCredit(appliedUgx: number): Order {
+    return new Order(
+      this.id, this.orderNumber, this.customerName, this.customerPhone, this.customerEmail, this.deliveryArea, this.deliveryAddress,
+      this.buyerType, this.items, this.subtotalUgx, this.deliveryFeeUgx, this.totalUgx, this.paymentStatus, this.orderStatus,
+      this.createdAt, this.updatedAt, this.deliveryLocation, this.deliveryFeeConfirmed, this.pricingSnapshot, this.userId,
+      this.loyaltyDiscountUgx, this.loyaltyRedemptionId, Math.max(0, Math.min(appliedUgx, this.totalUgx)),
+    );
+  }
 
   public static create(
     id: string,
@@ -84,22 +162,29 @@ export class Order {
     items: OrderItem[],
     deliveryFeeUgx: number = 0,
     deliveryFeeConfirmed: boolean = false,
-    pricingSnapshot: OrderPricingSnapshot | null = null
+    pricingSnapshot: OrderPricingSnapshot | null = null,
+    userId: string | null = null,
+    loyaltyRedemption: { discountUgx: number; redemptionId: string } | null = null,
+    /** payments ops config `owner_review_threshold_ugx`; null = OFF. */
+    ownerReviewThresholdUgx: number | null = null
   ): Order {
     const subtotal = pricingSnapshot?.finalTotalUgx != null
       ? pricingSnapshot.finalTotalUgx - pricingSnapshot.shippingUgx - pricingSnapshot.taxUgx
       : items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const total = pricingSnapshot?.finalTotalUgx ?? subtotal + deliveryFeeUgx;
+    const grossTotal = pricingSnapshot?.finalTotalUgx ?? subtotal + deliveryFeeUgx;
+    const loyaltyDiscount = Math.min(Math.max(loyaltyRedemption?.discountUgx ?? 0, 0), grossTotal);
+    const total = grossTotal - loyaltyDiscount;
     const timestamp = new Date();
     
-    // Business Rule: wholesale/corporate require pending_owner_review
-    const initialStatus: OrderStatus = (buyerType === 'wholesale' || buyerType === 'corporate') 
-      ? 'pending_owner_review' 
-      : 'received';
+    const initialStatus = initialOrderStatus(buyerType, total, ownerReviewThresholdUgx);
 
     return new Order(
       id,
-      `GP-${timestamp.getFullYear()}${(timestamp.getMonth()+1).toString().padStart(2,'0')}-${id.substring(0, 4).toUpperCase()}`,
+      // Eight hex characters, not four. order_number is UNIQUE, and four hex
+      // characters is 65,536 values per month: at 300 orders in a month the
+      // odds of a collision were about even, and a collision made a live
+      // checkout fail at the final INSERT. Eight characters is 4 billion.
+      `GP-${timestamp.getFullYear()}${(timestamp.getMonth()+1).toString().padStart(2,'0')}-${id.substring(0, 8).toUpperCase()}`,
       customer.name,
       customer.phone,
       customer.email,
@@ -116,16 +201,30 @@ export class Order {
       timestamp,
       customer.deliveryLocation ?? null,
       deliveryFeeConfirmed,
-      pricingSnapshot
+      pricingSnapshot,
+      userId,
+      loyaltyDiscount,
+      loyaltyRedemption?.redemptionId ?? null
     );
   }
 
+  /**
+   * Move to a new status, enforcing the order state machine. Throws a typed
+   * DomainError on an illegal transition so no caller — route, worker or test —
+   * can persist an order into a state it cannot legally reach.
+   */
   public transitionStatus(newStatus: OrderStatus): Order {
+    const decision = canTransitionOrder(this.orderStatus, newStatus, { paymentStatus: this.paymentStatus });
+    if (!decision.allowed) {
+      const category = decision.code === 'UNPAID' ? 'FORBIDDEN' : 'CONFLICT';
+      throw new DomainError(`ORDER_TRANSITION_${decision.code}`, category, decision.message, { clientSafe: true });
+    }
     return new Order(
       this.id, this.orderNumber, this.customerName, this.customerPhone, this.customerEmail,
       this.deliveryArea, this.deliveryAddress, this.buyerType, this.items,
       this.subtotalUgx, this.deliveryFeeUgx, this.totalUgx, this.paymentStatus,
-      newStatus, this.createdAt, new Date(), this.deliveryLocation, this.deliveryFeeConfirmed, this.pricingSnapshot
+      newStatus, this.createdAt, new Date(), this.deliveryLocation, this.deliveryFeeConfirmed, this.pricingSnapshot,
+      this.userId, this.loyaltyDiscountUgx, this.loyaltyRedemptionId
     );
   }
 }

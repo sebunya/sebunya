@@ -203,13 +203,65 @@ describe('idempotency decisions', () => {
     });
   });
 
-  it('conflicts on a different fingerprint, whatever the state', () => {
-    // Checked before the state in every branch: otherwise reusing a key with a
-    // different basket would be answered differently depending only on timing.
+  // CHANGED 2026-08-27. This used to assert CONFLICT for a different fingerprint
+  // in EVERY state. That made a spent intent a permanent dead end: nothing clears
+  // the intent cookie except a completed order or its twelve-hour expiry, so a
+  // customer who removed an unavailable item, or switched from a failed online
+  // payment to paying on delivery, was refused for twelve hours. Observed in
+  // production (CHECKOUT_REFUSED / FINGERPRINT_MISMATCH). The guarantee the
+  // original test protected — never replay the wrong order for a different
+  // basket — is unchanged and pinned by the three cases below.
+  it('conflicts on a different fingerprint only while a claim is LIVE', () => {
+    const decision = decideIdempotency(
+      record({ state: 'IN_PROGRESS', updatedAt: now }),
+      'fp-OTHER',
+      now,
+    );
+    expect(decision.action).toBe('CONFLICT');
+  });
+
+  it('never replays the earlier order for a different fingerprint', () => {
+    // The point of the fingerprint: whatever the state, a materially different
+    // request must NOT be answered with the earlier order.
     for (const state of ['COMPLETED', 'IN_PROGRESS', 'FAILED_RETRYABLE', 'FAILED_FINAL'] as const) {
       const decision = decideIdempotency(record({ state, failureReason: 'x' }), 'fp-OTHER', now);
-      expect(decision.action).toBe('CONFLICT');
+      expect(decision.action).not.toBe('RETURN_EXISTING');
+      expect(decision.action).not.toBe('PROCEED');
     }
+  });
+
+  it('names the existing order when a settled intent already produced one', () => {
+    // Not a conflict and not a silent second order: the caller must be able to
+    // tell the customer which order they already have.
+    for (const state of ['COMPLETED', 'FAILED_RETRYABLE', 'FAILED_FINAL'] as const) {
+      const decision = decideIdempotency(
+        record({ state, orderId: 'order-1', failureReason: 'x' }),
+        'fp-OTHER',
+        now,
+      );
+      expect(decision.action).toBe('SUPERSEDED_BY_ORDER');
+      if (decision.action === 'SUPERSEDED_BY_ORDER') expect(decision.orderId).toBe('order-1');
+    }
+  });
+
+  it('lets a spent intent that produced nothing be started afresh', () => {
+    // The wedge this closes: a terminal refusal (an unavailable item) created no
+    // order, so fixing the basket must be allowed to go through.
+    const decision = decideIdempotency(
+      record({ state: 'FAILED_FINAL', orderId: null, failureReason: 'PRODUCT_UNAVAILABLE' }),
+      'fp-OTHER',
+      now,
+    );
+    expect(decision.action).toBe('INTENT_SPENT');
+  });
+
+  it('treats a lapsed claim with a different basket as a new operation, not a conflict', () => {
+    const stale = record({
+      state: 'IN_PROGRESS',
+      orderId: null,
+      updatedAt: new Date(now.getTime() - 10 * 60_000),
+    });
+    expect(decideIdempotency(stale, 'fp-OTHER', now)).toEqual({ action: 'INTENT_SPENT' });
   });
 
   it('reports a live claim as in-flight with a retry hint', () => {
@@ -308,9 +360,11 @@ describe('the checkout response never publishes the domain order', () => {
   });
 
   it('does not leak internal error text to public callers', () => {
-    // The route now maps typed outcomes; only an allowlisted business code is
-    // named back to the customer.
-    expect(checkoutHandler).toContain('TERMINAL_PUBLIC_CODES.includes(outcome.reason)');
+    // The route maps typed outcomes to a stable public code plus a sentence.
+    // The code is for the storefront to map; it is never prefixed onto the
+    // sentence — "PRICE_CHANGED: The price changed…" put a SCREAMING_SNAKE
+    // enum in front of the customer on the most sensitive refusal there is.
+    expect(checkoutHandler).not.toMatch(/\$\{outcome\.reason\}:\s*\$\{mapped\.message\}/);
     expect(checkoutHandler).toContain("message: 'The order could not be completed. Please try again.'");
     const useCase = readFileSync(
       join(__dirname, '../../apps/api/src/application/use-cases/commerce/ExecuteCheckoutIntentUseCase.ts'),

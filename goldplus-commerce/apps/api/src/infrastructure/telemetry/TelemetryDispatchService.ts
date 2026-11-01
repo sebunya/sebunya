@@ -1,12 +1,15 @@
 import { db } from '../db/client';
 import { telemetryDeadLetterQueue } from '../db/schema/telemetry';
 import { outboxEvents } from '../db/schema/system';
-import { eq, and, lte, sql } from 'drizzle-orm';
+import { eq, and, lte, sql, inArray } from 'drizzle-orm';
 import { logger } from '../logging/logger';
 import { env } from '../../config/env';
 import type { CanonicalTelemetryEvent } from '@goldplus/shared';
 import * as client from 'prom-client';
-import crypto from 'crypto';
+import { ga4CollectHit } from './Ga4CollectHit';
+import { fanOutAdConversions } from '../advertising/AdConversionDispatch';
+import { DEAD_LETTER_STATE } from '../../domain/outbox/TerminalState';
+import { environmentOf } from '../../domain/measurement/BusinessEvents';
 
 const gtmOutboundLatency = new client.Histogram({
   name: 'goldplus_gtm_outbound_latency_seconds',
@@ -26,6 +29,12 @@ const gtmMatchingSignals = new client.Counter({
   labelNames: ['signal_type', 'event_name'],
 });
 
+const ga4SkippedNoSession = new client.Counter({
+  name: 'goldplus_ga4_skipped_no_session_total',
+  help: 'Browsing events not sent to GA4 because they carried no GA4 session id',
+  labelNames: ['event_name'],
+});
+
 const registerMetricSafe = (m: client.Metric) => {
   try {
     client.register.registerMetric(m);
@@ -37,6 +46,7 @@ const registerMetricSafe = (m: client.Metric) => {
 registerMetricSafe(gtmOutboundLatency);
 registerMetricSafe(gtmConversionFailures);
 registerMetricSafe(gtmMatchingSignals);
+registerMetricSafe(ga4SkippedNoSession);
 
 /**
  * PHASE 6–11 + PHASE 12 — TELEMETRY DISPATCH SERVICE
@@ -68,6 +78,30 @@ const BACKOFF_MS = [
 
 export const EVENT_TYPE_TELEMETRY = 'TELEMETRY_DISPATCH';
 
+/**
+ * How long a claimed row stays off the queue while it is being dispatched.
+ *
+ * The same outbox row is reachable by BOTH this batch sweep and the
+ * TELEMETRY_DISPATCH queue worker, and `SELECT ... FOR UPDATE` outside a
+ * transaction holds its lock only for that statement. Both readers therefore
+ * saw the row as unprocessed and both sent it, so a purchase could be counted
+ * twice by every downstream destination. Claiming is now a conditional UPDATE
+ * that moves `nextAttemptAt` forward: exactly one writer can win a row, and a
+ * process that dies mid-dispatch releases it when the lease expires.
+ */
+export const CLAIM_LEASE_MS = 300_000;
+
+
+/**
+ * Some writers store the event as a JSON string inside the jsonb column
+ * (production rows are double-encoded). Read as-is, every field is undefined:
+ * `source` never matches and the visitor id is missing, so the event is
+ * silently dropped as "no visitor" and marked sent.
+ */
+export function decodeTelemetryPayload(payload: unknown): CanonicalTelemetryEvent {
+  return (typeof payload === 'string' ? JSON.parse(payload) : payload) as CanonicalTelemetryEvent;
+}
+
 export class TelemetryDispatchService {
   /**
    * Process one batch of pending telemetry outbox events.
@@ -81,8 +115,8 @@ export class TelemetryDispatchService {
   }> {
     const now = new Date();
 
-    const rows = await db
-      .select()
+    const candidates = await db
+      .select({ id: outboxEvents.id })
       .from(outboxEvents)
       .where(
         and(
@@ -95,6 +129,24 @@ export class TelemetryDispatchService {
       .limit(BATCH_SIZE)
       .for('update', { skipLocked: true });
 
+    if (candidates.length === 0) {
+      return { claimed: 0, dispatched: 0, retried: 0, deadLettered: 0 };
+    }
+
+    // The claim itself. Re-checking nextAttemptAt inside the UPDATE is what
+    // makes it exclusive: the loser of a race no longer matches the predicate.
+    const rows = await db
+      .update(outboxEvents)
+      .set({ status: 'processing', nextAttemptAt: new Date(now.getTime() + CLAIM_LEASE_MS) })
+      .where(
+        and(
+          inArray(outboxEvents.id, candidates.map((r) => r.id)),
+          eq(outboxEvents.isProcessed, false),
+          lte(outboxEvents.nextAttemptAt, now)
+        )
+      )
+      .returning();
+
     if (rows.length === 0) {
       return { claimed: 0, dispatched: 0, retried: 0, deadLettered: 0 };
     }
@@ -104,7 +156,10 @@ export class TelemetryDispatchService {
     let deadLettered = 0;
 
     for (const row of rows) {
-      const event   = row.payload as CanonicalTelemetryEvent;
+      // Some writers store the event as a JSON string inside the jsonb column
+      // (production rows are double-encoded). Read as-is, every field was
+      // undefined: `source` never matched and the visitor id was missing.
+      const event   = decodeTelemetryPayload(row.payload);
       const attempt = row.attemptCount + 1;
 
       try {
@@ -126,7 +181,17 @@ export class TelemetryDispatchService {
           await this.sendToDlq(row.id, event, attempt, errMsg);
           await db
             .update(outboxEvents)
-            .set({ isProcessed: true, processedAt: new Date(), status: 'dead_lettered', lastError: errMsg })
+            // One canonical spelling. This writer's private 'dead_lettered' made
+            // its dead letters invisible to every reader in the outbox repository,
+            // including the replay lookup. Existing rows keep their spelling and
+            // are still read, via DEAD_LETTER_STATES.
+            .set({
+              isProcessed: true,
+              processedAt: new Date(),
+              deadLetteredAt: new Date(),
+              status: DEAD_LETTER_STATE,
+              lastError: errMsg,
+            })
             .where(eq(outboxEvents.id, row.id));
           deadLettered++;
           logger.error({ eventId: event.event_id, attempt }, '[Telemetry] Event dead-lettered after max retries');
@@ -162,8 +227,45 @@ export class TelemetryDispatchService {
    *
    * sGTM validates the payload and fans out to all configured destinations.
    */
-  private async dispatch(event: CanonicalTelemetryEvent): Promise<void> {
-    const url = `${env.metricsInternalUrl}/mp/collect`;
+  private async dispatch(raw: CanonicalTelemetryEvent | string): Promise<void> {
+    // Both paths (the queue worker and the batch sweep) arrive here; the
+    // worker passes the raw row payload, which production double-encodes.
+    const event = decodeTelemetryPayload(raw);
+    // Advertising platforms first, and independently of GA4 (0138): a GA
+    // outage, a missing measurement id or a visitor-less event must not stop
+    // conversions that carry their own identifiers. Idempotent per platform
+    // and event, so a retried GA dispatch never queues them twice.
+    await fanOutAdConversions(event);
+    // Page views reach GA4 from the web container; forwarding ours as well would
+    // count every page twice. They exist for the ad platforms above only.
+    if (event.event_name === 'page_seen') return;
+    // Every ecommerce event goes to GA4 from HERE, server-side (owner decision
+    // 2026-09-19): the browser only beacons it to our own API, which survives
+    // ad blockers and does not depend on browser cookies. The web container no
+    // longer sends ecommerce events (its GA4 event tag is paused), so nothing
+    // is counted twice; it still sends page views.
+
+    // Production only: a staging or local API with GA4_MEASUREMENT_ID set and a reachable tagging server sent its
+    // browsing events into the live property (purchases were already gated in DeliveryService).
+    if (environmentOf(process.env.NODE_ENV) !== 'production' && process.env.MEASUREMENT_ALLOW_NONPROD_DELIVERY !== 'true') return;
+    // Only inside a GA4 visit. A browsing event without the visit's session id (the browser had no `_ga_<stream>`
+    // cookie yet: the tag loads after the page, our beacon 500 ms after the action) made GA4 count a user with no
+    // session, no source and neither new nor returning: 562 of 1,306 users in the 90 days to 2026-10-22, all
+    // "Direct". Without the visit it says nothing GA4 can use; our own records and the ad platforms above have it.
+    if (!event.user_data?.ga_session_id) {
+      ga4SkippedNoSession.inc({ event_name: event.event_name });
+      return;
+    }
+
+    const measurementId = (env.ga4MeasurementId ?? '').trim();
+    if (!/^G-[A-Z0-9]+$/.test(measurementId)) throw new Error('GTM_NOT_CONFIGURED: GA4_MEASUREMENT_ID is not set; server-side measurement is not configured.');
+    const hit = ga4CollectHit(event, measurementId);
+    if (!hit) {
+      // No visitor id: sending would invent a visitor. Recorded, not retried.
+      logger.warn({ eventId: event.event_id, eventName: event.event_name }, '[Telemetry] server event has no visitor id; not sent to GA4');
+      return;
+    }
+    const url = `${env.metricsInternalUrl}/g/collect?${hit.toString()}`;
 
     // SSRF Destination Validation Guard
     const parsedUrl = new URL(url);
@@ -176,10 +278,6 @@ export class TelemetryDispatchService {
     }
 
     const start = Date.now();
-    const bodyStr = JSON.stringify(event);
-    const signature = crypto.createHmac('sha256', process.env.GTM_HMAC_SECRET || 'gtm-default-secret')
-      .update(bodyStr)
-      .digest('hex');
 
     // Track matching signals
     const ud = event.user_data;
@@ -195,18 +293,13 @@ export class TelemetryDispatchService {
     }
 
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type':      'application/json',
-          'X-Telemetry-Source': 'goldplus-api-worker',
-          'X-Event-Id':         event.event_id,
-          'X-Event-Name':       event.event_name,
-          'X-Signature':        signature,
-        },
-        body:   bodyStr,
-        signal: AbortSignal.timeout(10_000), // Hard 10s cap — never blocks the ticker
-      });
+      // Internal network only (never the public host). The customer's own IP
+      // and browser, captured when they checked out, are passed so GA4 geo and
+      // device reports describe the buyer, not our server.
+      const headers: Record<string, string> = { 'X-Telemetry-Source': 'goldplus-api-worker', 'X-Event-Id': event.event_id };
+      if (ud?.user_agent) headers['User-Agent'] = ud.user_agent;
+      if (ud?.ip_address) headers['X-Forwarded-For'] = ud.ip_address;
+      const response = await fetch(url, { method: 'POST', headers, signal: AbortSignal.timeout(10_000) });
 
       const latencySec = (Date.now() - start) / 1000;
       gtmOutboundLatency.observe(latencySec);
@@ -216,6 +309,7 @@ export class TelemetryDispatchService {
         const body = await response.text().catch(() => '');
         throw new Error(`sGTM ${response.status}: ${body.slice(0, 300)}`);
       }
+
     } catch (err) {
       if (!(err instanceof Error && err.message.includes('sGTM'))) {
         gtmConversionFailures.inc({ status: 'network_error' });

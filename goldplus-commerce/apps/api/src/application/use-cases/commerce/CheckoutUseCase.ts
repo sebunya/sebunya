@@ -5,7 +5,10 @@ import { IDeliveryZoneRepository } from '../../ports/IDeliveryZoneRepository';
 import { EvaluateCartPricingUseCase } from '../pricing/EvaluateCartPricingUseCase';
 import { ManagePromotionCapacityUseCase } from '../pricing/ManagePromotionCapacityUseCase';
 import { IPricingQuoteRepository } from '../../ports/IPricingQuoteRepository';
+import { CheckoutDependencyError } from '../../ports/CheckoutDependencyOutcomes';
 import { PricingQuote } from '../../../domain/pricing/PricingEvaluator';
+import { pricingCustomerScopeKey } from '../../../domain/pricing/CustomerIdentity';
+import { normalizeUgandaDistrict } from '@goldplus/shared';
 
 export interface IOrderRepository {
   save(order: Order, opts?: { clientOrderKey?: string | null }): Promise<void>;
@@ -15,12 +18,22 @@ export interface IOrderRepository {
 
 export interface ITransactionalPricedOrderRepository extends IOrderRepository {
   savePricedOrder(input: {
+    paymentMethod?: 'pesapal' | 'offline' | null;
     order: Order;
     quote: PricingQuote;
     reservationIds: string[];
     clientOrderKey: string | null;
     /** Fenced link, written in the SAME transaction as the order insert. */
     checkoutLink?: { identity: string; claimToken: string; fencingNumber: number };
+    /**
+     * R3.1: provenance for commercial attribution. profileId is server-issued
+     * (resolved from the HttpOnly visit token; never client-supplied). cartId
+     * is the body-supplied basket id — uuid-validated and pinned by the
+     * checkout fingerprint, but honestly client-originated; no commercial
+     * query treats it as identity.
+     */
+    stitching?: { profileId?: string | null; cartId?: string | null } | null;
+    storeCredit?: { codeHash: string; maxUgx?: number | null } | null;
   }): Promise<{ order: Order; duplicate: boolean }>;
 }
 
@@ -33,6 +46,8 @@ export interface CheckoutDto {
     deliveryAddress: string;
     /** Structured Uganda location from the picker (Slice 3B). */
     deliveryLocation?: OrderDeliveryLocation | null;
+    /** Collect from one of our own shops: priced at zero by the quoting port, refused if not an active shop point. */
+    pickupPointId?: string | null;
   };
   buyerType: BuyerType;
   /**
@@ -49,8 +64,28 @@ export interface CheckoutDto {
   /** Active checkout lease, so the order and its claim link commit together. */
   checkoutLink?: { identity: string; claimToken: string; fencingNumber: number };
   couponCode?: string | null;
+  /** 0196: keyed hash of a store credit / gift card code to hold against the order (gap analysis #17). */
+  storeCreditCodeHash?: string | null;
   previewQuoteId?: string | null;
   acceptPriceChange?: boolean;
+  /**
+   * The verified checkout principal. USER links the order to that account —
+   * the anchor for "my orders" and loyalty attribution; GUEST (or absent)
+   * stores no identity. Never trusted from the client: it comes from the
+   * signed checkout-intent claims.
+   */
+  principal?: { kind: 'USER' | 'GUEST'; id: string } | null;
+  /** 'offline' = pay on delivery/collection — gates the PART I.2 COD rules. */
+  paymentMethod?: 'pesapal' | 'offline' | null;
+  /** R3.1 stitching (see ITransactionalPricedOrderRepository.savePricedOrder). */
+  stitching?: { profileId?: string | null; cartId?: string | null } | null;
+  /**
+   * Loyalty points to redeem against this order (loyalty brief PART G).
+   * Signed-in customers only; validated and reserved through the redemption
+   * engine — unset programme config refuses with a clear message, never a
+   * silent default.
+   */
+  redeemPoints?: number | null;
 }
 
 export interface CheckoutResult {
@@ -64,6 +99,36 @@ export interface CheckoutResult {
 const MAX_LINE_ITEMS = 50;
 const MAX_QUANTITY_PER_LINE = 99;
 
+/**
+ * The district named in a typed area line such as "Layibi, Gulu", when no
+ * structured location was supplied. Last comma segment first, then any.
+ */
+function districtFromAreaLine(area: string | null | undefined): string | null {
+  if (!area) return null;
+  const parts = area.split(',').map((p) => p.trim()).filter(Boolean).reverse();
+  for (const part of parts) {
+    const d = normalizeUgandaDistrict(part);
+    if (d) return normalizeDistrict(d);
+  }
+  return null;
+}
+
+/**
+ * The pin inside a checkout location, when it has one that lies in Uganda's bounding box. A building picked from
+ * Google Places (gpsSource map_place) is never a pricing input: Google Maps Platform Terms §3.2.3(c)(iv) forbid
+ * Places coordinates as input to point-in-polygon analysis, which is what resolving an area from a point is. It is
+ * kept on the order for the rider (and purged after 29 days); the customer's chosen area prices the order.
+ */
+export function pinOf(loc: unknown): { lat: number; lng: number } | null {
+  const l = loc as { gpsLat?: unknown; gpsLng?: unknown; gpsSource?: unknown } | null | undefined;
+  if (l?.gpsSource === 'map_place') return null;
+  const lat = Number(l?.gpsLat);
+  const lng = Number(l?.gpsLng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -2.5 || lat > 5.5 || lng < 28 || lng > 36.5) return null;
+  return { lat, lng };
+}
+
 export class CheckoutUseCase {
   constructor(
     private readonly orderRepo: IOrderRepository,
@@ -74,8 +139,91 @@ export class CheckoutUseCase {
       capacity: ManagePromotionCapacityUseCase;
       quotes: IPricingQuoteRepository;
       orders: ITransactionalPricedOrderRepository;
-    } | null = null
+    } | null = null,
+    private readonly codPolicy: {
+      forDistrict(district: string): Promise<{
+        zoneCode: string;
+        active: boolean;
+        codAllowed: boolean | null;
+        codMaxOrderValueUgx: number | null;
+        prepayRequiredAboveUgx: number | null;
+      } | null>;
+    } | null = null,
+    private readonly checkoutSignals: {
+      velocity(input: { phone: string; orderId: string }): Promise<void>;
+    } | null = null,
+    private readonly loyaltyRedemption: {
+      reserve(input: { userId: string; points: number; orderGoodsTotalUgx: number; orderFloorTotalUgx?: number; idempotencyKey: string }): Promise<
+        { ok: true; reservationId: string; valueUgx: number } | { ok: false; code: string; message: string }
+      >;
+      attach(reservationId: string, orderId: string): Promise<void>;
+      release(input: { reservationId: string }): Promise<unknown>;
+    } | null = null,
+    /**
+     * THE quoting service (delivery brief, contract #1).
+     *
+     * Optional so the use case still constructs without it, but in production
+     * it is always present and it answers FIRST. The legacy zone path below is
+     * consulted only when this returns CONFIG_INCOMPLETE — every other reason
+     * is a correct answer, and handing a correct answer to the legacy model
+     * would replace it with a wrong one (it would happily price a lake island).
+     *
+     * When the fallback has served zero requests for the agreed period, both
+     * legacy paths are deleted and contract #1 becomes true.
+     */
+    private readonly deliveryQuoting: {
+      quote(input: {
+        areaSlug?: string | null;
+        deliveryArea?: string | null;
+        district?: string | null;
+        items: ReadonlyArray<{ productId: string; quantity: number }>;
+        /** 0190: the customer's pin at checkout, when there is one (PIN tier; the area when none was named). */
+        point?: { lat: number; lng: number } | null;
+        /** Collect from one of our own shops: no delivery, no fee. */
+        pickupPointId?: string | null;
+      }): Promise<{
+        feeUgx: number | null;
+        confirmed: boolean;
+        pricedBy: 'delivery_model' | 'bus_rate_card' | 'manual';
+        mayFallBackToLegacy: boolean;
+        capture: Record<string, unknown>;
+        /** The threshold that governs this destination; null when the mechanic is off. */
+        freeDeliveryThresholdUgx?: number | null;
+        /** The charge had the threshold not waived it. */
+        feeBeforeFreeDeliveryUgx?: number | null;
+      }>;
+      recordQuote(orderId: string, capture: Record<string, unknown>): Promise<void>;
+      /** Called when a capture write fails, so the loss is observable. */
+      onCaptureFailed?(orderId: string, error: unknown): void;
+    } | null = null,
+    /**
+     * The optional retail owner-review threshold (UGX), or null when unset.
+     * A failed read is treated as unset: the setting can hold an order for
+     * review, but it must never fail a checkout.
+     */
+    private readonly ownerReviewThreshold: { thresholdUgx(): Promise<number | null> } | null = null,
+    /**
+     * Counts a batch code against its redemption maximum once its order exists (exactly once per code and order).
+     * Never fatal: the order is committed with the discount the customer was shown. Optional; production wires it.
+     */
+    private readonly couponRedemption: {
+      redeemForOrder(input: { code: string; orderId: string; customerScopeKey: string; quote: PricingQuote }): Promise<void>;
+    } | null = null,
+    /**
+     * Owner decision 2026-10-16: storefront orders are paid online (Mobile Money or card); pay on delivery confused
+     * customers. null = allowed (scripts, tests); production wires STOREFRONT_PAY_ON_DELIVERY (off unless 'on').
+     */
+    private readonly payOnDelivery: { allowed(): boolean } | null = null,
   ) {}
+
+  private async ownerReviewThresholdUgx(): Promise<number | null> {
+    if (!this.ownerReviewThreshold) return null;
+    try {
+      return await this.ownerReviewThreshold.thresholdUgx();
+    } catch {
+      return null;
+    }
+  }
 
   public async execute(dto: CheckoutDto): Promise<CheckoutResult> {
     if (!dto.items || dto.items.length === 0) {
@@ -96,9 +244,13 @@ export class CheckoutUseCase {
     //
     // The single authoritative mechanism is the fenced checkout_idempotency
     // claim, taken before this use case is invoked. The customer scope below is
-    // used only for pricing, never for ownership.
-    const customerScopeKey =
-      dto.customerDetails.email?.trim().toLowerCase() || dto.customerDetails.phone.trim();
+    // used only for pricing, never for ownership. It is the signed-in account,
+    // else the phone in canonical form — never the optional email, which let
+    // one person pass a per-customer promotion limit by leaving it out.
+    const customerScopeKey = pricingCustomerScopeKey({
+      principal: dto.principal ?? null,
+      phone: dto.customerDetails.phone,
+    });
     const clientOrderKey = dto.clientOrderKey?.trim() || null;
 
     for (const item of dto.items) {
@@ -111,55 +263,249 @@ export class CheckoutUseCase {
     }
 
     // Delivery fee from configured zones; unconfigured districts stay truthful (0, unconfirmed).
+    // deliveryLocation is optional on the wire. Taking the district ONLY from it
+    // let a request omit it and skip the zone's cash-on-delivery policy for a
+    // destination where COD is refused. The typed area line names the district
+    // too, so it is the fallback.
     const district = dto.customerDetails.deliveryLocation?.district
       ? normalizeDistrict(dto.customerDetails.deliveryLocation.district)
-      : null;
+      : districtFromAreaLine(dto.customerDetails.deliveryArea);
     const zone = district && this.deliveryZones ? await this.deliveryZones.findByDistrict(district) : null;
-    const fee = resolveDeliveryFee(zone);
+
+    // THE quoting service answers first. The legacy zone path is a fallback for
+    // CONFIG_INCOMPLETE and nothing else.
+    let fee = resolveDeliveryFee(zone);
+    let deliveryCapture: Record<string, unknown> | null = null;
+    // The free-delivery threshold is decided on the goods total AFTER
+    // promotions and BEFORE loyalty (DEFAULT_THRESHOLD_ORDERING). The quote
+    // only has list prices, so it is re-decided once pricing has run.
+    let freeDelivery: { thresholdUgx: number; feeBeforeUgx: number } | null = null;
+    if (this.deliveryQuoting) {
+      const quoted = await this.deliveryQuoting.quote({
+        areaSlug: dto.customerDetails.deliveryLocation?.areaSlug ?? null,
+        deliveryArea: dto.customerDetails.deliveryArea ?? null,
+        district: dto.customerDetails.deliveryLocation?.district ?? null,
+        items: dto.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        point: pinOf(dto.customerDetails.deliveryLocation),
+        pickupPointId: dto.customerDetails.pickupPointId ?? null,
+      });
+      deliveryCapture = { ...quoted.capture, pricedBy: quoted.pricedBy };
+      if (!quoted.mayFallBackToLegacy) {
+        // A real answer, including a truthful "we cannot price this".
+        fee = { feeUgx: quoted.feeUgx ?? 0, confirmed: quoted.confirmed, zoneId: zone?.id ?? null };
+      } else {
+        // Config incomplete: the legacy path answers THIS request only, and the
+        // capture records that it did so the fallback rate is measurable.
+        deliveryCapture = { ...deliveryCapture, pricedBy: 'legacy_fallback' };
+      }
+      const threshold = quoted.freeDeliveryThresholdUgx ?? null;
+      if (threshold !== null && fee.confirmed) {
+        const before = quoted.mayFallBackToLegacy ? fee.feeUgx : (quoted.feeBeforeFreeDeliveryUgx ?? fee.feeUgx);
+        freeDelivery = { thresholdUgx: threshold, feeBeforeUgx: before };
+      }
+    }
+
+    if (dto.paymentMethod !== 'pesapal' && this.payOnDelivery && !this.payOnDelivery.allowed()) {
+      throw new Error('COD_NOT_AVAILABLE: Pay now with Mobile Money or card to place this order.');
+    }
+
+    // COD controls (location brief I.2): eligibility is a ZONE attribute. Only
+    // an ACTIVE zone policy gates — an unset policy blocks nothing (and cannot
+    // be active with unset values). Above the zone's COD ceiling, prepayment is
+    // required: refused with a clear message, never silently converted.
+    if (dto.paymentMethod === 'offline' && district && this.codPolicy) {
+      const policy = await this.codPolicy.forDistrict(district);
+      if (policy?.active) {
+        if (policy.codAllowed === false) {
+          throw new Error('COD_NOT_AVAILABLE: Pay on delivery is not available for this destination — pay online to order.');
+        }
+      }
+    }
 
     if (this.authoritativePricing) {
-      const quote = await this.authoritativePricing.evaluator.execute({
-        items: dto.items,
-        couponCode: dto.couponCode,
-        customerScopeKey,
-        customerDnaSegments: [],
-        experimentEvidence: [],
-        shippingUgx: fee.feeUgx,
-        taxUgx: 0,
-        persist: true,
-      });
+      const evaluate = (shippingUgx: number) =>
+        this.authoritativePricing!.evaluator.execute({
+          items: dto.items,
+          couponCode: dto.couponCode,
+          customerScopeKey,
+          customerDnaSegments: [],
+          experimentEvidence: [],
+          shippingUgx,
+          taxUgx: 0,
+          persist: true,
+        });
+      let quote = await evaluate(fee.feeUgx);
+      if (freeDelivery) {
+        // Re-decide the waiver on the real goods total. Only when it changes
+        // the fee is the basket priced again (a promotion carried it across
+        // the threshold, or took it back under), so the charge, the snapshot
+        // and the panel's "qualifies for free delivery" all agree. In that
+        // (rare) case the first saved quote is left unused: it is never
+        // reserved or charged, and pricing every basket twice to avoid one
+        // idle row is the worse trade.
+        const goodsTotalUgx = quote.finalTotalUgx - quote.shippingUgx - quote.taxUgx;
+        const due = goodsTotalUgx >= freeDelivery.thresholdUgx ? 0 : freeDelivery.feeBeforeUgx;
+        if (due !== fee.feeUgx) {
+          fee = { ...fee, feeUgx: due };
+          if (deliveryCapture) deliveryCapture = { ...deliveryCapture, quotedFeeUgx: due };
+          quote = await evaluate(due);
+        }
+      }
       if (dto.previewQuoteId) {
         const preview = await this.authoritativePricing.quotes.findQuote(dto.previewQuoteId);
-        if (!preview || preview.expiresAt <= quote.evaluatedAt) throw new Error('PRICE_CHANGED: The preview quote expired or is unavailable. Review the current price.');
+        // A missing preview cannot be compared, so it is refused. An EXPIRED one
+        // is not: its content is still on record, and it is compared below on
+        // what matters (lines, discount, goods total, applied versions). The
+        // quote TTL is five minutes, so refusing on age alone rejected any coupon
+        // applied more than five minutes before "Place order" — a slow phone, a
+        // long form — with a false "a price changed", and the retry went through
+        // without the code. The customer is always charged THIS quote; the
+        // preview only guards against a surprise, and an unchanged one is none.
+        if (!preview) throw new Error('PRICE_CHANGED: The preview quote expired or is unavailable. Review the current price.');
         const baseChanged = preview.baseSubtotalUgx !== quote.baseSubtotalUgx || preview.lines.some((line, index) => line.canonicalUnitPriceUgx !== quote.lines[index]?.canonicalUnitPriceUgx || line.quantity !== quote.lines[index]?.quantity);
-        const promotionChanged = preview.discountTotalUgx !== quote.discountTotalUgx || preview.finalTotalUgx !== quote.finalTotalUgx || preview.appliedPromotionVersions.map((item) => item.versionId).join(',') !== quote.appliedPromotionVersions.map((item) => item.versionId).join(',');
+        // Compare GOODS totals, not grand totals. The preview (the "Apply"
+        // button, /commerce/pricing-preview) is priced with no delivery fee,
+        // while this quote carries the destination's fee — so a grand-total
+        // comparison failed every priced delivery with a false "an offer on
+        // your basket ended". Shipping and tax are not promotion facts.
+        const goodsTotal = (q: { finalTotalUgx: number; shippingUgx: number; taxUgx: number }) => q.finalTotalUgx - q.shippingUgx - q.taxUgx;
+        // Goods discounts only, for the same reason: a free-shipping promotion is never in the preview (it has no
+        // fee to waive) but is in this quote, so comparing the total discount, or the version list with it in,
+        // refused every customer who applied a code once while one was live.
+        const shippingOnly = (q: PricingQuote) => {
+          const scopes = new Map<string, Set<string>>();
+          for (const a of q.adjustments ?? []) scopes.set(a.promotionVersionId, (scopes.get(a.promotionVersionId) ?? new Set()).add(a.scope));
+          return new Set([...scopes].filter(([, set]) => set.size === 1 && set.has('SHIPPING')).map(([id]) => id));
+        };
+        const goodsDiscount = (q: PricingQuote) => q.discountTotalUgx - (q.adjustments ?? []).filter((a) => a.scope === 'SHIPPING').reduce((n, a) => n + a.amountUgx, 0);
+        const goodsVersions = (q: PricingQuote) => {
+          const skip = shippingOnly(q);
+          return q.appliedPromotionVersions.filter((item) => !skip.has(item.versionId)).map((item) => item.versionId).join(',');
+        };
+        const promotionChanged = goodsDiscount(preview) !== goodsDiscount(quote) || goodsTotal(preview) !== goodsTotal(quote) || goodsVersions(preview) !== goodsVersions(quote);
         if (!dto.acceptPriceChange && (baseChanged || promotionChanged)) throw new Error(`${baseChanged ? 'PRICE_CHANGED' : 'PROMOTION_CHANGED'}: The authoritative checkout total differs from the preview. Review and confirm the revised breakdown.`);
       }
       const checkoutKey = clientOrderKey ?? `quote:${quote.id}`;
-      const reservation = await this.authoritativePricing.capacity.reserve({ quoteId: quote.id, checkoutKey });
-      const snapshot: OrderPricingSnapshot = {
-        quoteId: quote.id,
-        currency: quote.currency,
-        baseSubtotalUgx: quote.baseSubtotalUgx,
-        discountTotalUgx: quote.discountTotalUgx,
-        shippingUgx: quote.shippingUgx,
-        taxUgx: quote.taxUgx,
-        finalTotalUgx: quote.finalTotalUgx,
-        calculationVersion: quote.calculationVersion,
-        couponReference: quote.couponReference,
-        appliedPromotionVersions: quote.appliedPromotionVersions,
-        experimentEvidence: quote.experimentEvidence,
-        adjustments: quote.adjustments,
-        evaluatedAt: quote.evaluatedAt,
-      };
-      const pricedItems: OrderItem[] = quote.lines.map((line) => ({ productId: line.productId, sku: line.sku, name: line.name, price: line.canonicalUnitPriceUgx, quantity: line.quantity, canonicalUnitPrice: line.canonicalUnitPriceUgx, baseSubtotal: line.baseSubtotalUgx, discountAmount: line.discountUgx, finalLineTotal: line.finalSubtotalUgx }));
-      const order = Order.create(crypto.randomUUID(), dto.customerDetails, dto.buyerType, pricedItems, quote.shippingUgx, fee.confirmed, snapshot);
+
+      // Loyalty redemption (PART G): reserve BEFORE the order exists so an
+      // insufficient balance or unset programme config fails the checkout with
+      // a clear message instead of an order carrying a broken discount.
+      let loyaltyReservation: { reservationId: string; valueUgx: number } | null = null;
+      if (dto.redeemPoints && dto.redeemPoints > 0) {
+        if (!this.loyaltyRedemption || dto.principal?.kind !== 'USER') {
+          throw new CheckoutDependencyError('LOYALTY_REDEMPTION_REFUSED', 'REDEMPTION_UNAVAILABLE: Sign in to redeem points.');
+        }
+        const goodsTotalUgx = quote.finalTotalUgx - quote.shippingUgx - quote.taxUgx;
+        const reserveResult = await this.loyaltyRedemption.reserve({
+          userId: dto.principal.id,
+          points: dto.redeemPoints,
+          orderGoodsTotalUgx: goodsTotalUgx,
+          // Price A x quantity over the lines that have one (owner, 2026-10-15): points stop there.
+          orderFloorTotalUgx: quote.lines.reduce((n, l) => n + (l.priceAUnitUgx ?? 0) * l.quantity, 0),
+          idempotencyKey: checkoutKey,
+        });
+        if (!reserveResult.ok) {
+          throw new CheckoutDependencyError('LOYALTY_REDEMPTION_REFUSED', `${reserveResult.code}: ${reserveResult.message}`);
+        }
+        loyaltyReservation = { reservationId: reserveResult.reservationId, valueUgx: reserveResult.valueUgx };
+      }
+
+      // Points reserved above are released if anything below refuses the
+      // checkout (stock hold, expired quote, promotion limit, cash limit).
+      // They used to stay held until the 2-hour sweep, so the customer's
+      // retry was told they had too few points (2026-10-07).
+      const capacity = this.authoritativePricing.capacity; // narrowed here, not inside the closure
+      const { reservation, order } = await (async () => {
+        const reservation = await capacity.reserve({ quoteId: quote.id, checkoutKey });
+        const snapshot: OrderPricingSnapshot = {
+          quoteId: quote.id,
+          currency: quote.currency,
+          baseSubtotalUgx: quote.baseSubtotalUgx,
+          discountTotalUgx: quote.discountTotalUgx,
+          shippingUgx: quote.shippingUgx,
+          taxUgx: quote.taxUgx,
+          finalTotalUgx: quote.finalTotalUgx,
+          calculationVersion: quote.calculationVersion,
+          couponReference: quote.couponReference,
+          appliedPromotionVersions: quote.appliedPromotionVersions,
+          experimentEvidence: quote.experimentEvidence,
+          adjustments: quote.adjustments,
+          evaluatedAt: quote.evaluatedAt,
+        };
+        const pricedItems: OrderItem[] = quote.lines.map((line) => ({ productId: line.productId, sku: line.sku, name: line.name, price: line.canonicalUnitPriceUgx, quantity: line.quantity, canonicalUnitPrice: line.canonicalUnitPriceUgx, baseSubtotal: line.baseSubtotalUgx, discountAmount: line.discountUgx, finalLineTotal: line.finalSubtotalUgx }));
+        if (dto.paymentMethod === 'offline' && district && this.codPolicy) {
+          const policy = await this.codPolicy.forDistrict(district);
+          const payable = quote.finalTotalUgx - (loyaltyReservation?.valueUgx ?? 0);
+          if (policy?.active && policy.codMaxOrderValueUgx !== null && payable > policy.codMaxOrderValueUgx) {
+            throw new Error(
+              `COD_LIMIT_EXCEEDED: Orders above ${policy.codMaxOrderValueUgx.toLocaleString('en-UG')} UGX to this zone must be paid online.`,
+            );
+          }
+        }
+
+        const order = Order.create(
+          crypto.randomUUID(),
+          dto.customerDetails,
+          dto.buyerType,
+          pricedItems,
+          quote.shippingUgx,
+          fee.confirmed,
+          snapshot,
+          dto.principal?.kind === 'USER' ? dto.principal.id : null,
+          loyaltyReservation ? { discountUgx: loyaltyReservation.valueUgx, redemptionId: loyaltyReservation.reservationId } : null,
+          await this.ownerReviewThresholdUgx(),
+        );
+        return { reservation, order };
+      })().catch(async (err: unknown) => {
+        if (loyaltyReservation && this.loyaltyRedemption) {
+          await this.loyaltyRedemption.release({ reservationId: loyaltyReservation.reservationId }).catch(() => undefined);
+        }
+        throw err;
+      });
       try {
-        const saved = await this.authoritativePricing.orders.savePricedOrder({ order, quote, reservationIds: reservation.reservations.map((item) => item.id), clientOrderKey, checkoutLink: dto.checkoutLink });
+        const saved = await this.authoritativePricing.orders.savePricedOrder({ order, quote, reservationIds: reservation.reservations.map((item) => item.id), clientOrderKey, checkoutLink: dto.checkoutLink, stitching: dto.stitching ?? null, paymentMethod: dto.paymentMethod ?? null, storeCredit: dto.storeCreditCodeHash ? { codeHash: dto.storeCreditCodeHash } : null });
         if (saved.duplicate && reservation.reservations.length) await this.authoritativePricing.capacity.release({ quoteId: quote.id });
+        if (loyaltyReservation && this.loyaltyRedemption) {
+          if (saved.duplicate) {
+            // The replayed order already carries (or never had) a redemption —
+            // this fresh reservation must not linger against the balance.
+            await this.loyaltyRedemption.release({ reservationId: loyaltyReservation.reservationId }).catch(() => undefined);
+          } else {
+            // The order is COMMITTED with this redemption on it. A transient
+            // fault attaching the reservation used to fall through to the
+            // compensating catch below, which released the very reservation the
+            // committed order's discount depends on. Past this point nothing
+            // may release.
+            await this.loyaltyRedemption.attach(loyaltyReservation.reservationId, saved.order.id).catch(() => undefined);
+          }
+        }
+        if (!saved.duplicate && dto.couponCode && this.couponRedemption) {
+          await this.couponRedemption
+            .redeemForOrder({ code: dto.couponCode, orderId: saved.order.id, customerScopeKey, quote })
+            .catch(() => undefined);
+        }
+        if (!saved.duplicate && this.checkoutSignals) {
+          // Fraud velocity (location brief I.3 / loyalty brief PART N):
+          // fire-and-forget — a signal write can never fail a checkout.
+          void this.checkoutSignals
+            .velocity({ phone: dto.customerDetails.phone, orderId: saved.order.id })
+            .catch(() => undefined);
+        }
+        if (deliveryCapture && this.deliveryQuoting) {
+          // Never fatal — a capture that fails must not void a real order — but
+          // never SILENT either. The skipped-mirror lesson: a quiet non-fatal
+          // skip is indistinguishable from never having run, and then nobody
+          // can tell a missing observation from a broken write.
+          await this.deliveryQuoting
+            .recordQuote(saved.order.id, deliveryCapture)
+            .catch((err: unknown) => this.deliveryQuoting?.onCaptureFailed?.(saved.order.id, err));
+        }
         return { order: saved.order, deliveryFeeConfirmed: saved.order.deliveryFeeConfirmed, idempotentReplay: saved.duplicate };
       } catch (error) {
         if (reservation.reservations.length) await this.authoritativePricing.capacity.release({ quoteId: quote.id }).catch(() => undefined);
+        if (loyaltyReservation && this.loyaltyRedemption) {
+          await this.loyaltyRedemption.release({ reservationId: loyaltyReservation.reservationId }).catch(() => undefined);
+        }
         throw error;
       }
     }
@@ -193,12 +539,21 @@ export class CheckoutUseCase {
       dto.buyerType,
       orderItems,
       fee.feeUgx,
-      fee.confirmed
+      fee.confirmed,
+      null,
+      null,
+      null,
+      await this.ownerReviewThresholdUgx(),
     );
 
     // A unique index on the client key makes concurrent duplicate
     // submissions collapse to a single order.
     await this.orderRepo.save(order, clientOrderKey ? { clientOrderKey } : undefined);
+    if (deliveryCapture && this.deliveryQuoting) {
+      await this.deliveryQuoting
+        .recordQuote(order.id, deliveryCapture)
+        .catch((err: unknown) => this.deliveryQuoting?.onCaptureFailed?.(order.id, err));
+    }
     return { order, deliveryFeeConfirmed: fee.confirmed, idempotentReplay: false };
   }
 }

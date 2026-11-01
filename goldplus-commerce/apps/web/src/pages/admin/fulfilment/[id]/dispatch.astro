@@ -2,6 +2,7 @@
 import AdminLayout from "../../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../../lib/session";
 import { apiBase } from "../../../../lib/api";
+import { kampalaLocalToIso } from "../../../../lib/kampalaTime";
 
 const taskId = String(Astro.params.id ?? "");
 const returnTo = `/admin/fulfilment/${taskId}/dispatch`;
@@ -31,9 +32,11 @@ if (Astro.request.method === "POST") {
         method: String(form.get("method") || "RIDER"),
         carrierName: String(form.get("carrierName") || "").trim() || undefined,
         riderName: String(form.get("riderName") || "").trim() || undefined,
+        riderId: String(form.get("riderId") || "").trim() || undefined,
+        stopsOnTrip: Number(form.get("stopsOnTrip") || 0) || undefined,
         contact: String(form.get("contact") || "").trim() || undefined,
         notes: String(form.get("notes") || "").trim() || undefined,
-        estimatedDeliveryAt: eta ? new Date(eta).toISOString() : undefined,
+        estimatedDeliveryAt: kampalaLocalToIso(eta) ?? undefined, // Kampala wall-clock, not UTC
         allowCashOnDelivery: form.get("allowCashOnDelivery") === "on",
       };
       okText = "Dispatch recorded — order is out for delivery.";
@@ -45,7 +48,7 @@ if (Astro.request.method === "POST") {
         expectedVersion: Number(form.get("expectedVersion") || 0),
         trackingStatus: String(form.get("trackingStatus") || "") || undefined,
         notes: String(form.get("notes") || "").trim() || undefined,
-        estimatedDeliveryAt: eta ? new Date(eta).toISOString() : undefined,
+        estimatedDeliveryAt: kampalaLocalToIso(eta) ?? undefined, // Kampala wall-clock, not UTC
       };
       okText = "Tracking updated.";
     }
@@ -53,6 +56,9 @@ if (Astro.request.method === "POST") {
       const res = await fetch(endpoint, { method, headers, body: JSON.stringify(payload) });
       const json = await res.json().catch(() => null);
       if (res.status === 403) notice = { kind: "error", text: "You do not have permission to manage dispatch." };
+      // The task moved, but the ORDER did not follow (a cancelled or otherwise
+      // closed order): said here, not only in the audit row nobody reads.
+      else if (json?.success && json?.data?.orderMirror === "skipped") notice = { kind: "conflict", text: "Dispatch recorded, but the order's own status could not move to dispatched. Open the order and check its status." };
       else if (json?.success) notice = { kind: "success", text: okText };
       else if (json?.error?.code === "STALE_DISPATCH_VERSION") notice = { kind: "conflict", text: "This dispatch changed since the page loaded — the latest values are shown below. Try again." };
       else notice = { kind: "error", text: json?.error?.message || "The dispatch service rejected that change." };
@@ -74,11 +80,15 @@ let loadFailed = false;
 let notFound = false;
 let permissionDenied = false;
 let apiError = "";
+let riders: Array<{ id: string; name: string; phone: string }> = [];
 try {
-  const [dRes, tRes] = await Promise.all([
+  const [dRes, tRes, rRes] = await Promise.all([
     fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/dispatch`, { headers }),
     fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}`, { headers }),
+    fetch(`${apiBase}/admin/delivery/riders`, { headers }).catch(() => null),
   ]);
+  const rJson: any = rRes ? await rRes.json().catch(() => null) : null;
+  if (rJson?.success) riders = (rJson.data.riders as any[]).filter((r) => r.active);
   if (dRes.status === 403) permissionDenied = true;
   else if (dRes.status === 404) notFound = true;
   else {
@@ -96,12 +106,12 @@ try {
 const canDispatch = status === "READY_FOR_DISPATCH" && !dispatch;
 const METHODS = ["RIDER", "COURIER", "PICKUP", "THIRD_PARTY"];
 const TRACKING = ["DISPATCHED", "IN_TRANSIT", "HANDED_OVER"];
-function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG") : "—"; }
+function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' }) : "—"; }
 ---
 
 <AdminLayout title="Dispatch" description="Record and track the dispatch of a fulfilment task — carrier, rider, safe contact, tracking status.">
   <div class="container mx-auto px-6 lg:px-8 max-w-3xl">
-    <div class="mb-6 flex items-center gap-4 text-xs font-bold text-gray-400">
+    <div class="mb-6 flex items-center gap-4 text-xs font-bold text-gray-500">
       <a href="/admin/fulfilment" class="hover:text-brand-dark">← Fulfilment queue</a>
       <a href={`/admin/fulfilment/${taskId}/packing`} class="hover:text-brand-dark">Packing</a>
       <a href={`/admin/fulfilment/${taskId}/delivery`} class="hover:text-brand-dark">Delivery →</a>
@@ -132,13 +142,13 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG") 
           <span class="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border bg-violet-50 text-violet-700 border-violet-200">{dispatch.trackingStatus}</span>
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-2 text-xs text-gray-600">
-          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Method</dt><dd>{dispatch.method}</dd></div>
-          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Payment policy</dt><dd>{dispatch.paymentPolicy}</dd></div>
-          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Carrier / rider</dt><dd>{dispatch.carrierName || "—"} {dispatch.riderName ? `· ${dispatch.riderName}` : ""}</dd></div>
-          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Contact</dt><dd>{dispatch.contactMasked || "—"}</dd></div>
-          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Dispatched</dt><dd>{fmt(dispatch.dispatchTime)}</dd></div>
-          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Est. delivery</dt><dd>{fmt(dispatch.estimatedDeliveryAt)}</dd></div>
-          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Stock consumed</dt><dd>{dispatch.stockConsumed ? "Yes (once, at ready-for-dispatch)" : "No"}</dd></div>
+          <div><dt class="text-gray-500 font-bold uppercase tracking-wider text-[10px]">Method</dt><dd>{dispatch.method}</dd></div>
+          <div><dt class="text-gray-500 font-bold uppercase tracking-wider text-[10px]">Payment policy</dt><dd>{dispatch.paymentPolicy}</dd></div>
+          <div><dt class="text-gray-500 font-bold uppercase tracking-wider text-[10px]">Carrier / rider</dt><dd>{dispatch.carrierName || "—"} {dispatch.riderName ? `· ${dispatch.riderName}` : ""}</dd></div>
+          <div><dt class="text-gray-500 font-bold uppercase tracking-wider text-[10px]">Contact</dt><dd>{dispatch.contactMasked || "—"}</dd></div>
+          <div><dt class="text-gray-500 font-bold uppercase tracking-wider text-[10px]">Dispatched</dt><dd>{fmt(dispatch.dispatchTime)}</dd></div>
+          <div><dt class="text-gray-500 font-bold uppercase tracking-wider text-[10px]">Est. delivery</dt><dd>{fmt(dispatch.estimatedDeliveryAt)}</dd></div>
+          <div><dt class="text-gray-500 font-bold uppercase tracking-wider text-[10px]">Stock consumed</dt><dd>{dispatch.stockConsumed ? "Yes (once, at ready-for-dispatch)" : "No"}</dd></div>
         </dl>
         {dispatch.notes && <p class="mt-3 text-xs text-gray-500">Notes: {dispatch.notes}</p>}
 
@@ -146,14 +156,14 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG") 
           <input type="hidden" name="action" value="tracking" />
           <input type="hidden" name="expectedVersion" value={dispatch.version} />
           <div>
-            <label for="trackingStatus" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Tracking status</label>
-            <select id="trackingStatus" name="trackingStatus" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+            <label for="trackingStatus" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Tracking status</label>
+            <select id="trackingStatus" name="trackingStatus" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
               {TRACKING.map((t) => <option value={t} selected={t === dispatch!.trackingStatus}>{t}</option>)}
             </select>
           </div>
           <div>
-            <label for="eta2" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Est. delivery</label>
-            <input id="eta2" name="estimatedDeliveryAt" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <label for="eta2" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Est. delivery</label>
+            <input id="eta2" name="estimatedDeliveryAt" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div class="sm:col-span-2 flex justify-end">
             <button type="submit" class="bg-brand-dark text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:opacity-90">Update tracking</button>
@@ -167,30 +177,45 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG") 
         <form method="POST" class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm grid gap-4 sm:grid-cols-2">
           <input type="hidden" name="action" value="record" />
           <div>
-            <label for="method" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Method</label>
-            <select id="method" name="method" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+            <label for="method" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Method</label>
+            <select id="method" name="method" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
               {METHODS.map((m) => <option value={m}>{m}</option>)}
             </select>
           </div>
           <div>
-            <label for="eta" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Est. delivery (optional)</label>
-            <input id="eta" name="estimatedDeliveryAt" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <label for="eta" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Est. delivery (optional)</label>
+            <input id="eta" name="estimatedDeliveryAt" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div>
-            <label for="carrierName" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Carrier (optional)</label>
-            <input id="carrierName" name="carrierName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <label for="carrierName" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Carrier (optional)</label>
+            <input id="carrierName" name="carrierName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div>
-            <label for="riderName" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Rider (optional)</label>
-            <input id="riderName" name="riderName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            {riders.length > 0 && (
+              <div class="mb-3">
+                <label for="riderId" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Rider on WhatsApp</label>
+                <select id="riderId" name="riderId" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark">
+                  <option value="">— not one of our riders —</option>
+                  {riders.map((r) => <option value={r.id}>{r.name} · {r.phone}</option>)}
+                </select>
+                <p class="text-[10px] text-gray-500 mt-1">A location this rider shares on WhatsApp while the stop is out records the handover. Riders are managed under Delivery → Riders.</p>
+              </div>
+            )}
+            <label for="riderName" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Rider (optional)</label>
+            <input id="riderName" name="riderName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div>
-            <label for="contact" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Rider contact (stored masked)</label>
-            <input id="contact" name="contact" type="text" maxlength="40" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <label for="stopsOnTrip" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Stops on this trip (optional)</label>
+            <input id="stopsOnTrip" name="stopsOnTrip" type="number" min="1" max="50" inputmode="numeric" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark" />
+            <p class="text-[10px] text-gray-500 mt-1">How many orders the rider is taking out together. The model prices each as its own trip; this is the evidence for setting margin from batching.</p>
           </div>
           <div>
-            <label for="notes" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Notes (optional)</label>
-            <input id="notes" name="notes" type="text" maxlength="2000" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <label for="contact" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Rider contact (stored masked)</label>
+            <input id="contact" name="contact" type="text" maxlength="40" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
+          </div>
+          <div>
+            <label for="notes" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Notes (optional)</label>
+            <input id="notes" name="notes" type="text" maxlength="2000" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <label class="sm:col-span-2 flex items-center gap-2 text-xs font-bold text-brand-dark">
             <input type="checkbox" name="allowCashOnDelivery" class="rounded border-gray-300" />
