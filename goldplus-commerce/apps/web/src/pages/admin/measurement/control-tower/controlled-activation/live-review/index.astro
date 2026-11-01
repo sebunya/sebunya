@@ -1,33 +1,18 @@
 ---
 import AdminLayout from '../../../../../../layouts/AdminLayout.astro';
 import LiveReviewCandidateList from '../../../../../../components/admin/controlled-activation-live-review/LiveReviewCandidateList.astro';
-import { apiFetch } from '../../../../../../utils/api-fetch';
 import { readSessionToken } from '../../../../../../lib/session';
+import { liveReviewGet } from '../../../../../../lib/liveReviewApi';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
   return Astro.redirect('/admin/login?returnTo=/admin/measurement/control-tower/controlled-activation/live-review', 303);
 }
 
-const adminId = Astro.cookies.get('adminId')?.value || 'admin-123';
-let candidates = [];
-let error = null;
-
-try {
-  const response = await apiFetch('/admin/controlled-activation-live-review/live-review-candidates', {
-    headers: {
-      'x-user-id': adminId
-    }
-  });
-  
-  if (response.ok) {
-    candidates = await response.json();
-  } else {
-    error = "Failed to load live review candidates.";
-  }
-} catch (e) {
-  error = e instanceof Error ? e.message : 'Unknown error';
-}
+// Read with the admin's own session (lib/liveReviewApi explains the old 'admin-123' header).
+const result = await liveReviewGet<unknown[]>(token);
+const candidates = result.ok && Array.isArray(result.data) ? result.data : [];
+const error = result.ok ? null : result.error;
 ---
 
 <AdminLayout title="Live Review Candidates | Controlled Activation | Control Tower">

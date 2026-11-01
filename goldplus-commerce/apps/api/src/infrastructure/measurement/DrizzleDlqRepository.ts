@@ -1,6 +1,6 @@
 import { db } from '../db/client';
 import { telemetryDeadLetterQueue } from '../db/schema/telemetry';
-import { count, eq, desc } from 'drizzle-orm';
+import { and, count, eq, desc } from 'drizzle-orm';
 import type { DlqRepository, DlqEntry } from '../../application/ports/measurement/DlqRepository';
 
 export class DrizzleDlqRepository implements DlqRepository {
@@ -40,5 +40,13 @@ export class DrizzleDlqRepository implements DlqRepository {
     await db.update(telemetryDeadLetterQueue)
       .set({ isResolved: true, resolvedAt: new Date(), resolvedNote: note })
       .where(eq(telemetryDeadLetterQueue.id, id));
+  }
+
+  async markDismissed(id: string, note: string): Promise<boolean> {
+    const rows = await db.update(telemetryDeadLetterQueue)
+      .set({ isResolved: true, resolvedAt: new Date(), resolvedNote: note })
+      .where(and(eq(telemetryDeadLetterQueue.id, id), eq(telemetryDeadLetterQueue.isResolved, false)))
+      .returning({ id: telemetryDeadLetterQueue.id });
+    return rows.length > 0;
   }
 }

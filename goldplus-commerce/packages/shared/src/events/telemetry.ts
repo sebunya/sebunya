@@ -22,11 +22,24 @@ export const TelemetryUserDataSchema = z.object({
   // Hashed PII — SHA-256 + pepper, all lowercase, whitespace-stripped before hashing
   hashed_email: z.string().length(64).optional(),
   hashed_phone: z.string().length(64).optional(),
+  /** SHA-256 of '+'-prefixed E.164 (TikTok's rule). */
+  hashed_phone_plus: z.string().length(64).optional(),
+  // Meta customer information parameters (fn, ln, ct, country), SHA-256 of the
+  // value normalised as Meta specifies. Set only on a paid order's purchase,
+  // from what the order itself states; never on a browsing event.
+  hashed_first_name: z.string().length(64).optional(),
+  hashed_last_name:  z.string().length(64).optional(),
+  hashed_city:       z.string().length(64).optional(),
+  hashed_country:    z.string().length(64).optional(),
 
   // First-party identity
   fp_client_id: z.string().max(255).optional(),
   user_id:      z.string().uuid().optional(),
   session_id:   z.string().max(255).optional(),
+  // GA4's own session (from the `_ga_<id>` cookie at checkout): a server-sent
+  // purchase carrying it joins the visit's session and its traffic source.
+  ga_session_id:     z.string().regex(/^\d{1,20}$/).optional(),
+  ga_session_number: z.number().int().positive().optional(),
 
   // Ad-network attribution signals
   gclid:     z.string().max(512).optional(),
@@ -38,10 +51,26 @@ export const TelemetryUserDataSchema = z.object({
   twclid:    z.string().max(512).optional(),
   li_fat_id: z.string().max(512).optional(),
   epik:      z.string().max(512).optional(),
+  msclkid:   z.string().max(512).optional(),
+  sccid:     z.string().max(512).optional(),
+  /** A network's own click id (Opera, Eagllwin, Boomplay …) and the URL parameter it came in. */
+  network_click_id:    z.string().max(512).optional(),
+  network_click_param: z.string().max(40).optional(),
+  /** utm_source of the click that carried it (which network issued it). */
+  network_click_source: z.string().max(60).optional(),
+  /** SHA-256 of the email under Google's normalisation (gmail dots removed). */
+  hashed_email_google: z.string().length(64).optional(),
+  hashed_email_microsoft: z.string().length(64).optional(),
 
   // Forwarded from browser for CAPI IP/UA matching requirements
   ip_address: z.string().max(64).optional(),
   user_agent: z.string().max(1024).optional(),
+  /**
+   * 2026-10-16: the buyer is new to the shop or returning, from our own orders (no earlier paid or delivered
+   * order by the same account or phone number). Set only on a server-built purchase. Google Ads uses it for
+   * new-customer acquisition bidding (Data Manager userProperties.customerType).
+   */
+  customer_type: z.enum(['NEW', 'RETURNING']).optional(),
 });
 
 export const TelemetryItemSchema = z.object({
@@ -52,6 +81,8 @@ export const TelemetryItemSchema = z.object({
   item_category: z.string().max(255).optional(),
   item_brand:    z.string().max(255).optional(),
   item_variant:  z.string().max(255).optional(),
+  /** 2026-10-16: the SKU, which is the Merchant Center feed's g:id (Google Ads cart data). */
+  item_sku:      z.string().max(100).optional(),
 });
 
 export const TelemetryEcommerceSchema = z.object({
@@ -86,7 +117,24 @@ export const CANONICAL_EVENT_NAMES = [
   'begin_checkout',
   'add_shipping_info',
   'add_payment_info',
+  // A WhatsApp click or a quote request (GA4's recommended lead event). Sent
+  // to ad platforms as their lead/contact event where the owner selected it.
+  'generate_lead',
+  // Three things a visitor does on the site besides shopping the basket: a
+  // product search, a new account, and opening the shop's map for directions.
+  // Sent to an ad platform only where it has a standard event for it and the
+  // owner selected it (Meta: Search, CompleteRegistration, FindLocation).
+  'search',
+  'sign_up',
+  'find_location',
+  // A storefront page was opened. NOT sent to GA4 from the server (the web
+  // container already reports page views there; sending it twice would double
+  // them): it exists so an ad platform that has a page-view event hears about
+  // every visitor, not only those who reach a product. Named apart from GA's
+  // own `page_view` so no tag in the web container reacts to it.
+  'page_seen',
   'purchase',  // SERVER-SIDE ONLY — guarded in router-level middleware
+  'refund',    // SERVER-SIDE ONLY — a sent purchase whose order was cancelled
 ] as const;
 
 export type CanonicalEventName = typeof CANONICAL_EVENT_NAMES[number];
@@ -113,6 +161,14 @@ export const CanonicalTelemetryEventSchema = z.object({
   user_data:              TelemetryUserDataSchema.optional(),
   ecommerce:              TelemetryEcommerceSchema.optional(),
   recommendation_context: TelemetryRecommendationContextSchema.optional(),
+  /** generate_lead only: how the shopper reached out. */
+  lead: z.object({
+    method: z.enum(['whatsapp', 'quote_request']),
+    /** quote_request only: the request's own reference, as its confirmation page shows it. Not a contact detail. */
+    ref: z.string().regex(/^[A-Za-z0-9-]{3,40}$/).optional(),
+  }).optional(),
+  /** search only: what was searched for, as the shop normalised it. */
+  search_term: z.string().min(1).max(120).optional(),
 
   // Observability & Attribution Metadata
   page_location:  z.string().max(2048).optional(),
@@ -126,16 +182,59 @@ export const CanonicalTelemetryEventSchema = z.object({
 // PURCHASE IS EXCLUDED. The server enforces this at the route level.
 // ─────────────────────────────────────────────────────────────────────────────
 export const BrowserTelemetryEventNames = CANONICAL_EVENT_NAMES.filter(
-  (n) => n !== 'purchase'
-) as Exclude<CanonicalEventName, 'purchase'>[];
+  (n) => n !== 'purchase' && n !== 'refund'
+) as Exclude<CanonicalEventName, 'purchase' | 'refund'>[];
 
 export const BrowserTelemetryEventSchema = CanonicalTelemetryEventSchema.extend({
   event_name: z.enum(BrowserTelemetryEventNames as [string, ...string[]] as [
-    Exclude<CanonicalEventName, 'purchase'>,
-    ...Exclude<CanonicalEventName, 'purchase'>[]
+    Exclude<CanonicalEventName, 'purchase' | 'refund'>,
+    ...Exclude<CanonicalEventName, 'purchase' | 'refund'>[]
   ]),
   source: z.literal('browser'),
 });
 
 export type CanonicalTelemetryEvent = z.infer<typeof CanonicalTelemetryEventSchema>;
 export type BrowserTelemetryEvent   = z.infer<typeof BrowserTelemetryEventSchema>;
+
+/**
+ * GA4's own session for a browser, read from its `_ga_<stream>` cookie in a
+ * Cookie header. Two formats exist: GS1.1.<session id>.<session number>.… and
+ * GS2.1.s<session id>$o<session number>$…. Anything else yields null. Used by
+ * checkout (web) and the telemetry collector (api): the cookie is set on the
+ * registrable domain, so it reaches api.shopgoldplus.com with the beacon.
+ */
+export function gaSessionFromCookieHeader(cookieHeader: string | null | undefined, measurementId?: string | null): { gaSessionId: string; gaSessionNumber: number } | null {
+  const all = gaSessionCookies(cookieHeader);
+  if (!all.length) return null;
+  // Our own stream's cookie when we know it; else the most recently active one. It used to take the FIRST `_ga_*`
+  // cookie, so a browser that also carried another property's (an older stream on this domain) could file our
+  // events and sales under that property's session (2026-10-23 audit).
+  const stream = (measurementId ?? '').trim().replace(/^G-/, '');
+  const pick = (stream && all.find((c) => c.stream === stream)) || [...all].sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0) || Number(b.gaSessionId) - Number(a.gaSessionId))[0];
+  return { gaSessionId: pick.gaSessionId, gaSessionNumber: pick.gaSessionNumber };
+}
+
+/** Every `_ga_<stream>` session cookie in a Cookie header, with the last activity (epoch seconds) when it says. */
+export function gaSessionCookies(cookieHeader: string | null | undefined): Array<{ stream: string; gaSessionId: string; gaSessionNumber: number; lastActivity: number | null }> {
+  const out: Array<{ stream: string; gaSessionId: string; gaSessionNumber: number; lastActivity: number | null }> = [];
+  for (const m of (cookieHeader ?? '').matchAll(/(?:^|;\s*)_ga_([A-Z0-9]+)=([^;]+)/g)) {
+    const raw = m[2];
+    const g1 = raw.match(/^GS1\.\d\.(\d{1,20})\.(\d{1,7})\.\d+\.(\d{1,20})/) ?? raw.match(/^GS1\.\d\.(\d{1,20})\.(\d{1,7})/);
+    const g2 = g1 ? null : raw.match(/^GS2\.\d\.s(\d{1,20})\$o(\d{1,7})/);
+    const hit = g1 ?? g2;
+    if (!hit) continue;
+    const t = g1 ? g1[3] : raw.match(/\$t(\d{1,20})/)?.[1];
+    out.push({ stream: m[1], gaSessionId: hit[1], gaSessionNumber: Number(hit[2]), lastActivity: t ? Number(t) : null });
+  }
+  return out;
+}
+
+/**
+ * The analytics visitor id the SERVER set on this browser (`_fp_cid`, see the
+ * web middleware). The collector prefers it over any id a page sends, so that
+ * one visitor's arrivals cannot be filed against another's id.
+ */
+export function fpClientIdFromCookieHeader(cookieHeader: string | null | undefined): string | null {
+  const raw = (cookieHeader ?? '').match(/(?:^|;\s*)_fp_cid=([^;]+)/)?.[1] ?? '';
+  return /^[A-Za-z0-9._-]{1,255}$/.test(raw) ? raw : null;
+}

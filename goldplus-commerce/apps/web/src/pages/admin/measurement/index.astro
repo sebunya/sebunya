@@ -227,7 +227,7 @@ if (!token) {
   .mct-header-icon {
     width: 48px;
     height: 48px;
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    background: linear-gradient(135deg, #4f46e5, #8b5cf6);
     border-radius: 12px;
     display: flex;
     align-items: center;
@@ -255,7 +255,7 @@ if (!token) {
   }
   .mct-last-refreshed {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: #64748b;
   }
   .btn-refresh {
     display: flex;
@@ -291,8 +291,8 @@ if (!token) {
     font-weight: 500;
   }
   .status-pill.status-loading { background: #f1f5f9; color: #64748b; }
-  .status-pill.status-ok      { background: #f0fdf4; color: #16a34a; }
-  .status-pill.status-warn    { background: #fffbeb; color: #d97706; }
+  .status-pill.status-ok      { background: #f0fdf4; color: #15803d; }
+  .status-pill.status-warn    { background: #fffbeb; color: #b45309; }
   .status-pill.status-error   { background: #fef2f2; color: #dc2626; }
   .status-dot {
     width: 8px;
@@ -340,12 +340,12 @@ if (!token) {
     padding: 0.125rem 0.5rem;
     border-radius: 999px;
     background: #f1f5f9;
-    color: #64748b;
+    color: #475569;
     font-weight: 500;
   }
   .kpi-link {
     font-size: 0.75rem;
-    color: #6366f1;
+    color: #4f46e5;
     text-decoration: none;
     font-weight: 500;
   }
@@ -362,9 +362,9 @@ if (!token) {
     font-size: 0.8125rem;
     color: #64748b;
   }
-  .kpi-primary .kpi-value { color: #6366f1; }
+  .kpi-primary .kpi-value { color: #4f46e5; }
   .kpi-danger  .kpi-value { color: #ef4444; }
-  .kpi-info    .kpi-value { color: #0ea5e9; }
+  .kpi-info    .kpi-value { color: #0369a1; }
   .kpi-neutral .kpi-value { color: #64748b; }
 
   /* Panels */
@@ -395,7 +395,7 @@ if (!token) {
   }
   .panel-meta {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: #64748b;
   }
   .panel-footer {
     margin-top: 1.25rem;
@@ -405,7 +405,7 @@ if (!token) {
     font-size: 0.8125rem;
   }
   .panel-link {
-    color: #6366f1;
+    color: #4f46e5;
     text-decoration: none;
     font-weight: 500;
   }
@@ -423,10 +423,10 @@ if (!token) {
     font-size: 0.75rem;
     font-weight: 500;
   }
-  .match-label.excellent { color: #16a34a; }
-  .match-label.good      { color: #0ea5e9; }
-  .match-label.fair      { color: #d97706; }
-  .match-label.poor      { color: #ef4444; }
+  .match-label.excellent { color: #15803d; }
+  .match-label.good      { color: #0369a1; }
+  .match-label.fair      { color: #b45309; }
+  .match-label.poor      { color: #b91c1c; }
   .match-bar-track {
     height: 8px;
     background: #f1f5f9;
@@ -468,7 +468,7 @@ if (!token) {
     border-radius: 50%;
     flex-shrink: 0;
   }
-  .consent-dot.analytics       { background: #6366f1; }
+  .consent-dot.analytics       { background: #4f46e5; }
   .consent-dot.advertising     { background: #f59e0b; }
   .consent-dot.personalization { background: #10b981; }
   .consent-dot.essential       { background: #64748b; }
@@ -488,10 +488,10 @@ if (!token) {
     border-radius: 999px;
     transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  .consent-meter-fill.analytics       { background: #6366f1; }
+  .consent-meter-fill.analytics       { background: #4f46e5; }
   .consent-meter-fill.advertising     { background: #f59e0b; }
   .consent-meter-fill.personalization { background: #10b981; }
-  .consent-meter-fill.essential       { background: #94a3b8; }
+  .consent-meter-fill.essential       { background: #64748b; }
   .consent-pct {
     font-size: 0.75rem;
     font-weight: 600;
@@ -500,7 +500,7 @@ if (!token) {
   }
   .consent-total {
     font-size: 0.8125rem;
-    color: #94a3b8;
+    color: #64748b;
   }
 
   /* Quick Nav */
@@ -547,11 +547,6 @@ if (!token) {
     ? __GP_API_BASE__
     : (window as any).__GP_API_BASE__ || '';
 
-  function getAuthHeader(): Record<string, string> {
-    const token = localStorage.getItem('gp_auth_token');
-    return token ? { 'Authorization': `Bearer ${token}` } : {};
-  }
-
   async function loadDashboard() {
     const refreshedEl = document.getElementById('last-refreshed');
     const statusPill  = document.getElementById('status-pill');
@@ -560,37 +555,49 @@ if (!token) {
     if (refreshedEl) refreshedEl.textContent = `Refreshing…`;
 
     try {
-      const [overviewRes, matchRes] = await Promise.all([
-        fetch(`${API_BASE}/admin/measurement/overview`, { headers: getAuthHeader() }),
-        fetch(`${API_BASE}/admin/measurement/match-quality?days=7`, { headers: getAuthHeader() }),
-      ]);
-
+      // One quiet retry before saying anything: a busy moment (the other admin pages loading, a rate limit) is not an
+      // outage. What finally fails is named honestly: "API unreachable" only when nothing answered at all.
+      const getJson = async (url: string) => {
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const res = await fetch(url, { credentials: 'same-origin' });
+            const body = await res.json().catch(() => null);
+            if (res.ok && body?.success) return body;
+            if (attempt >= 1) throw Object.assign(new Error(`status ${res.status}`), { status: res.status });
+          } catch (e) {
+            if ((e as { status?: number }).status !== undefined || attempt >= 1) throw e;
+          }
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+      };
       const [overview, matchQuality] = await Promise.all([
-        overviewRes.json(),
-        matchRes.json(),
+        getJson('/api/admin/measurement/overview'),
+        getJson('/api/admin/measurement/match-quality?days=7').catch(() => null),
       ]);
-
-      if (!overview.success) throw new Error('Overview API failed');
 
       const d = overview.data;
 
       // Match Quality KPI
       const mq = d.matchQuality;
-      setEl('kpi-match-quality', `${mq.avgScore.toFixed(0)}%`);
-      setEl('kpi-match-sub', `${mq.below40Pct}% below threshold · ${mq.totalEvents.toLocaleString()} events`);
+      // No conversion events in the window is "no data", never 0% (#19).
+      const mqHasData = typeof mq.avgScore === 'number';
+      setEl('kpi-match-quality', mqHasData ? `${mq.avgScore.toFixed(0)}%` : 'No data');
+      setEl('kpi-match-sub', mqHasData
+        ? `${mq.below40Pct}% below threshold · ${mq.totalEvents.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} events`
+        : 'No conversion events in the last 7 days');
 
       // DLQ
       const dlqCount = d.dlq.unresolvedCount;
-      setEl('kpi-dlq', dlqCount.toLocaleString());
+      setEl('kpi-dlq', dlqCount.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' }));
       const dlqCard = document.getElementById('kpi-dlq-card');
       if (dlqCard) dlqCard.style.borderColor = dlqCount > 0 ? '#fca5a5' : '#e2e8f0';
 
       // Consent
       setEl('kpi-ad-consent', `${d.consent.advertisingGrantedPct}%`);
-      setEl('kpi-ad-consent-sub', `${d.consent.totalIdentities.toLocaleString()} identities tracked`);
+      setEl('kpi-ad-consent-sub', `${d.consent.totalIdentities.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} identities tracked`);
 
       // Pending
-      setEl('kpi-pending', (d.outbox.pendingTelemetryEvents || 0).toLocaleString());
+      setEl('kpi-pending', (d.outbox.pendingTelemetryEvents || 0).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' }));
 
       // Consent breakdown meters
       animateMeter('meter-analytics',       d.consent.analyticsGrantedPct);
@@ -599,7 +606,7 @@ if (!token) {
       setEl('pct-analytics',       `${d.consent.analyticsGrantedPct}%`);
       setEl('pct-advertising',     `${d.consent.advertisingGrantedPct}%`);
       setEl('pct-personalization', `${d.consent.personalizationGrantedPct}%`);
-      setEl('consent-total',       `${d.consent.totalIdentities.toLocaleString()} identities tracked`);
+      setEl('consent-total',       `${d.consent.totalIdentities.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} identities tracked`);
 
       // Match bars (approximated from summary)
       const above80 = mq.above80Pct ?? 0;
@@ -616,23 +623,30 @@ if (!token) {
       setEl('pct-poor',      `${below40}%`);
 
       // Status
-      const allOk = dlqCount === 0 && d.outbox.pendingTelemetryEvents < 50 && mq.avgScore >= 40;
+      // No data is not low quality: only a measured score below 40 degrades the status.
+      const matchLow = mqHasData && mq.avgScore < 40;
+      const allOk = dlqCount === 0 && d.outbox.pendingTelemetryEvents < 50 && !matchLow;
       if (statusPill && statusText) {
         statusPill.className = `status-pill ${allOk ? 'status-ok' : dlqCount > 5 ? 'status-error' : 'status-warn'}`;
         statusText.textContent = allOk
-          ? 'All measurement systems operational'
+          ? (mqHasData ? 'All measurement systems operational' : 'Operational — no conversion events to score yet')
           : dlqCount > 5
           ? `${dlqCount} unresolved DLQ entries — action required`
-          : `Measurement system degraded — match quality low`;
+          : matchLow
+          ? `Measurement system degraded — match quality low`
+          : dlqCount > 0
+          ? `Measurement system degraded — ${dlqCount} unresolved DLQ entries`
+          : `Measurement system degraded — events waiting to be sent`;
       }
 
       if (refreshedEl) {
-        refreshedEl.textContent = `Last refreshed: ${new Date().toLocaleTimeString()}`;
+        refreshedEl.textContent = `Last refreshed: ${new Date().toLocaleTimeString('en-UG', { timeZone: 'Africa/Kampala' })}`;
       }
     } catch (err) {
       if (statusPill && statusText) {
         statusPill.className = 'status-pill status-error';
-        statusText.textContent = 'Unable to load dashboard — API unreachable';
+        const status = (err as { status?: number })?.status;
+        statusText.textContent = status ? `Unable to load the dashboard (the API answered ${status}). Try Refresh.` : 'Unable to load dashboard — API unreachable';
       }
       if (refreshedEl) refreshedEl.textContent = 'Failed to refresh';
       console.error('[MCT Dashboard] Load error:', err);

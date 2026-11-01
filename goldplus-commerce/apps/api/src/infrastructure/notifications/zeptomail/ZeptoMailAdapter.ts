@@ -1,14 +1,19 @@
+import { emailCopy } from '../../../application/notifications/CustomerMessages';
 import { outboundGovernance } from '../OutboundGovernanceService';
 import { failsReleaseReadiness } from '../../../domain/notifications/OutboundGovernancePolicy';
-import { classifyMessage } from '../messageClassification';
+import { classifyMessage, consentGrantedIn } from '../messageClassification';
+import { customerEmailData, hasEmailTemplate, renderEmailTemplate, type CustomerEmailSource, type RenderedEmail } from '../email/emailTemplateData';
 import {
   INotificationProvider,
   NotificationDispatchPayload,
   NotificationDispatchResult,
   NotificationStatus,
+  OUTCOME_UNKNOWN_PROVIDER_CODE,
 } from '../../../application/ports/INotificationProvider';
 import { NotificationTemplateRenderer } from '../../../application/use-cases/notifications/NotificationTemplateRenderer';
-import { resilientFetch } from '../../http/HttpClient';
+import { resilientFetch, sendMayHaveReachedProvider } from '../../http/HttpClient';
+import { classifyTransactionalEmailFailure } from '../../../application/services/consent/TransactionalEmailFailureForensics';
+import { tagShopLinks } from '@goldplus/shared';
 
 export class ZeptoMailAdapter implements INotificationProvider {
   private readonly renderer = new NotificationTemplateRenderer();
@@ -64,9 +69,9 @@ export class ZeptoMailAdapter implements INotificationProvider {
         <table width="600" border="0" cellspacing="0" cellpadding="0" style="background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
           <!-- Header -->
           <tr>
-            <td style="background-color: #111827; padding: 32px; text-align: center;">
-              <h1 style="margin: 0; font-size: 24px; font-weight: 900; color: #f59e0b; letter-spacing: -0.025em; text-transform: uppercase;">GoldPlus</h1>
-              <p style="margin: 4px 0 0 0; font-size: 11px; font-weight: bold; color: #9ca3af; letter-spacing: 0.05em; text-transform: uppercase;">System Operations Alert</p>
+            <td style="background-color: #93d500; padding: 28px 32px; text-align: center;">
+              <img src="https://shopgoldplus.com/email/goldplus-logo-email-300x86.png" width="150" height="43" alt="GoldPlus" style="display: block; margin: 0 auto; width: 150px; height: 43px; border: 0; color: #10140a; font-size: 24px; font-weight: 900;">
+              <p style="margin: 8px 0 0 0; font-size: 11px; font-weight: bold; color: #10140a; letter-spacing: 0.05em; text-transform: uppercase;">System Operations Alert</p>
             </td>
           </tr>
           <!-- Message Body -->
@@ -129,7 +134,7 @@ export class ZeptoMailAdapter implements INotificationProvider {
     const recipientAllowlisted = allowlist.includes(rawRecipient.toLowerCase());
     const messageClass = classifyMessage(payload);
 
-    const decision = outboundGovernance.decide({
+    const decision = await outboundGovernance.decideForRecipient({
       channel: 'EMAIL',
       messageClass,
       // An operational alert goes to staff; anything else is treated as reaching a
@@ -137,11 +142,13 @@ export class ZeptoMailAdapter implements INotificationProvider {
       recipientClass: messageClass === 'OPERATIONAL'
         ? 'INTERNAL'
         : recipientAllowlisted ? 'TEST' : 'CUSTOMER',
+      // 0210: consent recorded by the sender (a basket reminder the customer ticked for). Absent = the class decides.
+      consentGranted: consentGrantedIn(payload.data, payload.template, 'email'),
       providerConfigured: Boolean(token && fromAddr),
       allowlistActive: allowlist.length > 0,
       recipientAllowlisted,
       maskedRecipient: this.maskEmail(rawRecipient),
-    });
+    }, `email:${rawRecipient.toLowerCase()}`);
 
     if (decision.kind !== 'ALLOW_LIVE' && decision.kind !== 'ALLOW_DRY_RUN') {
       return {
@@ -185,8 +192,53 @@ export class ZeptoMailAdapter implements INotificationProvider {
       'ORDER_FULFILLMENT_COMPLETED',
     ].includes(payload.template);
 
-    if (payload.template === 'ADMIN_ORDER_EMAIL' && typeof payload.data?.html === 'string') {
-      // Pre-rendered admin order email (already escaped in the pure domain).
+    /**
+     * The reviewed design first (apps/api/templates/email), for any template we
+     * have. Until now only the admin email used it, so the shop had two email
+     * designs and the reviewed one applied to a single message.
+     *
+     * The renderer throws when a value it needs is missing, so a template we
+     * cannot fill completely falls through to the previous path rather than
+     * sending a half-filled email.
+     */
+    const designedKey = payload.template === 'password_reset' ? 'PASSWORD_RESET'
+      : payload.template === 'PAYMENT_SUCCESS' ? 'ORDER_PAYMENT_SUCCESS'
+      : payload.template === 'PAYMENT_FAILED' ? 'ORDER_PAYMENT_FAILED'
+      : payload.template;
+    let designed: RenderedEmail | null = null;
+    if (designedKey !== 'ADMIN_ORDER_EMAIL' && hasEmailTemplate(designedKey)) {
+      try {
+        const d = (payload.data || {}) as Record<string, unknown>;
+        designed = renderEmailTemplate(designedKey, customerEmailData(designedKey, {
+          customerName: (d.customerName as string) ?? null,
+          orderNumber: (d.orderNumber as string) ?? null,
+          createdAt: (d.orderCreatedAt as string) ?? null,
+          totalUgx: Number(d.totalUgx ?? 0),
+          deliveryFeeUgx: Number(d.deliveryFeeUgx ?? 0),
+          deliveryLocation: (d.deliveryLocation as string) ?? null,
+          paymentStatus: (d.paymentStatus as string) ?? null,
+          orderUrl: (d.orderUrl as string) ?? null,
+          items: Array.isArray(d.items) ? (d.items as CustomerEmailSource['items']) : [],
+          amountReceivedUgx: Number(d.totalUgx ?? 0),
+          paymentMethod: (d.paymentMethod as string) ?? null,
+          paymentReference: (d.paymentReference as string) ?? null,
+          paymentDate: (d.paymentDate as string) ?? null,
+          resetUrl: (d.resetUrl as string) ?? (d.reset_url as string) ?? null,
+          resetExpiryMinutes: Number(d.resetExpiryMinutes ?? 30),
+          cancellationReason: (d.cancellationReason as string) ?? null,
+          refundUpdate: (d.refundUpdate as string) ?? null,
+        }));
+      } catch {
+        // Not enough data for the reviewed template: use the previous path.
+        designed = null;
+      }
+    }
+    if (designed) {
+      subject = designed.subject;
+      htmlContent = designed.html;
+      textContent = designed.text;
+    } else if ((payload.template === 'ADMIN_ORDER_EMAIL' || payload.template === 'GOLDIE_HANDOVER' || payload.template === 'GOLDIE_TRANSCRIPT' || payload.template === 'CARE_ALERT_EMAIL' || payload.template === 'CARE_REPLY_EMAIL') && typeof payload.data?.html === 'string') {
+      // Pre-rendered in the pure domain (already escaped): the admin order email and Goldie's chat emails.
       subject = String(payload.data.subject || subject);
       htmlContent = String(payload.data.html);
       textContent = String(payload.data.text || subject);
@@ -202,6 +254,16 @@ export class ZeptoMailAdapter implements INotificationProvider {
       subject = this.renderer.getSubject(mappedTemplate);
       htmlContent = this.renderer.renderEmail(mappedTemplate, orderModel);
       textContent = this.renderer.renderTextBody(mappedTemplate, orderModel);
+    } else if (emailCopy(payload.template === 'password_reset' ? 'PASSWORD_RESET' : payload.template, (payload.data || {}) as never)) {
+      // A customer email that is not an order receipt: password reset, loyalty,
+      // and the acknowledgements. These used to fall into the operations dump
+      // below ("A system event regarding password_reset occurred" plus the
+      // reset link as a key:value row).
+      const key = payload.template === 'password_reset' ? 'PASSWORD_RESET' : payload.template;
+      const copy = emailCopy(key, (payload.data || {}) as never)!;
+      subject = copy.subject;
+      htmlContent = this.renderer.renderCustomerEmail(copy, (payload.data as any)?.customerName ?? null);
+      textContent = this.renderer.renderCustomerText(copy, (payload.data as any)?.customerName ?? null);
     } else {
       // Operations alerts, dealer app, quote request alerts
       const message = String(payload.data?.message || `A system event regarding ${payload.relatedEntity} occurred.`);
@@ -211,6 +273,10 @@ export class ZeptoMailAdapter implements INotificationProvider {
         .map(([k, v]) => `${k}: ${String(v)}`)
         .join('\n')}`;
     }
+
+    // Our shop links say they came from an email (shared/links/shopLinkTag); admin links are left alone.
+    htmlContent = tagShopLinks(htmlContent, 'e');
+    textContent = tagShopLinks(textContent, 'e');
 
     // 5. Simulate, if that is what the decision said. The message is rendered first so
     //    a dry run exercises the same rendering path a live send would — a simulation
@@ -241,10 +307,10 @@ export class ZeptoMailAdapter implements INotificationProvider {
           },
         ],
         reply_to: [
-          {
-            address: replyTo,
-            name: fromName,
-          },
+          // A Goldie handover that carries the customer's email: the shop's Reply goes straight to them.
+          payload.template === 'GOLDIE_HANDOVER' && typeof payload.data?.replyTo === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.data.replyTo)
+            ? { address: payload.data.replyTo, name: String(payload.data?.replyToName || 'Customer') }
+            : { address: replyTo, name: fromName },
         ],
         subject: subject,
         htmlbody: htmlContent,
@@ -254,7 +320,9 @@ export class ZeptoMailAdapter implements INotificationProvider {
         client_reference: payload.relatedEntityId || undefined,
       };
 
-      const timeoutMs = parseInt(process.env.ZEPTOMAIL_TIMEOUT_MS || '3000', 10);
+      // 10 s, as .env.example says: a timeout is now final (never re-sent), so a slow provider must not look lost.
+      const configuredTimeout = parseInt(process.env.ZEPTOMAIL_TIMEOUT_MS || '', 10);
+      const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 10_000;
       const response = await resilientFetch(baseUrl, {
         method: 'POST',
         headers: {
@@ -268,10 +336,49 @@ export class ZeptoMailAdapter implements INotificationProvider {
       });
 
       if (!response.ok) {
+        // The provider's own explanation, kept.
+        //
+        // This used to report only `HTTP error status 429`, which is why nobody
+        // could tell whether ZeptoMail was rate-limiting a burst, refusing a
+        // daily quota, or declining because the account itself was restricted —
+        // three problems with three different fixes, and 128 dead-lettered
+        // emails that all looked identical. A status code is a symptom; the body
+        // is the diagnosis.
+        //
+        // Bounded to 300 characters and never logged with the payload, so a
+        // provider message cannot become an unbounded log of customer data.
+        const detail = await response.text().catch(() => '');
+        const retryAfter = response.headers.get('retry-after');
+
+        // Classified through the CANONICAL forensics classifier, not a second
+        // taxonomy invented here. It already distinguishes domain_not_verified,
+        // forbidden_sender, invalid_credential and recipient_rejected from a
+        // genuine rate_limited — but it can only do that when it is handed the
+        // provider's own words, and this adapter never captured them. So every
+        // 429 collapsed to the status-code fallback, `rate_limited`, which is
+        // the least actionable answer of the set.
+        const failure = classifyTransactionalEmailFailure({
+          response_status: response.status,
+          provider_code: detail,
+        });
         return {
           status: 'FAILED' as NotificationStatus,
-          providerCode: 'PROVIDER_HTTP_ERROR',
-          providerMessage: `HTTP error status ${response.status}`,
+          // The cause, so failures group by what is actually wrong rather than
+          // by which HTTP number the provider chose to express it with.
+          providerCode: `PROVIDER_${failure.classification.toUpperCase()}`,
+          // The provider's verdict, carried to the outbox so it does not spend
+          // eight attempts on something that cannot succeed.
+          retryable: failure.retryable === 'no' ? false : true,
+          providerMessage: [
+            `HTTP error status ${response.status}`,
+            `class=${failure.classification}`,
+            `retryable=${failure.retryable}`,
+            failure.requires_provider_action ? 'requires_provider_action=true' : '',
+            retryAfter ? `retry-after=${retryAfter}` : '',
+            detail ? detail.replace(/\s+/g, ' ').slice(0, 300) : '',
+          ]
+            .filter(Boolean)
+            .join(' | '),
         };
       }
 
@@ -293,6 +400,15 @@ export class ZeptoMailAdapter implements INotificationProvider {
       };
     } catch (err: any) {
       const isTimeout = err.name === 'AbortError';
+      if (sendMayHaveReachedProvider(err)) {
+        // It may have been delivered: the outbox must neither re-send it nor hand it to a fallback channel.
+        return {
+          status: 'FAILED' as NotificationStatus,
+          providerCode: OUTCOME_UNKNOWN_PROVIDER_CODE,
+          retryable: false,
+          providerMessage: this.sanitizeErrorMessage(`Email (ZeptoMail) ${isTimeout ? 'timed out after sending' : 'failed after sending (' + (err.message || 'network error') + ')'}; outcome unknown. Not retried, no fallback.`),
+        };
+      }
       return {
         status: 'FAILED' as NotificationStatus,
         providerCode: 'PROVIDER_ERROR',

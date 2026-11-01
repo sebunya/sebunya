@@ -1,0 +1,983 @@
+import { isMetaBrowserId, isMetaClickId } from '../../domain/advertising/MetaIdentifiers';
+import crypto from 'crypto';
+import type { CanonicalTelemetryEvent } from '@goldplus/shared';
+
+/**
+ * Server-side conversion APIs, one pure builder per platform: a canonical event
+ * plus the platform's ids and token in, the exact HTTP request out (or null
+ * when the platform has no equivalent event or lacks a required identifier).
+ * No network here; AdConversionDispatch sends.
+ *
+ * Only platforms whose public server APIs are implemented are LIVE-capable.
+ * The rest are listed with the honest reason they are not (never simulated).
+ */
+
+export type AdEventName = 'view_item' | 'add_to_cart' | 'begin_checkout' | 'add_payment_info' | 'generate_lead' | 'search' | 'sign_up' | 'find_location' | 'page_seen' | 'purchase';
+export interface AdRequest { url: string; headers: Record<string, string>; body?: unknown; method?: 'POST' | 'GET' }
+/**
+ * Why nothing was sent, recorded on the queue row. Before 2026-10-01 every
+ * case shared one sentence ("no equivalent event or required identifier"),
+ * so "no event ID saved", "the visitor did not come from our ad" and
+ * "nothing to match on" could not be told apart afterwards.
+ */
+export type AdSkipReason = 'NO_EVENT_ID' | 'NO_X_CLICK' | 'NO_IDENTIFIER' | 'NO_TEST_CODE' | 'NO_BROWSER';
+
+export interface AdPlatformDef {
+  key: string;
+  name: string;
+  /** Non-secret ids the owner enters (shown in admin). */
+  fields: Array<{ key: string; label: string; pattern: RegExp; hint: string; optional?: boolean }>;
+  /** Label for the single write-only secret ('' = the platform needs none). */
+  secretLabel: string;
+  /** Secret format hint shown in admin (e.g. a JSON bundle). */
+  secretHint?: string;
+  /** Checks a pasted secret's shape on save (null = fine). */
+  checkSecret?: (secret: string) => string | null;
+  /** Per-send auth headers derived from the secret (OAuth exchange / request signing). */
+  authorize?: (req: AdRequest, cfg: Record<string, string>, secret: string) => Promise<Record<string, string>>;
+  /** A 2xx reply can still carry a failure (Google Ads partial failure): return it. */
+  replyError?: (json: unknown) => string | null;
+  events: Partial<Record<AdEventName, string>>;
+  build?: (e: CanonicalTelemetryEvent, cfg: Record<string, string>, secret: string) => AdRequest | null;
+  /**
+   * Whether the platform can receive this event at all with this config.
+   * Absent = every mapped event. X needs an Events Manager ID per event: an
+   * event without one is not queued, rather than queued and skipped.
+   */
+  accepts?: (eventName: string, cfg: Record<string, string>) => boolean;
+  /** Why build() returned null, as a stable code the activity page can explain. Absent = NO_IDENTIFIER. */
+  skipReason?: (e: CanonicalTelemetryEvent, cfg: Record<string, string>) => AdSkipReason;
+  /**
+   * The platform's own account of a refusal, from its response body: a
+   * message safe to store and show, whether it is worth retrying although the
+   * HTTP status says otherwise, and whether it is about the credentials.
+   */
+  errorSummary?: (status: number, body: string) => { message: string; transient: boolean; credentials: boolean } | null;
+  /** When not implementable yet: why (shown as-is in admin). */
+  unavailable?: string;
+  /** The platform documents a test channel (test event code / validate-only) and the builder uses it. */
+  testable?: boolean;
+}
+
+/**
+ * 0154 test mode: the repository puts `_test: '1'` in the config of a
+ * destination in Test mode. A platform whose test channel needs a code sends
+ * nothing without one (a "test" that counted as real would not be a test).
+ */
+const inTest = (cfg: Record<string, string>) => cfg._test === '1';
+const TEST_CODE_FIELD = (where: string) => ({ key: 'testEventCode', label: 'Test event code (Test mode only)', pattern: /^[A-Za-z0-9]{4,40}$/, hint: where, optional: true });
+/** Lead method carried by a generate_lead event (WhatsApp click or quote request). */
+const leadMethod = (e: CanonicalTelemetryEvent) => (e as { lead?: { method?: string } }).lead?.method;
+
+/**
+ * API versions. Meta: see META_GRAPH_VERSION_RELEASED below (Marketing API versions live ~1 year).
+ * LinkedIn sunsets a monthly version ~12 months after release, so the header
+ * is derived: two months back from today is released and well inside support.
+ */
+export const META_GRAPH_VERSION = 'v25.0';
+/**
+ * When that version was released. The Conversions API, Custom Audiences and
+ * Insights are MARKETING API endpoints, and Meta retires Marketing API
+ * versions on a shorter schedule than Graph API core's two years: its
+ * changelog lists v24.0 (released 2025-10-08) as available until 2026-10-06.
+ * A retired version is not refused — Meta's versioning guide says such calls
+ * are "defaulted to the next oldest, usable version" — so an expired pin
+ * fails nothing and behaves as a version nobody chose. Two guards: a unit
+ * test fails ~300 days after this date, and the diagnostics compare this pin
+ * with the `facebook-api-version` header Meta returns (checked against the
+ * live API on 2026-10-01: each of v23.0–v26.0 answered as itself).
+ */
+export const META_GRAPH_VERSION_RELEASED = '2026-02-18';
+export function linkedInVersion(now = new Date()): string {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1));
+  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+const sha = (v: string) => crypto.createHash('sha256').update(v).digest('hex');
+/** Lower-cased trimmed email, hashed. */
+export const hashEmail = (email?: string | null) => (email && email.includes('@') ? sha(email.trim().toLowerCase()) : undefined);
+/**
+ * Google's email normalisation for enhanced conversions: lower-case, trim, and
+ * for gmail.com / googlemail.com remove dots from the local part.
+ */
+export const hashEmailGoogle = (email?: string | null) => {
+  if (!email || !email.includes('@')) return undefined;
+  const [local, domain] = email.trim().toLowerCase().split('@');
+  const l = domain === 'gmail.com' || domain === 'googlemail.com' ? local.replace(/\./g, '') : local;
+  return sha(`${l}@${domain}`);
+};
+/**
+ * Microsoft Advertising's email normalisation (learn.microsoft.com, UET
+ * Conversions API, "To hash an email address", 2026-08-04): trim, remove every
+ * dot and any +alias from the local part, whatever the domain, lower-case.
+ */
+const MS_PAGE_TYPE: Record<string, string> = { view_item: 'product', add_to_cart: 'cart', begin_checkout: 'cart', purchase: 'purchase' };
+export const hashEmailMicrosoft = (email?: string | null) => {
+  if (!email || !email.includes('@')) return undefined;
+  const [local, domain] = email.trim().toLowerCase().split('@');
+  return sha(`${local.replace(/\+.*$/, '').replace(/\./g, '')}@${domain}`);
+};
+/** Ugandan numbers to E.164 digits (07XXXXXXXX -> 2567XXXXXXXX), hashed. */
+export function normalisePhoneUg(phone?: string | null): string | undefined {
+  const d = String(phone ?? '').replace(/\D/g, '').replace(/^00/, '');
+  if (/^0\d{9}$/.test(d)) return `256${d.slice(1)}`;
+  if (/^256\d{9}$/.test(d)) return d;
+  // "+256 0772 …": the national 0 typed after the country code (stored as typed at checkout).
+  if (/^2560\d{9}$/.test(d)) return `256${d.slice(4)}`;
+  if (/^7\d{8}$/.test(d)) return `256${d}`;
+  return d.length >= 10 && d.length <= 15 ? d : undefined;
+}
+/**
+ * Snapchat CAPI v3 (developers.snap.com Conversions-API/Parameters, read
+ * 2026-10-06): action_source is WEB, the click id goes as sc_click_id, and a
+ * value is accepted only in these currencies. The Uganda shilling is not one,
+ * so a shilling sale is sent without value or currency: it still counts, and
+ * no amount is reported at a rate nobody chose.
+ */
+export const SNAP_CURRENCIES = new Set('USD AED AUD BGN BRL CAD CHF CLP CNY COP CZK DKK EGP EUR GBP GIP HKD HRK HUF IDR ILS INR JPY KRW KWD KZT LBP MXN MYR NGN NOK NZD PEN PHP PKR PLN QAR RON RUB SAR SEK SGD THB TRY TWD TZS UAH VND ZAR ALL BHD DZD GHS IQD ISK JOD KES MAD OMR XOF'.split(' '));
+export const hashPhone = (phone?: string | null) => { const n = normalisePhoneUg(phone); return n ? sha(n) : undefined; };
+/** TikTok hashes E.164 WITH the leading '+' (Meta/Pinterest/Snapchat want digits only). */
+export const hashPhonePlus = (phone?: string | null) => { const n = normalisePhoneUg(phone); return n ? sha(`+${n}`) : undefined; };
+
+const items = (e: CanonicalTelemetryEvent) => e.ecommerce?.items ?? [];
+const value = (e: CanonicalTelemetryEvent) => e.ecommerce?.value ?? items(e).reduce((s, i) => s + (i.price ?? 0) * (i.quantity ?? 1), 0);
+const ids = (e: CanonicalTelemetryEvent) => items(e).map((i) => i.item_id);
+const u = (e: CanonicalTelemetryEvent) => e.user_data ?? {};
+const extId = (e: CanonicalTelemetryEvent) => (u(e).fp_client_id ? sha(u(e).fp_client_id as string) : undefined);
+
+/** Parses a JSON secret bundle; throws a message that names the missing keys (never their values). */
+export function parseJsonSecret(secret: string, keys: string[]): Record<string, string> {
+  let o: Record<string, unknown>;
+  // status 400: a malformed bundle will not fix itself on retry (dead-letter at once).
+  try { o = JSON.parse(secret); } catch { throw Object.assign(new Error('credentials are not valid JSON'), { status: 400 }); }
+  const missing = keys.filter((k) => typeof o[k] !== 'string' || !(o[k] as string).trim());
+  if (missing.length) throw Object.assign(new Error(`credentials missing: ${missing.join(', ')}`), { status: 400 });
+  return o as Record<string, string>;
+}
+
+const tokenCache = new Map<string, { token: string; until: number }>();
+/** OAuth2 refresh-token exchange (Google), cached until shortly before expiry. */
+async function googleAccessToken(clientId: string, clientSecret: string, refreshToken: string): Promise<string> {
+  const key = sha(`${clientId}:${refreshToken}`);
+  const hit = tokenCache.get(key);
+  if (hit && hit.until > Date.now()) return hit.token;
+  const res = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'refresh_token', client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken }), signal: AbortSignal.timeout(10_000) });
+  const j = (await res.json().catch(() => null)) as { access_token?: string; expires_in?: number; error?: string } | null;
+  if (!res.ok || !j?.access_token) throw Object.assign(new Error(`Google OAuth refused: ${j?.error ?? res.status}`), { status: res.status });
+  tokenCache.set(key, { token: j.access_token, until: Date.now() + Math.max(60, (j.expires_in ?? 3600) - 300) * 1000 });
+  return j.access_token;
+}
+
+// ── Google credentials (2026-10-16) ───────────────────────────────────────────
+//
+// Conversions go through the Data Manager API (datamanager.googleapis.com, scope
+// https://www.googleapis.com/auth/datamanager). Google Ads API UploadClickConversions has refused, since
+// 15 June 2026, any developer token that had not already sent conversion uploads — this shop never had — and
+// Google points to the Data Manager API, which needs NO developer token. The secret may be:
+//   - a service-account key file, pasted as-is ({"type":"service_account","client_email",…,"private_key"}),
+//     the service account's email added as a user in Google Ads; or
+//   - {"clientId","clientSecret","refreshToken"} for a Google user whose consent included the datamanager scope.
+// Either may also carry "developerToken" (and, with a service account, nothing else is needed for spend): the
+// Google Ads API (spend import) still requires a developer token; conversions never do.
+const DATA_MANAGER_SCOPE = 'https://www.googleapis.com/auth/datamanager';
+const ADWORDS_SCOPE = 'https://www.googleapis.com/auth/adwords';
+
+export type GoogleCredentials =
+  | { kind: 'service_account'; clientEmail: string; privateKey: string; developerToken?: string }
+  | { kind: 'oauth'; clientId: string; clientSecret: string; refreshToken: string; developerToken?: string };
+
+export function parseGoogleCredentials(secret: string): GoogleCredentials {
+  let j: Record<string, unknown>;
+  try { j = JSON.parse(secret); } catch { throw new Error('Google credentials must be JSON: a service-account key file, or {"clientId","clientSecret","refreshToken"}'); }
+  const sa = (j.serviceAccount && typeof j.serviceAccount === 'object' ? j.serviceAccount : j) as Record<string, unknown>;
+  const dev = typeof j.developerToken === 'string' && j.developerToken ? { developerToken: j.developerToken } : {};
+  if (sa.type === 'service_account' && typeof sa.client_email === 'string' && typeof sa.private_key === 'string') {
+    return { kind: 'service_account', clientEmail: sa.client_email, privateKey: sa.private_key, ...dev };
+  }
+  if (typeof j.clientId === 'string' && typeof j.clientSecret === 'string' && typeof j.refreshToken === 'string') {
+    return { kind: 'oauth', clientId: j.clientId, clientSecret: j.clientSecret, refreshToken: j.refreshToken, ...dev };
+  }
+  throw new Error('Google credentials: paste the service-account key file, or {"clientId","clientSecret","refreshToken"}');
+}
+
+const b64url = (b: Buffer | string) => Buffer.from(b).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+
+/** A signed JWT for Google's token endpoint (service-account flow, RFC 7523). Pure apart from the clock. */
+export function googleServiceAccountAssertion(clientEmail: string, privateKey: string, scope: string, nowSec = Math.floor(Date.now() / 1000)): string {
+  const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const claims = b64url(JSON.stringify({ iss: clientEmail, scope, aud: 'https://oauth2.googleapis.com/token', iat: nowSec, exp: nowSec + 3600 }));
+  const signature = crypto.createSign('RSA-SHA256').update(`${header}.${claims}`).sign(privateKey);
+  return `${header}.${claims}.${b64url(signature)}`;
+}
+
+async function googleServiceAccountToken(clientEmail: string, privateKey: string, scope: string): Promise<string> {
+  const key = sha(`sa:${clientEmail}:${scope}`);
+  const hit = tokenCache.get(key);
+  if (hit && hit.until > Date.now()) return hit.token;
+  const res = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: googleServiceAccountAssertion(clientEmail, privateKey, scope) }), signal: AbortSignal.timeout(10_000) });
+  const j = (await res.json().catch(() => null)) as { access_token?: string; expires_in?: number; error?: string; error_description?: string } | null;
+  if (!res.ok || !j?.access_token) throw Object.assign(new Error(`Google sign-in refused: ${j?.error ?? res.status}${j?.error_description ? ` (${j.error_description})` : ''}`), { status: res.status });
+  tokenCache.set(key, { token: j.access_token, until: Date.now() + Math.max(60, (j.expires_in ?? 3600) - 300) * 1000 });
+  return j.access_token;
+}
+
+/** Bearer header for the Data Manager API (conversions, Customer Match). */
+export async function googleDataManagerHeaders(secret: string): Promise<Record<string, string>> {
+  const c = parseGoogleCredentials(secret);
+  const token = c.kind === 'service_account'
+    ? await googleServiceAccountToken(c.clientEmail, c.privateKey, DATA_MANAGER_SCOPE)
+    : await googleAccessToken(c.clientId, c.clientSecret, c.refreshToken);
+  return { Authorization: `Bearer ${token}` };
+}
+
+/** Headers for the Google Ads API (spend import): a developer token is required there, and only there. */
+export async function googleAdsApiHeaders(secret: string): Promise<Record<string, string>> {
+  const c = parseGoogleCredentials(secret);
+  if (!c.developerToken) throw Object.assign(new Error('Not configured: spend import uses the Google Ads API, which needs a developer token ("developerToken" in the credentials). Conversions do not.'), { status: null });
+  const token = c.kind === 'service_account'
+    ? await googleServiceAccountToken(c.clientEmail, c.privateKey, ADWORDS_SCOPE)
+    : await googleAccessToken(c.clientId, c.clientSecret, c.refreshToken);
+  return { Authorization: `Bearer ${token}`, 'developer-token': c.developerToken };
+}
+
+/** One Google Ads conversion as a Data Manager Event (pure). Null when there is nothing Google can match on. */
+export function googleAdsEvent(x: {
+  transactionId: string;
+  eventTimeSec: number;
+  source: 'WEB' | 'PHONE' | 'MESSAGE' | 'IN_STORE' | 'OTHER';
+  valueUgx?: number;
+  currency?: string;
+  gclid?: string; gbraid?: string; wbraid?: string;
+  hashedEmail?: string; hashedPhonePlus?: string;
+  ipAddress?: string; userAgent?: string;
+  customerType?: 'NEW' | 'RETURNING';
+  items?: Array<{ sku?: string; quantity: number; unitPrice?: number }>;
+  merchantCenterId?: string;
+}): Record<string, unknown> | null {
+  const adIdentifiers: Record<string, string> = {};
+  if (x.gclid) adIdentifiers.gclid = x.gclid;
+  if (x.gbraid) adIdentifiers.gbraid = x.gbraid;
+  if (x.wbraid) adIdentifiers.wbraid = x.wbraid;
+  // Google's emails/phones: SHA-256 hex of the normalised value (email: Google's rule; phone: E.164 with "+").
+  const userIdentifiers = [x.hashedEmail ? { emailAddress: x.hashedEmail } : null, x.hashedPhonePlus ? { phoneNumber: x.hashedPhonePlus } : null].filter(Boolean);
+  const device = { ...(x.ipAddress ? { ipAddress: x.ipAddress } : {}), ...(x.userAgent ? { userAgent: x.userAgent } : {}) };
+  // Data Manager's identifier rule: a click id, user data, or the device's IP address. None of them: nothing to send.
+  if (Object.keys(adIdentifiers).length === 0 && userIdentifiers.length === 0 && !x.ipAddress) return null;
+  const cart = (x.items ?? []).filter((i) => i.sku);
+  return {
+    transactionId: x.transactionId.slice(0, 100),
+    eventTimestamp: new Date(x.eventTimeSec * 1000).toISOString(),
+    eventSource: x.source,
+    ...(typeof x.valueUgx === 'number' ? { conversionValue: x.valueUgx, currency: x.currency ?? 'UGX' } : {}),
+    ...(Object.keys(adIdentifiers).length ? { adIdentifiers } : {}),
+    ...(userIdentifiers.length ? { userData: { userIdentifiers } } : {}),
+    ...(Object.keys(device).length ? { eventDeviceInfo: device } : {}),
+    ...(x.customerType ? { userProperties: { customerType: x.customerType } } : {}),
+    // Cart data names the products as the Merchant Center feed does (g:id is the SKU), for Shopping/PMax.
+    ...(cart.length ? { cartData: { ...(x.merchantCenterId ? { merchantId: x.merchantCenterId } : {}),
+      items: cart.map((i) => ({ merchantProductId: String(i.sku), quantity: String(Math.max(1, Math.round(i.quantity))), ...(typeof i.unitPrice === 'number' ? { unitPrice: i.unitPrice } : {}) })) } } : {}),
+  };
+}
+
+/** The events:ingest request for one Google Ads conversion action (pure). validateOnly in Test mode. */
+export function googleAdsIngestRequest(cfg: Record<string, string>, actionId: string, events: Array<Record<string, unknown>>, test: boolean): AdRequest {
+  return {
+    url: 'https://datamanager.googleapis.com/v1/events:ingest',
+    headers: { 'content-type': 'application/json' },
+    body: {
+      destinations: [{
+        operatingAccount: { accountType: 'GOOGLE_ADS', accountId: cfg.customerId },
+        ...(cfg.loginCustomerId ? { loginAccount: { accountType: 'GOOGLE_ADS', accountId: cfg.loginCustomerId } } : {}),
+        productDestinationId: actionId,
+      }],
+      encoding: 'HEX',
+      events,
+      ...(test ? { validateOnly: true } : {}),
+    },
+  };
+}
+
+const pct = (s: string) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+/** OAuth 1.0a HMAC-SHA1 header (X Ads API). A JSON body is not part of the signature. */
+export function oauth1Header(method: string, url: string, c: Record<string, string>, nonce = crypto.randomBytes(16).toString('hex'), ts = Math.floor(Date.now() / 1000).toString()): string {
+  const u2 = new URL(url);
+  const oauth: Record<string, string> = { oauth_consumer_key: c.consumerKey, oauth_nonce: nonce, oauth_signature_method: 'HMAC-SHA1', oauth_timestamp: ts, oauth_token: c.accessToken, oauth_version: '1.0' };
+  const params = [...Object.entries(oauth), ...[...u2.searchParams.entries()]].map(([k, v]) => [pct(k), pct(v)]).sort(([a, x], [b, y]) => (a === b ? (x < y ? -1 : 1) : a < b ? -1 : 1));
+  const base = [method.toUpperCase(), pct(`${u2.origin}${u2.pathname}`), pct(params.map(([k, v]) => `${k}=${v}`).join('&'))].join('&');
+  const signature = crypto.createHmac('sha1', `${pct(c.consumerSecret)}&${pct(c.accessTokenSecret)}`).update(base).digest('base64');
+  return 'OAuth ' + Object.entries({ ...oauth, oauth_signature: signature }).map(([k, v]) => `${pct(k)}="${pct(v)}"`).join(', ');
+}
+
+/** A network postback URL the OWNER entered: https, a real host name, never an address or internal name. */
+export function safePostbackUrl(raw: string): URL | null {
+  try {
+    const x = new URL(raw);
+    if (x.protocol !== 'https:' || x.username || x.password || x.port) return null;
+    x.hostname = x.hostname.replace(/\.+$/, '');
+    if (/^[\d.]+$/.test(x.hostname) || x.hostname.includes(':') || !x.hostname.includes('.') || /(^|\.)(local|internal|localhost)$/i.test(x.hostname)) return null;
+    return x;
+  } catch { return null; }
+}
+
+/**
+ * Generic server-to-server postback (Opera, Eagllwin, Boomplay, any network):
+ * the network's own URL with macros, called for a purchase that came from that
+ * network's link (its click id in the URL parameter the owner names).
+ * Macros: {click_id} {value} {currency} {order_id} {event_id}.
+ */
+function postback(key: string, name: string, where: string): AdPlatformDef {
+  return {
+    key, name, secretLabel: '', events: { purchase: 'postback' },
+    fields: [
+      { key: 'postbackUrl', label: 'Postback URL (with {click_id})', pattern: /^https:\/\/[^\s]+\{click_id\}[^\s]*$/, hint: `From ${where}. Macros: {click_id} {value} {currency} {order_id} {event_id}` },
+      { key: 'clickParam', label: 'Click-id URL parameter', pattern: /^(clickid|click_id)$/, hint: 'The parameter the network adds to your links: clickid or click_id' },
+      { key: 'sourceMatch', label: 'utm_source on this network\'s links', pattern: /^[a-z0-9._-]{2,60}$/, hint: 'e.g. opera — set utm_source to exactly this on every ad link. Only sales whose click came with it fire this postback (several networks share clickid).' },
+    ],
+    build(e, cfg) {
+      const ud = u(e);
+      if (e.event_name !== 'purchase' || !ud.network_click_id || ud.network_click_param !== cfg.clickParam) return null;
+      if ((ud.network_click_source ?? '').toLowerCase() !== cfg.sourceMatch.toLowerCase()) return null;
+      const filled = cfg.postbackUrl
+        .replace(/\{click_id\}/g, encodeURIComponent(ud.network_click_id))
+        .replace(/\{value\}/g, encodeURIComponent(String(value(e))))
+        .replace(/\{currency\}/g, encodeURIComponent(e.ecommerce?.currency ?? 'UGX'))
+        .replace(/\{order_id\}/g, encodeURIComponent(e.ecommerce?.transaction_id ?? ''))
+        .replace(/\{event_id\}/g, encodeURIComponent(e.event_id));
+      const url = safePostbackUrl(filled);
+      return url ? { url: url.toString(), headers: {}, method: 'GET' } : null;
+    },
+  };
+}
+
+// ── Meta Conversions API ─────────────────────────────────────────────────────
+
+const HEX64 = /^[0-9a-f]{64}$/;
+const hashed = (v: unknown): string[] | undefined => (typeof v === 'string' && HEX64.test(v) ? [v] : undefined);
+
+/**
+ * Meta's customer information parameters, each in the form Meta documents
+ * (Conversions API > Customer information parameters): em, ph, fn, ln, ct and
+ * country are SHA-256 hashes; the click id (fbc), the browser id (fbp), the
+ * IP address and the user agent are never hashed. A value that is not the
+ * shape Meta expects is left out rather than sent to be rejected.
+ */
+export function metaUserData(e: CanonicalTelemetryEvent): Record<string, unknown> {
+  const ud = u(e) as Record<string, unknown>;
+  const out: Record<string, unknown> = {
+    em: hashed(ud.hashed_email), ph: hashed(ud.hashed_phone),
+    fn: hashed(ud.hashed_first_name), ln: hashed(ud.hashed_last_name), ct: hashed(ud.hashed_city), country: hashed(ud.hashed_country),
+    external_id: extId(e) ? [extId(e)] : undefined,
+    fbc: isMetaClickId(ud.fbc) ? ud.fbc : undefined,
+    fbp: isMetaBrowserId(ud.fbp) ? ud.fbp : undefined,
+    client_ip_address: typeof ud.ip_address === 'string' && ud.ip_address ? ud.ip_address : undefined,
+    client_user_agent: typeof ud.user_agent === 'string' && ud.user_agent ? ud.user_agent : undefined,
+  };
+  return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined));
+}
+
+/** Which of Meta's match keys an event carries, strongest first (shown to the owner; never the values). */
+export const META_MATCH_KEYS = ['em', 'ph', 'fbc', 'fbp', 'external_id', 'fn', 'ln', 'ct', 'country', 'client_ip_address', 'client_user_agent'] as const;
+
+/** True when the event has something Meta can match a person on (more than an IP address and a browser). */
+export const metaMatchable = (userData: Record<string, unknown>): boolean =>
+  ['em', 'ph', 'fbc', 'fbp', 'external_id'].some((k) => userData[k] !== undefined);
+
+/** What Meta requires of every website event besides a match key: the page address and the browser's user agent. */
+export const metaWebsiteEventComplete = (e: CanonicalTelemetryEvent, userData: Record<string, unknown>): boolean =>
+  typeof e.page_location === 'string' && /^https?:\/\//.test(e.page_location) && typeof userData.client_user_agent === 'string' && userData.client_user_agent.length > 0;
+
+/**
+ * What the event was about. A purchase always states its value, currency and
+ * order number; a basket or checkout event states the products; a lead, a
+ * chat tap, a search, a new account or a directions tap has no basket, and is
+ * not given an empty one.
+ */
+const META_EVENTS_WITHOUT_BASKET = new Set(['Lead', 'Contact', 'Search', 'CompleteRegistration', 'FindLocation', 'PageView']);
+
+export function metaCustomData(e: CanonicalTelemetryEvent, metaEventName: string): Record<string, unknown> | null {
+  const list = items(e).filter((i) => i.item_id);
+  const count = list.reduce((s, i) => s + (i.quantity ?? 1), 0);
+  const v = value(e);
+  // Meta's Search event names what was searched for (custom_data.search_string).
+  if (metaEventName === 'Search') return e.search_term ? { search_string: e.search_term } : null;
+  if (META_EVENTS_WITHOUT_BASKET.has(metaEventName)) {
+    return v > 0 ? { currency: e.ecommerce?.currency ?? 'UGX', value: v } : null;
+  }
+  const out: Record<string, unknown> = { currency: e.ecommerce?.currency ?? 'UGX', value: v };
+  if (list.length) {
+    out.content_type = 'product';
+    out.content_ids = list.map((i) => String(i.item_id));
+    out.contents = list.map((i) => ({ id: String(i.item_id), quantity: i.quantity ?? 1, ...(typeof i.price === 'number' ? { item_price: i.price } : {}) }));
+    out.num_items = count;
+    // What the product is called and where it sits in the catalogue, as the
+    // page or the order states it: one product names itself, several name
+    // their categories.
+    const names = [...new Set(list.map((i) => i.item_name).filter((n): n is string => typeof n === 'string' && n.length > 0))];
+    const cats = [...new Set(list.map((i) => i.item_category).filter((c): c is string => typeof c === 'string' && c.length > 0))];
+    if (names.length === 1) out.content_name = names[0].slice(0, 200);
+    if (cats.length) out.content_category = cats.slice(0, 5).join(', ').slice(0, 200);
+  }
+  if (metaEventName === 'Purchase' && e.ecommerce?.transaction_id) out.order_id = e.ecommerce.transaction_id;
+
+  return out;
+}
+
+/**
+ * Graph API error codes that mean "try again later", although Meta answers
+ * them with HTTP 400: 1 and 2 (temporary API problems), 4, 17, 32, 613 and
+ * 80004 (rate limits). Treated as permanent, as every other 4xx is, they
+ * dead-lettered events Meta would have accepted a minute later.
+ */
+const META_TRANSIENT_CODES = new Set([1, 2, 4, 17, 32, 613, 80004]);
+
+/**
+ * Meta's own account of a refusal, kept: code, subcode, the message written
+ * for the advertiser, and the trace id Meta support asks for. The Graph error
+ * body names parameters and limits; it does not echo customer data.
+ */
+export function metaErrorSummary(_status: number, body: string): { message: string; transient: boolean; credentials: boolean } | null {
+  let j: { error?: { message?: unknown; code?: unknown; error_subcode?: unknown; error_user_title?: unknown; error_user_msg?: unknown; fbtrace_id?: unknown; is_transient?: unknown } } | null = null;
+  try { j = JSON.parse(body); } catch { return null; }
+  const er = j?.error;
+  if (!er || typeof er !== 'object') return null;
+  const code = Number(er.code);
+  const sub = er.error_subcode != null ? Number(er.error_subcode) : null;
+  const text = [er.error_user_title, er.error_user_msg].filter((t) => typeof t === 'string' && t).join(': ') || (typeof er.message === 'string' ? er.message : 'no message');
+  const trace = typeof er.fbtrace_id === 'string' && er.fbtrace_id ? ` (fbtrace_id ${er.fbtrace_id})` : '';
+  return {
+    message: `Meta error ${Number.isFinite(code) ? code : '?'}${sub != null && Number.isFinite(sub) ? `/${sub}` : ''}: ${String(text).slice(0, 220)}${trace}`,
+    transient: er.is_transient === true || META_TRANSIENT_CODES.has(code),
+    // 190: the access token is expired, revoked or malformed. 102: the session
+    // is no longer valid. 104: no token reached Meta at all.
+    credentials: code === 190 || code === 102 || code === 104,
+  };
+}
+
+// ── TikTok Events API ────────────────────────────────────────────────────────
+
+/**
+ * TikTok's account of a refusal: `code` ≠ 0 with a `message` and a
+ * `request_id`. Its Events API documentation ("Responses and errors") says a
+ * failed call answers 4xx/5xx: 40002 with HTTP 400 (bad payload), 40001 with
+ * 400 (no permission on the advertiser account), 40104 with 401 (no token)
+ * and 40100 with **401** for a rate limit, which read by status alone looks
+ * like a bad token and was never retried. Until 2026-10-01 the body was not
+ * read for TikTok at all. A non-zero code inside a 2xx is treated as the
+ * refusal it is, too: `code: 0` is the only thing TikTok calls success.
+ *
+ * Codes from TikTok's "Appendix - Return codes" (read 2026-10-02):
+ *  - too many requests: 40016 (app level), 40100 (developer account), 40133
+ *    (advertiser), 40132 (one pixel); TikTok's own faults: 50000, 50002,
+ *    51305; maintenance: 60001. All worth another try.
+ *  - 40001 no permission, 40102 token expired, 40104 token empty, 40105 token
+ *    invalid, 40106 its user invalid, 40113 app blocked or unknown: the
+ *    credentials, not the event.
+ */
+const TIKTOK_RETRY_CODES = new Set([40016, 40100, 40132, 40133, 60001]);
+const TIKTOK_CREDENTIAL_CODES = new Set([40001, 40102, 40104, 40105, 40106, 40113]);
+export function tiktokErrorSummary(_status: number, body: string): { message: string; transient: boolean; credentials: boolean; code: number } | null {
+  let j: { code?: unknown; message?: unknown; request_id?: unknown } | null = null;
+  try { j = JSON.parse(body); } catch { return null; }
+  if (!j || typeof j !== 'object' || j.code === undefined) return null;
+  const code = Number(j.code);
+  if (code === 0) return null;
+  const rid = typeof j.request_id === 'string' && j.request_id ? ` (request_id ${j.request_id})` : '';
+  return {
+    message: `TikTok error ${Number.isFinite(code) ? code : '?'}: ${String(typeof j.message === 'string' ? j.message : 'no message').slice(0, 220)}${rid}`,
+    transient: TIKTOK_RETRY_CODES.has(code) || (code >= 50000 && code < 60000),
+    credentials: TIKTOK_CREDENTIAL_CODES.has(code),
+    code,
+  };
+}
+
+/**
+ * The currencies TikTok's Events API lists as supported (Parameters >
+ * properties > currency, read 2026-10-01). The Uganda shilling is not one.
+ */
+export const TIKTOK_CURRENCIES = new Set(('AED ARS AUD BDT BHD BIF BOB BRL CAD CHF CLP CNY COP CRC CZK DKK DZD EGP EUR GBP GTQ HKD HNL HUF IDR ILS INR ISK JPY KES KHR KRW KWD KZT '
+  + 'MAD MOP MXN MYR NGN NIO NOK NZD OMR PEN PHP PKR PLN PYG QAR RON RUB SAR SEK SGD THB TRY TWD UAH USD VES VND ZAR').split(' '));
+
+/**
+ * An amount as TikTok can take it, or null when it cannot be stated truthfully.
+ * A currency TikTok supports goes as it is. Shillings go as US dollars at the
+ * rate the owner entered (`ugxPerUsd`, shillings per dollar). With no rate, no
+ * amount is sent: the event still counts, and a sale is not reported in a
+ * currency TikTok does not list or at a rate nobody chose.
+ */
+export function tiktokMoney(amount: number, currency: string, cfg: Record<string, string>): { value: number; currency: string } | null {
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  if (TIKTOK_CURRENCIES.has(currency)) return { value: amount, currency };
+  const rate = Number(cfg.ugxPerUsd);
+  if (currency !== 'UGX' || !Number.isFinite(rate) || rate < 100) return null;
+  return { value: Math.round((amount / rate) * 100) / 100, currency: 'USD' };
+}
+
+/** What a TikTok event was about: products where there are any, the search term for a search, nothing invented otherwise. */
+export function tiktokProperties(e: CanonicalTelemetryEvent, tiktokEventName: string, cfg: Record<string, string> = {}): Record<string, unknown> | null {
+  const list = items(e).filter((i) => i.item_id);
+  const v = value(e);
+  const currency = e.ecommerce?.currency ?? 'UGX';
+  const out: Record<string, unknown> = {};
+  if (tiktokEventName === 'Search' && e.search_term) out.search_string = e.search_term;
+  if (list.length) {
+    out.content_type = 'product';
+    out.content_ids = list.map((i) => String(i.item_id));
+    out.contents = list.map((i) => {
+      const price = typeof i.price === 'number' ? tiktokMoney(i.price, currency, cfg) : null;
+      return { content_id: String(i.item_id), ...(i.item_name ? { content_name: i.item_name } : {}), ...(i.item_category ? { content_category: i.item_category } : {}),
+        ...(i.item_brand ? { brand: i.item_brand } : {}), quantity: i.quantity ?? 1, ...(price ? { price: price.value } : {}) };
+    });
+    out.num_items = list.reduce((n, i) => n + (i.quantity ?? 1), 0);
+  }
+  // A value is stated with its currency, and only when there is one: a chat tap is not a sale of 0.
+  const money = list.length || v > 0 ? tiktokMoney(v, currency, cfg) : null;
+  if (money) { out.currency = money.currency; out.value = money.value; }
+  if (tiktokEventName === 'Purchase' && e.ecommerce?.transaction_id) out.order_id = e.ecommerce.transaction_id;
+  return Object.keys(out).length ? out : null;
+}
+
+export const AD_PLATFORMS: AdPlatformDef[] = [
+  {
+    key: 'meta', name: 'Meta (Facebook, Instagram, WhatsApp ads)', testable: true,
+    fields: [{ key: 'datasetId', label: 'Dataset (pixel) ID', pattern: /^\d{10,20}$/, hint: 'Events Manager > Datasets' },
+      TEST_CODE_FIELD('Events Manager > your dataset > Test events: the TEST… code'),
+      // Not a secret: Meta reads it from the home page to confirm the domain is
+      // yours (needed before a domain's events can be prioritised or its links
+      // edited in ads). Served as <meta name="facebook-domain-verification">.
+      { key: 'domainVerification', label: 'Domain verification code', pattern: /^[a-z0-9]{20,64}$/i, optional: true,
+        hint: 'Business settings > Brand safety > Domains > Add > "Add a meta-tag to your HTML source code": paste only the content value. Then press Verify there.' }],
+    secretLabel: 'Conversions API access token',
+    // generate_lead: a quote request (the customer submitted their details) is a
+    // Lead; a WhatsApp chat tap is a Contact (Meta standard events).
+    // search / sign_up / find_location: Meta's Search, CompleteRegistration and
+    // FindLocation. AddToWishlist and Schedule are not sent: the shop has no
+    // wishlist and takes no appointments, and an event is never invented.
+    events: { view_item: 'ViewContent', add_to_cart: 'AddToCart', begin_checkout: 'InitiateCheckout', add_payment_info: 'AddPaymentInfo', generate_lead: 'Lead',
+      search: 'Search', sign_up: 'CompleteRegistration', find_location: 'FindLocation',
+      // Every storefront page: the event Meta's "all website visitors" and page-address audiences are built from.
+      page_seen: 'PageView', purchase: 'Purchase' },
+    build(e, cfg, token) {
+      const mapped = this.events[e.event_name as AdEventName]; if (!mapped) return null;
+      const name = e.event_name === 'generate_lead' ? (leadMethod(e) === 'quote_request' ? 'Lead' : 'Contact') : mapped;
+      if (inTest(cfg) && !cfg.testEventCode) return null;
+      const user_data = metaUserData(e);
+      // Meta needs something to match the event to a person. An IP address and
+      // a user agent alone are not that: an event with nothing else is not sent.
+      if (!metaMatchable(user_data)) return null;
+      // Meta's contract for a website event (Conversions API parameters): the
+      // page it happened on and the browser's user agent are REQUIRED. An event
+      // without both is refused whole, so it is not sent to be refused.
+      if (!metaWebsiteEventComplete(e, user_data)) return null;
+      const custom_data = metaCustomData(e, name);
+      return {
+        // The token travels in the Authorization header, never in the URL (proxy and access logs keep URLs).
+        url: `https://graph.facebook.com/${META_GRAPH_VERSION}/${cfg.datasetId}/events`,
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        body: { ...(inTest(cfg) ? { test_event_code: cfg.testEventCode } : {}), data: [{
+          event_name: name, event_time: e.event_time, event_id: e.event_id, action_source: 'website',
+          // Required by Meta for a website event.
+          event_source_url: e.page_location,
+          user_data,
+          ...(custom_data ? { custom_data } : {}),
+          // Stated, not left to a default: no Limited Data Use restriction applies to these events.
+          data_processing_options: [],
+        }] },
+      };
+    },
+    skipReason(e, cfg) {
+      if (inTest(cfg) && !cfg.testEventCode) return 'NO_TEST_CODE';
+      const user_data = metaUserData(e);
+      if (metaMatchable(user_data) && !metaWebsiteEventComplete(e, user_data)) return 'NO_BROWSER';
+      return 'NO_IDENTIFIER';
+    },
+    errorSummary: metaErrorSummary,
+  },
+  {
+    key: 'tiktok', name: 'TikTok', testable: true,
+    fields: [{ key: 'pixelCode', label: 'Pixel code', pattern: /^[A-Z0-9]{10,30}$/, hint: 'TikTok Events Manager > Web events' },
+      TEST_CODE_FIELD('TikTok Events Manager > your pixel > Test events: the test event code'),
+      // TikTok's Events API does not list the Uganda shilling. With a rate, amounts
+      // go as US dollars; without one, events go with no amount.
+      { key: 'ugxPerUsd', label: 'Shillings per US dollar (for sale values)', pattern: /^(\d{3,6})?$/, optional: true,
+        hint: 'TikTok does not accept amounts in Uganda shillings. Enter the rate you want sales reported at, for example 3700: event values and the catalogue feed prices are then stated in US dollars (set the TikTok catalogue currency to USD). Left empty, events are sent without an amount and the feed stays in shillings, which TikTok will not accept.' }],
+    secretLabel: 'Events API access token',
+    // Names from TikTok's "Supported events" list for web (read 2026-10-01). Purchase
+    // and Lead are its current names for what were CompletePayment and SubmitForm.
+    // A WhatsApp tap is a Contact, a quote request a Lead. There is no page-view
+    // event in that list, so page_seen is not sent.
+    events: { view_item: 'ViewContent', add_to_cart: 'AddToCart', begin_checkout: 'InitiateCheckout', add_payment_info: 'AddPaymentInfo', generate_lead: 'Contact',
+      search: 'Search', sign_up: 'CompleteRegistration', find_location: 'FindLocation', purchase: 'Purchase' },
+    build(e, cfg, token) {
+      const mapped = this.events[e.event_name as AdEventName]; if (!mapped) return null;
+      const name = e.event_name === 'generate_lead' && leadMethod(e) === 'quote_request' ? 'Lead' : mapped;
+      if (inTest(cfg) && !cfg.testEventCode) return null;
+      const ud = u(e);
+      // TikTok matches on a hashed email or phone, its own click id, or the
+      // hashed visitor id; an IP address and a browser alone are not a person.
+      if (!ud.hashed_email && !ud.hashed_phone_plus && !ud.ttclid && !extId(e)) return null;
+      // `page.url` is required for a web event.
+      if (!e.page_location) return null;
+      const user = Object.fromEntries(Object.entries({
+        email: ud.hashed_email, phone: ud.hashed_phone_plus, external_id: extId(e), ttclid: ud.ttclid, ip: ud.ip_address, user_agent: ud.user_agent,
+      }).filter(([, v]) => typeof v === 'string' && v.length > 0));
+      const properties = tiktokProperties(e, name, cfg);
+      return {
+        url: 'https://business-api.tiktok.com/open_api/v1.3/event/track/',
+        headers: { 'content-type': 'application/json', 'Access-Token': token },
+        body: { event_source: 'web', event_source_id: cfg.pixelCode, ...(inTest(cfg) ? { test_event_code: cfg.testEventCode } : {}), data: [{
+          event: name, event_time: e.event_time, event_id: e.event_id, user,
+          page: { url: e.page_location, ...(e.page_referrer ? { referrer: e.page_referrer } : {}) },
+          ...(properties ? { properties } : {}),
+        }] },
+      };
+    },
+    skipReason(e, cfg) {
+      if (inTest(cfg) && !cfg.testEventCode) return 'NO_TEST_CODE';
+      const ud = u(e);
+      return (ud.hashed_email || ud.hashed_phone_plus || ud.ttclid || extId(e)) && !e.page_location ? 'NO_BROWSER' : 'NO_IDENTIFIER';
+    },
+    // `code: 0` is the only success, whatever the HTTP status: read on both delivery paths.
+    replyError: (j) => tiktokErrorSummary(200, JSON.stringify(j ?? null))?.message ?? null,
+    errorSummary: tiktokErrorSummary,
+  },
+  {
+    key: 'pinterest', name: 'Pinterest', testable: true,
+    fields: [{ key: 'adAccountId', label: 'Ad account ID', pattern: /^\d{6,20}$/, hint: 'Pinterest Ads > account settings' }],
+    secretLabel: 'Conversions access token',
+    events: { view_item: 'page_visit', add_to_cart: 'add_to_cart', generate_lead: 'lead', purchase: 'checkout' },
+    build(e, cfg, token) {
+      const name = this.events[e.event_name as AdEventName]; if (!name) return null;
+      const ud = u(e);
+      return {
+        // test=true: Pinterest validates the events and does not record them.
+        url: `https://api.pinterest.com/v5/ad_accounts/${cfg.adAccountId}/events${inTest(cfg) ? '?test=true' : ''}`,
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        body: { data: [{
+          event_name: name, action_source: 'web', event_time: e.event_time, event_id: e.event_id, event_source_url: e.page_location,
+          user_data: { em: ud.hashed_email ? [ud.hashed_email] : undefined, ph: ud.hashed_phone ? [ud.hashed_phone] : undefined,
+            external_id: extId(e) ? [extId(e)] : undefined, client_ip_address: ud.ip_address, client_user_agent: ud.user_agent },
+          custom_data: { currency: e.ecommerce?.currency ?? 'UGX', value: String(value(e)), content_ids: ids(e), num_items: items(e).reduce((s, i) => s + (i.quantity ?? 1), 0),
+            order_id: e.ecommerce?.transaction_id, contents: items(e).map((i) => ({ id: i.item_id, item_price: i.price != null ? String(i.price) : undefined, quantity: i.quantity ?? 1 })) },
+        }] },
+      };
+    },
+  },
+  {
+    key: 'snapchat', name: 'Snapchat',
+    fields: [{ key: 'pixelId', label: 'Pixel ID', pattern: /^[0-9a-f-]{36}$/i, hint: 'Snapchat Ads Manager > Events Manager' }],
+    secretLabel: 'Conversions API token',
+    events: { view_item: 'VIEW_CONTENT', add_to_cart: 'ADD_CART', begin_checkout: 'START_CHECKOUT', add_payment_info: 'ADD_BILLING', purchase: 'PURCHASE' },
+    build(e, cfg, token) {
+      const name = this.events[e.event_name as AdEventName]; if (!name) return null;
+      const ud = u(e);
+      return {
+        url: `https://tr.snapchat.com/v3/${cfg.pixelId}/events?access_token=${encodeURIComponent(token)}`,
+        headers: { 'content-type': 'application/json' },
+        body: { data: [{
+          event_name: name, event_time: e.event_time, event_id: e.event_id, action_source: 'WEB', event_source_url: e.page_location,
+          user_data: { em: ud.hashed_email ? [ud.hashed_email] : undefined, ph: ud.hashed_phone ? [ud.hashed_phone] : undefined,
+            external_id: extId(e) ? [extId(e)] : undefined, client_ip_address: ud.ip_address, client_user_agent: ud.user_agent,
+            sc_click_id: ud.sccid || undefined },
+          custom_data: { ...(value(e) > 0 && SNAP_CURRENCIES.has(e.ecommerce?.currency ?? 'UGX') ? { currency: e.ecommerce?.currency, value: value(e) } : {}), content_ids: ids(e), order_id: e.ecommerce?.transaction_id, num_items: items(e).length },
+        }] },
+      };
+    },
+  },
+  {
+    // LinkedIn Conversions API (streaming conversionEvents), rewritten
+    // 2026-10-06 against LinkedIn's own reference (learn.microsoft.com/linkedin/
+    // marketing/integrations/ads-reporting/conversions-api and -schema, docs
+    // dated 2026-09-16, version 202609):
+    //  - each conversion rule tracks ONE type, so each shop event that LinkedIn
+    //    should receive has its own rule ID; an event without one is not queued;
+    //  - a match needs at least one of SHA256_EMAIL, LINKEDIN_FIRST_PARTY_ADS_
+    //    TRACKING_UUID (the li_fat_id click id the shop already keeps for 30
+    //    days), PLAINTEXT_IP_ADDRESS (IPv4 only). Until today only the email was
+    //    sent, so a buyer who gave none was never reported;
+    //  - conversionValue is optional and never sent in UGX (the account bills in USD);
+    //  - userInfo is not sent: if present, LinkedIn requires first AND last name.
+    // Token: Campaign Manager > Measure > Signals manager > Direct API > Generate
+    // access token. It does not expire and needs no developer app.
+    key: 'linkedin', name: 'LinkedIn (business buyers)',
+    fields: [
+      { key: 'conversionId', label: 'Purchase conversion rule ID', pattern: /^\d{4,20}$/, hint: 'Campaign Manager > Measure > Conversion tracking > Create conversion > Conversions API, category Purchase, value "Use a dynamic value", source Direct API. The ID is shown under the rule name in Measure > Signals manager > Direct API' },
+      { key: 'leadConversionId', label: 'Quote request / lead rule ID', pattern: /^\d{4,20}$/, optional: true, hint: 'A second rule made the same way, category Lead, value "No value", source Direct API. It receives quote requests and WhatsApp taps. Leave empty to send purchases only' },
+      { key: 'checkoutConversionId', label: 'Checkout started rule ID', pattern: /^\d{4,20}$/, optional: true, hint: 'A rule of type Start checkout. Leave empty to skip' },
+      { key: 'addToCartConversionId', label: 'Add to cart rule ID', pattern: /^\d{4,20}$/, optional: true, hint: 'A rule of type Add to cart. Leave empty to skip' },
+    ],
+    secretLabel: 'Conversions API access token',
+    events: { purchase: 'PURCHASE', generate_lead: 'REQUEST_QUOTE', begin_checkout: 'START_CHECKOUT', add_to_cart: 'ADD_TO_CART' },
+    accepts(eventName, cfg) { return !!cfg[LINKEDIN_RULE_FIELD[eventName] ?? '']; },
+    skipReason(e, cfg) { return cfg[LINKEDIN_RULE_FIELD[e.event_name] ?? ''] ? 'NO_IDENTIFIER' : 'NO_EVENT_ID'; },
+    build(e, cfg, token) {
+      const rule = cfg[LINKEDIN_RULE_FIELD[e.event_name] ?? ''];
+      if (!rule) return null;
+      const ud = u(e);
+      const userIds: Array<{ idType: string; idValue: string }> = [];
+      if (ud.hashed_email) userIds.push({ idType: 'SHA256_EMAIL', idValue: ud.hashed_email });
+      if (ud.li_fat_id) userIds.push({ idType: 'LINKEDIN_FIRST_PARTY_ADS_TRACKING_UUID', idValue: ud.li_fat_id });
+      if (ud.ip_address && /^(\d{1,3}\.){3}\d{1,3}$/.test(ud.ip_address)) userIds.push({ idType: 'PLAINTEXT_IP_ADDRESS', idValue: ud.ip_address });
+      if (userIds.length === 0) return null;
+      const amount = value(e);
+      const currency = e.ecommerce?.currency ?? 'UGX';
+      return {
+        url: 'https://api.linkedin.com/rest/conversionEvents',
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}`, 'LinkedIn-Version': linkedInVersion(), 'X-Restli-Protocol-Version': '2.0.0' },
+        body: { conversion: `urn:lla:llaPartnerConversion:${rule}`, conversionHappenedAt: e.event_time * 1000, eventId: e.event_id,
+          // The ad account bills in US dollars and the shop sells in shillings.
+          // No shilling value is sent: the event still counts, and LinkedIn is
+          // not left to convert UGX at a rate nobody chose.
+          ...(amount > 0 && currency !== 'UGX' ? { conversionValue: { currencyCode: currency, amount: String(amount) } } : {}),
+          user: { userIds } },
+      };
+    },
+  },
+  {
+    key: 'google_ads', name: 'Google Ads (Search, Shopping, YouTube, PMax)', testable: true,
+    fields: [
+      { key: 'customerId', label: 'Customer ID (10 digits, no dashes)', pattern: /^\d{10}$/, hint: 'Google Ads, top right (916-133-9749 is entered as 9161339749)' },
+      { key: 'conversionActionId', label: 'Purchase conversion action ID', pattern: /^\d{4,20}$/, hint: 'An IMPORT action: Goals > Conversions > New conversion action > Import > CRM, files or other data sources > Track conversions from clicks (ctId in its URL). Category Purchase, value "Use different values for each conversion", count "One". A website-tag action is refused.' },
+      { key: 'leadConversionActionId', label: 'Lead conversion action ID (optional)', pattern: /^\d{4,20}$/, optional: true, hint: 'A second IMPORT "from clicks" action (category Submit lead form or Contact, value "Don\'t use a value") for quote requests and WhatsApp taps. Leave empty to send purchases only.' },
+      { key: 'loginCustomerId', label: 'Manager account ID (if used)', pattern: /^(\d{10})?$/, hint: 'Only when access goes through a manager (MCC) account', optional: true },
+      { key: 'merchantCenterId', label: 'Merchant Center ID (optional)', pattern: /^(\d{6,15})?$/, optional: true, hint: 'With it, each purchase names its products as in the Merchant Center feed (cart data for Shopping and Performance Max).' },
+      { key: 'remarketing', label: 'Retargeting from site visits (on / off)', pattern: /^(on|off)?$/, optional: true, hint: 'Blank or "on": while this card is Live, the site lets Google use visits for advertising (Consent Mode ad signals), so GA4 audiences shared with this account (product viewers, cart and checkout abandoners) can be retargeted, with dynamic ads from the Merchant Center feed. "off": never. A shopper who turned advertising off is always left out.' },
+      { key: 'ugxPerUsd', label: 'Shillings per US dollar (for ROAS in reports)', pattern: /^(\d{3,6})?$/, optional: true, hint: 'The account bills in US dollars and sales are in shillings. With a rate here (e.g. 3700), the Google Ads report states ROAS as sales ÷ (spend × rate) and says which rate it used. Never sent to Google.' },
+      { key: 'apiVersion', label: 'Google Ads API version (spend import only)', pattern: /^(v\d{2})?$/, optional: true, hint: 'Only for importing spend through the Google Ads API (e.g. v22). Conversions use the Data Manager API and need no version.' },
+    ],
+    secretLabel: 'Google credentials (JSON)',
+    checkSecret(secret) { try { parseGoogleCredentials(secret); return null; } catch (err) { return String((err as Error).message); } },
+    secretHint: 'Paste the service-account key file (Google Cloud > IAM & Admin > Service accounts > Keys > Add key > JSON) and add that service account\'s email as a user in Google Ads (Admin > Access and security, Standard access). Or {"clientId","clientSecret","refreshToken"} with the Data Manager scope. Add "developerToken" only to import spend.',
+    events: { purchase: 'Data Manager events:ingest (purchase action)', generate_lead: 'Data Manager events:ingest (lead action)' },
+    // A lead goes only to its own action, and only when one is saved.
+    accepts(eventName, cfg) { return eventName === 'purchase' || (eventName === 'generate_lead' && !!cfg.leadConversionActionId); },
+    async authorize(_req, _cfg, secret) { return googleDataManagerHeaders(secret); },
+    // Data Manager is fast-fail: a bad field rejects the whole request with an error body (sent through call()).
+    replyError: (j) => { const e = (j as { error?: { message?: string } })?.error; return e?.message ? String(e.message).slice(0, 300) : null; },
+    build(e, cfg) {
+      const isLead = e.event_name === 'generate_lead';
+      if (e.event_name !== 'purchase' && !(isLead && cfg.leadConversionActionId)) return null;
+      const ud = u(e);
+      const event = googleAdsEvent({
+        transactionId: isLead ? e.event_id : String(e.ecommerce?.transaction_id ?? e.event_id),
+        eventTimeSec: e.event_time,
+        source: 'WEB',
+        ...(isLead ? {} : { valueUgx: value(e), currency: e.ecommerce?.currency ?? 'UGX' }),
+        gclid: ud.gclid, gbraid: ud.gbraid, wbraid: ud.wbraid,
+        hashedEmail: ud.hashed_email_google ?? ud.hashed_email, hashedPhonePlus: ud.hashed_phone_plus,
+        ipAddress: ud.ip_address, userAgent: ud.user_agent,
+        customerType: (ud as { customer_type?: 'NEW' | 'RETURNING' }).customer_type,
+        items: isLead ? [] : items(e).map((i) => ({ sku: (i as { item_sku?: string }).item_sku, quantity: i.quantity ?? 1, unitPrice: i.price })),
+        merchantCenterId: cfg.merchantCenterId,
+      });
+      if (!event) return null;
+      return googleAdsIngestRequest(cfg, isLead ? cfg.leadConversionActionId : cfg.conversionActionId, [event], inTest(cfg));
+    },
+  },
+  {
+    key: 'microsoft_ads', name: 'Microsoft Advertising (Bing)',
+    fields: [{ key: 'tagId', label: 'UET tag ID', pattern: /^\d{6,12}$/, hint: 'Microsoft Advertising > Tools > UET tag. Create a conversion goal of type "Custom events" with Action equals purchase (and one with Action equals generate_lead for quote requests), set to "Don\'t assign a value", on this tag' }],
+    secretLabel: 'UET Conversions API token',
+    secretHint: 'Edit the UET tag > Save and next > Set up tagging: Use Conversions API > Copy token. Microsoft enables the Conversions API per account (pilot): if that option is missing, ask Microsoft Advertising support to enable it.',
+    events: { view_item: 'view_item', add_to_cart: 'add_to_cart', begin_checkout: 'begin_checkout', generate_lead: 'generate_lead', purchase: 'purchase' },
+    build(e, cfg, token) {
+      const name = this.events[e.event_name as AdEventName]; if (!name) return null;
+      const ud = u(e);
+      return {
+        url: `https://capi.uet.microsoft.com/v1/${cfg.tagId}/events`,
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        body: { data: [{
+          eventType: 'custom', eventName: name, eventId: e.event_id, eventTime: e.event_time, eventSourceUrl: e.page_location,
+          userData: { em: ud.hashed_email_microsoft ?? ud.hashed_email, ph: ud.hashed_phone_plus, clientIpAddress: ud.ip_address, clientUserAgent: ud.user_agent, msclkid: ud.msclkid, anonymousId: extId(e) },
+          // An unaccepted currency is dropped as a warning while the number is
+          // kept, so a shilling amount would be read in the account's currency
+          // (UGX 145,000 as 145,000 dollars). No shilling value is sent.
+          customData: { ...(value(e) > 0 && (e.ecommerce?.currency ?? 'UGX') !== 'UGX' ? { value: value(e), currency: e.ecommerce?.currency } : {}),
+            transactionId: e.ecommerce?.transaction_id, itemIds: ids(e), pageType: MS_PAGE_TYPE[e.event_name] ?? 'other' },
+        }] },
+      };
+    },
+  },
+  {
+    key: 'x', name: 'X (Twitter) Ads',
+    fields: [
+      { key: 'pixelId', label: 'Pixel ID', pattern: /^[a-z0-9]{4,10}$/, hint: 'X Ads > Events Manager' },
+      // Events Manager shows an event as tw-<pixel>-<event>; the Conversion API
+      // documentation uses the short id on its own. Both are accepted.
+      { key: 'purchaseEventId', label: 'Purchase event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})$/, hint: 'The purchase event you created in Events Manager with "Conversion API" as the install method, for example tw-o8z6j-o8z6k' },
+      { key: 'sendScope', label: 'What to send (x_clicks or all)', pattern: /^(x_clicks|all)?$/, optional: true,
+        hint: 'x_clicks (the default when empty): only visitors who arrived on an X ad click in the last 30 days — their paid orders, and any optimisation event below that has an event ID. all: every paid order and selected event, matched by hashed email or phone as well. X\'s Conversion API is part of the Ads API, which X does not bill per call; "all" gives X more to match on but shares hashed contact details for customers who never clicked an X ad.' },
+      // One Events Manager event per optimisation signal. Each is optional: an
+      // event with no ID here is simply never sent to X. The purchase above is
+      // the only one X treats as a standard "Purchase"; checkout and content
+      // view have no standard type in Events Manager and are created as Custom.
+      { key: 'addToCartEventId', label: 'Add-to-cart event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})?$/, optional: true, hint: 'Events Manager event of type "Add to cart"' },
+      { key: 'checkoutEventId', label: 'Checkout-started event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})?$/, optional: true, hint: 'Events Manager event of type "Custom" named for checkout' },
+      { key: 'paymentInfoEventId', label: 'Payment-info event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})?$/, optional: true, hint: 'Events Manager event of type "Added payment info"' },
+      { key: 'leadEventId', label: 'Lead event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})?$/, optional: true, hint: 'Events Manager event of type "Lead"' },
+      { key: 'contentViewEventId', label: 'Product-view event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})?$/, optional: true, hint: 'Events Manager event of type "Custom" named for content view' },
+    ],
+    secretLabel: 'API keys (JSON)',
+    secretHint: '{"consumerKey":"…","consumerSecret":"…","accessToken":"…","accessTokenSecret":"…"}',
+    // Every early signal is mapped so it CAN be queued; the builder sends one
+    // only when its event ID is configured, and in the default scope only when
+    // the visitor carries an X click id. The value names X's event type.
+    events: { view_item: 'Content view (custom)', add_to_cart: 'Add to cart', begin_checkout: 'Checkout initiated (custom)', add_payment_info: 'Added payment info', generate_lead: 'Lead', purchase: 'Purchase' },
+    async authorize(req, _cfg, secret) {
+      const c = parseJsonSecret(secret, ['consumerKey', 'consumerSecret', 'accessToken', 'accessTokenSecret']);
+      return { Authorization: oauth1Header(req.method ?? 'POST', req.url, c) };
+    },
+    accepts: (eventName, cfg) => !!cfg[X_EVENT_FIELD[eventName] ?? ''],
+    // Mirrors build()'s three ways of returning null, in the same order.
+    skipReason(e, cfg) {
+      if (!cfg[X_EVENT_FIELD[e.event_name] ?? '']) return 'NO_EVENT_ID';
+      if (xSendScope(cfg) === 'x_clicks' && !u(e).twclid) return 'NO_X_CLICK';
+      return 'NO_IDENTIFIER';
+    },
+    build(e, cfg) {
+      // Two scopes, chosen by the owner (xSendScope). The scope decides WHOSE
+      // events leave the shop; the event IDs and the optimisation-event
+      // selection decide WHICH.
+      //  - x_clicks (default): only a visitor who arrived on an X click
+      //    (twclid, kept 30 days from the click). No hashed contact of a
+      //    customer who never touched an X ad leaves the shop.
+      //  - all: every event X could match by click id, hashed email or hashed
+      //    phone.
+      // Until 2026-10-01 the default scope sent purchases only (PR #19); that
+      // rested on the belief that X billed each call, corrected in ce9178f3.
+      // A basket add can still be fabricated with a made-up twclid, as it can
+      // for every other network's click id; X is told about it, as they are.
+      const scope = xSendScope(cfg);
+      const eventId = cfg[X_EVENT_FIELD[e.event_name] ?? ''] ?? '';
+      if (!eventId) return null;
+      const ud = u(e);
+      if (scope === 'x_clicks' && !ud.twclid) return null;
+      const identifiers: Array<Record<string, string>> = [];
+      if (ud.twclid) identifiers.push({ twclid: ud.twclid });
+      if (ud.hashed_email) identifiers.push({ hashed_email: ud.hashed_email });
+      if (ud.hashed_phone_plus) identifiers.push({ hashed_phone_number: ud.hashed_phone_plus });
+      // X matches on a click id, an email or a phone. Without one there is nothing to send.
+      if (identifiers.length === 0) return null;
+      // IP address and user agent are secondary: X accepts them only as a pair,
+      // and only alongside one of the identifiers above.
+      if (ud.ip_address && ud.user_agent) identifiers.push({ ip_address: ud.ip_address, user_agent: ud.user_agent });
+      const contents = items(e).filter((i) => i.item_id).map((i) => ({
+        content_id: String(i.item_id), ...(i.item_name ? { content_name: String(i.item_name) } : {}),
+        ...(typeof i.price === 'number' ? { content_price: i.price } : {}), num_items: i.quantity ?? 1,
+      }));
+      const count = items(e).reduce((s, i) => s + (i.quantity ?? 1), 0);
+      return {
+        url: `https://ads-api.x.com/12/measurement/conversions/${cfg.pixelId}`,
+        headers: { 'content-type': 'application/json' },
+        body: { conversions: [{ conversion_time: new Date(e.event_time * 1000).toISOString(), event_id: eventId, identifiers,
+          conversion_id: e.event_id,
+          // `value` is a string in X's API ("20.00"); a JSON number is refused.
+          // X documents neither value nor number_items as required, and a lead
+          // or a product view has no amount: those fields are sent only when
+          // there is something to send, never as "0".
+          ...(value(e) > 0 ? { value: String(value(e)), price_currency: e.ecommerce?.currency ?? 'UGX' } : {}),
+          ...(count > 0 ? { number_items: count } : {}),
+          ...(contents.length ? { contents } : {}) }] },
+      };
+    },
+  },
+  postback('opera', 'Opera Ads (postback)', 'Opera Ads account manager / campaign tracking settings'),
+  postback('transsion', 'Transsion Eagllwin (Tecno, Infinix, itel) (postback)', 'Eagllwin campaign tracking settings'),
+  postback('boomplay', 'Boomplay Ads (postback)', 'Boomplay Ads campaign tracking settings'),
+  postback('network', 'Any other ad network (postback)', 'The network\'s server-to-server postback settings'),
+  {
+    // Spotify Conversions API (direct), 2026-10-06. Contract read from Spotify's
+    // own repository spotify/ads-agentic-tools (skills/measurement-setup/
+    // references/implementation-guide.md and measurement-debug/references/
+    // troubleshooting.md, commit 65327ac7) and its help page "Spotify
+    // Conversions API". It replaced the "unavailable" entry, written when the
+    // API was not public.
+    //  - POST capi.spotify.com/capi-direct/events/, Bearer = the long-lived CAPI
+    //    token from Ads Manager > Events > Connect data source (NOT the Ads API
+    //    OAuth token), body { conversion_events: { capi_connection_id, events } }.
+    //  - event names are Spotify's CAPI spellings (CHECK_OUT, not CHECKOUT).
+    //  - at least one of IP, device ID, hashed email, hashed phone. Email: trim +
+    //    lower-case + SHA-256, the same normalisation as Meta's hashed_email.
+    //  - Two things Spotify's own guide leaves open are NOT sent: the phone
+    //    format before hashing (only "trim and lower-case" is stated, no country
+    //    code rule), and whether a device ID is raw or hashed (its example and its
+    //    field note disagree). A wrong hash matches nobody and looks like data.
+    //  - no documented test channel, so no Test mode; event_details.content_category
+    //    must be a Google taxonomy value or the call is a 400, so it is omitted.
+    key: 'spotify', name: 'Spotify Ads',
+    fields: [{ key: 'connectionId', label: 'CAPI connection ID', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      hint: 'Spotify Ads Manager > Events > Connect data source > Conversions API' }],
+    secretLabel: 'CAPI access token',
+    events: { view_item: 'PRODUCT', add_to_cart: 'ADD_TO_CART', begin_checkout: 'CHECK_OUT', generate_lead: 'LEAD', purchase: 'PURCHASE' },
+    build(e, cfg, token) {
+      const name = this.events[e.event_name as AdEventName]; if (!name) return null;
+      const ud = u(e);
+      const userData: Record<string, unknown> = {};
+      if (ud.ip_address) userData.ip_address = ud.ip_address;
+      if (ud.hashed_email) userData.hashed_emails = [ud.hashed_email];
+      // Spotify matches on these alone: with neither, there is nothing to send.
+      if (Object.keys(userData).length === 0) return null;
+      const amount = value(e);
+      const details: Record<string, unknown> = {};
+      // An amount only with its currency, and only when there is one: a lead is not a sale of 0.
+      if (amount > 0) { details.currency = e.ecommerce?.currency ?? 'UGX'; details.amount = amount; }
+      const first = items(e).find((i) => i.item_name);
+      if (first?.item_name) details.content_name = String(first.item_name).slice(0, 200);
+      const url = typeof e.page_location === 'string' && /^https?:\/\//.test(e.page_location) ? e.page_location : undefined;
+      return {
+        url: 'https://capi.spotify.com/capi-direct/events/',
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        body: { conversion_events: { capi_connection_id: cfg.connectionId, events: [{
+          event_name: name,
+          // The shop's own event id: the same id a browser pixel would send, so Spotify can deduplicate.
+          event_id: e.event_id,
+          event_time: new Date(e.event_time * 1000).toISOString(),
+          user_data: userData,
+          ...(Object.keys(details).length ? { event_details: details } : {}),
+          ...(url ? { event_source_url: url } : {}),
+          action_source: 'WEB',
+          opt_out_targeting: false,
+        }] } },
+      };
+    },
+  },
+  // Reddit (2026-10-06): its Conversions API v3 reference lives on ads-api.reddit.com,
+  // which could not be read first-hand, and the third-party clients that call it
+  // disagree on what decides a match (value in cents or not, IP hashed or raw,
+  // email clean-up before hashing). Listed honestly instead of guessed.
+  { key: 'reddit', name: 'Reddit Ads', fields: [], secretLabel: '', events: {},
+    unavailable: 'Not built yet. Reddit\'s Conversions API reference (v3) is published only on its Ads API site, which must be read first-hand before anything is sent. Once you have a Reddit Ads account, ask for Reddit to be added from that reference.' },
+  { key: 'sa360', name: 'Search Ads 360 / Campaign Manager 360', fields: [], secretLabel: '', events: {},
+    unavailable: 'Enterprise products under a Google/agency contract; once contracted they read conversions from GA4 (already live) or Floodlight.' },
+];
+
+/** Which LinkedIn config field holds the conversion rule for each shop event (one rule per type). */
+export const LINKEDIN_RULE_FIELD: Record<string, string> = {
+  purchase: 'conversionId', generate_lead: 'leadConversionId', begin_checkout: 'checkoutConversionId', add_to_cart: 'addToCartConversionId',
+};
+
+/** Which X config field holds the Events Manager ID for each shop event. */
+export const X_EVENT_FIELD: Record<string, string> = {
+  purchase: 'purchaseEventId', add_to_cart: 'addToCartEventId', begin_checkout: 'checkoutEventId',
+  add_payment_info: 'paymentInfoEventId', generate_lead: 'leadEventId', view_item: 'contentViewEventId',
+};
+
+/** The owner's choice of what X receives; anything but an explicit "all" is the narrow default. */
+export const xSendScope = (cfg: Record<string, string> | null | undefined): 'x_clicks' | 'all' => (cfg?.sendScope === 'all' ? 'all' : 'x_clicks');
+
+export const adPlatform = (key: string) => AD_PLATFORMS.find((p) => p.key === key) ?? null;
+export const buildAdRequest = (key: string, e: CanonicalTelemetryEvent, cfg: Record<string, string>, secret: string): AdRequest | null => {
+  const p = adPlatform(key);
+  return p?.build ? p.build.call(p, e, cfg, secret) : null;
+};
+/** Whether the platform, as configured, can receive this event at all. */
+export const adPlatformAccepts = (key: string, eventName: string, cfg: Record<string, string>): boolean => {
+  const p = adPlatform(key);
+  return !!p?.events[eventName as AdEventName] && (p.accepts ? p.accepts(eventName, cfg) : true);
+};
+/** The platform's own account of a refusal, when it gives one (see AdPlatformDef.errorSummary). */
+export const adErrorSummary = (key: string, status: number, body: string) => adPlatform(key)?.errorSummary?.(status, body) ?? null;
+/** The stable code for "built nothing", to record on the row. */
+export const adSkipReason = (key: string, e: CanonicalTelemetryEvent, cfg: Record<string, string>): AdSkipReason =>
+  adPlatform(key)?.skipReason?.(e, cfg) ?? 'NO_IDENTIFIER';

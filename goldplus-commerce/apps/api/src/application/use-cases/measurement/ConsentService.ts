@@ -131,32 +131,44 @@ export class ConsentService {
   }
 
   /**
-   * Get the current consent state for an identity.
-   * Falls back to "all denied" if no record exists (privacy-safe default).
+   * Default consent when nothing explicit is stored (owner decision 2026-08-07).
+   *
+   * First-party ON-SITE personalisation is ALWAYS ON: `personalization` is granted
+   * by default. `analytics` and `advertising` stay DENIED by default because EVERY
+   * measurement destination is third-party (ga4/gtm_web = Google, meta/tiktok/
+   * linkedin/pinterest = ad platforms — see DESTINATION_PURPOSE_MAP), and the
+   * owner's rule is that data is never shared with a third party.
+   *
+   * NOTE: this default is NOT what the ad-conversion path does. Delivery
+   * follows D-002 (no stored refusal = allowed); see
+   * advertisingConversionsSent(), which is what the preference centre shows.
+   */
+  private defaultConsentState(): ConsentState {
+    return ConsentStateSchema.parse({
+      essential: true,
+      analytics: false,       // gates GA4 + GTM (third-party) — stays off
+      advertising: false,     // gates Meta/TikTok/etc. (third-party) — stays off
+      personalization: true,  // on-site only, in no destination map — always on
+    });
+  }
+
+  /**
+   * Get the current consent state for an identity. When nothing explicit is
+   * stored (the common case — there is no storefront consent banner), first-party
+   * personalisation is granted and third-party measurement stays denied. An
+   * explicit stored grant/denial is still honoured verbatim.
    */
   async getCurrentState(fpClientId?: string, userId?: string): Promise<ConsentState> {
     try {
       const { row } = await this.consentRepo.getCurrentState(fpClientId, userId);
 
-      if (!row) {
-        // No consent record — default to all denied (privacy-safe)
-        return ConsentStateSchema.parse({
-          essential: true,
-          analytics: false,
-          advertising: false,
-          personalization: false,
-        });
-      }
+      // No consent record → owner-default (first-party on, third-party off).
+      if (!row) return this.defaultConsentState();
 
-      // Check expiry
+      // Expired → fall back to the same default, not all-denied.
       if (row.expiresAt && row.expiresAt < new Date()) {
-        this.logger.info({ fpClientId, userId }, '[ConsentService] Consent expired — treating as denied');
-        return ConsentStateSchema.parse({
-          essential: true,
-          analytics: false,
-          advertising: false,
-          personalization: false,
-        });
+        this.logger.info({ fpClientId, userId }, '[ConsentService] Consent expired — applying owner default');
+        return this.defaultConsentState();
       }
 
       return ConsentStateSchema.parse({
@@ -166,10 +178,36 @@ export class ConsentService {
         personalization: row.personalizationGranted,
       });
     } catch (err) {
-      this.logger.error({ err, fpClientId, userId }, '[ConsentService] Failed to read consent state — defaulting to denied');
-      return ConsentStateSchema.parse({
-        essential: true, analytics: false, advertising: false, personalization: false,
-      });
+      this.logger.error({ err, fpClientId, userId }, '[ConsentService] Failed to read consent state — applying owner default');
+      return this.defaultConsentState();
+    }
+  }
+
+  /**
+   * The stored, unexpired choice for an identity, or null when the person
+   * never chose (the owner default then applies). Used where "chose to refuse"
+   * must be told apart from "never asked".
+   */
+  /**
+   * What the ad-conversion gate (D-002, infrastructure/measurement/
+   * AdvertisingConsentGate) actually does for this identity: conversions are
+   * sent unless an explicit advertising refusal is stored, and a refusal never
+   * lapses. The preference centre shows THIS: it used to show the owner
+   * default (off) to customers whose purchases were being sent. Throws on a
+   * read failure; the caller decides what to show.
+   */
+  async advertisingConversionsSent(fpClientId?: string, userId?: string): Promise<boolean> {
+    const { row } = await this.consentRepo.getCurrentState(fpClientId, userId);
+    return !(row && row.advertisingGranted === false && row.lastGrantType !== 'unknown');
+  }
+
+  async getExplicitState(fpClientId?: string, userId?: string): Promise<ConsentState | null> {
+    try {
+      const { row } = await this.consentRepo.getCurrentState(fpClientId, userId);
+      if (!row || (row.expiresAt && row.expiresAt < new Date())) return null;
+      return ConsentStateSchema.parse({ essential: true, analytics: row.analyticsGranted, advertising: row.advertisingGranted, personalization: row.personalizationGranted });
+    } catch {
+      return null;
     }
   }
 

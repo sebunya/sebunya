@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { adminEmailDeliveryState } from '../../../../domain/notifications/AdminOrderEmail';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { Registry } from '../../../../infrastructure/Registry';
@@ -71,6 +72,9 @@ routes.get('/', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) 
 
 routes.get('/order/:orderId/timeline', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) => {
   const orderId = c.req.param('orderId');
+  if (orderId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId)) {
+    return c.json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'No order has this id.' } }, 404);
+  }
   if (!orderId) {
     return c.json({
       success: false,
@@ -99,14 +103,15 @@ routes.get('/order/:orderId/timeline', requirePermissions([PERMISSIONS.NOTIFICAT
 
     return c.json(response);
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    // Database internals stay in the server log, never in the response.
+    console.error('[admin/notifications] timeline query failed:', err);
     return c.json({
       success: false,
       error: {
         code: 'TIMELINE_QUERY_FAILED',
-        message: errorMsg
+        message: 'The notification timeline could not be read.'
       }
-    }, 400);
+    }, 500);
   }
 });
 
@@ -114,14 +119,50 @@ routes.get('/health-check', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ])
   const registry = Registry.getInstance();
   const sms = await (registry.smsAdapter as any).getBalance();
   const email = await (registry.zeptoMailAdapter as any).getBalance();
+  const whatsapp = await registry.whatsappAdapter.getBalance();
 
   return c.json({
     success: true,
     data: {
       sms,
       email,
+      whatsapp,
     }
   });
+});
+
+// Channel status for the admin: Not configured / switched off / dry run / live,
+// derived from the real flags through the governance policy. Presence only —
+// no credential value is read into the response.
+routes.get('/channel-status', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) => {
+  const { customerChannelStatuses } = await import('../../../../infrastructure/notifications/channelStatus');
+  const data = customerChannelStatuses();
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
+// --- WhatsApp templates at Meta: our list beside Meta's approval status; submit the missing ones ---
+routes.get('/whatsapp-templates', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) => {
+  const data = await Registry.getInstance().whatsappTemplateCatalog.rows();
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+// Is each WhatsApp account linked to the app (Meta sends messages only for linked accounts)? Read with the saved token.
+routes.get('/whatsapp-connection', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) => {
+  const data = await Registry.getInstance().whatsappTemplateCatalog.connection();
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+routes.post('/whatsapp-connection/link', requirePermissions([PERMISSIONS.NOTIFICATIONS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const actorId = (c.get('user') as { id: string }).id;
+  const out = await registry.whatsappTemplateCatalog.linkAccounts();
+  await registry.createAuditLogUseCase.execute({ actorId, action: 'WHATSAPP_ACCOUNTS_LINKED', entity: 'whatsapp_connection', entityId: 'meta', previousState: null, newState: out }).catch(() => undefined);
+  return c.json({ success: true, data: out } satisfies ApiResponse<typeof out>);
+});
+routes.post('/whatsapp-templates/submit', requirePermissions([PERMISSIONS.NOTIFICATIONS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const actorId = (c.get('user') as { id: string }).id;
+  const out = await registry.whatsappTemplateCatalog.submitMissing();
+  await registry.createAuditLogUseCase.execute({ actorId, action: 'WHATSAPP_TEMPLATES_SUBMITTED', entity: 'whatsapp_templates', entityId: 'meta', previousState: null, newState: { submitted: out.submitted, failed: out.failed.map((f) => f.name) } }).catch(() => undefined);
+  return c.json({ success: true, data: out } satisfies ApiResponse<typeof out>);
 });
 
 // --- Transactional admin order email (outbox intents + manual replay) ---
@@ -129,14 +170,10 @@ routes.get('/health-check', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ])
 // delegates to ReplayAdminOrderEmailUseCase, which writes the outbox_event audit
 // entry via CreateAuditLogUseCase — a dedicated audit channel.
 
-function deliveryStateOf(row: { isProcessed: boolean; status: string; attemptCount: number; lastError?: string | null; dryRunOnly: boolean }): string {
-  if (!row.isProcessed) return row.attemptCount > 0 ? 'RETRYING' : 'PENDING';
-  if (!row.lastError) return 'SENT';
-  const e = row.lastError.toLowerCase();
-  if (e.includes('exhausted')) return 'DEAD_LETTER';
-  if (e.includes('not_configured') || e.includes('no channel')) return 'MISSING_CONFIG';
-  if (e.includes('disabled')) return row.dryRunOnly ? 'DELIVERY_DISABLED' : 'DELIVERY_DISABLED';
-  return 'RETRYING';
+// The state logic lives in the domain (adminEmailDeliveryState): the status
+// column first, so a dead-lettered email never reads as RETRYING.
+function deliveryStateOf(row: { isProcessed: boolean; status: string; attemptCount: number; lastError?: string | null; deadLetteredAt?: Date | string | null }): string {
+  return adminEmailDeliveryState(row);
 }
 
 routes.get('/admin-order-emails', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) => {
@@ -163,6 +200,84 @@ routes.get('/admin-order-emails', requirePermissions([PERMISSIONS.NOTIFICATIONS_
     })),
   };
   return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
+// ---- Wave 2E-3: template wording overrides ------------------------------
+// Draft -> publish -> revert, per template key, through the Registry repository
+// (routes stay schema-free per the architecture boundary). Code strings are the
+// canonical fallback; publish swaps rows atomically and the sender cache refreshes
+// immediately here and every minute otherwise. All mutations audited.
+
+routes.get('/templates', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) => {
+  const { NOTIFICATION_TEMPLATE_KEYS, NotificationTemplateRenderer } = await import('../../../../application/use-cases/notifications/NotificationTemplateRenderer');
+  const renderer = new NotificationTemplateRenderer();
+  const rows = await Registry.getInstance().notificationTemplateRepo.listAll();
+  const templates = NOTIFICATION_TEMPLATE_KEYS.map((key) => ({
+    key,
+    defaults: { subject: renderer.getDefaultSubject(key), preheader: renderer.getDefaultPreheader(key) },
+    draft: rows.find((r) => r.templateKey === key && r.status === 'DRAFT') ?? null,
+    published: rows.find((r) => r.templateKey === key && r.status === 'PUBLISHED') ?? null,
+  }));
+  const res: ApiResponse<{ templates: typeof templates }> = { success: true, data: { templates } };
+  return c.json(res);
+});
+
+routes.post('/templates/:key/draft', requirePermissions([PERMISSIONS.NOTIFICATIONS_MANAGE]), async (c) => {
+  const { NOTIFICATION_TEMPLATE_KEYS } = await import('../../../../application/use-cases/notifications/NotificationTemplateRenderer');
+  const key = c.req.param('key') ?? '';
+  if (!NOTIFICATION_TEMPLATE_KEYS.includes(key as never)) {
+    return c.json({ success: false, error: { code: 'UNKNOWN_TEMPLATE', message: 'Unknown template key.' } } satisfies ApiResponse<never>, 404);
+  }
+  const body = await c.req.json().catch(() => null);
+  const clean = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
+  const patch = { subject: clean(body?.subject, 200), preheader: clean(body?.preheader, 300), headline: clean(body?.headline, 200) };
+  if (!patch.subject && !patch.preheader && !patch.headline) {
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'At least one of subject/preheader/headline is required.' } } satisfies ApiResponse<never>, 400);
+  }
+  const registry = Registry.getInstance();
+  const actorId = (c.get('user') as { id: string }).id;
+  const row = await registry.notificationTemplateRepo.upsertDraft(key, patch, actorId);
+  const { CreateAuditLogUseCase } = await import('../../../../application/use-cases/audit/CreateAuditLogUseCase');
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId, action: 'NOTIFICATION_TEMPLATE_DRAFTED', entity: 'notification_template', entityId: row.id, newState: { key, ...patch },
+  });
+  return c.json({ success: true, data: row } satisfies ApiResponse<typeof row>);
+});
+
+routes.post('/templates/:key/publish', requirePermissions([PERMISSIONS.NOTIFICATIONS_MANAGE]), async (c) => {
+  const key = c.req.param('key') ?? '';
+  const registry = Registry.getInstance();
+  const actorId = (c.get('user') as { id: string }).id;
+  const published = await registry.notificationTemplateRepo.publishDraft(key, actorId);
+  if (!published) {
+    return c.json({ success: false, error: { code: 'NO_DRAFT', message: 'Nothing to publish — create a draft first.' } } satisfies ApiResponse<never>, 409);
+  }
+  const { templateOverrideCache } = await import('../../../../infrastructure/notifications/TemplateOverrideCache');
+  await templateOverrideCache.refresh();
+  const { CreateAuditLogUseCase } = await import('../../../../application/use-cases/audit/CreateAuditLogUseCase');
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId, action: 'NOTIFICATION_TEMPLATE_PUBLISHED', entity: 'notification_template', entityId: published.id,
+    newState: { key, subject: published.subject, preheader: published.preheader, headline: published.headline },
+  });
+  return c.json({ success: true, data: published } satisfies ApiResponse<typeof published>);
+});
+
+routes.post('/templates/:key/revert', requirePermissions([PERMISSIONS.NOTIFICATIONS_MANAGE]), async (c) => {
+  const key = c.req.param('key') ?? '';
+  const registry = Registry.getInstance();
+  const actorId = (c.get('user') as { id: string }).id;
+  const deletedId = await registry.notificationTemplateRepo.revertPublished(key);
+  if (!deletedId) {
+    return c.json({ success: false, error: { code: 'NO_OVERRIDE', message: 'No published override — code defaults already apply.' } } satisfies ApiResponse<never>, 409);
+  }
+  const { templateOverrideCache } = await import('../../../../infrastructure/notifications/TemplateOverrideCache');
+  await templateOverrideCache.refresh();
+  const { CreateAuditLogUseCase } = await import('../../../../application/use-cases/audit/CreateAuditLogUseCase');
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId, action: 'NOTIFICATION_TEMPLATE_REVERTED', entity: 'notification_template', entityId: deletedId,
+    newState: { key, revertedToCodeDefaults: true },
+  });
+  return c.json({ success: true, data: { key, reverted: true } } satisfies ApiResponse<{ key: string; reverted: boolean }>);
 });
 
 routes.post('/admin-order-emails/:id/replay', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
