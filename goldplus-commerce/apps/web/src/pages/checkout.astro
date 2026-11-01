@@ -27,7 +27,6 @@ import {
   maskPhone,
   sealOrderReceipt,
   orderReceiptSigner,
-  ORDER_NUMBER_PATTERN,
   ORDER_RECEIPT_COOKIE,
   ORDER_RECEIPT_PATH,
   ORDER_RECEIPT_MAX_AGE_SECONDS,
@@ -36,6 +35,7 @@ import {
 } from '../lib/checkout';
 import { parseLocalCartCookie } from '../lib/cart';
 import { isPickupPayload } from '../lib/deliveryQuotePanel';
+import { rememberPaymentOrder as rememberPaymentOrderCookie } from '../lib/paymentOrderCookie';
 import { resolveCheckoutIntent, issueFreshCheckoutIntent, clearCheckoutIntent } from '../lib/checkoutIntent';
 import { requestSession } from '../lib/customerAuth';
 import { cartClient } from '../lib/cartClient';
@@ -105,20 +105,8 @@ async function clearBasketAfterOrder() {
   } catch { /* the order stands either way */ }
 }
 
-/**
- * The order a PesaPal handoff is for, remembered on this device for the
- * cancellation page. PesaPal's cancellation URL is a fixed address that does
- * not reliably name the order, and that page's "Pay for this order" used to
- * send the customer to /checkout, whose basket had just been emptied.
- */
-function rememberPaymentOrder(orderNumber: string | undefined | null) {
-  if (!orderNumber || !ORDER_NUMBER_PATTERN.test(orderNumber)) return;
-  try {
-    Astro.cookies.set('gp_pay_order', orderNumber, {
-      path: '/checkout/pesapal', maxAge: 60 * 60 * 6, httpOnly: true, sameSite: 'lax', secure: import.meta.env.PROD,
-    });
-  } catch { /* a convenience for the cancellation page */ }
-}
+// Remembered for the Pesapal cancellation page (lib/paymentOrderCookie, shared with /orders/:id).
+const rememberPaymentOrder = (orderNumber: string | undefined | null) => rememberPaymentOrderCookie(Astro.cookies, orderNumber, import.meta.env.PROD);
 
 let cart: CartResponse | null = null;
 const serverCart = await cartClient.read(
