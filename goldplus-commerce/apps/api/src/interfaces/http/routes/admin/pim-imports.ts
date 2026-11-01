@@ -5,6 +5,7 @@ import { Registry } from "../../../../infrastructure/Registry";
 import { PimImportOperationError } from "../../../../application/use-cases/pim/PimImportOperationsUseCase";
 import { authMiddleware } from "../../middleware/auth";
 import { requirePermissions } from "../../middleware/permissions";
+import { csvCell } from "../../csv";
 
 // audit-exempt: all mutations append PIM import events and row snapshots transactionally.
 const routes = new Hono();
@@ -63,6 +64,8 @@ function failure(c: any, error: unknown) {
   const status =
     code === "IMPORT_NOT_FOUND"
       ? 404
+      : code === "PRICING_PERMISSION_REQUIRED"
+        ? 403
       : ["STALE_VERSION", "INVALID_STATE"].includes(code)
         ? 409
         : 400;
@@ -208,6 +211,7 @@ routes.post(
         data: await Registry.getInstance().pimImportOperationsUseCase.apply({
           id: String(c.req.param("id") ?? ""),
           actorId: actor(c),
+          actorPermissions: ((c.get("user") as { permissions?: string[] } | undefined)?.permissions ?? []),
           ...body.data,
         }),
       });
@@ -236,4 +240,19 @@ routes.post(
     }
   },
 );
+// §10 — downloadable error report (CSV). Row numbers, exact messages, and the
+// source snippet; derived from stored validation state, never recomputed.
+routes.get("/:id/error-report", requirePermissions([PERMISSIONS.PIM_READ]), async (c) => {
+  const id = c.req.param("id") ?? "";
+  const report = await Registry.getInstance().pimImportOperationsUseCase.errorReport(id);
+  const lines = ["row_number,errors,source_json"];
+  for (const row of report.rows) {
+    lines.push([row.rowNumber, csvCell(row.errors.join(" | ")), csvCell(JSON.stringify(row.source))].join(","));
+  }
+  c.header("Content-Type", "text/csv; charset=utf-8");
+  c.header("Content-Disposition", `attachment; filename="pim-import-${id}-errors.csv"`);
+  return c.body(lines.join("\n") + "\n");
+});
+
 export default routes;
+

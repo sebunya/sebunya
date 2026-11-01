@@ -15,6 +15,14 @@ export interface DealerApplicationDto {
   location: string;
 }
 
+/**
+ * A message that is safe to show the applicant. The route echoes only this
+ * type: every other failure (a database outage, a bug) is reported as a
+ * generic message, because this endpoint is unauthenticated and its error
+ * text used to be whatever was thrown.
+ */
+export class DealerApplicationValidationError extends Error {}
+
 export class DealerApplicationUseCase {
   constructor(private readonly dealerRepo: DrizzleDealerRepository) {}
 
@@ -25,15 +33,17 @@ export class DealerApplicationUseCase {
     const phone = normalizePhone(dto.phone);
     const location = (dto.location ?? '').trim();
 
-    if (!businessName) throw new Error('Business name is required.');
-    if (!contactName) throw new Error('Contact person name is required.');
-    if (!location) throw new Error('Business location is required.');
+    if (!businessName) throw new DealerApplicationValidationError('Business name is required.');
+    if (!contactName) throw new DealerApplicationValidationError('Contact person name is required.');
+    if (!location) throw new DealerApplicationValidationError('Business location is required.');
 
-    if (!isValidEmail(email)) {
-      throw new Error('A valid email address is required.');
+    // Email is optional (owner decision 2026-09-24): the team calls the number
+    // given. Stored as '' when absent (the column is NOT NULL).
+    if (email && !isValidEmail(email)) {
+      throw new DealerApplicationValidationError('That email address does not look right. Check it, or leave it blank.');
     }
     if (!isValidUgandanPhone(phone)) {
-      throw new Error('A valid Ugandan phone number is required.');
+      throw new DealerApplicationValidationError('A valid Ugandan phone number is required.');
     }
 
     const id = dto.id ?? nodeCrypto.randomUUID();

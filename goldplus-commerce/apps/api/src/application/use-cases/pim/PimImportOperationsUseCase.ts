@@ -6,8 +6,10 @@ import {
   PimMapping,
   normalizePimRow,
   pimPreviewDigest,
+  pimRowChangesPricing,
   validatePimMapping,
 } from "../../../domain/pim/PimImport";
+import { PERMISSIONS } from "@goldplus/shared";
 
 export class PimImportOperationError extends Error {
   constructor(
@@ -103,6 +105,27 @@ export class PimImportOperationsUseCase {
       },
     };
   }
+  /**
+   * §10 downloadable error report: every row that failed validation (or errored on
+   * apply), with its row number, the exact messages, and the source snippet the
+   * operator needs to fix the file. Derived from stored state — never recomputed —
+   * so the report matches what the preview refused.
+   */
+  async errorReport(id: string): Promise<{ sessionId: string; rows: Array<{ rowNumber: number; errors: string[]; source: Record<string, unknown> }> }> {
+    const rows = await this.repo.rows(id);
+    const bad = rows
+      .filter((r: any) => (Array.isArray(r.validationErrors) && r.validationErrors.length > 0) || r.error)
+      .map((r: any) => ({
+        rowNumber: r.rowNumber,
+        errors: [
+          ...(Array.isArray(r.validationErrors) ? r.validationErrors.map((e: unknown) => String(typeof e === 'object' && e !== null && 'message' in (e as any) ? (e as any).message : e)) : []),
+          ...(r.error ? [String(r.error)] : []),
+        ],
+        source: (r.sourceData ?? {}) as Record<string, unknown>,
+      }));
+    return { sessionId: id, rows: bad };
+  }
+
   async saveMapping(input: {
     id: string;
     expectedVersion: number;
@@ -250,7 +273,21 @@ export class PimImportOperationsUseCase {
       );
     return updated;
   }
-  async apply(input: { id: string; expectedVersion: number; actorId: string }) {
+  async apply(input: { id: string; expectedVersion: number; actorId: string; actorPermissions?: readonly string[] }) {
+    // Repricing existing products needs a pricing permission, exactly as the
+    // admin editor does — checked BEFORE anything is applied, so an import is
+    // never half-applied by this rule.
+    if (input.actorPermissions) {
+      const canPrice = input.actorPermissions.includes(PERMISSIONS.PRICING_MANAGE) || input.actorPermissions.includes(PERMISSIONS.PRICING_APPROVE);
+      if (!canPrice) {
+        const repricing = (await this.repo.rows(input.id)).filter((row) => row.status === "VALID" && pimRowChangesPricing(row));
+        if (repricing.length > 0)
+          throw new PimImportOperationError(
+            "PRICING_PERMISSION_REQUIRED",
+            `${repricing.length} row${repricing.length === 1 ? "" : "s"} change the retail price or a price tier (Price A/B/C) of an existing product. Applying them needs a pricing permission (pricing.manage). Nothing was applied.`,
+          );
+      }
+    }
     const applying = await this.repo.beginApply(
       input.id,
       input.expectedVersion,
