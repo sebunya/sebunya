@@ -3,7 +3,7 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
 import EmptyState from '../../../components/EmptyState.astro';
 import Notice from '../../../components/Notice.astro';
 import { apiBase } from '../../../lib/api';
-import { readSessionToken, clearSessionCookie } from '../../../lib/session';
+import { readSessionToken, SESSION_COOKIE_NAME } from '../../../lib/session';
 import type { ApiEnvelope } from '@goldplus/shared';
 
 interface UserRow {
@@ -20,13 +20,164 @@ if (!token) {
   return Astro.redirect('/admin/login?returnTo=/admin/users', 303);
 }
 
+  // §6: governed user creation + maker/checker decisions. Initial passwords are
+  // typed by the creating administrator and communicated out-of-band — they are
+  // posted to the API and never echoed back or logged.
+  let umNotice: { kind: "success" | "error"; text: string } | null = null;
+  // Two-step refusals say where to verify; the change was not made.
+  const refusal = (j: any, fallback: string): string =>
+    String(j?.error?.code ?? '').startsWith('MFA_')
+      ? `${j.error.message} Verify on Two-step verification (/admin/security/mfa), then try again. Nothing was changed.`
+      : j?.error?.message || fallback;
+
+  if (Astro.request.method === "POST") {
+    try {
+      const form = await Astro.request.formData();
+      const action = String(form.get("action") || "");
+      if (action === "create-user") {
+        const res2 = await fetch(`${apiBase}/admin/users`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            email: form.get("email"), phone: form.get("phone") || null,
+            initialPassword: form.get("initialPassword"), roleName: form.get("roleName"),
+          }),
+        });
+        const json2 = await res2.json().catch(() => null);
+        umNotice = res2.ok && json2?.success
+          ? { kind: "success", text: `User ${json2.data.email} created — role ${json2.data.roleOutcome === "ASSIGNED" ? "assigned" : "awaiting a second administrator's approval"}. Communicate the initial password out-of-band and have them change it on first login.` }
+          : { kind: "error", text: refusal(json2, "User creation refused.") };
+      } else if (action === "set-active") {
+        const id = String(form.get("id") || "");
+        const active = String(form.get("active") || "") === "true";
+        const res2 = await fetch(`${apiBase}/admin/users/${encodeURIComponent(id)}/active`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ active, reason: form.get("reason") || null }),
+        });
+        const json2 = await res2.json().catch(() => null);
+        umNotice = res2.ok && json2?.success
+          ? { kind: "success", text: active ? "Account reactivated. They can sign in again." : "Account deactivated. Their sessions have been ended and they can no longer sign in." }
+          : { kind: "error", text: refusal(json2, "Change refused.") };
+      } else if (action === "decide-grant") {
+        const id = String(form.get("id") || "");
+        const res2 = await fetch(`${apiBase}/admin/users/grant-requests/${encodeURIComponent(id)}/decide`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ decision: form.get("decision"), reason: form.get("reason") || null }),
+        });
+        const json2 = await res2.json().catch(() => null);
+        umNotice = res2.ok && json2?.success
+          ? { kind: "success", text: `Grant request ${json2.data.decided}.` }
+          : { kind: "error", text: refusal(json2, "Decision refused.") };
+      } else if (action === "withdraw-grant") {
+        const id = String(form.get("id") || "");
+        const res2 = await fetch(`${apiBase}/admin/users/grant-requests/${encodeURIComponent(id)}/withdraw`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: "{}",
+        });
+        const json2 = await res2.json().catch(() => null);
+        umNotice = res2.ok && json2?.success
+          ? { kind: "success", text: "Grant request withdrawn." }
+          : { kind: "error", text: refusal(json2, "Withdraw refused.") };
+      } else if (action === "assign-role") {
+        const id = String(form.get("id") || "");
+        const roleName = String(form.get("roleName") || "");
+        const res2 = await fetch(`${apiBase}/admin/users/${encodeURIComponent(id)}/roles`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ roleName, reason: form.get("reason") || null }),
+        });
+        const json2 = await res2.json().catch(() => null);
+        umNotice = res2.ok && json2?.success
+          ? { kind: "success", text: json2.data.outcome === "ASSIGNED"
+              ? (json2.data.firstAccess ? `${roleName} given. This account is now staff and appears in the list above; it applies on their next request.` : `${roleName} assigned. It applies on their next request.`)
+              : `${roleName} requested. A different administrator must approve it below.` }
+          : { kind: "error", text: refusal(json2, "Role assignment refused.") };
+      } else if (action === "revoke-role") {
+        const id = String(form.get("id") || "");
+        const roleName = String(form.get("roleName") || "");
+        const res2 = await fetch(`${apiBase}/admin/users/${encodeURIComponent(id)}/roles/revoke`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ roleName }),
+        });
+        const json2 = await res2.json().catch(() => null);
+        umNotice = res2.ok && json2?.success
+          ? { kind: "success", text: json2.data.revoked ? `${roleName} revoked. It stops applying on their next request.` : `${roleName} was not held by that account.` }
+          : { kind: "error", text: refusal(json2, "Revoke refused.") };
+      }
+    } catch {
+      umNotice = { kind: "error", text: "User service is unreachable right now." };
+    }
+  }
+
+  // Permission count per role, from the roles API. In production nine of the
+  // twelve roles hold no permissions at all, so a user created with one of
+  // them can sign in and open nothing. The select says so instead of letting
+  // the grant fail silently. If roles cannot be listed, labels stay plain.
+  const permissionCountByRole = new Map<string, number>();
+  // Every role that exists, from the roles API — the governance vocabulary plus
+  // roles created on the Roles screen. Full-access roles need a second
+  // administrator's approval. If roles cannot be listed, the vocabulary below
+  // is offered with plain labels.
+  const FALLBACK_ROLE_NAMES = ['LEGAL_REVIEWER', 'ANALYST', 'SUPPORT_OPERATOR', 'PLATFORM_ADMINISTRATOR'];
+  let roleOptions: { name: string; isSystem: boolean }[] = [];
+  try {
+    const rr = await fetch(`${apiBase}/admin/roles`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) });
+    const rj = rr.ok ? await rr.json().catch(() => null) : null;
+    if (rj?.success && Array.isArray(rj.data)) {
+      for (const r of rj.data as { name: string; permissionCodes: string[]; isSystem?: boolean }[]) {
+        permissionCountByRole.set(r.name, r.permissionCodes.length);
+        roleOptions.push({ name: r.name, isSystem: Boolean(r.isSystem) });
+      }
+      roleOptions.sort((a, b) => Number(a.isSystem) - Number(b.isSystem) || a.name.localeCompare(b.name));
+    }
+  } catch {
+    // labels stay plain
+  }
+  if (roleOptions.length === 0) roleOptions = FALLBACK_ROLE_NAMES.map((name) => ({ name, isSystem: name === 'PLATFORM_ADMINISTRATOR' }));
+  const roleLabel = (name: string, suffix = ''): string => {
+    const n = permissionCountByRole.get(name);
+    if (n === undefined) return `${name}${suffix}`;
+    if (n === 0) return `${name} — no permissions yet: can sign in, opens nothing${suffix}`;
+    return `${name} — ${n} ${n === 1 ? 'permission' : 'permissions'}${suffix}`;
+  };
+  const optionLabel = (r: { name: string; isSystem: boolean }): string => roleLabel(r.name, r.isSystem ? ' (needs approval)' : '');
+  let grantRequests: any[] = [];
+  try {
+    const gr = await fetch(`${apiBase}/admin/users/grant-requests`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) });
+    const grJson = await gr.json().catch(() => null);
+    if (grJson?.success) grantRequests = grJson.data.requests;
+  } catch { /* list stays empty; the section shows a truthful empty state */ }
+
 let rows: UserRow[] = [];
 let fetchError: string | null = null;
+// Shopper accounts are counted, never listed (2026-10-17); null when the count could not be read.
+let shopperAccounts: number | null = null;
+
+// "Give an existing account back-office access": one account by its exact email, looked up on purpose.
+const lookupEmail = (Astro.url.searchParams.get('lookup') ?? '').trim();
+let lookup: { id: string; email: string; isActive: boolean; roleNames: string[]; createdAt: string; kind: 'STAFF' | 'SHOPPER'; orderCount: number; hasPendingGrant: boolean } | null = null;
+let lookupError: string | null = null;
+if (lookupEmail) {
+  try {
+    const lr = await fetch(`${apiBase}/admin/users/lookup?email=${encodeURIComponent(lookupEmail)}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) });
+    const lj = await lr.json().catch(() => null);
+    if (lr.ok && lj?.success) lookup = lj.data;
+    else lookupError = lj?.error?.message ?? 'The account could not be looked up.';
+  } catch {
+    lookupError = 'The account could not be looked up right now.';
+  }
+}
 
 try {
   const res = await fetch(`${apiBase}/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
-  if (res.status === 401 || res.status === 403) {
-    Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+  // Only an expired session signs out; a 403 is a permission gap (no login loop).
+  if (res.status === 403) return Astro.redirect(`/admin/not-permitted?from=${encodeURIComponent('/admin/users')}&need=auth.manage`, 303);
+  if (res.status === 401) {
+    Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' }); // a header set on Astro.response is dropped by a returned redirect
     return Astro.redirect('/admin/login?returnTo=/admin/users', 303);
   }
   if (!res.ok) {
@@ -35,47 +186,62 @@ try {
     const json = (await res.json()) as ApiEnvelope<UserRow[]>;
     if (json.success && Array.isArray(json.data)) rows = json.data;
     else fetchError = json.error?.message ?? 'Unexpected response.';
+    const sc = res.headers.get('X-Shopper-Accounts');
+    shopperAccounts = sc != null && /^\d+$/.test(sc) ? Number(sc) : null;
   }
 } catch {
   fetchError = 'Cannot reach the users service right now.';
 }
+// Grant requests name their people: an approver must see WHO gets full access.
+const emailById = new Map<string, string>(rows.map((u) => [u.id, u.email]));
+// An account on the staff list with no role yet is only there because of a pending request: approving gives it its
+// FIRST back-office access (a new staff member, or a customer's account), and the approver is told so.
+const noRoleYet = new Set(rows.filter((u) => u.roleNames.length === 0).map((u) => u.id));
 ---
 
-<AdminLayout 
-  title="Operator Accounts" 
-  description="Oversee platform identities and assignments."
+<AdminLayout
+  title="Staff accounts"
+  description="People who can sign in to this back office, and what each may do."
 >
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     
     <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
       <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">System Users</h2>
-        <p class="text-sm text-gray-500 mt-1">Platform identity listings holding administrative or operational scopes.</p>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Staff accounts</h2>
+        <p class="text-sm text-gray-600 mt-1">People who can sign in to this back office, and the roles that decide what each may see and do. Customers' accounts are not listed here.</p>
       </div>
     </div>
 
+    <p class="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+      {shopperAccounts === null ? 'Shopper accounts are not shown here.' : `${new Intl.NumberFormat('en-GB').format(shopperAccounts)} shopper ${shopperAccounts === 1 ? 'account is' : 'accounts are'} not shown here.`}
+      {' '}They belong to customers, who have no back-office access. To block a customer's sign-in, <a href="#existing-account" class="font-bold underline">find the account by email</a> below; for their profile and history, use <a href="/admin/customer-dna" class="font-bold underline">Customer DNA</a>.
+    </p>
+
     {fetchError && (
       <div class="mb-6">
-        <Notice kind="not-configured" title="Directory Synchronization Halted" message={fetchError} />
+        {/* This renders when the user list could not be loaded. "Directory
+            Synchronization Halted" implied a suspended feature; there is no
+            directory sync here, and the real condition is a failed read. */}
+        <Notice kind="warning" title="Could not load the user list" message={fetchError} />
       </div>
     )}
 
     {rows.length === 0 && !fetchError ? (
       <EmptyState
-        title="No User Records Located"
-        message="Execute console seeding to instantiate the primary supervisor record."
+        title="No staff accounts"
+        message="No account holds a back-office role. Create the first one below."
       />
     ) : rows.length > 0 ? (
       <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
-              <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
-                <th class="p-6">Email Handle</th>
-                <th class="p-6">Contact Trace</th>
-                <th class="p-6">Assigned Scopes</th>
-                <th class="p-6 text-center">Account State</th>
-                <th class="p-6 text-right">Registered</th>
+              <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-500 tracking-widest border-b border-gray-100">
+                <th class="p-6">Email</th>
+                <th class="p-6">Phone</th>
+                <th class="p-6">Roles</th>
+                <th class="p-6 text-center">Status</th>
+                <th class="p-6 text-right">Joined</th>
               </tr>
             </thead>
             <tbody class="text-xs divide-y divide-gray-50">
@@ -89,24 +255,48 @@ try {
                   </td>
                   <td class="p-6">
                     {u.roleNames.length === 0 ? (
-                      <span class="text-[10px] text-gray-400 italic font-medium">Zero Assigned Scopes</span>
+                      <span class="text-[10px] text-amber-700 font-bold">No role yet: a full-access request is waiting for approval below</span>
                     ) : (
                       <div class="flex flex-wrap gap-1.5">
                         {u.roleNames.map((name) => (
-                          <span class="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border bg-gray-100 text-gray-600 border-gray-200">{name}</span>
+                          <form method="POST" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border bg-gray-100 text-gray-600 border-gray-200">
+                            <input type="hidden" name="action" value="revoke-role" />
+                            <input type="hidden" name="id" value={u.id} />
+                            <input type="hidden" name="roleName" value={name} />
+                            <span>{name}</span>
+                            <button type="submit" class="text-gray-600 hover:text-red-700" aria-label={`Revoke ${name}`} title={`Revoke ${name}`} data-confirm={u.roleNames.length === 1 ? `Revoke ${name}? It is their last role: they lose all back-office access on their next request, and the account leaves this list (it stays a customer account).` : `Revoke ${name} from this account? It stops applying on their next request.`}>&times;</button>
+                          </form>
                         ))}
                       </div>
                     )}
+                    <form method="POST" class="mt-2 flex items-center gap-1">
+                      <input type="hidden" name="action" value="assign-role" />
+                      <input type="hidden" name="id" value={u.id} />
+                      <select name="roleName" aria-label={`Assign a role to ${u.email}`} class="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-bold max-w-[16rem]">
+                        {roleOptions.filter((r) => !u.roleNames.includes(r.name)).map((r) => (
+                          <option value={r.name}>{optionLabel(r)}</option>
+                        ))}
+                      </select>
+                      <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900">Assign</button>
+                    </form>
                   </td>
                   <td class="p-6 text-center">
                     <span class={`inline-block px-2.5 py-0.5 rounded font-black text-[9px] uppercase tracking-wide border ${
                       u.isActive ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
                     }`}>
-                      {u.isActive ? 'Active' : 'Disabled'}
+                      {u.isActive ? 'Can sign in' : 'Deactivated'}
                     </span>
+                    <form method="POST" class="mt-2 flex flex-col items-center gap-1">
+                      <input type="hidden" name="action" value="set-active" />
+                      <input type="hidden" name="id" value={u.id} />
+                      <input type="hidden" name="active" value={u.isActive ? 'false' : 'true'} />
+                      {u.isActive && <input name="reason" required minlength="5" maxlength="300" placeholder="Reason (required, audited)" class="w-40 rounded border px-2 py-1 text-[10px]" />}
+                      <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900" data-confirm={u.isActive ? 'Deactivate this account? Their sessions end immediately.' : undefined}>{u.isActive ? 'Deactivate' : 'Reactivate'}</button>
+                    </form>
+                    <a href={`/admin/audit?entity=user&entityId=${encodeURIComponent(u.id)}`} class="mt-1 inline-block text-[10px] font-bold text-gray-500 hover:text-gray-800 underline underline-offset-2">History</a>
                   </td>
-                  <td class="p-6 text-right font-mono text-gray-400 text-[10px]">
-                    {new Date(u.createdAt).toLocaleDateString('en-GB')}
+                  <td class="p-6 text-right font-mono text-gray-500 text-[10px]">
+                    {new Date(u.createdAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })}
                   </td>
                 </tr>
               ))}
@@ -116,5 +306,106 @@ try {
       </div>
     ) : null}
   </div>
+
+    {umNotice && <div role="status" class={`mt-8 rounded-xl px-4 py-3 text-sm font-semibold ${umNotice.kind === "success" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>{umNotice.text}</div>}
+
+    <section id="existing-account" class="mt-8 rounded-2xl border border-slate-200 bg-white p-5">
+      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Find one account by email</h2>
+      <p class="mt-1 text-xs text-slate-600">To block a customer's sign-in, or to give someone who signed up as a customer back-office access. Enter the full email: you will see whether the account is a customer's, and their orders, before anything changes.</p>
+      <form method="GET" action="/admin/users#existing-account" class="mt-3 flex flex-wrap items-center gap-2">
+        <label for="lookup" class="sr-only">Full email address of the account</label>
+        <input id="lookup" name="lookup" type="email" required value={lookupEmail} placeholder="name@example.com" class="min-w-[16rem] flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-brand-primaryInk" />
+        <button type="submit" class="min-h-11 rounded-xl border border-gray-300 bg-white px-4 text-xs font-black uppercase tracking-wide text-gray-700 hover:bg-gray-50">Look up</button>
+      </form>
+      {lookupError && <p class="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{lookupError}</p>}
+      {lookup && lookup.kind === 'STAFF' && (
+        <p class="mt-3 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700"><strong>{lookup.email}</strong> is already staff{lookup.roleNames.length ? ` (${lookup.roleNames.join(', ')})` : ' (a full-access request is waiting)'}. Change its roles in the list above.</p>
+      )}
+      {lookup && lookup.kind === 'SHOPPER' && (
+        <div class="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          <p><strong>{lookup.email}</strong> is a <strong>customer account</strong>: {lookup.orderCount === 1 ? '1 order' : `${lookup.orderCount} orders`}, joined {new Date(lookup.createdAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })}, {lookup.isActive ? 'can sign in' : 'sign-in deactivated'}. It has no back-office access.</p>
+          <form method="POST" action="/admin/users#existing-account" class="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-3">
+            <input type="hidden" name="action" value="set-active" />
+            <input type="hidden" name="id" value={lookup.id} />
+            <input type="hidden" name="active" value={lookup.isActive ? 'false' : 'true'} />
+            <span class="text-xs font-bold text-slate-700">{lookup.isActive ? "Block this customer's sign-in" : "Let this customer sign in again"}</span>
+            {lookup.isActive && <input name="reason" required minlength="5" maxlength="300" placeholder="Reason (kept in the audit log)" class="min-w-[12rem] flex-1 rounded-lg border border-gray-200 px-2 py-2 text-xs" />}
+            <button type="submit" class="min-h-11 rounded-xl border border-gray-300 bg-white px-4 text-xs font-black text-gray-700 hover:bg-gray-50" data-confirm={lookup.isActive ? "Deactivate this customer's sign-in? Their sessions end now; their orders are unchanged." : undefined}>{lookup.isActive ? 'Deactivate sign-in' : 'Reactivate sign-in'}</button>
+          </form>
+          <h3 class="mt-4 text-xs font-black uppercase tracking-widest text-amber-900">Give this account back-office access</h3>
+          <p class="mt-1">Giving it a role lets this person sign in to the back office with that role's permissions. Only do this for someone who works for GoldPlus, after confirming it is them (for example by phone).</p>
+          <form method="POST" action="/admin/users#existing-account" class="mt-3 grid gap-2 sm:grid-cols-2">
+            <input type="hidden" name="action" value="assign-role" />
+            <input type="hidden" name="id" value={lookup.id} />
+            <label class="text-xs font-bold">Role
+              <select name="roleName" required class="mt-1 w-full rounded-lg border border-amber-300 bg-white px-2 py-2 text-xs font-bold">
+                {roleOptions.map((r) => <option value={r.name}>{optionLabel(r)}</option>)}
+              </select>
+            </label>
+            <label class="text-xs font-bold">Who they are and why they need access (kept in the audit log)
+              <input name="reason" required minlength="10" maxlength="300" placeholder="e.g. Sarah, new packer at the shop, started today" class="mt-1 w-full rounded-lg border border-amber-300 bg-white px-2 py-2 text-xs" />
+            </label>
+            <label class="sm:col-span-2 flex items-start gap-2 text-xs font-bold">
+              <input type="checkbox" required class="mt-0.5" />
+              I have confirmed this person works for GoldPlus and that this account is theirs.
+            </label>
+            <button type="submit" class="sm:col-span-2 min-h-11 rounded-xl bg-brand-dark px-4 text-xs font-black uppercase tracking-wide text-white hover:bg-black">Give back-office access</button>
+          </form>
+        </div>
+      )}
+    </section>
+
+    <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Create a new staff account</h2>
+      <p class="mt-1 text-xs text-slate-600">For someone with no account yet. Full access (PLATFORM_ADMINISTRATOR) is never given in one step: it becomes a request a different administrator approves below. The first password must be at least 12 characters; give it to them in person or by phone, and they change it when they first sign in.</p>
+      <form method="POST" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-5">
+        <input type="hidden" name="action" value="create-user" />
+        <input name="email" type="email" required placeholder="email@shopgoldplus.com" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk" />
+        <input name="initialPassword" type="password" required minlength="12" placeholder="Initial password (min 12)" autocomplete="new-password" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk" />
+        <select name="roleName" aria-label="Governance role for the new user" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none">
+          {roleOptions.map((r) => (
+            <option value={r.name}>{optionLabel(r)}</option>
+          ))}
+        </select>
+        <button type="submit" class="rounded-xl bg-brand-dark px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white hover:bg-black">Create staff account</button>
+      </form>
+    </section>
+
+    <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Full-access requests waiting for a second administrator</h2>
+      {grantRequests.length === 0 ? (
+        <p class="mt-3 text-sm font-medium text-slate-500">No requests.</p>
+      ) : (
+        <div class="mt-3 space-y-2">
+          {grantRequests.map((r: any) => (
+            <div class="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 p-3 text-xs">
+              <span class="font-bold" title={r.userId}>For: {emailById.get(r.userId) ?? `${String(r.userId).slice(0, 8)}… (not in the admin list)`}</span>
+              <span class="font-black">{r.roleName}</span>
+              <span class="text-slate-500">Requested by {emailById.get(r.requestedBy) ?? `${String(r.requestedBy ?? '').slice(0, 8)}…`}{r.requestedAt ? ` · ${new Date(r.requestedAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} (Kampala)` : ''}</span>
+              <span class="basis-full text-slate-600">Reason: {r.reason ? r.reason : 'none given'}</span>
+              {r.status === "PENDING" && noRoleYet.has(r.userId) && <span class="basis-full font-bold text-amber-800">This account has no back-office access yet: approving gives it full access (check who it is; it may be a customer's account).</span>}
+              <span class={`rounded-full border px-2 py-0.5 font-black uppercase ${r.status === "PENDING" ? "border-amber-300 bg-amber-50 text-amber-800" : r.status === "APPROVED" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-gray-200 bg-gray-100 text-gray-600"}`}>{r.status}</span>
+              {r.status === "PENDING" && (
+                <form method="POST" class="ml-auto flex items-center gap-2">
+                  <input type="hidden" name="action" value="decide-grant" />
+                  <input type="hidden" name="id" value={r.id} />
+                  <select name="decision" aria-label="Decision on this role grant request" class="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-bold outline-none"><option value="APPROVED">APPROVE</option><option value="REJECTED">REJECT</option></select>
+                  <button type="submit" class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-gray-700 hover:bg-gray-50">Decide</button>
+                </form>
+              )}
+              {r.status === "PENDING" && (
+                <form method="POST">
+                  <input type="hidden" name="action" value="withdraw-grant" />
+                  <input type="hidden" name="id" value={r.id} />
+                  <button type="submit" class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-gray-500 hover:bg-gray-50" title="Only the requester can withdraw their own request">Withdraw</button>
+                </form>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <p class="mt-3 text-[11px] text-slate-500">The requester can never approve their own request — a different administrator must decide.</p>
+    </section>
+
 </AdminLayout>
 
