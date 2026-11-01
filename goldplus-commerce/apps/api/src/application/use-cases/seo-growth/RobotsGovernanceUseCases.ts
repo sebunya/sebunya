@@ -421,6 +421,24 @@ export function validateRobotsDraft(body: unknown): RobotsDraftValidation {
  * storefront's committed static content, so robots.txt is never empty or
  * broken — an unreachable API must not turn into an accidental allow-all.
  */
+export const DEFAULT_ROBOTS_BASE = 'https://shopgoldplus.com';
+
+/**
+ * The public ?base= of /seo/robots-published goes into Sitemap: and comment
+ * lines. Only an http(s) origin is accepted (no path, query, or newline that
+ * could add robots directives); anything else falls back to the shop origin.
+ */
+export function safeRobotsBase(raw: unknown): string {
+  if (typeof raw !== 'string' || raw.length > 200 || /[\s\\]/.test(raw)) return DEFAULT_ROBOTS_BASE;
+  try {
+    const u = new URL(raw);
+    if ((u.protocol !== 'https:' && u.protocol !== 'http:') || u.username || u.password) return DEFAULT_ROBOTS_BASE;
+    return u.origin;
+  } catch {
+    return DEFAULT_ROBOTS_BASE;
+  }
+}
+
 export function fallbackRobotsTxt(baseUrl: string): string {
   const base = String(baseUrl || '').replace(/\/$/, '');
   return (
