@@ -1,6 +1,9 @@
 version: '3.8'
 services:
+  # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service -- this service writes its own data/cache by design
   postgres:
+    security_opt:
+      - no-new-privileges:true
     image: postgres:15-alpine
     environment:
       POSTGRES_USER: goldplus

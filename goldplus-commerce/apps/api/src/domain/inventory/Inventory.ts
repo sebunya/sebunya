@@ -61,7 +61,16 @@ export type OrderReservationState =
   | 'RESERVED'
   | 'BACKORDERED'
   | 'NOT_REQUIRED'
-  | 'UNRESERVED_BLOCKED';
+  | 'UNRESERVED_BLOCKED'
+  /**
+   * Terminals, added 2026-08-06. The vocabulary had no exit: an order whose
+   * stock had been released still claimed RESERVED forever — the same
+   * entered-never-left trap the payment attempts fell into, on the exact field
+   * payment initiation and fulfilment fail closed on. Seven production orders
+   * sat in it.
+   */
+  | 'RELEASED'
+  | 'CONSUMED';
 
 /**
  * Whether an order may progress to payment or fulfilment.
@@ -70,6 +79,8 @@ export type OrderReservationState =
  * progress. PENDING is not "probably fine", it is "nobody has looked yet".
  */
 export function mayProgressToPayment(state: OrderReservationState): boolean {
+  // RELEASED is deliberately absent: the stock went back on sale, so starting
+  // a payment against it would sell goods nobody is holding.
   return state === 'RESERVED' || state === 'BACKORDERED' || state === 'NOT_REQUIRED';
 }
 
@@ -128,11 +139,55 @@ export interface StockPosition {
   stockOnHand: number;
   reserved: number;
   reorderPoint: number;
+  /** Selling policy; NON_STOCK_ITEM products are not stock-tracked and are never low. */
+  inventoryPolicy?: string | null;
+}
+
+/** Window used for sales velocity (days of cover). */
+export const SALES_VELOCITY_WINDOW_DAYS = 30;
+
+/**
+ * Days of cover = available / average daily units sold over the velocity window.
+ * Null when there is no sales history in the window (never a fake infinity or 0).
+ */
+export function daysOfCover(available: number, unitsSoldInWindow: number, windowDays: number = SALES_VELOCITY_WINDOW_DAYS): number | null {
+  if (!(unitsSoldInWindow > 0) || !(windowDays > 0)) return null;
+  const perDay = unitsSoldInWindow / windowDays;
+  return Math.max(0, available) / perDay;
 }
 
 /** Available-to-promise. Never negative. */
 export function computeAvailable(stockOnHand: number, reserved: number): number {
   return Math.max(0, stockOnHand - reserved);
+}
+
+/**
+ * What the basket may hold of one product, as far as stock is KNOWN.
+ *
+ * - `outOfStock`: labelled out_of_stock (and not a pre-order), or
+ *   stock-controlled with units on hand but every one already reserved.
+ * - `available`: units a shopper may still add, or null when the quantity is
+ *   not tracked (pre-order, NON_STOCK_ITEM, or zero units against a product
+ *   still labelled in stock — every stock writer flips a counted product to
+ *   out_of_stock at zero, so 0 with an in-stock label means "never counted").
+ *
+ * Checkout's backorder path is separate and unchanged; this only stops the
+ * basket accepting what is known not to exist.
+ */
+export function cartStockLimit(input: {
+  stockStatus: string | null | undefined;
+  isPreOrderEnabled: boolean | null | undefined;
+  inventoryPolicy: string | null | undefined;
+  stockQuantity: number | null | undefined;
+  reservedQuantity: number | null | undefined;
+}): { outOfStock: boolean; available: number | null } {
+  if (input.isPreOrderEnabled || input.stockStatus === 'pre_order') return { outOfStock: false, available: null };
+  if (input.stockStatus === 'out_of_stock') return { outOfStock: true, available: 0 };
+  if (parseInventoryPolicy(input.inventoryPolicy) === 'NON_STOCK_ITEM') return { outOfStock: false, available: null };
+  const onHand = input.stockQuantity ?? 0;
+  if (onHand <= 0) return { outOfStock: false, available: null };
+  const available = computeAvailable(onHand, input.reservedQuantity ?? 0);
+  return { outOfStock: available === 0, available };
 }
 
 /** How much of `requested` can actually be reserved right now (never oversells). */
@@ -149,6 +204,7 @@ export function backorderShortfall(requested: number, reserved: number): number 
 /** Low stock when available at or below the reorder point (and a point is set). */
 export function isLowStock(pos: StockPosition): boolean {
   if (pos.reorderPoint <= 0) return false;
+  if (pos.inventoryPolicy !== undefined && parseInventoryPolicy(pos.inventoryPolicy) === 'NON_STOCK_ITEM') return false;
   return computeAvailable(pos.stockOnHand, pos.reserved) <= pos.reorderPoint;
 }
 
@@ -208,6 +264,30 @@ export function validateStockAdjustment(
     };
   }
   return { allowed: true };
+}
+
+/**
+ * What a whole-product editor save may do to on-hand stock.
+ *
+ * The editor posts the ABSOLUTE quantity it rendered, even when the operator
+ * only changed a price or a description. Written unconditionally, that
+ * reverted any stock movement made after the page loaded (a dispatch, a
+ * governed adjustment, a colleague's save): phantom stock the shop then
+ * oversold (found 2026-09-24). The editor now also posts the quantity it
+ * loaded (`expected`):
+ *  - unchanged (submitted === expected) → the save does not touch stock;
+ *  - changed → the write applies only while stock still equals `expected`,
+ *    otherwise it is refused as stale (compare-and-set, in the repository);
+ *  - no `expected` (an older client) → today's unconditional write.
+ */
+export type EditorStockWritePlan =
+  | { kind: 'SKIP' }
+  | { kind: 'WRITE'; expectedStock: number | null };
+
+export function planEditorStockWrite(submitted: number, expected: number | null | undefined): EditorStockWritePlan {
+  if (expected === null || expected === undefined) return { kind: 'WRITE', expectedStock: null };
+  if (submitted === expected) return { kind: 'SKIP' };
+  return { kind: 'WRITE', expectedStock: expected };
 }
 
 export interface ReservationLineRequest {

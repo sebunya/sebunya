@@ -1,5 +1,6 @@
 import { expect, test, describe, vi, beforeEach, afterEach } from 'vitest';
 import { ZeptoMailAdapter } from '../../apps/api/src/infrastructure/notifications/zeptomail/ZeptoMailAdapter';
+import { OUTCOME_UNKNOWN_PROVIDER_CODE } from '../../apps/api/src/application/ports/INotificationProvider';
 
 describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
   let adapter: ZeptoMailAdapter;
@@ -157,7 +158,11 @@ describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
     expect(parsedBody.from.address).toBe('receipts@shopgoldplus.com');
     expect(parsedBody.to[0].email_address.address).toBe('customer@example.com');
     expect(parsedBody.reply_to[0].address).toBe('support@shopgoldplus.com');
-    expect(parsedBody.subject).toBe('Payment received for your GoldPlus order');
+    // The reviewed design (apps/api/templates/email) now renders customer mail,
+    // so the subject names the order the customer is reading about. The old
+    // wording came from the previous in-code renderer, which remains only as a
+    // fallback for a template we cannot fill completely.
+    expect(parsedBody.subject).toBe('Payment received · GP-1001');
     expect(parsedBody.htmlbody).toContain('Alice');
     expect(parsedBody.htmlbody).toContain('GP-1001');
     expect(parsedBody.textbody).toContain('Alice');
@@ -189,7 +194,7 @@ describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
     expect(res.providerCode).toBe('msg_zepto_11111');
   });
 
-  test('8. Network timeout returns FAILED', async () => {
+  test('8. Network timeout is outcome-unknown: ZeptoMail may have sent it, so it is not retried', async () => {
     const mockAbortError = new Error('The operation was aborted.');
     mockAbortError.name = 'AbortError';
     vi.mocked(fetch).mockRejectedValue(mockAbortError);
@@ -203,12 +208,14 @@ describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
     });
 
     expect(res.status).toBe('FAILED');
-    expect(res.providerCode).toBe('PROVIDER_ERROR');
+    expect(res.providerCode).toBe(OUTCOME_UNKNOWN_PROVIDER_CODE);
+    expect(res.retryable).toBe(false);
     expect(res.providerMessage).toContain('timed out');
   });
 
   test('9. HTTP network failure returns FAILED and scrubs token', async () => {
-    const mockNetworkError = new Error('Connect timeout to API. Secret token: test_zepto_key_12345');
+    // Could not connect: nothing was sent, so this stays a retryable failure.
+    const mockNetworkError = Object.assign(new Error('Connect timeout to API. Secret token: test_zepto_key_12345'), { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } });
     vi.mocked(fetch).mockRejectedValue(mockNetworkError);
 
     const res = await adapter.dispatch({

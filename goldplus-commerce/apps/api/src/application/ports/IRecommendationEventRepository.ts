@@ -2,6 +2,7 @@ import { RecommendationEvent } from "../../domain/recommendations/Recommendation
 import type { RecommendationEventType } from "@goldplus/shared";
 
 export interface RecentEventQuery {
+  profileId?: string;
   anonymousId?: string;
   customerId?: string;
   eventType?: RecommendationEventType;
@@ -20,13 +21,28 @@ export interface TrendingEventAggregate {
 }
 
 export interface IRecommendationEventRepository {
-  save(event: RecommendationEvent): Promise<void>;
+  /** Returns true when the row was written, false when the database absorbed it as a duplicate (dedupe_key conflict). */
+  save(event: RecommendationEvent): Promise<boolean>;
   existsRecentSimilarEvent(query: RecentEventQuery): Promise<boolean>;
   findRecentlyViewed(input: {
     anonymousId?: string;
     customerId?: string;
     limit: number;
   }): Promise<Array<{ productId: string; viewedAt: Date }>>;
+  /**
+   * Product ids this profile actually SAW recently (view-verified impressions
+   * and clicks) — the input to the recency penalty (§5A.9). Server-side, so a
+   * cleared cookie resets continuity, not the cap logic.
+   */
+  findRecentlyShownProductIds(input: {
+    profileId: string;
+    withinHours: number;
+    limit: number;
+  }): Promise<string[]>;
+
+  /** The profile's own recent normalized search queries (PRODUCT_SEARCHED events), newest first, deduplicated. */
+  findRecentSearchQueries(input: { profileId: string; withinDays: number; limit: number }): Promise<string[]>;
+
   getTrendingEvents(input: {
     since: Date;
     limit?: number;

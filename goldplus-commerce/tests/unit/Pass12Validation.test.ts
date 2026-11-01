@@ -16,19 +16,39 @@ describe('Validation Utility Functions', () => {
 });
 
 describe('Form Use Cases (Validation)', () => {
-  it('OpenSupportTicket should require split email and phone', async () => {
+  it('OpenSupportTicket requires a phone; email is optional but checked if given', async () => {
     const repo: any = { save: vi.fn() };
     const uc = new OpenSupportTicketUseCase(repo);
 
+    // Phone is the channel we reply on, so it is the one that is required.
+    const noPhone = await uc.execute({
+      subject: 'Hi',
+      description: 'Need assistance urgently please help me.',
+      email: 'user@test.com',
+      phone: '123'
+    });
+    expect(noPhone.ok).toBe(false);
+    expect(noPhone.message).toContain('phone number');
+
+    // A malformed email is still refused — silently dropping it would lose a
+    // contact the customer meant to give.
     const badRes = await uc.execute({
       subject: 'Hi',
       description: 'Need assistance urgently please help me.',
       email: 'invalid',
-      phone: '123'
+      phone: '0770123456'
     });
-
     expect(badRes.ok).toBe(false);
     expect(badRes.message).toContain('email address');
+
+    // No email at all is fine.
+    const noEmail = await uc.execute({
+      subject: 'Valid title here',
+      description: 'A very detailed descriptive issue that exceeds minimum required chars.',
+      email: '',
+      phone: '0770123456'
+    });
+    expect(noEmail.ok).toBe(true);
 
     const okRes = await uc.execute({
       subject: 'Valid title here',

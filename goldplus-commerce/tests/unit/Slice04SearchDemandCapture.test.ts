@@ -152,7 +152,10 @@ describe('Search use cases (Slice 4)', () => {
     );
     const out = await uc.execute({ query: 'power', limit: 8 });
     expect(out.map((o) => o.name)).toEqual(['Power Bank 20000mAh', 'Ultra Power Bank']);
-    expect(Object.keys(out[0]).sort()).toEqual(['categoryName', 'id', 'name', 'priceUgx', 'slug']);
+    // The contract this pins is "public catalogue data only, nothing private".
+    // imageUrl was added deliberately so the dropdown can show the product
+    // photo; the shape stays closed so nothing else leaks into it.
+    expect(Object.keys(out[0]).sort()).toEqual(['categoryName', 'id', 'imageUrl', 'name', 'priceUgx', 'slug']);
   });
 
   it('returns nothing for noise queries without touching the catalogue', async () => {

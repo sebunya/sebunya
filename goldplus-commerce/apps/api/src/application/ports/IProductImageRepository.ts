@@ -7,8 +7,14 @@ export interface PersistedProductImage {
   isPrimary: boolean;
 }
 
+/**
+ * Focus 4: this port is LEGACY. `add` and `setPrimary` are no longer writable
+ * in production (the Drizzle implementation refuses them); every gallery write
+ * goes through ProductMediaUseCases. `remove` may delete only an unslotted row.
+ */
 export interface IProductImageRepository {
   findByProductId(productId: string): Promise<PersistedProductImage[]>;
+  findProductIdForImage(imageId: string): Promise<string | null>;
   add(input: {
     productId: string;
     url: string;

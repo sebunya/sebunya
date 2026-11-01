@@ -3,6 +3,7 @@ import { ControlledActivationAuditRepository } from '../../ports/activation/Cont
 import { ControlledActivationAccessPolicy } from '../../ports/activation/ControlledActivationAccessPolicy.js';
 import { ControlledActivationReadinessChecker } from '../../ports/activation/ControlledActivationReadinessChecker.js';
 import { ActivationStakeholderApprovalRepository } from '../../ports/activation/ActivationStakeholderApprovalRepository.js';
+import { authorizeActivationApproval } from '../../../domain/activation/SeparationOfDuties.js';
 
 export interface RecordApprovalCommand {
   adminId: string;
@@ -33,6 +34,10 @@ export class RecordControlledActivationApprovalUseCase {
     if (!request) {
       throw new Error('Activation request not found');
     }
+
+    // Separation of duties: the requester cannot approve their own activation.
+    const sod = authorizeActivationApproval(request.requestedByAdminId, command.adminId);
+    if (!sod.allowed) throw new Error(sod.reason);
 
     if (!request.rollbackPlanSummary) throw new Error('Cannot approve without rollback plan');
     if (!request.monitoringOwner) throw new Error('Cannot approve without monitoring owner');

@@ -1,6 +1,6 @@
 import type { ProductAvailability, ProductPublicDto, RecommendationItemDto } from "@goldplus/shared";
-import { STALE_SLUGS } from "./catalog/catalog";
 import { getProductSubcategory } from "./product-discovery";
+import { formatUgx } from "./money";
 
 export type RecommendationRule =
   | "same_subcategory"
@@ -26,6 +26,7 @@ export interface RecommendationCandidate {
   imageUrl?: string | null;
   primaryImageUrl?: string | null;
   price?: number | null;
+  floorPriceUgx?: number | null;
   retailPriceUgx?: number | null;
   availability?: ProductAvailability;
   archived?: boolean;
@@ -45,6 +46,7 @@ export interface NormalizedRecommendationCandidate {
   subcategory: string;
   brandOrFamily: string;
   price: number | undefined;
+  floorPriceUgx: number | null;
   priceDisplay: string;
   availability: ProductAvailability;
   availabilityDisplay: string;
@@ -133,7 +135,7 @@ function isSafeImageUrl(value: unknown): value is string {
 
 export function formatRecommendationPrice(value: unknown): string {
   return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? `USh ${value.toLocaleString("en-UG")}`
+    ? formatUgx(value)
     : "Price on request";
 }
 
@@ -158,6 +160,8 @@ export function normalizeRecommendationCandidate(
   const price = typeof rawPrice === "number" && Number.isFinite(rawPrice) && rawPrice > 0
     ? rawPrice
     : undefined;
+  const rawFloor = item?.floorPriceUgx;
+  const floorPriceUgx = typeof rawFloor === "number" && Number.isFinite(rawFloor) && rawFloor > 0 ? rawFloor : null;
   const availability = item?.availability ?? { kind: "unknown" };
   const image = item?.imageUrl ?? item?.primaryImageUrl;
   const imageUrl = isSafeImageUrl(image) ? clean(image) : undefined;
@@ -167,7 +171,7 @@ export function normalizeRecommendationCandidate(
   if (!item) ineligibleReason = "Candidate is missing.";
   else if (!providedId && !slug) ineligibleReason = "Stable product ID or slug is missing.";
   else if (!name) ineligibleReason = "Product name is missing.";
-  else if (!SAFE_SLUG.test(slug) || STALE_SLUGS.has(slug)) ineligibleReason = "Safe PDP slug is missing.";
+  else if (!SAFE_SLUG.test(slug)) ineligibleReason = "Safe PDP slug is missing.";
   else if (item.archived === true || item.hidden === true || item.isActive === false) {
     ineligibleReason = "Product is not public.";
   } else if (["archived", "hidden", "inactive", "deleted"].includes(status)) {
@@ -183,6 +187,7 @@ export function normalizeRecommendationCandidate(
     subcategory,
     brandOrFamily,
     price,
+    floorPriceUgx,
     priceDisplay: formatRecommendationPrice(price),
     availability,
     availabilityDisplay: recommendationAvailabilityLabel(availability),
@@ -275,9 +280,22 @@ function sanitiseSelected<T extends RecommendationCandidate>(
     name: normalized.name,
     imageUrl: normalized.imageUrl,
     price: normalized.price,
+    floorPriceUgx: normalized.floorPriceUgx,
     availability: normalized.availability,
     imageAlt: normalized.imageAlt,
-    reasonCode: reasonCodeForRule(rule),
+    // The display boundary must NOT re-explain an item the engine already
+    // explained. This used to stamp its own locally-derived rule over every
+    // item, so engine rails rendered SAME_CATEGORY and COMPATIBLE_ACCESSORY as
+    // CATALOGUE_FALLBACK: the reason badge disappeared, and — worse — every
+    // impression and click event carried a reason dimension that described the
+    // display helper rather than what actually served.
+    //
+    // A locally-derived rule is still correct for candidates that arrive with
+    // no reason at all (the honest catalogue-fallback rail builds its items
+    // that way), so it fills in only when the engine said nothing.
+    reasonCode: typeof item.reasonCode === "string" && item.reasonCode.trim().length > 0
+      ? item.reasonCode
+      : reasonCodeForRule(rule),
   } as T;
 }
 
@@ -480,6 +498,11 @@ export function supportedRecommendationReason(reasonCode?: string): string | und
   if (["COMPATIBLE_ACCESSORY", "MATCHING_CONNECTOR", "SIMILAR_POWER"].includes(reasonCode ?? "")) {
     return "Related by product details";
   }
+  // R7 (§27): the engine only emits POPULAR_NOW with a real evidence sample
+  // (paid orders or a sufficient engagement window) since R3 — so the badge
+  // is truthful by construction. Codes outside this allowlist render nothing.
+  if (reasonCode === "POPULAR_NOW") return "Recently popular";
+  if (reasonCode === "CART_ADDON") return "Useful add-on";
   return undefined;
 }
 

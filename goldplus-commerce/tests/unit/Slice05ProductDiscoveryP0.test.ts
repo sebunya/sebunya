@@ -45,11 +45,17 @@ describe('Slice 05 product discovery P0', () => {
   });
 
   it('uses exactly the approved category and subcategory taxonomy', () => {
+    // 2026-08-08: PC Accessories (Mice, Sound Cards) joined as the fifth category.
+    // 2026-08-26: Phone Batteries and MiFi & Router Batteries joined Power
+    // Devices with the battery module. They are deliberately two shelves, not
+    // one: a router battery is not a phone battery, and the finder, the
+    // compatibility rules and the navigation all rely on the separation.
     expect(DISCOVERY_TAXONOMY.map(({ name }) => name)).toEqual([
-      'Power Devices', 'Sound Devices', 'Storage Devices', 'Car Accessories',
+      'Power Devices', 'Sound Devices', 'Storage Devices', 'Car Accessories', 'PC Accessories',
     ]);
     expect(DISCOVERY_TAXONOMY.flatMap(({ subcategories }) => subcategories.map(({ name }) => name))).toEqual([
-      'Chargers', 'Power Banks', 'Earbuds', 'Speakers', 'Flash Drives', 'Memory Cards', 'Mounts', 'Car Chargers',
+      'Chargers', 'Power Banks', 'Phone Batteries', 'MiFi & Router Batteries',
+      'Earbuds', 'Speakers', 'Flash Drives', 'Memory Cards', 'Mounts', 'Car Chargers', 'Mice', 'Sound Cards',
     ]);
   });
 
@@ -85,7 +91,9 @@ describe('Slice 05 product discovery P0', () => {
 
   it('renders truthful UGX price and availability fallbacks without invalid price text', () => {
     expect(card).toContain('Number.isFinite(product.retailPriceUgx)');
-    expect(card).toContain('`UGX ${product.retailPriceUgx!');
+    // 2026-08-08: currency now flows through the single formatUgx() source (UGX code
+    // format, not the en-UG "USh" symbol) instead of an inline template literal.
+    expect(card).toContain('formatUgx(product.retailPriceUgx!)');
     expect(card).toContain('Price on request');
     expect(card).toContain("default: return 'Confirm availability'");
     expect(card).not.toMatch(/\{\s*product\.retailPriceUgx\s*\}/);
@@ -95,9 +103,12 @@ describe('Slice 05 product discovery P0', () => {
     expect(card).toContain('const productHref = searchQuery && searchRank > 0');
     expect(card).toContain(': `/products/${product.slug}`;');
     expect(card).toContain('href={productHref}');
-    expect(card).toContain('aria-label={`${product.name}, ${formattedPrice}, ${availabilityLabel}`}');
-    expect(card).toContain('View product details for ${product.name}');
-    expect(card).toContain('View details');
+    // 2026-08-08: the card was decluttered to a single affordance — the explicit
+    // "View details" text link was removed. The whole card (image + name) links to
+    // the PDP, and the accessible name is carried by the aria-label below, so the
+    // PDP is still reachable and labelled without the redundant text link.
+    // During a sale the label says the price the customer pays (it used to read the regular price only).
+    expect(card).toContain('aria-label={`${product.name}, ${onSale ? `on sale at ${formatUgx(saleUgx)}, was ${formattedPrice}` : formattedPrice}, ${availabilityLabel}`}');
   });
 
   it('introduces no fake popularity, trending, scarcity, or recommendation claims', () => {

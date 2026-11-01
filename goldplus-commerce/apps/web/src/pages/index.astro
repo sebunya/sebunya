@@ -1,33 +1,85 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { indexableCategoryHref } from '../lib/indexableLinks';
 import { apiBase } from '../lib/api';
 import ProductCard from '../components/ProductCard.astro';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import PopularNowRail from '../components/recommendations/PopularNowRail.astro';
+import PopularNearYouRail from '../components/recommendations/PopularNearYouRail.astro';
 import RecentlyViewedRail from '../components/recommendations/RecentlyViewedRail.astro';
 import CartAwareRail from '../components/home/CartAwareRail.astro';
-import CategoryAwareRail from '../components/home/CategoryAwareRail.astro';
+import HeroSlider from '../components/hero/HeroSlider.astro';
+import { fetchHeroPersonalised, heroContextFrom, heroLeadPreload } from '../lib/heroPersonalised';
+// The lead slide's image is preloaded from <head> (2026-09-13): inside the hero
+// markup the browser only found it after parsing the styles and the whole nav
+// (Lighthouse: 1.4 s of LCP load delay). The hero reuses this cached fetch.
+const heroLead = heroLeadPreload(await fetchHeroPersonalised(Astro, heroContextFrom(Astro)));
 import HomeCommerceHighlights from '../components/HomeCommerceHighlights.astro';
+import SiteJsonLd from '../components/SiteJsonLd.astro';
 import { buildHomepageProductAllocation } from '../lib/homepage-merchandising';
-import { LOCAL_SEED_PRODUCTS, getCleanCatalog } from '../lib/catalog/catalog';
+import { hasRealCover } from '../lib/productCover';
+import { getCleanCatalog } from '../lib/catalog/catalog';
+import { getTaxonomy } from '../lib/taxonomy';
+import { getHomepageContent } from '../lib/homepageContent';
+import AmbassadorsRail from '../components/home/AmbassadorsRail.astro';
+import { fetchApprovedCatalogue } from '../lib/catalogue';
 
 let rawProducts: ProductPublicDto[] = [];
 let hasApiError = false;
 
 try {
-  // Fetch higher depth limit to satisfy full homepage allocation without duplicates
-  const res = await fetch(`${apiBase}/products?limit=50`, { signal: AbortSignal.timeout(3000) });
-  if (res.ok) {
-    const json = await res.json() as ApiResponse<ProductPublicDto[]>;
-    if (json.success && json.data && json.data.length > 0) {
-      rawProducts = json.data;
-    }
-  }
+  // The WHOLE approved catalogue, paged (lib/catalogue). A fixed 50 was fine
+  // for eight products and silently hides the rest of a real one.
+  rawProducts = await fetchApprovedCatalogue(apiBase);
+  if (rawProducts.length === 0) hasApiError = true;
 } catch {
-  // Graceful fallback
+  // The flag used to be declared and never set, so an outage rendered the
+  // "No featured items" empty state — a sentence with no way forward.
+  hasApiError = true;
 }
 
 const allProducts = getCleanCatalog(rawProducts);
+// Homepage "Shop by category" tiles — operator-editable taxonomy (admin/categories).
+const homepageCategories = (await getTaxonomy()).filter((c) => c.showOnHomepage);
+
+// Product SILHOUETTES, not UI glyphs (tile brief, direction 1b): each icon
+// draws the actual object on the shelf — a power bank with its charge pips, a
+// pair of headphones, a flash drive and its connector, a 12V car charger with
+// its contact tip, a mouse. One family, one stroke weight, distinguishable
+// from each other at 38px. Keyed by slug; a name-keyword heuristic covers
+// operator-added categories; a real photo (admin/categories) replaces the icon.
+const CATEGORY_SILHOUETTES: Record<string, string> = {
+  'power-devices':
+    '<rect x="7" y="2.6" width="10" height="18.8" rx="2.6"/><circle cx="9.6" cy="6.4" r=".75" fill="#93D500" stroke="none"/><circle cx="12" cy="6.4" r=".75" fill="#93D500" stroke="none"/><circle cx="14.4" cy="6.4" r=".75" fill="#93D500" stroke="none"/><rect x="10.4" y="17.4" width="3.2" height="1.7" rx=".85"/>',
+  'sound-devices':
+    '<path d="M4.5 13v-1.6a7.5 7.5 0 0 1 15 0V13"/><rect x="2.5" y="12.4" width="4.4" height="7" rx="2.2"/><rect x="17.1" y="12.4" width="4.4" height="7" rx="2.2"/>',
+  'storage-devices':
+    '<rect x="2.6" y="8.6" width="13.4" height="6.8" rx="1.8"/><rect x="16" y="10.2" width="5.4" height="3.6" rx=".8"/><path d="M5.6 11.2v2M8.2 11.2v2"/>',
+  'car-accessories':
+    '<circle cx="3" cy="12" r="1" fill="#93D500" stroke="none"/><path d="M4.2 12h1.4"/><path d="M5.6 9.4 9.2 7.8v8.4L5.6 14.6z"/><rect x="9.2" y="6.2" width="11.2" height="11.6" rx="2.6"/><rect x="14.4" y="10.6" width="3.4" height="2.8" rx=".7"/>',
+  'pc-accessories':
+    '<path d="M12 2.8c-3.4 0-5.4 2.4-5.4 5.8v5.6c0 3.4 2 5.6 5.4 5.6s5.4-2.2 5.4-5.6V8.6c0-3.4-2-5.8-5.4-5.8z"/><path d="M12 3v5.4"/>',
+};
+const categorySilhouette = (cat: { slug: string; name: string }): string => {
+  if (CATEGORY_SILHOUETTES[cat.slug]) return CATEGORY_SILHOUETTES[cat.slug];
+  const n = cat.name.toLowerCase();
+  if (/power|charg|batter/.test(n)) return CATEGORY_SILHOUETTES['power-devices'];
+  if (/sound|audio|speaker|earbud|headphone/.test(n)) return CATEGORY_SILHOUETTES['sound-devices'];
+  if (/storage|drive|memory|card/.test(n)) return CATEGORY_SILHOUETTES['storage-devices'];
+  if (/car|auto|vehicle/.test(n)) return CATEGORY_SILHOUETTES['car-accessories'];
+  if (/pc|computer|desktop|laptop|mouse|mice/.test(n)) return CATEGORY_SILHOUETTES['pc-accessories'];
+  // A shopping bag for anything unrecognised — still a real object.
+  return '<path d="M16 11V7a4 4 0 0 0-8 0v4"/><path d="M5 9h14l1 12H4L5 9z"/>';
+};
+
+// Homepage marketing copy — operator-editable (admin/homepage). Icons stay in code.
+const homepageContent = await getHomepageContent();
+const TRUST_ICON_PATHS: Record<string, string> = {
+  shield: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z',
+  clipboard: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4',
+  support: 'M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z',
+};
+const trustIconPath = (key: string) => TRUST_ICON_PATHS[key] ?? TRUST_ICON_PATHS.shield;
 
 // Execute cross-section deduplication and building of allocations
 const allocation = buildHomepageProductAllocation(allProducts);
@@ -42,33 +94,27 @@ const usedProductIds = [
   promoProduct?.id,
   todaysPickProduct?.id,
 ].filter((id): id is string => typeof id === 'string');
+
+// Products photographed for real (not the generated sample frame), so the
+// browse rail below can lead with them too. Ids only; nothing reaches the HTML.
+const realCoverIds = allProducts.filter(hasRealCover).map((p) => p.id);
 ---
 
-<BaseLayout title="Premium electronics — Uganda">
+<BaseLayout title="Phone Accessories in Kampala, Uganda" description="Chargers, cables, power banks, audio and storage from our Kampala shop. Find a phone battery by model; help choosing.">
 
-  {/* 1. Hero */}
-  <section class="bg-gradient-to-b from-white to-slate-50 flex-grow flex flex-col justify-center items-center text-center px-4 py-20 lg:py-28 border-b border-slate-100">
-    <div class="max-w-3xl mx-auto">
-      <span class="inline-block py-1.5 px-3.5 rounded-full bg-brand-primary/15 text-gray-900 text-xs font-black tracking-wider uppercase mb-6 border border-brand-primary/20">
-        Guaranteed authenticity
-      </span>
-      <h1 class="text-4xl md:text-5xl lg:text-6xl font-black tracking-tight text-gray-900 mb-6 leading-tight">
-        Power your lifestyle with <span class="text-brand-primary">GoldPlus</span>
-      </h1>
-      <p class="text-base md:text-lg text-slate-500 mb-8 max-w-2xl mx-auto leading-relaxed">
-        Engineered for the Ugandan market. Durable, reliable, verified original electronics. Power, sound, storage and car accessories.
-      </p>
- 
-      <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-        <a href="/shop" class="w-full sm:w-auto bg-brand-primary text-gray-950 px-8 py-3.5 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/25 transition-all hover:scale-[1.01] active:scale-95 focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none text-[15px]">
-          Shop all products
-        </a>
-        <a href="/verification" class="w-full sm:w-auto bg-white text-gray-800 border border-slate-200 px-8 py-3.5 rounded-full font-bold hover:bg-slate-50 transition-all hover:scale-[1.01] active:scale-95 focus-visible:ring-4 focus-visible:ring-slate-200/50 outline-none text-[15px] shadow-xs">
-          Verify product
-        </a>
-      </div>
-    </div>
-  </section>
+  {/* U6 — Organization + WebSite structured data, homepage only. */}
+  <Fragment slot="head">
+    {heroLead && heroLead.href && <link rel="preload" as="image" href={heroLead.href} fetchpriority="high" />}
+    {heroLead && heroLead.imagesrcset && <link rel="preload" as="image" type={heroLead.type} imagesrcset={heroLead.imagesrcset} imagesizes={heroLead.imagesizes} fetchpriority="high" />}
+    <SiteJsonLd />
+  </Fragment>
+
+  {/* 1. Hero — CMS-driven 12-slide personalised slider (ported 2026-08-07).
+      Wrapped in the SAME content container as every rail/section below, so the
+      hero card aligns to the site's grid instead of juting out full-bleed. */}
+  <div class="container mx-auto px-4 lg:px-8">
+    <HeroSlider />
+  </div>
 
   {/* Cart-Aware Continue Journey Banner (Only when active cart items exist) */}
   <div class="container mx-auto px-4 lg:px-8">
@@ -80,37 +126,25 @@ const usedProductIds = [
     <RecentlyViewedRail />
   </div>
 
-  {/* 3. Trust strip (New Visitors Only, hidden client-side if returning) */}
+  {/* 3. Trust strip. Hidden before first paint ONLY when the recently-viewed rail
+      above will take its slot (html.gp-rv, set by BaseLayout in <head> from the same
+      localStorage list the rail reads); hiding it later shifted the page. It used to
+      hide for every returning visitor, so returners never saw "Get it today". */}
+  <style is:global>html.gp-rv #homepage-trust-strip{display:none}</style>
   <section id="homepage-trust-strip" class="bg-white py-10 border-b border-slate-100">
     <div class="container mx-auto px-4 lg:px-8">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center md:text-left">
-        <div class="flex flex-col md:flex-row items-center md:items-start gap-4 p-2">
-          <div class="p-3 rounded-full bg-slate-50 border border-slate-100 text-brand-charcoal shrink-0">
-            <svg class="w-5 h-5 text-gray-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {homepageContent.trustItems.map((item) => (
+          <div class="flex items-start gap-4 p-2">
+            <div class="p-3 rounded-full bg-slate-50 border border-slate-100 text-brand-charcoal shrink-0">
+              <svg class="w-5 h-5 text-gray-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d={trustIconPath(item.iconKey)}></path></svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-sm text-gray-900 mb-1">{item.title}</h3>
+              <p class="text-slate-600 text-[13px] leading-relaxed">{item.body}</p>
+            </div>
           </div>
-          <div>
-            <h3 class="font-bold text-sm text-gray-900 mb-1">Originality Verified</h3>
-            <p class="text-slate-500 text-[13px] leading-relaxed">Every product includes a verification code. Check it online instantly.</p>
-          </div>
-        </div>
-        <div class="flex flex-col md:flex-row items-center md:items-start gap-4 p-2">
-          <div class="p-3 rounded-full bg-slate-50 border border-slate-100 text-brand-charcoal shrink-0">
-            <svg class="w-5 h-5 text-gray-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
-          </div>
-          <div>
-            <h3 class="font-bold text-sm text-gray-900 mb-1">No Fake Claims</h3>
-            <p class="text-slate-500 text-[13px] leading-relaxed">If a spec isn't verified, we tell you it's missing. Honest specifications.</p>
-          </div>
-        </div>
-        <div class="flex flex-col md:flex-row items-center md:items-start gap-4 p-2">
-          <div class="p-3 rounded-full bg-slate-50 border border-slate-100 text-brand-charcoal shrink-0">
-            <svg class="w-5 h-5 text-gray-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-          </div>
-          <div>
-            <h3 class="font-bold text-sm text-gray-900 mb-1">Direct Support</h3>
-            <p class="text-slate-500 text-[13px] leading-relaxed">Report issues or fake products directly to our Ugandan team.</p>
-          </div>
-        </div>
+        ))}
       </div>
     </div>
   </section>
@@ -118,55 +152,62 @@ const usedProductIds = [
   {/* 4. HomeCommerceHighlights */}
   <HomeCommerceHighlights promoProduct={promoProduct} todaysPickProduct={todaysPickProduct} />
 
-  {/* 5. Shop by Category */}
-  <section class="bg-slate-50 py-14 border-b border-slate-100/65">
+  {/* 5. Shop by Category — tile brief direction 1b: product silhouettes on
+      Obsidian panels, one text block (no box inside a box), so the section
+      belongs to the same site as the header. A real photo (admin/categories)
+      replaces the silhouette on a cream stage that dissolves studio whites. */}
+  <section class="py-14" style="background:#0A0A0A">
     <div class="container mx-auto px-4 lg:px-8">
-      <h2 class="text-2xl font-black tracking-tight text-gray-900 mb-8 text-center">Shop by category</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[
-          { name: 'Power devices', desc: 'Chargers, banks', slug: 'power' },
-          { name: 'Sound devices', desc: 'Earbuds, speakers', slug: 'sound' },
-          { name: 'Storage devices', desc: 'Flash drives, SDs', slug: 'storage' },
-          { name: 'Car accessories', desc: 'Mounts, chargers', slug: 'car' },
-        ].map((cat) => (
-          <a href={`/shop?category=${cat.slug}`} class="block group focus-visible:ring-4 focus-visible:ring-brand-primary/30 outline-none rounded-2xl">
-            <div class="bg-white border border-slate-200/85 aspect-[4/3] rounded-2xl p-6 flex flex-col justify-end relative overflow-hidden transition-all hover:border-brand-primary hover:shadow-lg hover:shadow-slate-100/60">
-              <div class="absolute inset-0 flex items-center justify-center text-slate-200 font-medium" aria-hidden="true">
-                <svg class="w-10 h-10 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+      <h2 class="text-2xl font-black tracking-tight mb-8" style="color:#F3EFE8">Shop by category</h2>
+      <div class="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
+        {homepageCategories.map((cat) => (
+          <a
+            href={indexableCategoryHref(`/shop?category=${cat.slug}`)}
+            class="gp-cat-tile flex flex-col rounded-2xl outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk min-h-[168px] max-lg:[&:last-child:nth-child(odd)]:col-span-2"
+            style="background:#101010;border:1px solid rgba(243,239,232,.1);padding:26px 18px 20px;transition:border-color .25s,background .25s"
+          >
+            {cat.imageUrl ? (
+              <div class="rounded-xl overflow-hidden relative mb-5" style="aspect-ratio:1/1;background:#F3EFE8;isolation:isolate">
+                <img src={cat.imageUrl} alt={`${cat.name} category`} width="600" height="600" loading="lazy" decoding="async"
+                  class="absolute w-[82%] h-[82%] object-contain" style="inset:9%;mix-blend-mode:multiply;filter:brightness(1.09) contrast(1.04)" />
               </div>
-              <div class="relative z-10 bg-white/95 p-3.5 rounded-xl border border-slate-100/80 shadow-xs">
-                <h3 class="text-base font-bold text-gray-950 mb-0.5">{cat.name}</h3>
-                <p class="text-xs text-slate-500 font-medium group-hover:text-brand-primary transition-colors">{cat.desc}</p>
-              </div>
-            </div>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="#93D500" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+                class="block mb-6" style="width:38px;height:38px" set:html={categorySilhouette(cat)} />
+            )}
+            <h3 class="text-[15px] font-semibold mb-1 mt-auto" style="color:#F3EFE8">{cat.name}</h3>
+            {cat.homepageBlurb && <p class="text-[12.5px] leading-snug" style="color:rgba(243,239,232,.62)">{cat.homepageBlurb}</p>}
           </a>
         ))}
       </div>
     </div>
   </section>
+  <style>
+    .gp-cat-tile:hover { border-color: rgba(147, 213, 0, .5) !important; background: #131313 !important; }
+  </style>
 
   {/* 6. Featured products */}
   <section class="bg-white py-14 border-b border-slate-100">
     <div class="container mx-auto px-4 lg:px-8">
       <div class="flex items-center justify-between mb-8">
         <h2 class="text-2xl font-black tracking-tight text-gray-900">Featured products</h2>
-        <a href="/shop" class="text-sm font-bold text-gray-800 hover:text-brand-primary transition-colors flex items-center gap-1">View all &rarr;</a>
+        <a href="/shop" class="text-sm font-bold text-gray-800 hover:text-brand-primaryInk transition-colors flex items-center gap-1">View all &rarr;</a>
       </div>
 
       {hasApiError ? (
         <div class="p-8 text-center bg-slate-50 border border-slate-200/80 rounded-2xl">
-           <p class="text-slate-500 text-sm">Featured items are currently loading slowly. Explore the full collection below.</p>
-           <a href="/shop" class="inline-block mt-4 text-gray-900 font-bold underline">Browse Catalog</a>
+           <p class="text-slate-600 text-sm">We could not load the featured items just now. The shop itself is open.</p>
+           <a href="/shop" class="inline-block mt-4 text-gray-900 font-bold underline">Go to the shop</a>
         </div>
       ) : featuredProducts.length > 0 ? (
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {featuredProducts.map((p) => (
             <ProductCard product={p} />
           ))}
         </div>
       ) : (
         <div class="p-8 text-center bg-slate-50 border border-slate-200/80 rounded-2xl">
-          <p class="text-slate-500 text-sm">No featured items highlighted right now.</p>
+          <p class="text-slate-600 text-sm">Nothing is featured right now. <a href="/shop" class="font-bold underline text-gray-900">See everything in the shop</a></p>
         </div>
       )}
     </div>
@@ -174,57 +215,53 @@ const usedProductIds = [
 
   {/* Category/Search Aware Continuation Rail (Only when user history exists) */}
   <div class="container mx-auto px-4 lg:px-8">
-    <CategoryAwareRail excludeProductIds={usedProductIds} />
+    {/* R7 (2026-08-06): CategoryAwareRail retired — it read two localStorage
+        keys (goldplus_last_category / goldplus_last_search) that NOTHING ever
+        wrote, so it could never render, while serializing the entire catalogue
+        into the homepage HTML on every request. Category affinity is served
+        server-side by the engine's search-affinity source instead. */}
   </div>
 
   {/* 7. Trending Now (with Cross-Section Deduplication) */}
-  <PopularNowRail excludeProductIds={usedProductIds} useContainerWrapper={true} />
+  {/* 0193: "Popular in <their area>", from the visitor's "Deliver to" (server-side; hidden without enough evidence). */}
+  <PopularNearYouRail place={Astro.locals.gpDeliverTo} excludeProductIds={usedProductIds} homeBand={true} />
+  <PopularNowRail excludeProductIds={usedProductIds} realCoverIds={realCoverIds} homeBand={true} />
 
   {/* 8. Business pathways */}
   <section class="bg-zinc-50 border-t border-zinc-200/85 py-16">
     <div class="container mx-auto px-4 lg:px-8">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div class="border border-zinc-200/90 bg-white p-8 rounded-2xl hover:border-zinc-300 hover:shadow-md transition-all duration-300 flex flex-col justify-between h-full">
-          <div>
-            <h3 class="text-xl font-bold text-gray-900 mb-3">Retail Customers</h3>
-            <p class="text-zinc-500 text-sm mb-6 leading-relaxed">Shop our verified products directly, and verify authenticity instantly.</p>
+        {homepageContent.pathwayCards.map((card, i) => (
+          <div class="border border-zinc-200/90 bg-white p-8 rounded-2xl hover:border-zinc-300 hover:shadow-md transition-all duration-300 flex flex-col justify-between h-full">
+            <div>
+              <h3 class="text-xl font-bold text-gray-900 mb-3">{card.title}</h3>
+              <p class="text-zinc-500 text-sm mb-6 leading-relaxed">{card.body}</p>
+            </div>
+            <div>
+              <a href={card.href} class={i === 0
+                ? 'inline-flex items-center min-h-11 px-6 bg-brand-primary text-gray-950 font-bold rounded-full hover:shadow-lg hover:shadow-brand-primary/20 hover:scale-[1.015] active:scale-95 transition-all text-sm'
+                : 'inline-flex items-center min-h-11 px-6 bg-zinc-900 text-white font-bold rounded-full hover:bg-zinc-800 hover:shadow-md active:scale-95 transition-all text-sm'}>{card.ctaLabel}</a>
+            </div>
           </div>
-          <div>
-            <a href="/shop" class="inline-block px-6 py-2.5 bg-brand-primary text-gray-950 font-bold rounded-full hover:shadow-lg hover:shadow-brand-primary/20 hover:scale-[1.015] active:scale-95 transition-all text-xs uppercase tracking-wider">Start shopping</a>
-          </div>
-        </div>
-        <div class="border border-zinc-200/90 bg-white p-8 rounded-2xl hover:border-zinc-300 hover:shadow-md transition-all duration-300 flex flex-col justify-between h-full">
-          <div>
-            <h3 class="text-xl font-bold text-gray-900 mb-3">Dealers</h3>
-            <p class="text-zinc-500 text-sm mb-6 leading-relaxed">Apply to become an authorised GoldPlus dealer in Uganda.</p>
-          </div>
-          <div>
-            <a href="/dealers/apply" class="inline-block px-6 py-2.5 bg-zinc-900 text-white font-bold rounded-full hover:bg-zinc-800 hover:shadow-md active:scale-95 transition-all text-xs uppercase tracking-wider">Apply now</a>
-          </div>
-        </div>
-        <div class="border border-zinc-200/90 bg-white p-8 rounded-2xl hover:border-zinc-300 hover:shadow-md transition-all duration-300 flex flex-col justify-between h-full">
-          <div>
-            <h3 class="text-xl font-bold text-gray-900 mb-3">Corporate Buyers</h3>
-            <p class="text-zinc-500 text-sm mb-6 leading-relaxed">Request wholesale quotes for corporate electronics deployment.</p>
-          </div>
-          <div>
-            <a href="/quote-request?kind=corporate" class="inline-block px-6 py-2.5 bg-zinc-900 text-white font-bold rounded-full hover:bg-zinc-800 hover:shadow-md active:scale-95 transition-all text-xs uppercase tracking-wider">Request quote</a>
-          </div>
-        </div>
+        ))}
       </div>
     </div>
   </section>
 
+  {/* 9. Ambassadors & models — real people with GoldPlus products (renders only when someone is published). */}
+  <AmbassadorsRail section={homepageContent.ambassadors} products={allProducts} />
+
 </BaseLayout>
 
 <script>
-  import { hasSeenBefore, handleUserVisitState } from "../lib/returning-user";
+  import { handleUserVisitState } from "../lib/returning-user";
+  import { getRecentlyViewedLocal } from "../lib/recommendations";
 
   document.addEventListener("DOMContentLoaded", () => {
     const trustStrip = document.getElementById("homepage-trust-strip");
-    
-    // First-party lock check: If they are a confirmed returning visitor, hide the Trust Strip
-    if (trustStrip && hasSeenBefore()) {
+
+    // The rail above replaces the strip only when it has something to show.
+    if (trustStrip && getRecentlyViewedLocal().length > 0) {
       trustStrip.style.display = "none";
     }
 

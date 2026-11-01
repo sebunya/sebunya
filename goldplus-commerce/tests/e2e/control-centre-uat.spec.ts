@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { CONTROL_CENTRE_MODULES } from '../../packages/shared/src/control-centre/module-registry';
 
 /**
  * Control Centre and Commerce OS admin UAT.
@@ -25,7 +26,23 @@ const FORBIDDEN_COPY = [
   'Live action: blocked',
 ];
 
+const API = process.env.E2E_API_BASE ?? 'http://127.0.0.1:3000';
+
+/**
+ * Signed in with a session cookie, as the other admin checks are. After the sign-in FORM, headless Chrome painted no
+ * further frames in that tab (requestAnimationFrame never fired; a new tab was fine), so every click that waits for
+ * "stable" timed out. Investigated 2026-10-22: not the view transitions, the service worker or a render-blocking
+ * resource. The form itself is still exercised once, below ('the sign-in form lands in the admin').
+ */
 async function signIn(page: Page, email: string, password: string) {
+  const res = await page.context().request.post(`${API}/auth/login`, { data: { email, password } });
+  expect(res.ok(), 'admin login').toBe(true);
+  const body = await res.json();
+  const token = body?.data?.token ?? body?.token;
+  await page.context().addCookies([{ name: 'goldplus_session', value: token, domain: new URL(process.env.E2E_WEB_BASE ?? 'http://127.0.0.1:4321').hostname, path: '/' }]);
+}
+
+async function signInWithTheForm(page: Page, email: string, password: string) {
   await page.goto('/admin/login');
   await page.getByLabel(/email/i).fill(email);
   await page.getByLabel(/password/i).fill(password);
@@ -46,6 +63,12 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 test.describe('Control Centre', () => {
+  test('the sign-in form lands in the admin', async ({ page }) => {
+    test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD, 'ADMIN_EMAIL/ADMIN_PASSWORD required');
+    await signInWithTheForm(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
+    await expect(page.locator('[data-cc-module]').first()).toBeVisible();
+  });
+
   test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD, 'ADMIN_EMAIL/ADMIN_PASSWORD required');
 
   test('renders every Trust Centre module from computed readiness', async ({ page }) => {
@@ -102,21 +125,18 @@ test.describe('Control Centre', () => {
 test.describe('Commerce OS', () => {
   test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD, 'ADMIN_EMAIL/ADMIN_PASSWORD required');
 
-  test('renders all fourteen commerce modules', async ({ page }) => {
+  // From the registry, not a hand count: the test said fourteen long after the registry grew to seventeen.
+  const COMMERCE_OS_KEYS = CONTROL_CENTRE_MODULES.filter((m) => m.category === 'COMMERCE_OS').map((m) => m.key);
+  test('renders every commerce module the registry lists', async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);
     await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!);
     await page.goto('/admin/commerce-os');
 
     await expect(page.locator('[data-commerce-os]')).toBeVisible();
     await expect(page.locator('[data-cc-failure]')).toHaveCount(0);
-    await expect(page.locator('[data-cc-module]')).toHaveCount(14);
+    await expect(page.locator('[data-cc-module]')).toHaveCount(COMMERCE_OS_KEYS.length);
 
-    for (const key of [
-      'decision-intelligence', 'customer-dna', 'shopping-assistant', 'automation',
-      'surveys', 'copy-quality', 'behavioural-interventions', 'experiments',
-      'pricing', 'fraud', 'pim-import', 'loyalty-os', 'search-insights',
-      'inventory-fulfilment',
-    ]) {
+    for (const key of COMMERCE_OS_KEYS) {
       await expect(page.locator(`[data-cc-module="${key}"]`), `${key} must render`).toBeVisible();
     }
 

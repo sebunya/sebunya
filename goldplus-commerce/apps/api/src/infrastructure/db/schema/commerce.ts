@@ -1,5 +1,22 @@
-import { pgTable, uuid, varchar, timestamp, integer, index, jsonb, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { pgTable, uuid, varchar, timestamp, integer, bigint, index, jsonb, boolean, uniqueIndex, customType, text } from 'drizzle-orm/pg-core';
+import { relations, sql } from 'drizzle-orm';
+
+/**
+ * jsonb that survives the postgres-js driver. drizzle 0.29 + postgres-js
+ * serialises a JS object into a JSON *string* parameter, which lands as a jsonb
+ * STRING (jsonb_typeof = 'string') — the double-encoding defect live rows carry.
+ * This type casts explicitly so objects land as objects. Scoped to
+ * delivery_location only; other jsonb columns keep their historical behaviour
+ * until their readers are audited.
+ */
+const jsonbStrict = customType<{ data: unknown; driverData: string }>({
+  dataType() {
+    return 'jsonb';
+  },
+  toDriver(value: unknown) {
+    return sql`${JSON.stringify(value)}::text::jsonb` as unknown as string;
+  },
+});
 import { products } from './products';
 import { users } from './identity';
 
@@ -47,22 +64,29 @@ export const orders = pgTable('orders', {
   deliveryAddress: varchar('delivery_address', { length: 255 }).notNull(),
   status: varchar('status', { length: 30 }).default('received').notNull(),
   paymentStatus: varchar('payment_status', { length: 30 }).default('unpaid').notNull(),
-  subtotalAmount: integer('subtotal_amount').notNull(),
-  deliveryFee: integer('delivery_fee').notNull().default(0),
-  totalAmount: integer('total_amount').notNull(),
+  // Payment mode chosen at checkout ('pesapal' online-prepaid | 'offline' pay-on-delivery).
+  // NULL for legacy/admin orders. The payment-ops sweeps act only on 'pesapal'.
+  paymentMethod: varchar('payment_method', { length: 20 }),
+  subtotalAmount: bigint('subtotal_amount', { mode: 'number' }).notNull(),
+  deliveryFee: bigint('delivery_fee', { mode: 'number' }).notNull().default(0),
+  totalAmount: bigint('total_amount', { mode: 'number' }).notNull(),
   // Pricing 0042: immutable authoritative quote provenance. Existing orders are
   // backfilled as unadjusted UGX snapshots; new checkout writes the exact quote.
   pricingQuoteId: uuid('pricing_quote_id'),
   pricingCurrency: varchar('pricing_currency', { length: 3 }).default('UGX').notNull(),
-  pricingBaseSubtotal: integer('pricing_base_subtotal').default(0).notNull(),
-  pricingDiscountTotal: integer('pricing_discount_total').default(0).notNull(),
-  pricingTaxTotal: integer('pricing_tax_total').default(0).notNull(),
+  pricingBaseSubtotal: bigint('pricing_base_subtotal', { mode: 'number' }).default(0).notNull(),
+  pricingDiscountTotal: bigint('pricing_discount_total', { mode: 'number' }).default(0).notNull(),
+  pricingTaxTotal: bigint('pricing_tax_total', { mode: 'number' }).default(0).notNull(),
   pricingCalculationVersion: varchar('pricing_calculation_version', { length: 40 }).default('legacy-unadjusted-v1').notNull(),
   pricingSnapshot: jsonb('pricing_snapshot'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 
   // Pass 13A: Stitching context
+  // 0101 (R3.1): the server-issued experience profile that placed this order —
+  // the ONE identity join between the recommendation event stream and orders.
+  // Stamped at checkout from the HttpOnly visit token; never client-supplied.
+  profileId: uuid('profile_id'),
   anonymousId: varchar('anonymous_id', { length: 160 }),
   browserId: varchar('browser_id', { length: 160 }),
   sessionId: varchar('session_id', { length: 160 }),
@@ -70,8 +94,17 @@ export const orders = pgTable('orders', {
   attributionId: uuid('attribution_id'),
 
   // Slice 3B: structured Uganda delivery location + fee provenance + idempotency
-  deliveryLocation: jsonb('delivery_location'),
+  deliveryLocation: jsonbStrict('delivery_location'),
   deliveryFeeConfirmed: boolean('delivery_fee_confirmed').default(false).notNull(),
+  // 0084: verbatim pre-normalisation copy of rows the double-encoding backfill
+  // rewrote — reversibility for the encoding fix, never read by application code.
+  deliveryLocationRaw: jsonb('delivery_location_raw'),
+  // 0085: loyalty redemption applied to this order (discount is a recorded fact)
+  loyaltyDiscountUgx: bigint('loyalty_discount_ugx', { mode: 'number' }).default(0).notNull(),
+  loyaltyRedemptionId: uuid('loyalty_redemption_id'),
+  // 0196: store credit / gift card paying part of the order (a tender; total_amount stays the full sale).
+  storeCreditAppliedUgx: bigint('store_credit_applied_ugx', { mode: 'number' }).default(0).notNull(),
+  storeCreditInstrumentId: uuid('store_credit_instrument_id'),
   clientOrderKey: varchar('client_order_key', { length: 80 }),
   // What actually happened to stock for this order (migration 0053). Recorded on
   // the order rather than inferred from a fulfilment task, so payment and
@@ -88,6 +121,7 @@ export const orders = pgTable('orders', {
   sessionIdx: index('orders_session_idx').on(table.sessionId),
   cartIdx: index('orders_cart_idx').on(table.cartId),
   attributionIdx: index('orders_attribution_idx').on(table.attributionId),
+  profileIdx: index('orders_profile_idx').on(table.profileId),
 }));
 
 export const orderItems = pgTable('order_items', {
@@ -97,11 +131,15 @@ export const orderItems = pgTable('order_items', {
   sku: varchar('sku', { length: 50 }).notNull(),
   productName: varchar('product_name', { length: 255 }).notNull(),
   quantity: integer('quantity').notNull(),
-  unitPrice: integer('unit_price').notNull(),
-  canonicalUnitPrice: integer('canonical_unit_price').default(0).notNull(),
-  baseSubtotal: integer('base_subtotal').default(0).notNull(),
-  discountAmount: integer('discount_amount').default(0).notNull(),
-  finalLineTotal: integer('final_line_total').default(0).notNull(),
+  unitPrice: bigint('unit_price', { mode: 'number' }).notNull(),
+  canonicalUnitPrice: bigint('canonical_unit_price', { mode: 'number' }).default(0).notNull(),
+  baseSubtotal: bigint('base_subtotal', { mode: 'number' }).default(0).notNull(),
+  discountAmount: bigint('discount_amount', { mode: 'number' }).default(0).notNull(),
+  finalLineTotal: bigint('final_line_total', { mode: 'number' }).default(0).notNull(),
+  // 0102 (R3.1): HISTORICAL cost frozen at order creation from
+  // product_prices.cost_price. NULL = cost unknown at sale time — profit for
+  // this line is honestly PARTIAL, never derived from the current price.
+  cogsSnapshotUgx: bigint('cogs_snapshot_ugx', { mode: 'number' }),
 });
 
 export const cartsRelations = relations(carts, ({ many }) => ({
@@ -141,7 +179,7 @@ export const payments = pgTable('payments', {
   idempotencyKey: varchar('idempotency_key', { length: 255 }).unique().notNull(),
   provider: varchar('provider', { length: 50 }).notNull(),
   providerReference: varchar('provider_reference', { length: 255 }),
-  amount: integer('amount').notNull(),
+  amount: bigint('amount', { mode: 'number' }).notNull(),
   status: varchar('status', { length: 30 }).default('PENDING').notNull(),
   paidAt: timestamp('paid_at', { withTimezone: true }),
   // Was the webhook that created this payment authenticated? (migration 0056)
@@ -158,13 +196,17 @@ export const paymentAttempts = pgTable('payment_attempts', {
   orderId: uuid('order_id').references(() => orders.id).notNull(),
   merchantReference: varchar('merchant_reference', { length: 255 }).unique().notNull(),
   orderTrackingId: varchar('order_tracking_id', { length: 255 }),
-  amount: integer('amount').notNull(),
+  amount: bigint('amount', { mode: 'number' }).notNull(),
   currency: varchar('currency', { length: 10 }).default('UGX').notNull(),
   status: varchar('status', { length: 30 }).default('not_started').notNull(),
   redirectUrl: varchar('redirect_url', { length: 512 }),
   provider: varchar('provider', { length: 50 }).default('pesapal').notNull(),
   ipnReceivedAt: timestamp('ipn_received_at', { withTimezone: true }),
   callbackReceivedAt: timestamp('callback_received_at', { withTimezone: true }),
+  // Why a non-paid terminal attempt failed, as the provider said (0162).
+  providerStatusCode: integer('provider_status_code'),
+  providerStatusDescription: text('provider_status_description'),
+  failedAt: timestamp('failed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
@@ -174,16 +216,86 @@ export const paymentAttempts = pgTable('payment_attempts', {
 
 
 
+/**
+ * The refund ledger (0103). ONE canonical record of money given back.
+ *
+ * `status` matters for arithmetic, not just display: a 'requested' refund is
+ * money already committed to the customer, so it counts against the refundable
+ * balance exactly like a settled one. Only 'rejected' releases the balance.
+ * Revenue reversal is recomputed from these rows rather than applied as a
+ * one-off subtraction, which is what makes it exactly-once.
+ */
+export const paymentRefunds = pgTable('payment_refunds', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  paymentAttemptId: uuid('payment_attempt_id').references(() => paymentAttempts.id).notNull(),
+  orderId: uuid('order_id').references(() => orders.id).notNull(),
+  idempotencyKey: varchar('idempotency_key', { length: 120 }).notNull(),
+  amountUgx: bigint('amount_ugx', { mode: 'number' }).notNull(),
+  reason: text('reason').notNull(),
+  status: varchar('status', { length: 20 }).default('requested').notNull(),
+  providerStatus: varchar('provider_status', { length: 60 }),
+  providerMessage: text('provider_message'),
+  requestedBy: uuid('requested_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  settledAt: timestamp('settled_at', { withTimezone: true }),
+}, (table) => ({
+  idempotencyUq: uniqueIndex('payment_refunds_idempotency_uq').on(table.idempotencyKey),
+  attemptIdx: index('payment_refunds_attempt_idx').on(table.paymentAttemptId),
+  orderIdx: index('payment_refunds_order_idx').on(table.orderId),
+  statusIdx: index('payment_refunds_status_idx').on(table.status),
+}));
+
+/**
+ * Optional per-line allocation. Absent rows mean the refund belongs to no
+ * product line (a delivery-fee variance); it is never smeared across lines,
+ * because a per-product refund that did not happen must not be invented.
+ */
+export const paymentRefundLines = pgTable('payment_refund_lines', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  refundId: uuid('refund_id').references(() => paymentRefunds.id, { onDelete: 'cascade' }).notNull(),
+  orderItemId: uuid('order_item_id').references(() => orderItems.id).notNull(),
+  amountUgx: bigint('amount_ugx', { mode: 'number' }).notNull(),
+}, (table) => ({
+  refundItemUq: uniqueIndex('payment_refund_lines_uq').on(table.refundId, table.orderItemId),
+  itemIdx: index('payment_refund_lines_item_idx').on(table.orderItemId),
+}));
+
 // Slice 3B: admin-configured delivery fee zones (per Ugandan district)
 export const deliveryZones = pgTable('delivery_zones', {
   id: uuid('id').defaultRandom().primaryKey(),
   district: varchar('district', { length: 100 }).notNull(),
-  feeUgx: integer('fee_ugx').notNull(),
+  feeUgx: bigint('fee_ugx', { mode: 'number' }).notNull(),
   enabled: boolean('enabled').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   districtIdx: uniqueIndex('delivery_zones_district_idx').on(table.district),
+}));
+
+/**
+ * Delivery intelligence (migration 0083): the single band-pricing policy that
+ * turns embedded road geography into countrywide fee ESTIMATES. Confirmed
+ * zones above always override; estimates never enter order totals. Single-row
+ * by construction — the fixed "singleton" key is unique.
+ */
+export const deliveryPricingPolicy = pgTable('delivery_pricing_policy', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  singleton: varchar('singleton', { length: 10 }).default('policy').notNull(),
+  coreFeeUgx: bigint('core_fee_ugx', { mode: 'number' }).notNull(),
+  cityFeeUgx: bigint('city_fee_ugx', { mode: 'number' }).notNull(),
+  metroFeeUgx: bigint('metro_fee_ugx', { mode: 'number' }).notNull(),
+  metroEdgeFeeUgx: bigint('metro_edge_fee_ugx', { mode: 'number' }).notNull(),
+  nearFeeUgx: bigint('near_fee_ugx', { mode: 'number' }).notNull(),
+  midFeeUgx: bigint('mid_fee_ugx', { mode: 'number' }).notNull(),
+  farFeeUgx: bigint('far_fee_ugx', { mode: 'number' }).notNull(),
+  remoteFeeUgx: bigint('remote_fee_ugx', { mode: 'number' }).notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  note: varchar('note', { length: 300 }),
+  updatedBy: uuid('updated_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  singletonIdx: uniqueIndex('delivery_pricing_policy_singleton_idx').on(table.singleton),
 }));
 
 /**
@@ -248,3 +360,49 @@ export const checkoutSideEffects = pgTable('checkout_side_effects', {
   ),
   orderIdx: index('checkout_side_effects_order_idx').on(table.orderId),
 }));
+
+/**
+ * P0-2 §5 — canonical append-only order-transition ledger.
+ *
+ * Exactly one row per committed status transition, written in the SAME
+ * transaction as the order-status update. Append-only: no application update or
+ * delete path exists, and an architecture test forbids one. Actor identity comes
+ * from trusted context, never a request body. Backfill writes one explicit
+ * synthetic snapshot per pre-existing order (is_synthetic=true), which asserts
+ * the order HAD this stored state when history began — not that every transition
+ * was observed. No raw PII / provider payloads / tokens are stored.
+ */
+export const orderEvents = pgTable(
+  'order_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    orderId: uuid('order_id').references(() => orders.id).notNull(),
+    fromStatus: varchar('from_status', { length: 30 }),
+    toStatus: varchar('to_status', { length: 30 }).notNull(),
+    actorId: uuid('actor_id'),
+    actorType: varchar('actor_type', { length: 24 }).notNull(),
+    reasonCode: varchar('reason_code', { length: 48 }),
+    source: varchar('source', { length: 24 }).notNull(),
+    note: varchar('note', { length: 500 }),
+    idempotencyKey: varchar('idempotency_key', { length: 120 }),
+    correlationId: varchar('correlation_id', { length: 120 }),
+    isSynthetic: boolean('is_synthetic').notNull().default(false),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orderOccurredIdx: index('order_events_order_occurred_idx').on(t.orderId, t.occurredAt),
+  }),
+);
+
+/**
+ * Payments operational config (0097). Keys are validated against the closed
+ * registry in PaymentsOpsConfig.ts; ships empty — every governed mechanism is
+ * OFF until an operator sets a number.
+ */
+export const paymentsOpsConfig = pgTable('payments_ops_config', {
+  configKey: varchar('config_key', { length: 64 }).primaryKey(),
+  configValue: text('config_value').notNull(),
+  updatedBy: uuid('updated_by'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});

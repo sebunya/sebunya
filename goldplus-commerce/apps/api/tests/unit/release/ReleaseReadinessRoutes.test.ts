@@ -62,11 +62,28 @@ describe('ReleaseReadinessRoutes', () => {
     const res = await app.request('/admin/release-readiness/decisions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ runId: 'run-1', status: 'APPROVED', notes: 'Looks good' })
+      body: JSON.stringify({ runId: 'run-1', status: 'APPROVED_FOR_CONTROLLED_ACTIVATION', notes: 'Looks good' })
     });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.id).toBe('dec-1');
+  });
+
+  // A malformed body or a status outside the decision vocabulary is the
+  // caller's mistake: 400, never the 500 an unguarded c.req.json() produced.
+  it('POST /admin/release-readiness/decisions refuses bad input with 400', async () => {
+    const notJson = await app.request('/admin/release-readiness/decisions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: 'not json',
+    });
+    expect(notJson.status).toBe(400);
+    const unknownStatus = await app.request('/admin/release-readiness/decisions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: 'run-1', status: 'APPROVED' }),
+    });
+    expect(unknownStatus.status).toBe(400);
+    const noReason = await app.request('/admin/release-readiness/gates/gate-1/acknowledge', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: 'run-1' }),
+    });
+    expect(noReason.status).toBe(400);
   });
 
   it('POST /admin/release-readiness/gates/:gateId/acknowledge', async () => {

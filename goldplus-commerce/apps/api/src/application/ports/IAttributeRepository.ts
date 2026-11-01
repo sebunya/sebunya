@@ -29,6 +29,11 @@ export interface IAttributeRepository {
   }): Promise<PersistedAttribute>;
 
   findValuesByProductId(productId: string): Promise<PersistedAttributeValue[]>;
+  /**
+   * Removes this product's values for every attribute NOT listed: the listing editor submits the full set, so a row
+   * the operator blanked or renamed must go. Optional so test doubles need not implement it.
+   */
+  removeValuesExcept?(productId: string, keepAttributeIds: string[]): Promise<number>;
   setValue(input: {
     productId: string;
     attributeId: string;

@@ -31,7 +31,10 @@ describe('Slice 13 accessibility & performance static contract', () => {
 
   it('keeps product imagery lazy and described', () => {
     const card = read('apps/web/src/components/ProductCard.astro');
-    expect(card).toContain('loading="lazy"');
+    // Lazy by default; only a listing's first row (in the first desktop
+    // viewport, where one of them is the LCP image) opts into eager loading.
+    expect(card).toContain("loading={eager ? 'eager' : 'lazy'}");
+    expect(card).toContain('eager = false');
     expect(card).toMatch(/alt=\{/);
   });
 

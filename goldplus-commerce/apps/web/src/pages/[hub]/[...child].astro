@@ -1,0 +1,286 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ProductCard from '../../components/ProductCard.astro';
+import { apiBase } from '../../lib/api';
+import { getCleanCatalog } from '../../lib/catalog/catalog';
+import { getTaxonomy } from '../../lib/taxonomy';
+import { getBusinessInfo } from '../../lib/businessInfo';
+import { serializeJsonLd, breadcrumbJsonLd, schemaAvailability } from '../../lib/jsonld';
+import { SITE_ORIGIN } from '../../lib/sitemap';
+import {
+  CATEGORY_HUBS,
+  getHub,
+  getHubChild,
+  productsForHub,
+  productsForHubChild,
+  evaluateReleaseGate,
+  hasVerifiedWarrantyFact,
+  hubPath,
+} from '../../lib/categoryHubs';
+import { dedupeProductsById, isApprovedDiscoveryProduct, getProductSubcategory, subcategoryNameForSlug } from '../../lib/product-discovery';
+import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
+import { fetchApprovedCatalogue } from '../../lib/catalogue';
+import { findRecordedRedirect } from '../../lib/recordedRedirect';
+import { carryQuery } from '../../lib/carryQuery';
+import { offerPriceUgx } from '../../lib/offerPrice';
+import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../../lib/storefrontDiscount';
+import { fitIndexCached } from '../../lib/batteries';
+import { phoneBatteryPath } from '../../lib/phoneBatteryPage';
+import type { FinderFitIndexDto } from '@goldplus/shared';
+
+/**
+ * CATEGORY AUTHORITY ENGINE — one dynamic route serves every registered hub
+ * (/power) and child (/power/power-banks). Astro prefers static routes over
+ * dynamic ones, so every existing top-level page (all static files) wins over
+ * this route; anything not in the hub registry 404s below.
+ */
+const hubSlug = Astro.params.hub ?? '';
+const childParam = (Astro.params.child ?? '').replace(/\/+$/, '');
+const hub = getHub(hubSlug);
+const child = hub && childParam ? getHubChild(hub, childParam) : undefined;
+
+if (!hub || (childParam && !child) || childParam.includes('/')) {
+  // A recorded redirect (manual row, retired page) is answered HERE. Handing
+  // over to 404.astro cannot redirect: Astro keeps this 404 status and merges
+  // the 404 page's Location into it, so the shopper got a blank 404.
+  const recorded = await findRecordedRedirect(Astro.url.pathname);
+  if (recorded) return Astro.redirect(carryQuery(recorded.target, Astro.url.search), recorded.status);
+  // Same pattern as products/[slug].astro — an unregistered path is a 404.
+  return Astro.redirect('/404', 404);
+}
+
+const taxonomy = await getTaxonomy();
+const biz = await getBusinessInfo();
+
+// The release gate below counts products, so a catalogue truncated at 60 could
+// noindex a hub for want of stock the shop actually has.
+// Gate still fails closed (noindex + honest empty state) — never invented stock.
+const rawProducts: ProductPublicDto[] = await fetchApprovedCatalogue(apiBase);
+
+const catalogue = dedupeProductsById(getCleanCatalog(rawProducts, taxonomy)).filter((p) => isApprovedDiscoveryProduct(p, taxonomy));
+const products = child ? productsForHubChild(hub, child, catalogue, taxonomy) : productsForHub(hub, catalogue, taxonomy);
+const gate = evaluateReleaseGate(products, hub.releaseGate);
+
+const page = child ?? hub;
+const path = hubPath(hub.slug, child?.slug);
+const canonicalUrl = `${SITE_ORIGIN}${path}`;
+const robotsMeta = gate.pass ? undefined : 'noindex,follow';
+
+// FAQs: static honest ones + live-data ones only when the data backs them.
+const showWarrantyFaq = hasVerifiedWarrantyFact(products);
+// A child's own questions come first; the range's shared ones (delivery, warranty, shop) follow.
+const faqs = [...(child?.faqs ?? []), ...hub.faqs]
+  .map((f) => {
+    if (f.source === 'delivery') {
+      const answer = `Yes. ${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. An estimated fee for your address is shown at checkout before you pay and confirmed before the rider leaves.`;
+      return { question: f.question, answer };
+    }
+    if (f.source === 'warranty') {
+      if (!showWarrantyFaq) return null;
+      return {
+        question: f.question,
+        answer:
+          'Products that carry a warranty state it on their product page, taken from the verified product record. See the warranty page for how claims are handled at our Zainab Aziza shop.',
+      };
+    }
+    return f.answer ? { question: f.question, answer: f.answer } : null;
+  })
+  .filter((f): f is { question: string; answer: string } => Boolean(f));
+
+// JSON-LD: breadcrumbs + an ItemList carrying the same product facts the shop
+// page publishes — an engine reading a category page should not have to open 24
+// product pages to learn what is sold and for how much.
+// The same campaign the cards render, so the ItemList offer says what the card
+// says (the shop.astro pattern). The regular price here told Google a higher
+// price than the page and the checkout during every campaign.
+const hubDiscount = await getStorefrontDiscount();
+const hubCampaignRunning = hubDiscount.active && hubDiscount.percentBps > 0;
+const crumbs = [
+  { name: 'Home', url: `${SITE_ORIGIN}/` },
+  { name: hub.h1, url: `${SITE_ORIGIN}${hubPath(hub.slug)}` },
+  ...(child ? [{ name: child.h1, url: canonicalUrl }] : []),
+];
+const itemListJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  name: child ? child.h1 : hub.h1,
+  numberOfItems: Math.min(products.length, 24),
+  itemListElement: products.slice(0, 24).map((p, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    item: {
+      '@type': 'Product',
+      name: p.name,
+      url: `${SITE_ORIGIN}/products/${p.slug}`,
+      ...(p.primaryImageUrl ? { image: /^https?:\/\//i.test(p.primaryImageUrl) ? p.primaryImageUrl : `${SITE_ORIGIN}${p.primaryImageUrl}` } : {}),
+      ...(p.retailPriceUgx != null
+        ? { offers: { '@type': 'Offer', priceCurrency: 'UGX', price: offerPriceUgx(p.retailPriceUgx, hubCampaignRunning ? salePriceUgx(p.retailPriceUgx, hubDiscount.percentBps, effectiveFloorUgx(hubDiscount.priceFloorUgx, p.floorPriceUgx, p.retailPriceUgx)) : null), ...(schemaAvailability(p.availability?.kind) ? { availability: schemaAvailability(p.availability?.kind) } : {}), url: `${SITE_ORIGIN}/products/${p.slug}` } }
+        : {}),
+    },
+  })),
+};
+
+// A hub shows its first 24 products and hands the rest to the paginated shop:
+// /power rendered every power product (~130 cards, about half a megabyte of
+// HTML) on one page. The release gate still counts the full list.
+const HUB_CARD_LIMIT = 24;
+const shownProducts = products.slice(0, HUB_CARD_LIMIT);
+const shopParams = new URLSearchParams();
+if (hub.categorySlug) shopParams.set('category', hub.categorySlug);
+if (child?.subcategorySlug && hub.categorySlug) shopParams.set('subcategory', child.subcategorySlug);
+else if (child?.keywordFilter?.[0]) shopParams.set('q', child.keywordFilter[0]);
+else if (!child && !hub.categorySlug && hub.keywordFilter?.[0]) shopParams.set('q', hub.keywordFilter[0]);
+const seeAllHref = shopParams.toString() ? `/shop?${shopParams.toString()}` : '/shop';
+
+// /phone-batteries: the phones with a battery to buy, by brand, each linking to
+// its own page. Read from the finder's fit index so the hub, the per-phone
+// pages and the sitemap can never disagree. Absent (not an empty promise) when
+// the finder is away.
+const fitIndex: FinderFitIndexDto | null = hub.slug === 'phone-batteries' && !child
+  ? await fitIndexCached().then((r) => (r.ok ? r.data : null))
+  : null;
+const phoneBrands = (fitIndex?.brands ?? []).filter((b) => b.devices.length > 0);
+
+const relatedHubs = CATEGORY_HUBS.filter((h) => h.slug !== hub.slug).slice(0, 5);
+const guides = (child?.guides ?? hub.guides ?? []);
+const intro = child ? [child.intro] : hub.intro;
+---
+
+<BaseLayout title={page.title} description={page.metaDescription} canonicalUrl={canonicalUrl} robotsMeta={robotsMeta}>
+  <script type="application/ld+json" set:html={serializeJsonLd(breadcrumbJsonLd(crumbs))} />
+  {products.length > 0 && <script type="application/ld+json" set:html={serializeJsonLd(itemListJsonLd)} />}
+
+  <header class="border-b border-slate-800 bg-slate-950 py-10 text-white sm:py-12">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <nav aria-label="Breadcrumb" class="text-xs font-semibold text-slate-400">
+        <a href="/" class="hover:text-white">Home</a>
+        <span aria-hidden="true"> / </span>
+        {child ? (
+          <>
+            <a href={hubPath(hub.slug)} class="hover:text-white">{hub.h1}</a>
+            <span aria-hidden="true"> / </span>
+            <span class="text-slate-200">{child.h1}</span>
+          </>
+        ) : (
+          <span class="text-slate-200">{hub.h1}</span>
+        )}
+      </nav>
+      <h1 class="mt-3 text-3xl font-black tracking-tight sm:text-4xl">{page.h1}</h1>
+      {intro.map((p) => (
+        <p class="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">{p}</p>
+      ))}
+    </div>
+  </header>
+
+  <main class="mx-auto w-full min-w-0 max-w-7xl overflow-hidden px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
+    {!child && (hub.children.length > 0 || (hub.extraTiles?.length ?? 0) > 0) && (
+      <section aria-label="Browse this range" class="flex flex-wrap gap-2">
+        {hub.children.map((c) => (
+          <a href={hubPath(hub.slug, c.slug)} class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-brand-primary">{c.h1}</a>
+        ))}
+        {(hub.extraTiles ?? []).map((t) => (
+          <a href={t.href} class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-brand-primary">{t.label}</a>
+        ))}
+        <a href={hub.categorySlug ? `/shop?category=${hub.categorySlug}` : '/shop'} class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-brand-primary">All in shop</a>
+      </section>
+    )}
+
+    {products.length > 0 ? (
+      <section aria-label="Products" class="mt-7">
+        <p class="text-sm font-semibold text-slate-700">{products.length} product{products.length === 1 ? '' : 's'} in this range</p>
+        <div class="mt-5 grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
+          {shownProducts.map((product, index) => (
+            <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy)} eager={index < 4} />
+          ))}
+        </div>
+        {products.length > shownProducts.length && (
+          <a href={seeAllHref} class="mt-6 inline-flex min-h-11 items-center rounded-full bg-slate-950 px-6 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">See all {products.length} in the shop</a>
+        )}
+      </section>
+    ) : (
+      <section class="mt-7 rounded-2xl border border-slate-200 bg-white p-6 text-center sm:p-10">
+        <h2 class="text-xl font-black text-slate-900">Range being stocked</h2>
+        <p class="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-slate-600">This range has no live listings right now. See the full shop for what is in stock today.</p>
+        <a href="/shop" class="mt-5 inline-block rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Browse the shop</a>
+      </section>
+    )}
+
+    {phoneBrands.length > 0 && (
+      <section aria-labelledby="by-phone-heading" class="mt-12">
+        <h2 id="by-phone-heading" class="text-xl font-black text-slate-900">Batteries by phone</h2>
+        <p class="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
+          {fitIndex!.deviceCount} phone{fitIndex!.deviceCount === 1 ? '' : 's'} with a battery on our list. Each page shows the pack code, the price and where the fit comes from. Your phone is not here? <a href="/battery-finder" class="font-bold underline">Search it in the finder</a> and ask us.
+        </p>
+        <div class="mt-5 space-y-5">
+          {phoneBrands.map((b) => (
+            <div>
+              <h3 class="text-sm font-black uppercase tracking-widest text-slate-500">{b.name}</h3>
+              <ul class="mt-2 flex flex-wrap gap-2">
+                {b.devices.map((d) => (
+                  <li><a href={phoneBatteryPath(d.slug)} class="inline-block rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-brand-primary">{d.model}{d.modelNumber ? ` (${d.modelNumber})` : ''}</a></li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
+    {hub.buyingCriteria.length > 0 && (
+      <section aria-labelledby="buying-guide-heading" class="mt-12">
+        <h2 id="buying-guide-heading" class="text-xl font-black text-slate-900">How to choose</h2>
+        <div class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {hub.buyingCriteria.map((c) => (
+            <div class="rounded-2xl border border-slate-200 bg-white p-5">
+              <h3 class="text-sm font-black text-slate-900">{c.heading}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-slate-600">{c.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
+    {guides.length > 0 && (
+      <section aria-labelledby="guides-heading" class="mt-10">
+        <h2 id="guides-heading" class="text-base font-black text-slate-900">Read before you choose</h2>
+        <div class="mt-3 flex flex-wrap gap-2">
+          {guides.map((g) => (
+            <a href={g.href} class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-brand-primary">{g.label}</a>
+          ))}
+        </div>
+      </section>
+    )}
+
+    {faqs.length > 0 && (
+      <section aria-labelledby="faq-heading" class="mt-12">
+        <h2 id="faq-heading" class="text-xl font-black text-slate-900">Common questions</h2>
+        <div class="mt-5 space-y-3">
+          {faqs.map((f) => (
+            <details class="rounded-2xl border border-slate-200 bg-white p-5">
+              <summary class="cursor-pointer text-sm font-black text-slate-900">{f.question}</summary>
+              <p class="mt-2 text-sm leading-relaxed text-slate-600">{f.answer}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+    )}
+
+    <section aria-label="Delivery, warranty and returns" class="mt-12 flex flex-wrap gap-3 text-sm font-bold">
+      <a href="/delivery/kampala-wakiso" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-slate-700 hover:border-brand-primary">Delivery in Kampala &amp; Wakiso</a>
+      <a href="/warranty" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-slate-700 hover:border-brand-primary">Warranty</a>
+      <a href="/returns" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-slate-700 hover:border-brand-primary">Returns</a>
+      <a href="/locations/zainab-aziza" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-slate-700 hover:border-brand-primary">Our Zainab Aziza shop</a>
+    </section>
+
+    {relatedHubs.length > 0 && (
+      <section aria-labelledby="related-heading" class="mt-10">
+        <h2 id="related-heading" class="text-base font-black text-slate-900">More GoldPlus ranges</h2>
+        <div class="mt-3 flex flex-wrap gap-2">
+          {relatedHubs.map((h) => (
+            <a href={hubPath(h.slug)} class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-brand-primary">{h.h1}</a>
+          ))}
+        </div>
+      </section>
+    )}
+  </main>
+</BaseLayout>

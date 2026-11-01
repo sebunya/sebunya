@@ -3,8 +3,10 @@ import { Registry } from '../../../infrastructure/Registry';
 import { env } from '../../../config/env';
 import { ApiResponse } from '@goldplus/shared';
 import { QueueService } from '../../../infrastructure/queues/QueueService';
-import { proxyConfig } from '../clientAddress';
+import { isInternalCall, proxyConfig } from '../clientAddress';
+import { logger } from '../../../infrastructure/logging/logger';
 import { abuseControlStore } from '../../../infrastructure/security/RedisAbuseControlStore';
+import { isDraining } from '../lifecycle';
 
 const routes = new Hono();
 
@@ -18,7 +20,16 @@ type HealthSubsystem = {
   has_pending_events?: boolean;
 };
 
-const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+/**
+ * Health answers are read by anyone who can reach api.shopgoldplus.com, so they
+ * carry fixed codes, never raw driver or fetch text (which named hosts, ports and
+ * database users during an incident). The detail goes to the server log only.
+ */
+const DB_UNREACHABLE = 'DB_UNREACHABLE';
+function logged(code: string, detail: unknown): string {
+  logger.warn({ code, detail: detail instanceof Error ? detail.message : String(detail) }, 'HEALTH_PROBE_FAILED');
+  return code;
+}
 
 function livenessResponse(): ApiResponse<{ status: string; timestamp: string }> {
   return {
@@ -42,6 +53,21 @@ routes.get('/live', (c) => {
 // 2. READINESS — /health/ready
 // ------------------------------------------------------------------------------
 routes.get('/ready', async (c) => {
+  // Slice 3F: once draining, this instance is NOT ready — answered before any
+  // subsystem probe so the load balancer stops routing immediately, and without
+  // a database round-trip that is about to be torn down anyway.
+  // The 200/503 answer stays public (release scripts and the drain contract read
+  // it); the subsystem detail — provider configuration, proxy topology — is for
+  // internal callers only, as /metrics is.
+  const internal = isInternalCall(c);
+  if (isDraining()) {
+    return c.json(
+      internal
+        ? { status: 'draining', ready: false, subsystems: { lifecycle: { status: 'draining' } } }
+        : { status: 'draining' },
+      503,
+    );
+  }
   const subsystems: Record<string, { status: string; latency_ms?: number; error?: string }> = {};
   // Two distinct questions, deliberately not collapsed into one flag:
   //   overallHealthy — can this instance serve at all? (false ⇒ take it out)
@@ -57,7 +83,7 @@ routes.get('/ready', async (c) => {
     overallHealthy = false;
     subsystems.postgres = {
       status: 'unhealthy',
-      error: healthMetrics.postgresError,
+      error: logged(DB_UNREACHABLE, healthMetrics.postgresError),
     };
   } else {
     subsystems.postgres = {
@@ -71,6 +97,10 @@ routes.get('/ready', async (c) => {
   const smsApiKey = process.env.SMS_API_KEY;
   subsystems.zeptomail_config = { status: zeptoMailToken ? 'configured' : 'not_configured' };
   subsystems.sms_config = { status: smsApiKey ? 'configured' : 'not_configured' };
+  // Meta's Cloud API directly (primary) or Zoho CPaaS (fallback): either carries customer WhatsApp messages.
+  const metaWhatsApp = (process.env.GOLDIE_WHATSAPP_PHONE_NUMBER_ID || '').trim();
+  const zohoWhatsApp = (process.env.ZOHO_WHATSAPP_API_KEY || '').trim() && (process.env.ZOHO_WHATSAPP_FROM_NUMBER || '').trim();
+  subsystems.whatsapp_config = { status: metaWhatsApp || zohoWhatsApp ? 'configured' : 'not_configured' };
 
   // Redis: DEGRADED, not unready.
   //
@@ -133,6 +163,7 @@ routes.get('/ready', async (c) => {
     },
   };
 
+  if (!internal) return c.json({ status: res.data!.status }, overallHealthy ? 200 : 503);
   return c.json(res, overallHealthy ? 200 : 503);
 });
 
@@ -140,6 +171,9 @@ routes.get('/ready', async (c) => {
 // 3. DEEP HEALTH — /health/deep
 // ------------------------------------------------------------------------------
 routes.get('/deep', async (c) => {
+  // Internal only, like /metrics: it reports database saturation and outbox backlog
+  // and costs several catalogue queries per call.
+  if (!isInternalCall(c)) return c.notFound();
   const subsystems: Record<string, HealthSubsystem> = {};
   let overallStatus: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
   const start = Date.now();
@@ -150,7 +184,7 @@ routes.get('/deep', async (c) => {
   // 1. Database Connection and Latency
   if (healthMetrics.postgresError) {
     overallStatus = 'unhealthy';
-    subsystems.postgres = { status: 'unhealthy', error: healthMetrics.postgresError };
+    subsystems.postgres = { status: 'unhealthy', error: logged(DB_UNREACHABLE, healthMetrics.postgresError) };
   } else {
     subsystems.postgres = { status: 'healthy', latency_ms: healthMetrics.postgresLatencyMs };
   }
@@ -166,7 +200,7 @@ routes.get('/deep', async (c) => {
       overallStatus = 'degraded';
     }
   } else if (healthMetrics.postgresError) {
-    subsystems.db_saturation = { status: 'unknown', error: healthMetrics.postgresError };
+    subsystems.db_saturation = { status: 'unknown', error: DB_UNREACHABLE };
   }
 
   // 3. Outbox Lag Analysis
@@ -181,7 +215,7 @@ routes.get('/deep', async (c) => {
       overallStatus = 'degraded';
     }
   } else if (healthMetrics.postgresError) {
-    subsystems.outbox_queue = { status: 'unknown', error: healthMetrics.postgresError };
+    subsystems.outbox_queue = { status: 'unknown', error: DB_UNREACHABLE };
   }
 
   // 3b. Outbox operating state.
@@ -209,7 +243,7 @@ routes.get('/deep', async (c) => {
         }
       }
     } catch (err) {
-      subsystems.outbox_operations = { status: 'unknown', error: errorMessage(err) };
+      subsystems.outbox_operations = { status: 'unknown', error: logged('OUTBOX_METRICS_UNAVAILABLE', err) };
     }
   }
 
@@ -222,32 +256,53 @@ routes.get('/deep', async (c) => {
   }
 
   // 4. sGTM Upstream Reachability
-  const startSgtm = Date.now();
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000); // 2-second timeout
-    const response = await fetch(`${env.metricsInternalUrl}/healthy`, { signal: controller.signal });
-    clearTimeout(timeoutId);
+  //
+  // "Never configured" and "configured and down" are different facts and must not
+  // share a status. sGTM has no container config, no PUBLIC_GTM_ID and no DNS for
+  // its host, so the probe could only ever time out — and that timeout held the
+  // whole API at `degraded` for days, which is an alert that says "GoldPlus is
+  // failing" about an optional integration nobody ever switched on. A real
+  // outage would then have looked exactly like the steady state.
+  //
+  // An unconfigured optional provider is SETUP_REQUIRED and does not degrade the
+  // platform. A CONFIGURED one that stops answering still degrades it.
+  const sgtmConfigured = (process.env.GTM_CONTAINER_CONFIG ?? '').trim().length > 0;
 
-    if (response.ok) {
-      subsystems.external_sgtm = {
-        status: 'healthy',
-        latency_ms: Date.now() - startSgtm,
-      };
-    } else {
+  if (!sgtmConfigured) {
+    // No probe at all: there is nothing to probe, and a 2s timeout on every deep
+    // health call is a cost paid to learn something already known from config.
+    subsystems.external_sgtm = {
+      status: 'setup_required',
+      error: 'sGTM has never been provisioned (no container config). Not an outage.',
+    };
+  } else {
+    const startSgtm = Date.now();
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2-second timeout
+      const response = await fetch(`${env.metricsInternalUrl}/healthy`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        subsystems.external_sgtm = {
+          status: 'healthy',
+          latency_ms: Date.now() - startSgtm,
+        };
+      } else {
+        if (overallStatus === 'healthy') overallStatus = 'degraded';
+        subsystems.external_sgtm = {
+          status: 'degraded',
+          error: `sGTM returned status ${response.status}`,
+          latency_ms: Date.now() - startSgtm,
+        };
+      }
+    } catch (err: unknown) {
       if (overallStatus === 'healthy') overallStatus = 'degraded';
       subsystems.external_sgtm = {
-        status: 'degraded',
-        error: `sGTM returned status ${response.status}`,
-        latency_ms: Date.now() - startSgtm,
+        status: 'offline',
+        error: err instanceof Error && err.name === 'AbortError' ? 'Timeout' : logged('SGTM_UNREACHABLE', err),
       };
     }
-  } catch (err: unknown) {
-    if (overallStatus === 'healthy') overallStatus = 'degraded';
-    subsystems.external_sgtm = {
-      status: 'offline',
-      error: err instanceof Error && err.name === 'AbortError' ? 'Timeout' : errorMessage(err),
-    };
   }
 
   const durationMs = Date.now() - start;

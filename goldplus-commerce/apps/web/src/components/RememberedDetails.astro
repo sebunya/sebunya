@@ -1,0 +1,16 @@
+---
+/**
+ * One line under a pre-filled form: where the details came from, and a way to clear
+ * them on a shared phone or cyber-café PC. Rendered only when something was filled in
+ * from this device's guest memory.
+ */
+interface Props { show: boolean; back: string; class?: string }
+const { show, back, class: cls = '' } = Astro.props;
+---
+{show && (
+  <form method="POST" action="/forget-details" class={`flex flex-wrap items-center gap-x-2 text-xs text-slate-600 ${cls}`}>
+    <input type="hidden" name="back" value={back} />
+    <span>Filled in from your last order on this device.</span>
+    <button type="submit" class="font-bold underline text-slate-800 min-h-8">Not you? Clear these details</button>
+  </form>
+)}

@@ -103,7 +103,7 @@ export function resolveCompatibility(
     return { verdict: 'compatible', source: 'heuristic', note: null, reasons: heuristic.reasons };
   }
   if (heuristic && heuristic.compatible && heuristic.confidence === 'MEDIUM') {
-    return { verdict: 'conditional', source: 'heuristic', note: 'Category match — confirm the connector type before buying.', reasons: heuristic.reasons };
+    return { verdict: 'conditional', source: 'heuristic', note: 'Category match. Confirm the connector type before buying.', reasons: heuristic.reasons };
   }
   return { verdict: 'unknown', source: 'none', note: null, reasons: [] };
 }

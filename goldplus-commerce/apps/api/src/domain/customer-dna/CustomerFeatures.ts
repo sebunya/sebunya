@@ -8,14 +8,31 @@
 
 import { CustomerFeature, feature, AttributeClass } from './CustomerProfile';
 
-export interface RawOrderSignal { totalAmountUgx: number; createdAt: Date; paymentMethod: string | null; status: string; }
+export interface RawOrderSignal { totalAmountUgx: number; createdAt: Date; paymentMethod: string | null; status: string; paymentStatus: string | null; }
+
+/**
+ * A PURCHASE, as the rest of the shop counts one (loyalty earn rule): paid
+ * online, or cash on delivery that was delivered and never reversed. Until
+ * 2026-10-07 every order that was not cancelled counted, so an unpaid or
+ * failed online checkout inflated lifetime value, order count and stage.
+ */
+export function isPurchase(o: Pick<RawOrderSignal, 'status' | 'paymentStatus' | 'paymentMethod'>): boolean {
+  if (o.status === 'cancelled' || o.status === 'failed' || o.paymentStatus === 'reversed') return false;
+  if (o.paymentStatus === 'paid') return true;
+  return o.paymentMethod === 'offline' && (o.status === 'delivered' || o.status === 'completed');
+}
+
+/** Delivery outcomes that END an attempt. A reschedule is the customer's choice, not a failure. */
+const TERMINAL_DELIVERY_OUTCOMES = new Set(['DELIVERED', 'PARTIALLY_DELIVERED', 'DELIVERY_FAILED', 'RETURN_TO_ORIGIN']);
+const SUCCESSFUL_DELIVERY_OUTCOMES = new Set(['DELIVERED', 'PARTIALLY_DELIVERED']);
 export interface RawSearchSignal { zeroResult: boolean; createdAt: Date; }
 export interface RawDeliverySignal { outcome: string; createdAt: Date; }
 
 export interface RawCustomerSignals {
   sourceVersion: number;
   orders: RawOrderSignal[];
-  searches: RawSearchSignal[];
+  /** null: no search source is read for this customer (NOT_OBSERVED, never 0). */
+  searches: RawSearchSignal[] | null;
   deliveries: RawDeliverySignal[];
   backorderCount: number;
   supportInteractions: number;
@@ -37,7 +54,7 @@ export function computeFeatures(signals: RawCustomerSignals, now: Date): Custome
     feature<T>({ key, value, attributeClass, source, sourceVersion: sv, computedAt: now, staleAfterHours });
 
   const out: CustomerFeature[] = [];
-  const paidOrders = signals.orders.filter((o) => o.status !== 'cancelled');
+  const paidOrders = signals.orders.filter(isPurchase);
   const orderCount = paidOrders.length;
 
   out.push(mk('order_count', orderCount, 'OBSERVED', 'orders'));
@@ -68,15 +85,22 @@ export function computeFeatures(signals: RawCustomerSignals, now: Date): Custome
   }
 
   // Search behaviour.
-  out.push(mk('search_frequency', signals.searches.length, 'OBSERVED', 'search_events'));
-  out.push(mk('zero_result_search_count', signals.searches.filter((s) => s.zeroResult).length, 'OBSERVED', 'search_events'));
+  // A zero here would be a fabricated observation when searches are not read.
+  if (signals.searches === null) {
+    out.push(mk('search_frequency', 'NOT_OBSERVED', 'OBSERVED', 'search_events'));
+    out.push(mk('zero_result_search_count', 'NOT_OBSERVED', 'OBSERVED', 'search_events'));
+  } else {
+    out.push(mk('search_frequency', signals.searches.length, 'OBSERVED', 'search_events'));
+    out.push(mk('zero_result_search_count', signals.searches.filter((s) => s.zeroResult).length, 'OBSERVED', 'search_events'));
+  }
 
   // Delivery outcomes.
-  if (signals.deliveries.length === 0) {
+  const finished = signals.deliveries.filter((d) => TERMINAL_DELIVERY_OUTCOMES.has(d.outcome));
+  if (finished.length === 0) {
     out.push(mk('delivery_success_rate', 'NOT_OBSERVED', 'DERIVED', 'fulfilment_deliveries'));
   } else {
-    const delivered = signals.deliveries.filter((d) => d.outcome === 'DELIVERED').length;
-    out.push(mk('delivery_success_rate', Math.round((delivered / signals.deliveries.length) * 100) / 100, 'DERIVED', 'fulfilment_deliveries'));
+    const delivered = finished.filter((d) => SUCCESSFUL_DELIVERY_OUTCOMES.has(d.outcome)).length;
+    out.push(mk('delivery_success_rate', Math.round((delivered / finished.length) * 100) / 100, 'DERIVED', 'fulfilment_deliveries'));
   }
   out.push(mk('backorder_exposure', signals.backorderCount, 'OBSERVED', 'fulfilment_lines'));
   out.push(mk('support_interactions', signals.supportInteractions, 'OBSERVED', 'support'));
@@ -85,7 +109,7 @@ export function computeFeatures(signals: RawCustomerSignals, now: Date): Custome
   // Engagement recency (days since most recent of any signal).
   const stamps = [
     ...signals.orders.map((o) => o.createdAt),
-    ...signals.searches.map((s) => s.createdAt),
+    ...(signals.searches ?? []).map((s) => s.createdAt),
     ...signals.deliveries.map((d) => d.createdAt),
   ];
   if (stamps.length === 0) out.push(mk('engagement_recency_days', 'NOT_OBSERVED', 'DERIVED', 'multi'));

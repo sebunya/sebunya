@@ -7,9 +7,14 @@ import { OpenSupportTicketUseCase } from '../../../application/use-cases/governa
 import { ReportFakeProductUseCase } from '../../../application/use-cases/governance/ReportFakeProductUseCase';
 import { randomUUID } from 'node:crypto';
 import { authMiddleware } from '../middleware/auth';
+import { bearerTokenFrom, resolveLiveSession } from '../middleware/liveSession';
 import { requirePermissions } from '../middleware/permissions';
 import { NotificationTemplateRenderer } from '../../../application/use-cases/notifications/NotificationTemplateRenderer';
 import { clientIp } from '../clientAddress';
+import { canTransitionOrder } from '../../../domain/commerce/OrderStateMachine';
+import type { OrderStatus } from '../../../domain/commerce/Order';
+import { DealerApplicationValidationError } from '../../../application/use-cases/DealerApplicationUseCase';
+import { logger } from '../../../infrastructure/logging/logger';
 
 
 const routes = new Hono();
@@ -27,7 +32,12 @@ routes.post('/dealers/apply', async (c) => {
   try {
     await registry.dealerApplicationUseCase.execute({ ...body, id: dealerId });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not save dealer application.';
+    const message = err instanceof DealerApplicationValidationError
+      ? err.message
+      : 'Could not save dealer application.';
+    if (!(err instanceof DealerApplicationValidationError)) {
+      logger.error({ err }, '[Governance] Dealer application failed');
+    }
     const res: ApiResponse<never> = { success: false, error: { code: 'BAD_INPUT', message } };
     return c.json(res, 400);
   }
@@ -41,6 +51,19 @@ routes.post('/dealers/apply', async (c) => {
     newState: { source: 'public_form' },
   });
 
+
+  // Tell the customer we have it. SMS first (the channel that delivers), email
+  // as the fallback. The body comes from CustomerMessages; never a template key.
+  await registry.sendPublicFormAcknowledgementUseCase.execute({
+    kind: 'dealer_application',
+    eventType: 'DEALER_APPLICATION_RECEIVED',
+    template: 'DEALER_APPLICATION_RECEIVED',
+    phone: body?.phone,
+    email: body?.email,
+    data: { customerName: typeof body?.customerName === 'string' ? body.customerName : (typeof body?.contactName === 'string' ? body.contactName : null), reference: dealerId },
+    entityId: dealerId,
+    relatedEntity: 'dealer_application',
+  }).catch(() => undefined);
   const res: ApiResponse<{ dealerId: string }> = { success: true, data: { dealerId } };
   return c.json(res, 201);
 });
@@ -69,6 +92,19 @@ routes.post('/quotes/request', async (c) => {
     newState: { source: 'public_form', kind: String(body.kind ?? 'retail') },
   });
 
+
+  // Tell the customer we have it. SMS first (the channel that delivers), email
+  // as the fallback. The body comes from CustomerMessages; never a template key.
+  await registry.sendPublicFormAcknowledgementUseCase.execute({
+    kind: 'quote_request',
+    eventType: 'QUOTE_REQUEST_RECEIVED',
+    template: 'QUOTE_REQUEST_RECEIVED',
+    phone: body?.phone,
+    email: body?.email,
+    data: { customerName: typeof body?.customerName === 'string' ? body.customerName : (typeof body?.contactName === 'string' ? body.contactName : null), reference: result.quoteId },
+    entityId: result.quoteId,
+    relatedEntity: 'quote_request',
+  }).catch(() => undefined);
   const res: ApiResponse<{ quoteId: string }> = { success: true, data: { quoteId: result.quoteId } };
   return c.json(res, 201);
 });
@@ -97,6 +133,19 @@ routes.post('/support/report-issue', async (c) => {
     newState: { source: 'public_form' },
   });
 
+
+  // Tell the customer we have it. SMS first (the channel that delivers), email
+  // as the fallback. The body comes from CustomerMessages; never a template key.
+  await registry.sendPublicFormAcknowledgementUseCase.execute({
+    kind: 'support_ticket',
+    eventType: 'SUPPORT_REQUEST_RECEIVED',
+    template: 'SUPPORT_REQUEST_RECEIVED',
+    phone: body?.phone,
+    email: body?.email,
+    data: { customerName: typeof body?.customerName === 'string' ? body.customerName : (typeof body?.contactName === 'string' ? body.contactName : null), reference: result.ticketId },
+    entityId: result.ticketId,
+    relatedEntity: 'support_ticket',
+  }).catch(() => undefined);
   const res: ApiResponse<{ ticketId: string }> = { success: true, data: { ticketId: result.ticketId } };
   return c.json(res, 201);
 });
@@ -116,6 +165,17 @@ routes.post('/support/report-fake', async (c) => {
     return c.json(res, 400);
   }
 
+  // Gamification (0087): a signed-in reporter is attributable — confirmation
+  // of the report later earns points. Anonymous reports stay anonymous.
+  const reporterAuth = c.req.header('Authorization');
+  if (reporterAuth?.startsWith('Bearer ')) {
+    const live = await resolveLiveSession(bearerTokenFrom(reporterAuth)).catch(() => null);
+    const verified = live?.ok ? { subject: live.user.id } : null;
+    if (verified?.subject) {
+      await registry.fakeReportRepo.attributeReporter(result.reportId, verified.subject).catch(() => undefined);
+    }
+  }
+
   const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
   await auditUc.execute({
     actorId: null,
@@ -125,33 +185,162 @@ routes.post('/support/report-fake', async (c) => {
     newState: { source: 'public_form', hologramCodeProvided: Boolean((body as any).hologramCode) },
   });
 
+
+  // Tell the customer we have it. SMS first (the channel that delivers), email
+  // as the fallback. The body comes from CustomerMessages; never a template key.
+  await registry.sendPublicFormAcknowledgementUseCase.execute({
+    kind: 'fake_product_report',
+    eventType: 'FAKE_REPORT_RECEIVED',
+    template: 'FAKE_REPORT_RECEIVED',
+    phone: body?.reporterPhone,
+    email: body?.reporterEmail,
+    data: { customerName: typeof body?.reporterName === 'string' ? body.reporterName : null, reference: result.reportId },
+    entityId: result.reportId,
+    relatedEntity: 'fake_product_report',
+  }).catch(() => undefined);
   const res: ApiResponse<{ reportId: string }> = { success: true, data: { reportId: result.reportId } };
   return c.json(res, 201);
 });
 
 // ---------- Verification check (unchanged — own audit table) ----------
 routes.post('/verification/check', async (c) => {
-  const body = await c.req.json();
+  // Public form: the body is whatever the caller typed. An unparseable body or
+  // a missing/non-string code used to reach the repository as `undefined` and
+  // answer 500 (postgres UNDEFINED_VALUE, proven live 2026-09-12). It is a
+  // caller error, so it is a 400.
+  const body = (await c.req.json().catch(() => null)) as { code?: unknown } | null;
+  const code = typeof body?.code === 'string' ? body.code.trim() : '';
+  if (!code) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'BAD_INPUT', message: 'A verification code is required.' } };
+    return c.json(res, 400);
+  }
   const ip = clientIp(c);
   const ua = c.req.header('user-agent') || '';
-  
-  const result = await registry.verificationCheckUseCase.execute(body.code, ip, ua);
-  
+
+  // Loyalty PART J: a signed-in scan is attributable and may earn — through
+  // the versioned 'verification_scan' rule, which is INACTIVE until activated.
+  // Anonymous scans stay anonymous; a loyalty failure never fails the check.
+  // A LIVE session, not just a valid signature: a token from before a password
+  // reset, a sign-out-everywhere or a disabled account must not earn points.
+  const live = await resolveLiveSession(bearerTokenFrom(c.req.header('Authorization'))).catch(() => null);
+  const verified = live?.ok ? { subject: live.user.id } : null;
+
+  // The scanner is written on the attempt, which the "verify ten" mission counts.
+  const result = await registry.verificationCheckUseCase.execute(code, ip, ua, verified?.subject ?? null);
+
+  let loyaltyPoints = 0;
+  if (verified?.subject) {
+    // The use case answers { success }; reading a non-existent isSuccessful
+    // made every scan "failed", so nothing ever earned.
+    const successful = result.success === true;
+    const earn = await registry.earnForVerificationScanUseCase
+      .execute({ userId: verified.subject, code, successful })
+      .catch(() => null);
+    if (earn?.ok) loyaltyPoints = earn.points;
+    // Gamification (0087): first successful scan = Authenticator badge;
+    // scan-count missions progress. Failures never fail the check.
+    if (successful) {
+      await registry.gamificationRepo.awardBadgeByKey(verified.subject, 'authenticator').catch(() => undefined);
+      await registry.evaluateGamificationForUserUseCase.execute({ userId: verified.subject }).catch(() => undefined);
+    }
+  }
+
   const res: ApiResponse<any> = {
     success: true,
-    data: result,
+    data: { ...result, loyaltyPoints },
   };
   return c.json(res);
 });
 
 routes.use('/admin/*', authMiddleware);
 
+// ---------- Fake-report resolution (0087: confirmation is the loyalty earn
+// event — "points and a support pathway for a confirmed counterfeit report").
+// Mutating loyalty liability ⇒ mutating permission + audit, like every other
+// point-granting admin action. ----------
+routes.patch('/admin/fake-reports/:id/status', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const status = String(body?.status ?? '');
+  if (!['investigating', 'verified_fake', 'dismissed'].includes(status)) {
+    return c.json({ success: false, error: { code: 'BAD_STATUS', message: 'status must be investigating, verified_fake or dismissed.' } }, 400);
+  }
+  const report = await registry.fakeReportRepo.findByIdRaw(c.req.param('id') ?? '');
+  if (!report) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Report not found.' } }, 404);
+
+  let loyalty: { points: number } | null = null;
+  if (status === 'verified_fake' && report.reporterUserId && !report.loyaltyEntryId) {
+    const earn = await registry.earnForCounterfeitConfirmationUseCase
+      .execute({ reportId: report.id, reporterUserId: report.reporterUserId })
+      .catch(() => null);
+    if (earn && 'points' in earn) {
+      loyalty = { points: earn.points };
+      await registry.fakeReportRepo.setStatus(report.id, status, earn.entryId);
+      // Support pathway: the confirmed reporter gets a follow-up message.
+      await registry.loyaltyOutboxNotifier
+        .enqueue({
+          userId: report.reporterUserId,
+          eventType: 'LOYALTY_POINTS_EARNED',
+          idempotencyKey: `counterfeit-confirmed:${report.id}`,
+          data: { points: earn.points, source: 'counterfeit_report' },
+        })
+        .catch(() => undefined);
+    } else {
+      await registry.fakeReportRepo.setStatus(report.id, status);
+    }
+  } else {
+    await registry.fakeReportRepo.setStatus(report.id, status);
+  }
+
+  const confirmAuditUc = new CreateAuditLogUseCase(registry.auditRepo);
+  await confirmAuditUc.execute({
+    actorId: (c.get('user') as { id: string }).id,
+    action: 'FAKE_REPORT_STATUS_CHANGED',
+    entity: 'fake_report',
+    entityId: report.id,
+    newState: { status, loyaltyPointsAwarded: loyalty?.points ?? 0 },
+  });
+  return c.json({ success: true, data: { id: report.id, status, loyalty } });
+});
+
+// ---------- Authenticity centre reads (read-only, redacted) ----------
+// Lists carry no reporter name, contact, account, scanner IP or user agent.
+routes.get('/admin/fake-reports', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  const status = c.req.query('status')?.trim() || null;
+  if (status && !['new', 'investigating', 'verified_fake', 'dismissed'].includes(status)) {
+    return c.json({ success: false, error: { code: 'BAD_STATUS', message: 'Unknown status filter.' } }, 400);
+  }
+  try {
+    const data = await registry.fakeReportRepo.listForAdmin({
+      page: Number(c.req.query('page') ?? 1),
+      pageSize: Number(c.req.query('pageSize') ?? 25),
+      status,
+    });
+    return c.json({ success: true, data });
+  } catch (err) {
+    logger.error({ err }, '[Governance] Fake report list failed');
+    return c.json({ success: false, error: { code: 'READ_FAILED', message: 'Could not read counterfeit reports.' } }, 500);
+  }
+});
+
+routes.get('/admin/verification/summary', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  const days = Math.min(Math.max(Math.trunc(Number(c.req.query('days') ?? 30)) || 30, 1), 365);
+  try {
+    const since = new Date(Date.now() - days * 86_400_000);
+    const data = await registry.verificationRepo.summarizeAttempts(since);
+    return c.json({ success: true, data: { windowDays: days, ...data } });
+  } catch (err) {
+    logger.error({ err }, '[Governance] Verification summary failed');
+    return c.json({ success: false, error: { code: 'READ_FAILED', message: 'Could not read verification scans.' } }, 500);
+  }
+});
+
 // ---------- Admin dashboard stats ----------
 routes.get('/admin/stats', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
-  const [productCount, dealerCount, auditCount, supportCount] = await Promise.all([
-    registry.productRepo.findAll(), 
+  // The audit log is not read here: its rows were loaded on every admin home visit (no limit, the table only
+  // grows) and never used.
+  const [productCount, dealerCount, supportCount] = await Promise.all([
+    registry.productRepo.findAll(),
     registry.dealerRepo.findAll(),
-    registry.auditRepo.findAll(),
     registry.supportRepo.findAll(),
   ]);
   
@@ -169,6 +358,15 @@ routes.get('/admin/stats', requirePermissions([PERMISSIONS.REPORTS_READ]), async
 });
 
 // Admin List Routes
+function withAdminFacts(facts: { reservationState: string | null; paymentMethod: string | null } | undefined) {
+  const reservationState = facts?.reservationState ?? null;
+  return {
+    reservationState,
+    isBackordered: reservationState === 'BACKORDERED',
+    paymentMethod: facts?.paymentMethod ?? null,
+  };
+}
+
 routes.get('/admin/orders', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   try {
     let ordersList = await registry.orderRepo.findAll();
@@ -195,7 +393,16 @@ routes.get('/admin/orders', requirePermissions([PERMISSIONS.ORDERS_READ]), async
       ordersList = ordersList.filter(o => o.paymentStatus.toLowerCase() === paymentStatus);
     }
 
-    return c.json({ success: true, data: ordersList });
+    const facts = await registry.orderRepo.findAdminFacts(ordersList.map(o => o.id));
+    let data = ordersList.map(o => ({ ...o, ...withAdminFacts(facts.get(o.id)) }));
+
+    // reservation=backordered narrows to orders waiting on stock.
+    const reservation = c.req.query('reservation')?.trim().toUpperCase();
+    if (reservation) {
+      data = data.filter(o => (o.reservationState ?? '').toUpperCase() === reservation);
+    }
+
+    return c.json({ success: true, data });
   } catch (err: any) {
     if (err.message.includes('DATABASE_URL')) {
       return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
@@ -232,7 +439,7 @@ routes.get('/admin/orders/:id', requirePermissions([PERMISSIONS.ORDERS_READ]), a
     return c.json({
       success: true,
       data: {
-        order,
+        order: { ...order, ...withAdminFacts((await registry.orderRepo.findAdminFacts([order.id])).get(order.id)) },
         paymentAttempts: safeAttempts,
       }
     });
@@ -357,46 +564,26 @@ routes.patch('/admin/orders/:id/fulfillment', requirePermissions([PERMISSIONS.OR
       return c.json({ success: true, message: `Status is already set to ${nextStatus}`, data: order });
     }
 
-    // Enforce allowed transitions
-    let allowed = false;
-    
-    if (currentStatus === 'received') {
-      if (nextStatus === 'processing' || nextStatus === 'cancelled') allowed = true;
-    } else if (currentStatus === 'pending_payment') {
-      if (nextStatus === 'cancelled') {
-        allowed = true;
-      } else if (nextStatus === 'processing') {
-        if (order.paymentStatus === 'paid') {
-          allowed = true;
-        } else {
-          return c.json({ 
-            success: false, 
-            error: { 
-              code: 'TRANSITION_BLOCKED', 
-              message: 'Cannot process an unpaid order that is pending payment.' 
-            } 
-          }, 400);
-        }
-      }
-    } else if (currentStatus === 'pending_owner_review') {
-      if (nextStatus === 'processing' || nextStatus === 'cancelled') allowed = true;
-    } else if (currentStatus === 'processing') {
-      if (nextStatus === 'completed' || nextStatus === 'cancelled') allowed = true;
+    // Enforce allowed transitions via the domain state machine (single source of
+    // truth; the entity enforces the same rules, so nothing can persist an
+    // illegal transition from any caller).
+    const decision = canTransitionOrder(currentStatus, nextStatus as OrderStatus, { paymentStatus: order.paymentStatus });
+    if (!decision.allowed) {
+      return c.json({ success: false, error: { code: 'TRANSITION_BLOCKED', message: decision.message } }, 400);
     }
 
-    if (!allowed) {
-      return c.json({ 
-        success: false, 
-        error: { 
-          code: 'TRANSITION_BLOCKED', 
-          message: `Operational transition from '${currentStatus}' to '${nextStatus}' is not allowed.` 
-        } 
-      }, 400);
-    }
-
-    // Mutate state using domain model
+    // Canonical transactional transition: the status update AND exactly one
+    // append-only order_event commit in one transaction. Actor is the session
+    // user, never a body field. The pure domain object is kept only for the
+    // response DTO; persistence goes through the canonical service.
     const updatedOrder = order.transitionStatus(nextStatus as any);
-    await registry.orderRepo.save(updatedOrder);
+    await registry.orderTransitionService.transition(order.id, nextStatus as OrderStatus, {
+      actorId: (c.get('user') as { id: string }).id,
+      actorType: 'administrator',
+      source: 'admin_api',
+      reasonCode: 'admin_transition',
+      idempotencyKey: `admin:${order.id}:${nextStatus}`,
+    });
 
     // Audit log
     const auditUc = new CreateAuditLogUseCase(registry.auditRepo);

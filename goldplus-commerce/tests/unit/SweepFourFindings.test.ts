@@ -1,0 +1,523 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+/**
+ * The 2026-08-29 cross-cutting sweep: one source of truth, contradictory
+ * config, money and state machines, SSR authorization, and failure paths.
+ * One assertion per fix, so a regression names the finding it reopened.
+ */
+const ROOT = resolve(__dirname, '../..');
+const read = (f: string) => readFileSync(resolve(ROOT, f), 'utf8');
+
+describe('the page renders what the code defines', () => {
+  it('the track-order follow-up calls a function that exists', () => {
+    const src = read('apps/web/src/pages/track-order.astro');
+    expect(src).not.toMatch(/\$\{label\(order\./);
+    // The ticket text is now composed by the API (RequestOrderFollowUpUseCase,
+    // typechecked), so the page has no frontmatter call left to get wrong.
+    expect(src).toMatch(/postJson\('\/commerce\/orders\/lookup\/followup'/);
+    expect(src).toMatch(/orderStatusCopy\(order\.orderStatus\)/);
+  });
+
+  it('no .astro frontmatter calls an identifier that appears nowhere else in it', () => {
+    // .astro frontmatter is NOT typechecked, so a call to something that does
+    // not exist ships green and throws at runtime. That is exactly what
+    // label() was. The rule here is deliberately narrow and therefore exact:
+    // an identifier that is CALLED but occurs only once in the whole
+    // frontmatter was never imported and never declared.
+    const fs = require('node:fs');
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = resolve(dir, e.name);
+        if (e.isDirectory()) { walk(p); continue; }
+        if (!e.name.endsWith('.astro')) continue;
+        const src = fs.readFileSync(p, 'utf8');
+        if (!src.startsWith('---')) continue;
+        const end = src.indexOf('\n---', 3);
+        if (end < 0) continue;
+        let c = src.slice(3, end);
+        c = c.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+        // Strings too: prose like "photo (optional)" is not a call.
+        c = c.replace(/"(\\.|[^"\\])*"/g, '""').replace(/'(\\.|[^'\\])*'/g, "''");
+        // Reduce each template literal to its ${...} interpolations. Replacing
+        // the whole literal swallowed the CODE between two of them — that is
+        // how this scan silently lost `kampalaCutoff(` and reported a clean
+        // file while the page was one request away from a ReferenceError.
+        c = c.replace(/`[\s\S]*?`/g, (lit) => (lit.match(/\$\{[^}]*\}/g) ?? []).join(' '));
+        const KEYWORD = new Set(['if','for','while','switch','catch','return','typeof','await','function','do','else','new','throw','delete','void','yield','import','super','in','of','instanceof','async']);
+        for (const m of c.matchAll(/(?<![.\w$])([a-z_$][\w$]*)\s*\(/g)) {
+          const name = m[1];
+          if (KEYWORD.has(name)) continue;
+          // The definition itself is not a call: `function fmtVal(` used only
+          // by the template would otherwise look like a call to nothing.
+          if (/function\s+$/.test(c.slice(0, m.index))) continue;
+          if ((globalThis as any)[name] !== undefined) continue;
+          const occurrences = c.match(new RegExp('\\b' + name + '\\b', 'g'))?.length ?? 0;
+          if (occurrences <= 1) offenders.push(`${p.replace(ROOT + '/', '')}: ${name}()`);
+        }
+      }
+    };
+    walk(resolve(ROOT, 'apps/web/src/pages'));
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('the shop has one clock and one cutoff', () => {
+  it('the nav reads the operator cutoff on Kampala time, not the device', () => {
+    const src = read('apps/web/src/components/GpNav.astro');
+    expect(src).toMatch(/timeZone: 'Africa\/Kampala'/);
+    expect(src).toMatch(/data-cutoff-hour=\{String\(biz\.sameDayCutoffHour\)\}/);
+    expect(src).not.toMatch(/\(17 - h\) \* 60/);
+    expect(src).not.toMatch(/hour < 17/);
+  });
+
+  it('the hero does the same, and stops defaulting to a magic 17', () => {
+    const src = read('apps/web/src/components/hero/HeroSlider.astro');
+    expect(src).toMatch(/data-cutoff-hour=\{String\(heroBiz\.sameDayCutoffHour\)\}/);
+    expect(src).toMatch(/var now = heroShopNow\(\);/);
+    expect(src).toMatch(/CONFIG\.closedDays\.indexOf\(now\.getDay\(\)\) === -1/);
+  });
+
+  it('the copy does not name a weekday the operator may not have closed', () => {
+    expect(read('packages/shared/src/nav/nba.ts')).not.toMatch(/\? 'Monday' :/);
+    expect(read('apps/web/src/components/GpNav.astro')).not.toMatch(/\? 'Monday' :/);
+    expect(read('apps/web/src/components/GpNav.astro')).not.toMatch(/Closed Sunday\./);
+  });
+});
+
+describe('one price, one stock figure', () => {
+  it('search suggestions carry the campaign price', () => {
+    const src = read('apps/api/src/application/use-cases/products/SearchUseCases.ts');
+    expect(src).toMatch(/salePriceUgx\(retail, campaign\.percentBps, effectiveFloorUgx\(campaign\.priceFloorUgx, floor, retail\)\)/);
+  });
+
+  it('the public catalogue offers available stock, not on-hand', () => {
+    expect(read('apps/api/src/application/mappers/toProductPublicDto.ts')).toMatch(/stockQuantity: entity\.availableQuantity\(\)/);
+    expect(read('apps/api/src/domain/products/ProductEntity.ts')).toMatch(/Math\.max\(0, this\.stockQuantity - this\.reservedQuantity\)/);
+  });
+
+  it('the checkout points preview is a real lower bound and says so', () => {
+    const src = read('apps/web/src/pages/checkout.astro');
+    expect(src).toMatch(/Math\.floor\(checkoutSaleSubtotal \/ 1000\)/);
+    expect(src).toMatch(/You'll earn at least/);
+  });
+});
+
+describe('money moves once, and for the right amount', () => {
+  it('a stale payment attempt is not reused after the total changes', () => {
+    expect(read('apps/api/src/application/use-cases/commerce/StartOrderPaymentUseCase.ts'))
+      .toMatch(/a\.amount === amountDue\)/);
+    // 0196: the amount due is the total unless store credit paid part of it.
+    expect(read('apps/api/src/application/use-cases/commerce/StartOrderPaymentUseCase.ts'))
+      .toMatch(/const amountDue = order\.storeCreditAppliedUgx \? Math\.max\(0, order\.totalUgx - order\.storeCreditAppliedUgx\) : order\.totalUgx;/);
+  });
+
+  it('a reversal settles only what actually came back', () => {
+    // Any money ceiling (the refunded total, or the collected amount) always
+    // covered every accepted row and capped nothing. A REVERSED status now
+    // settles a refund only when it can be about nothing else.
+    expect(read('apps/api/src/infrastructure/db/repositories/DrizzleRefundLedgerRepository.ts'))
+      .toMatch(/settleRefundsForAttempt\(paymentAttemptId: string\): Promise<number>/);
+    expect(read('apps/api/src/application/use-cases/payments/VerifyPesaPalPaymentUseCase.ts'))
+      .toMatch(/settleRefundsForAttempt\(attempt\.id\)/);
+  });
+
+  it('two identical refund requests still collapse into one', () => {
+    // Deliberate: a double-click must never return the money twice. A genuine
+    // second refund of the same amount and reason carries an explicit
+    // idempotencyKey, which is what that input exists for. This was briefly
+    // changed to key on the running refunded total and reverted, because
+    // refunding twice by accident is the worse failure.
+    const src = read('apps/api/src/application/use-cases/payments/RefundPesaPalPaymentUseCase.ts');
+    expect(src).toMatch(/\$\{input\.merchantReference\}\|\$\{input\.amountUgx\}\|\$\{input\.reason\.trim\(\)\}`/);
+    expect(src).not.toMatch(/\|\$\{alreadyRefundedUgx\}/);
+  });
+
+  it('a fee rise cannot be agreed onto an order paid in the meantime', () => {
+    expect(read('apps/api/src/application/use-cases/delivery/DeliveryVarianceUseCases.ts'))
+      .toMatch(/input\.agreed && order\.paymentStatus === 'paid'/);
+  });
+
+  it('only a pending variance can be answered, at the write', () => {
+    expect(read('apps/api/src/infrastructure/db/repositories/DrizzleDeliveryVarianceRepository.ts'))
+      .toMatch(/eq\(deliveryFeeVariance\.agreement, 'pending'\)/);
+  });
+
+  it('merged points can be spent, not just seen', () => {
+    expect(read('apps/api/src/infrastructure/db/repositories/DrizzleLoyaltyRepository.ts'))
+      .toMatch(/inArray\(loyaltyLedgerEntries\.accountId, balanceAccountIds\)/);
+  });
+});
+
+describe('a failure says what it is', () => {
+  it('an unreachable catalogue is a 503, not a 404', () => {
+    const src = read('apps/web/src/pages/products/[slug].astro');
+    expect(src).toMatch(/status: 503/);
+    expect(src).toMatch(/'Retry-After': '30'/);
+  });
+
+  it('the order paths have deadlines', () => {
+    expect(read('apps/web/src/lib/checkoutClient.ts').match(/AbortSignal\.timeout\(CHECKOUT_TIMEOUT_MS\)/g)?.length).toBe(2);
+    expect(read('apps/web/src/pages/orders/[id].astro')).toMatch(/AbortSignal\.timeout\(8_000\)/);
+  });
+
+  it('the basket is cleared on the server, not just in the cookie', () => {
+    const src = read('apps/web/src/pages/checkout.astro');
+    expect(src).toMatch(/async function clearBasketAfterOrder/);
+    // Three sites: pay-now handoff, offline order, other confirmed outcomes.
+    // NOT the already-ordered resubmit: the API answers that only for a basket
+    // whose fingerprint differs from the order's, so it is a new basket.
+    expect(src.match(/await clearBasketAfterOrder\(\);/g)?.length).toBe(3);
+  });
+
+  it('device-priced totals are declared, never shown silently', () => {
+    expect(read('apps/web/src/pages/checkout.astro')).toMatch(/these totals come from your device/);
+  });
+});
+
+describe('a redirect stays on this site', () => {
+  it('every redirect target goes through the hardened helper', () => {
+    expect(read('apps/web/src/pages/404.astro')).toMatch(/safeReturnTo\(to, ''\)/);
+    expect(read('apps/web/src/pages/account/behavioural-interventions.astro')).toMatch(/safeReturnTo\(body\.data\.ctaPath, ''\)/);
+    expect(read('apps/web/src/pages/admin/login.astro')).toMatch(/safeReturnTo\(returnTo, '\/admin'\)/);
+  });
+});
+
+describe('an operator edit reaches the site', () => {
+  it('the WhatsApp number drives a plain wa.me link', () => {
+    const src = read('apps/web/src/pages/admin/business-info.astro');
+    expect(src).toMatch(/whatsappNumber: whatsappNumber,/);
+    expect(src).toMatch(/https:\\\/\\\/wa\\\.me\\\/\\d\+\\\/\?\$/);
+  });
+
+  it('the nav points rate is not offered as an editable money claim', () => {
+    const src = read('apps/web/src/pages/admin/nav.astro');
+    const block = src.slice(src.indexOf('settings.pointsToUgxRate"'), src.indexOf('settings.pointsToUgxRate"') + 700);
+    expect(block).toMatch(/readonly/);
+  });
+
+  it('a failed cart write is reported, not swallowed', () => {
+    expect(read('apps/web/src/pages/cart.astro'))
+      .toMatch(/cartNotice = cartNotice \?\? 'We could not update your basket just now/);
+  });
+
+  it('the category hub copy still names the address business_info holds', () => {
+    // Those pages state the shop address in prose, 18 times. Templating marketing
+    // sentences from a config field would read badly, so instead: if the shop
+    // moves, this fails and names the pages that have to be rewritten.
+    const address = read('packages/shared/src/business/index.ts');
+    const line = address.match(/addressLine1: '([^']+)'/)?.[1] ?? '';
+    const street = line.split(',')[0].trim();
+    expect(street.length).toBeGreaterThan(3);
+    expect(read('apps/web/src/lib/categoryHubs.ts')).toContain(street);
+  });
+});
+
+describe('the three decisions the owner signed off', () => {
+  it('an admin page needs an admin, not just a cookie', () => {
+    const mw = read('apps/web/src/middleware.ts');
+    expect(mw).toMatch(/const adminGuarded =/);
+    expect(mw).toMatch(/!adminPath\.startsWith\('\/admin\/login'\)/);
+    // Closed on a definite refusal...
+    expect(mw).toMatch(/if \(res\.status === 401 \|\| res\.status === 403\) return false;/);
+    // ...open when the API cannot be reached, so a blip cannot lock the operator out.
+    expect(mw).toMatch(/\} catch \{\s*\n\s*return true;/);
+    // Lives under /auth, not /admin: every /admin route must be gated by a
+    // SPECIFIC permission, and this one deliberately asks only whether the
+    // holder has any admin permission at all.
+    expect(read('apps/api/src/interfaces/http/routes/auth.ts')).toMatch(/routes\.get\('\/admin-session', authMiddleware/);
+  });
+
+  it('an advertising event without an identity is not forwarded', () => {
+    const src = read('apps/api/src/application/use-cases/measurement/RoutePaidSocialEventUseCase.ts');
+    expect(src).toMatch(/if \(!userId && !sessionId\)/);
+    expect(src).toMatch(/NO_IDENTITY/);
+  });
+
+  it('an active zone free-delivery threshold is actually read', () => {
+    expect(read('apps/api/src/application/use-cases/delivery/DeliveryQuotingUseCase.ts'))
+      .toMatch(/zoneFreeDeliveryThreshold \?\? numeric\.free_delivery_threshold_ugx \?\? null/);
+    const repo = read('apps/api/src/infrastructure/db/repositories/DrizzleDeliveryQuotingRepository.ts');
+    expect(repo).toMatch(/p\.active = true/);
+    expect(repo).toMatch(/p\.free_delivery_threshold_ugx is not null/);
+  });
+});
+
+describe('the parameter-boundary rule can actually see array casts', () => {
+  it('the pattern matches an array cast followed by a closing paren', () => {
+    const src = read('tests/architecture/postgres-parameter-boundary.test.ts');
+    const literal = src.match(/const RAW_CAST = (\/.*\/g);/)?.[1] ?? '';
+    expect(literal).toBeTruthy();
+    // Rebuild the rule's own regex and prove it sees the shape that slipped past.
+    const body = literal.slice(1, literal.lastIndexOf('/'));
+    const re = new RegExp(body, 'g');
+    expect('where id = any(${ids}::uuid[])'.match(re)).not.toBeNull();
+    expect('set c = ${x}::jsonb'.match(re)).not.toBeNull();
+    // ...and does not fire on a cast that merely STARTS with one of the names.
+    expect('select ${p}::jsonpath'.match(re)).toBeNull();
+  });
+
+  it('refund settlement binds its id list through the sanctioned helper', () => {
+    const src = read('apps/api/src/infrastructure/db/repositories/DrizzleRefundLedgerRepository.ts');
+    expect(src).toMatch(/any\(\$\{pgUuidArray\(settleIds\)\}\)/);
+    expect(src).not.toMatch(/\$\{settleIds\}::uuid\[\]/);
+  });
+});
+
+describe('what the self-review of this session caught', () => {
+  it('a reversal settles nothing once a refund on the attempt has already settled', () => {
+    const src = read('apps/api/src/infrastructure/db/repositories/DrizzleRefundLedgerRepository.ts');
+    expect(src).toMatch(/where payment_attempt_id = \$\{paymentAttemptId\}::uuid and status = 'settled'/);
+    expect(src).toMatch(/outstandingAcceptedIds\.length === 1 && alreadySettledCount === 0/);
+    const caller = read('apps/api/src/application/use-cases/payments/VerifyPesaPalPaymentUseCase.ts');
+    expect(caller).not.toMatch(/settleRefundsForAttempt\(attempt\.id, attempt\.amount\)/);
+    expect(caller).not.toMatch(/provenPartial \? refunded : attempt\.amount/);
+  });
+
+  it('a blank WhatsApp number does not mint a dead link', () => {
+    const src = read('apps/web/src/pages/admin/business-info.astro');
+    expect(src).toMatch(/whatsappUrl: whatsappDigits &&/);
+  });
+
+  it('the hero and the nav agree about a shop that never closes', () => {
+    const hero = read('apps/web/src/components/hero/HeroSlider.astro');
+    const fn = hero
+      .slice(hero.indexOf('function heroShopClosedDays'), hero.indexOf('function heroShopClosedDays') + 600)
+      .replace(/\/\/[^\n]*/g, '');   // the comment explains the removed fallback
+    expect(fn).not.toMatch(/\[0\]/);
+  });
+
+  it('only a 200 proves an admin, and logout is never trapped', () => {
+    const mw = read('apps/web/src/middleware.ts');
+    expect(mw).toMatch(/if \(res\.ok\) return true;/);
+    expect(mw).toMatch(/!adminPath\.startsWith\('\/admin\/logout'\)/);
+  });
+});
+
+describe('an operator script cannot be run twice, or run anonymously', () => {
+  it('a reset link is refused for a deactivated account and is audited', () => {
+    const src = read('apps/api/src/scripts/issue-password-reset-link.ts');
+    expect(src).toMatch(/is_active === false/);
+    expect(src).toMatch(/PASSWORD_RESET_LINK_ISSUED_BY_OPERATOR/);
+    expect(src).toMatch(/ACTOR_USER_ID must be the uuid of the operator/);
+  });
+
+  it('the address migration does not restate its facts on a second apply', () => {
+    const src = read('apps/api/src/scripts/migrate-existing-addresses.ts');
+    expect(src.match(/where not exists \(/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(src).not.toMatch(/values \(\$\{o\.id\}, 'system', 'migration_linked'/);
+  });
+
+  it('the synthetic monitor probes the shop from inside, not through the edge', () => {
+    const src = read('apps/api/src/infrastructure/scheduler/SyntheticMonitor.ts');
+    expect(src).toMatch(/SYNTHETIC_MONITOR_BASE_URL \|\| `http:\/\/localhost:\$\{process\.env\.PORT \|\| 3000\}`/);
+    expect(src).not.toMatch(/const baseUrl = env\.publicApiBaseUrl/);
+  });
+});
+
+describe('an imported CONSTANT is imported too, not just called functions', () => {
+  it('every .astro file that uses a shared constant also imports it', () => {
+    // The call-shaped scan misses this: `${SITE_ORIGIN}` is a value reference,
+    // not a call, and a missing import for it throws on EVERY page that renders
+    // the layout. A general "referenced but never declared" rule turned out to
+    // be too noisy to keep honest (hex colours, type unions, template prose),
+    // so this checks the specific shared constants that actually travel between
+    // files — which is where the mistake was made.
+    // Symbols that travel BETWEEN files and so can be referenced without an
+    // import. Explicit, because the lexical scan below is best-effort and has
+    // been fooled before — an apostrophe inside a template literal was enough
+    // to make it lose `kampalaCutoff(` and report a clean file. This list needs
+    // no lexing and cannot produce a false positive.
+    const SHARED = [
+      'SITE_ORIGIN', 'STOREFRONT_PRICE_FLOOR_UGX', 'BUSINESS_SOCIAL_LABELS', 'BUSINESS_SOCIAL_KEYS',
+      'kampalaCutoff', 'salePriceUgx', 'getBusinessInfo', 'safeReturnTo', 'formatUgx',
+      'getStorefrontDiscount', 'orderStatusCopy', 'paymentStatusCopy',
+    ];
+    const fs = require('node:fs');
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = resolve(dir, e.name);
+        if (e.isDirectory()) { walk(p); continue; }
+        if (!e.name.endsWith('.astro')) continue;
+        const src = fs.readFileSync(p, 'utf8');
+        const end = src.indexOf('\n---', 3);
+        if (!src.startsWith('---') || end < 0) continue;
+        const frontmatter = src.slice(3, end).replace(/\/\/[^\n]*/g, '');
+        for (const name of SHARED) {
+          const used = new RegExp('(?<![.\\w$])' + name + '\\b').test(frontmatter);
+          if (!used) continue;
+          const imported = new RegExp('import[\\s\\S]{0,400}?\\b' + name + '\\b[\\s\\S]{0,400}?from').test(frontmatter);
+          if (!imported) offenders.push(`${p.replace(ROOT + '/', '')}: ${name} used but not imported`);
+        }
+      }
+    };
+    walk(resolve(ROOT, 'apps/web/src'));
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('what search engines are actually told', () => {
+  it('robots.txt advertises a sitemap on the real site, never localhost', () => {
+    const src = read('apps/web/src/pages/robots.txt.ts');
+    expect(src).toMatch(/site\?\.toString\(\) \?\? SITE_ORIGIN/);
+    expect(src).not.toMatch(/\?\? 'http:\/\/localhost:4321'/);
+  });
+
+  it('every page names ONE canonical host, not whichever the crawler used', () => {
+    const src = read('apps/web/src/layouts/BaseLayout.astro');
+    expect(src).toMatch(/const canonical = canonicalUrl \?\? `\$\{SITE_ORIGIN\}\$\{Astro\.url\.pathname\}`/);
+    expect(src).not.toMatch(/\$\{Astro\.url\.origin\}\$\{Astro\.url\.pathname\}/);
+  });
+
+  it('no page builds an indexable absolute URL from the request origin', () => {
+    // Canonicals, og:url and JSON-LD must all name the same host. Astro.url.origin
+    // is whatever the crawler dialled, which is how www and bare ended up
+    // competing. /shop and the product pages each had their own copy of this.
+    const fs = require('node:fs');
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = resolve(dir, e.name);
+        if (e.isDirectory()) { walk(p); continue; }
+        if (!/\.(astro|ts)$/.test(e.name)) continue;
+        const src = fs.readFileSync(p, 'utf8').replace(/\/\/[^\n]*/g, '');
+        if (/Astro\.url\.origin/.test(src)) offenders.push(p.replace(ROOT + '/', ''));
+      }
+    };
+    walk(resolve(ROOT, 'apps/web/src'));
+    expect(offenders).toEqual([]);
+  });
+
+  it('Search Console figures are re-read while Google is still revising them', () => {
+    const src = read('apps/api/src/application/use-cases/seo-growth/SyncGscPerformanceUseCase.ts');
+    expect(src).toMatch(/const REFRESH_WINDOW_DAYS = 7;/);
+    expect(src).toMatch(/nextUnseen < maturingFrom \? nextUnseen : maturingFrom/);
+  });
+});
+
+describe('a shop taking no money says so', () => {
+  it('the silence check reports neverPaid even when the window is unconfigured', () => {
+    const src = read('apps/api/src/application/use-cases/payments/PaymentSilenceUseCases.ts');
+    expect(src).toMatch(/state: 'off'; reason: 'window_not_configured'; neverPaid: boolean/);
+    expect(src).toMatch(/const everPaid = await this\.health\.lastSuccessfulPaymentAt\(\);/);
+  });
+
+  it('an unconfigured alarm is logged, and never-paid is an error', () => {
+    const src = read('apps/api/src/infrastructure/scheduler/PaymentReconcileTicker.ts');
+    expect(src).toMatch(/if \(silence\.state === 'off' && Date\.now\(\) - lastSilenceAlertAt > 3_600_000\)/);
+    expect(src).toMatch(/NO PAYMENT HAS EVER SUCCEEDED, and the payment health alarm is not configured/);
+    expect(src).toMatch(/payment health alarm is OFF/);
+  });
+});
+
+describe('the storefront does not spin the main thread', () => {
+  it('the hero foil retry is bounded', () => {
+    const src = read('apps/web/src/components/hero/HeroSlider.astro');
+    // The bare self-rescheduling retry ran at frame rate forever whenever the
+    // card had no size, which is its normal state while hidden.
+    expect(src).not.toMatch(/if \(!paintFoil\(\)\) requestAnimationFrame\(paintFoil\);/);
+    expect(src).toMatch(/if \(\+\+foilTries > 120\) return;/);
+  });
+
+  it('the hero autoplay still stops when hidden or scrolled away', () => {
+    // Pre-existing and correct — asserted so a later "optimisation" cannot
+    // quietly remove it and leave a loop running behind the fold.
+    const src = read('apps/web/src/components/hero/HeroSlider.astro');
+    expect(src).toMatch(/document\.hidden \? stop\(\)/);
+    expect(src).toMatch(/IntersectionObserver/);
+  });
+});
+
+describe('the campaign is not advertised as more than it is', () => {
+  it('no customer-facing copy claims the discount applies to everything', () => {
+    // With a per-unit price floor, an item already at the floor comes down by
+    // nothing, so "on everything" overstates the offer. The nav deal panel was
+    // corrected earlier; the hero, the NBA strip and the popover templates were
+    // still saying it.
+    const files = [
+      'packages/shared/src/hero/library.ts',
+      'packages/shared/src/nav/nba.ts',
+      'packages/shared/src/nav/config.ts',
+      'apps/web/src/components/GpNav.astro',
+    ];
+    const offenders: string[] = [];
+    for (const f of files) {
+      for (const line of read(f).split('\n')) {
+        if (line.trim().startsWith('//') || line.trim().startsWith('*')) continue;
+        if (/on everything/i.test(line)) offenders.push(`${f}: ${line.trim().slice(0, 80)}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('the hero default offers "up to"', () => {
+    expect(read('packages/shared/src/hero/library.ts')).toMatch(/headline: 'Up to <em>\{pct\}% off<\/em>'/);
+  });
+});
+
+describe('hero copy carries tokens, not numbers', () => {
+  it('tokens are filled on EVERY slide, not just the flash one', () => {
+    const src = read('apps/web/src/components/hero/HeroSlider.astro');
+    expect(src).toMatch(/set:html=\{safeHeadline\(fillHeroTokens\(s\.headline\)\)\}/);
+    // Keyed to one slide, the same token on any other reached the customer as
+    // the literal text "{pct}".
+    expect(src).not.toMatch(/s\.slideKey === 'flash' \? s\.headline\.replace/);
+  });
+
+  it('the cutoff token comes from the operator setting, not a number in the copy', () => {
+    const src = read('apps/web/src/components/hero/HeroSlider.astro');
+    expect(src).toMatch(/\.replace\(\/\\\{cutoff\\\}\/g, heroCutoff\.cutoffLabel\)/);
+    expect(read('packages/shared/src/hero/library.ts')).toMatch(/Order before \{cutoff\} and it <em>goes out today<\/em>/);
+  });
+});
+
+describe('SEO ownership is decided on observed reality', () => {
+  it('competing URLs come from Search Console, flagged as provider-observed', () => {
+    const src = read('apps/api/src/infrastructure/seo/OrganicIntelligenceRunner.ts');
+    expect(src).toMatch(/join gsc_performance g/);
+    expect(src).toMatch(/true as provider_observed/);
+    // The lexical crawl join stays, as the fallback it always was.
+    expect(src).toMatch(/false as provider_observed/);
+    expect(src).toMatch(/providerObserved: Boolean\(r\.provider_observed\)/);
+    // The claim that no provider stores per-URL demand is no longer true.
+    expect(src).not.toMatch(/Demand is NOT stored per URL by any connected provider/);
+  });
+
+  it('a provider-observed incumbent is believed; a lexical one is not', () => {
+    const src = read('apps/api/src/application/use-cases/seo-growth/OrganicIntelligenceMaterialiser.ts');
+    expect(src).toMatch(/incumbent\.providerObserved \? 'PROVIDER_OBSERVED' : 'URL_LEXICAL_FALLBACK'/);
+    // Hardcoding the weak label discarded every owner and left the module
+    // producing nothing.
+    expect(src).not.toMatch(/currentOwnerEvidence: incumbent \? 'URL_LEXICAL_FALLBACK' : 'NONE'/);
+  });
+
+  it('an observed page outranks a merely plausible one', () => {
+    expect(read('apps/api/src/application/use-cases/seo-growth/OrganicIntelligenceMaterialiser.ts'))
+      .toMatch(/Number\(b\.providerObserved\) - Number\(a\.providerObserved\)/);
+  });
+});
+
+describe('turning on an ad platform is a privileged, recorded act', () => {
+  it('updating a paid-social destination needs a MANAGE right, not a read one', () => {
+    const src = read('apps/api/src/interfaces/http/routes/admin/measurement-paid-social.ts');
+    const block = src.slice(src.indexOf("'/destinations/:id/update'"), src.indexOf("'/delivery/:eventId/retry'"));
+    expect(block).toMatch(/requirePermissions\(\[PERMISSIONS\.SETTINGS_MANAGE\]\)/);
+    expect(block).not.toMatch(/requirePermissions\(\[PERMISSIONS\.REPORTS_READ\]\)/);
+    // Enabling a platform must be attributable, and the id must be an id.
+    expect(block).toMatch(/PAID_SOCIAL_DESTINATION_UPDATED/);
+    expect(block).toMatch(/Missing or malformed id/);
+  });
+
+  it('the battery routes keep their per-action rights, which are stricter', () => {
+    // These gate on BATTERIES_READ then check the ACTUAL right for the action
+    // requested (publish vs manage) and 403. That is finer than a blanket route
+    // guard, and a naive "no write behind a read permission" sweep must not be
+    // allowed to flatten it.
+    const src = read('apps/api/src/interfaces/http/routes/admin/batteries.ts');
+    expect(src).toMatch(/PERMISSIONS\.BATTERIES_PUBLISH : PERMISSIONS\.BATTERIES_CATALOGUE_MANAGE/);
+    expect(src).toMatch(/if \(!has\(c, needs\)\) return bad\(c, 'FORBIDDEN'/);
+  });
+});

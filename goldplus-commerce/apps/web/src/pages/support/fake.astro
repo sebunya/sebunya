@@ -1,4 +1,5 @@
 ---
+import { readClientAddress } from '../../lib/forwardClient';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import FormField from '../../components/FormField.astro';
 import FormFeedback from '../../components/FormFeedback.astro';
@@ -26,7 +27,8 @@ if (Astro.request.method === 'POST') {
 
   if (!locationDetails) errors.locationFound = 'Shop/location details required.';
   if (!productDescription) errors.productDescription = 'Detailed product description is required.';
-  if (!isValidEmail(reporterEmail)) errors.reporterEmail = 'A valid reporter email is required.';
+  // Email is optional: the phone is how we follow up on a report.
+  if (reporterEmail && !isValidEmail(reporterEmail)) errors.reporterEmail = 'That email address does not look right. Check it, or leave it blank.';
   if (!isValidUgandanPhone(reporterPhone)) errors.reporterPhone = 'A valid Ugandan reporter phone is required.';
 
   if (Object.keys(errors).length === 0) {
@@ -43,7 +45,7 @@ if (Astro.request.method === 'POST') {
       hologramCode,
       reporterEmail,
       reporterPhone
-    });
+    }, null, readClientAddress(Astro));
 
     reference = result.ok ? result.reference : undefined;
     if (result.ok) {
@@ -58,19 +60,19 @@ if (Astro.request.method === 'POST') {
     }
   } else {
     status = 'error';
-    message = 'Please correct inputs before reporting.';
+    message = 'Some details are missing. Check the highlighted fields below.';
   }
 }
 ---
 
-<BaseLayout title="Report counterfeit product | GoldPlus">
+<BaseLayout title="Report a Suspected Counterfeit | GoldPlus" description="Tell GoldPlus about a product you suspect may be counterfeit. Share the relevant product and seller details so support can review the report.">
   <div class="container mx-auto px-4 lg:px-8 py-16">
     <div class="max-w-2xl mx-auto">
-      <div class="bg-red-50/45 border border-red-200/60 rounded-2xl p-6 md:p-8 mb-8 flex gap-5 items-start shadow-xs">
-        <div aria-hidden="true" class="w-12 h-12 bg-red-100 text-red-650 rounded-xl flex items-center justify-center flex-shrink-0 font-black text-xl border border-red-200/70 shadow-xs">!</div>
+      <div class="bg-red-50/45 border border-red-200/60 rounded-2xl p-6 md:p-8 mb-8 flex gap-5 items-start">
+        <div aria-hidden="true" class="w-12 h-12 bg-red-100 text-red-700 rounded-xl flex items-center justify-center flex-shrink-0 font-black text-xl border border-red-200/70">!</div>
         <div>
-          <h1 class="text-lg md:text-xl font-black text-red-650 mb-1">Report a counterfeit product</h1>
-          <p class="text-red-500/90 text-sm leading-relaxed font-medium">
+          <h1 class="text-lg md:text-xl font-black text-red-700 mb-1">Report a counterfeit product</h1>
+          <p class="text-red-700 text-sm leading-relaxed font-medium">
             Your report helps us eliminate fake electronics in Uganda. We investigate every submission and refer serious cases to the relevant authorities.
           </p>
         </div>
@@ -79,14 +81,16 @@ if (Astro.request.method === 'POST') {
       <FormFeedback status={status} message={message} reference={reference} />
 
       <form method="POST" action="/support/fake" novalidate id="fakeForm" class="space-y-6">
-        <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs space-y-6">
+        <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 space-y-6">
           
           <fieldset class="space-y-5">
-            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Discovery Location</legend>
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Discovery Location</legend>
             <UgandaLocationPicker 
                name="locationJson" 
-               label="Where did you find the product?" 
-               helperText="Search the parish, ward, town, or district where the product was found."
+               label="Where did you see or buy this product?" 
+               helperText="Name the shop or seller and the area. Include any details that may help us identify the location."
+               manualLabel="Describe where you saw or bought the product"
+               manualNote=""
                required={false} 
                defaultValue={values.locationJson} 
                errorMessage={errors.locationJson} 
@@ -103,7 +107,7 @@ if (Astro.request.method === 'POST') {
           </fieldset>
           
           <fieldset class="space-y-5 pt-4 border-t border-slate-100">
-            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Product Information</legend>
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Product Information</legend>
             <FormField 
               id="productDescription" 
               name="productDescription" 
@@ -126,14 +130,13 @@ if (Astro.request.method === 'POST') {
           </fieldset>
           
           <fieldset class="pt-4 border-t border-slate-100">
-             <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Your Contact Details</legend>
+             <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Your Contact Details</legend>
              <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <FormField 
                   id="reporterEmail" 
                   name="reporterEmail" 
-                  label="Email address" 
+                  label="Email address (optional)" 
                   type="email"
-                  required 
                   defaultValue={values.reporterEmail} 
                   autocomplete="email"
                   errorMessage={errors.reporterEmail}
@@ -146,19 +149,19 @@ if (Astro.request.method === 'POST') {
                   required 
                   defaultValue={values.reporterPhone} 
                   autocomplete="tel"
-                  placeholder="+2567..."
+                  placeholder="07XX XXX XXX"
                   errorMessage={errors.reporterPhone}
                 />
              </div>
-             <p class="text-xs text-slate-400 mt-3 font-medium">We may contact you to verify details. Your report protects buyers.</p>
+             <p class="text-xs text-slate-500 mt-3 font-medium">We may contact you to verify details. Your report protects buyers.</p>
           </fieldset>
         </div>
 
         <div class="flex items-center gap-4">
-          <button type="submit" id="submitBtn" class="bg-red-600 text-white px-8 py-2.5 rounded-full font-bold hover:bg-red-750 transition-all text-xs tracking-wider uppercase shadow-xs cursor-pointer active:scale-98">
+          <button type="submit" id="submitBtn" class="min-h-12 bg-red-600 text-white px-8 py-3 rounded-full font-bold hover:bg-red-700 transition-all text-sm cursor-pointer active:scale-[0.98]">
             Submit report
           </button>
-          <a href="/support" class="text-xs font-bold text-slate-400 hover:text-gray-900 transition-colors hover:underline">Cancel</a>
+          <a href="/support" class="text-xs font-bold text-slate-600 hover:text-gray-900 transition-colors hover:underline">Cancel</a>
         </div>
       </form>
     </div>
@@ -212,8 +215,8 @@ if (Astro.request.method === 'POST') {
       if (!descInput.value.trim()) {
         setError('productDescription', 'Detailed product description is required.');
       }
-      if (!isValidEmail(emailInput.value)) {
-        setError('reporterEmail', 'Enter a valid reporter email.');
+      if (emailInput.value.trim() && !isValidEmail(emailInput.value)) {
+        setError('reporterEmail', 'Check the email, or leave it blank.');
       }
       if (!isValidUgandanPhone(phoneInput.value)) {
         setError('reporterPhone', 'Enter a valid Ugandan phone number.');

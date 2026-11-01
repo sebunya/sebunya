@@ -121,6 +121,12 @@ describe('card-to-route integrity', () => {
     for (const module of CONTROL_CENTRE_MODULES) {
       if (!resolves(module.adminRoute)) broken.push(`${module.key} -> ${module.adminRoute}`);
       for (const action of module.supportedActions) {
+        // READ actions navigate to an admin page, so the page must exist.
+        // WRITE/APPROVE/DIAGNOSTIC actions target the API endpoint they call
+        // (ModuleAction.target: "Route the button navigates to, or API endpoint
+        // it calls") — endpoint reachability is covered by the apiMount checks
+        // above, not by the pages directory.
+        if (action.kind !== 'READ') continue;
         if (action.target.startsWith('/admin') && !resolves(action.target)) {
           broken.push(`${module.key}.${action.key} -> ${action.target}`);
         }
@@ -190,7 +196,11 @@ describe('status integrity', () => {
     const orders = summary.modules.find((m) => m.moduleKey === 'orders');
     expect(orders!.availableActions).toEqual([]);
 
-    const permitted = await run({ mounted: true }, ['ORDERS_READ']);
+    // The fixture must speak the vocabulary a real session carries — the
+    // canonical dotted name. The old constant-style 'ORDERS_READ' here is the
+    // exact mismatch that let every Trust Centre module read permission-denied
+    // in production while this test stayed green.
+    const permitted = await run({ mounted: true }, ['orders.read']);
     expect(permitted.modules.find((m) => m.moduleKey === 'orders')!.availableActions).toHaveLength(1);
   });
 
@@ -213,5 +223,22 @@ describe('status integrity', () => {
     const summary = await run({ mounted: true, providerConfigured: true });
     expect(JSON.stringify(summary)).not.toContain('super-secret-value');
     delete process.env.WHATSAPP_ACCESS_TOKEN;
+  });
+});
+
+describe('permission vocabulary', () => {
+  it('every registry permission is a CANONICAL name a session can actually carry', async () => {
+    const { PERMISSIONS } = await import('../../packages/shared/src/permissions');
+    const canonical = new Set(Object.values(PERMISSIONS));
+    for (const module of CONTROL_CENTRE_MODULES) {
+      for (const perm of [...module.requiredPermissions, ...module.optionalPermissions]) {
+        expect(canonical.has(perm as never), `${module.key}: '${perm}' is not a canonical permission`).toBe(true);
+      }
+      for (const action of module.supportedActions) {
+        if (action.requiredPermission) {
+          expect(canonical.has(action.requiredPermission as never), `${module.key}/${action.key}: '${action.requiredPermission}'`).toBe(true);
+        }
+      }
+    }
   });
 });

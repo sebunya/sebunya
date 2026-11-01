@@ -1,0 +1,88 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ProductCard from '../components/ProductCard.astro';
+import { fetchApprovedCatalogueWithStatus } from '../lib/catalogue';
+import { apiBase, whatsappSupportNumber } from '../lib/api';
+import { findChargers, parseFinderQuery, PORT_LABEL, NEED_LABEL, LAPTOP_WATTS, type DevicePort, type ChargerNeed } from '../lib/chargerFinder';
+
+/**
+ * Charger and cable finder (gap analysis #12). Three answers, then the products that fit, each with the checked
+ * specification that makes it fit. A plain GET form: works without JavaScript, every answer is in the URL.
+ */
+const q = parseFinderQuery(Astro.url.searchParams);
+const device = Astro.url.searchParams.get('device') === 'laptop' ? 'laptop' : 'phone';
+const catalogue = q ? await fetchApprovedCatalogueWithStatus(apiBase) : null;
+const matches = q && catalogue ? findChargers(catalogue.products, q) : [];
+const unreachable = Boolean(q && catalogue && catalogue.products.length === 0);
+const ask = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent(q ? `Hello GoldPlus, I need a ${NEED_LABEL[q.need].toLowerCase()} for my ${q.device}${q.device === 'laptop' ? ` (${q.watts} W, USB-C)` : ` (${PORT_LABEL[q.port]})`}.` : 'Hello GoldPlus, I need help choosing a charger.')}`;
+const radio = 'inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 has-[:checked]:border-slate-950 has-[:checked]:bg-slate-950 has-[:checked]:text-white';
+---
+<BaseLayout title="Charger and cable finder | GoldPlus" description="Find the GoldPlus charger, cable or power bank that fits your phone or laptop: USB-C, Lightning (iPhone) or Micro-USB, with the checked specification for each." robotsMeta={q ? 'noindex,follow' : undefined}>
+  <div class="mx-auto max-w-5xl px-4 py-10">
+    <h1 class="text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Charger and cable finder</h1>
+    <p class="mt-3 max-w-2xl text-base text-slate-600">Answer three questions. We match them against specifications our staff have checked, and show why each product fits.</p>
+
+    <form method="GET" action="/charger-finder" class="mt-6 space-y-5 rounded-2xl border border-slate-200 bg-white p-5" data-charger-finder>
+      <fieldset>
+        <legend class="text-sm font-black text-gray-900">1. What are you charging?</legend>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <label class={radio}><input type="radio" name="device" value="phone" class="sr-only" checked={device === 'phone'} />Phone or tablet</label>
+          <label class={radio}><input type="radio" name="device" value="laptop" class="sr-only" checked={device === 'laptop'} />Laptop (charges over USB-C)</label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend class="text-sm font-black text-gray-900">2. Its charging port</legend>
+        <p class="text-xs text-slate-500">A laptop always uses USB-C here.</p>
+        <div class="mt-2 flex flex-wrap gap-2">
+          {(['usb-c', 'lightning', 'micro-usb'] as DevicePort[]).map((p) => (
+            <label class={radio}><input type="radio" name="port" value={p} class="sr-only" checked={(q?.port ?? Astro.url.searchParams.get('port') ?? 'usb-c') === p} />{PORT_LABEL[p]}</label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend class="text-sm font-black text-gray-900">3. What do you need?</legend>
+        <div class="mt-2 flex flex-wrap gap-2">
+          {(['wall', 'car', 'powerbank', 'cable'] as ChargerNeed[]).map((n) => (
+            <label class={radio}><input type="radio" name="need" value={n} class="sr-only" checked={(q?.need ?? Astro.url.searchParams.get('need') ?? 'wall') === n} />{NEED_LABEL[n]}</label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend class="text-sm font-black text-gray-900">For a laptop: the watts printed on its own charger</legend>
+        <div class="mt-2 flex flex-wrap gap-2">
+          {LAPTOP_WATTS.map((w) => (
+            <label class={radio}><input type="radio" name="watts" value={String(w)} class="sr-only" checked={(q?.watts ?? 45) === w} />{w} W</label>
+          ))}
+        </div>
+      </fieldset>
+      <button type="submit" class="inline-flex min-h-12 items-center rounded-full bg-brand-primary px-6 text-xs font-black uppercase tracking-widest text-brand-black">Show what fits</button>
+    </form>
+
+    {q && (
+      <section class="mt-8" aria-labelledby="finder-results" data-finder-results>
+        <h2 id="finder-results" class="text-xl font-black text-gray-900">
+          {matches.length > 0 ? `${matches.length} ${matches.length === 1 ? 'fits' : 'fit'}: ${NEED_LABEL[q.need].toLowerCase()} for ${q.device === 'laptop' ? `a ${q.watts} W USB-C laptop` : `a ${PORT_LABEL[q.port]} ${q.device}`}` : 'Nothing in stock fits all three answers'}
+        </h2>
+        {unreachable && <p class="mt-2 text-sm text-red-700">The live catalogue could not be loaded just now. Please try again.</p>}
+        {matches.length === 0 && !unreachable && (
+          <p class="mt-2 text-sm text-slate-700">Try another answer, or <a class="font-bold underline" href={ask} target="_blank" rel="noopener noreferrer">ask us on WhatsApp</a> and we will tell you what we have.</p>
+        )}
+        <ul class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {matches.map((m) => (
+            <li class="flex flex-col gap-2">
+              <ProductCard product={m.product} />
+              <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                <p class="font-bold">Why it fits</p>
+                <ul class="mt-1 list-disc pl-4">{m.reasons.map((r) => <li>{r}</li>)}</ul>
+                {m.caveat && <p class="mt-1 text-amber-900">{m.caveat}</p>}
+              </div>
+            </li>
+          ))}
+        </ul>
+        {q.need !== 'cable' && matches.some((m) => m.caveat?.includes('cable')) && (
+          <p class="mt-4 text-sm"><a class="font-bold underline" href={`/charger-finder?device=${q.device}&port=${q.port}&need=cable${q.watts ? `&watts=${q.watts}` : ''}`}>Find the cable for it</a></p>
+        )}
+      </section>
+    )}
+  </div>
+</BaseLayout>

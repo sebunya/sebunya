@@ -1,0 +1,149 @@
+---
+/**
+ * Ambassadors & models — real people photographed with GoldPlus products, the
+ * last section before the footer. Five portraits across on desktop (three on a
+ * tablet, one and a peek on a phone), with arrows to page through the rest.
+ *
+ * Built from the home page's own vocabulary so it reads as part of the shop:
+ * the section heading, container and rounded cards of "Featured products", ink
+ * and the brand lime, the gallery's round arrow buttons.
+ *
+ * Honest by construction: every word and photo comes from the owner's editor
+ * (/admin/homepage/ambassadors); the API only sends people who are published AND
+ * have a signed photo release on file; with no one to show, nothing renders.
+ * A card links to the product in the photo when that product is on sale.
+ */
+import { HOME_AMBASSADOR_ROLE_LABEL, type HomeAmbassadorsPublic, type ProductPublicDto } from '@goldplus/shared';
+import cssHref from './ambassadors.css?url';
+
+interface Props {
+  section: HomeAmbassadorsPublic | undefined;
+  products: ProductPublicDto[];
+}
+const { section, products } = Astro.props;
+
+const bySlug = new Map(products.map((p) => [p.slug, p]));
+// A "photo coming soon" card is a placeholder, not a person photographed with
+// the product: the home page shows real photography or nothing (2026-10-08).
+// The admin entry is untouched — uploading the real photo brings the card back.
+const isPlaceholderPortrait = (alt: string | null | undefined) => /photo coming soon/i.test(alt ?? '');
+const people = (section?.people ?? [])
+  .filter((p) => p.image && !isPlaceholderPortrait(p.imageAlt))
+  .map((p) => {
+    const product = p.productSlug ? bySlug.get(p.productSlug) ?? null : null;
+    return {
+      ...p,
+      href: product ? `/products/${product.slug}` : null,
+      line: p.tagline || (product ? `With the ${product.name}` : ''),
+      label: `${p.name}, ${HOME_AMBASSADOR_ROLE_LABEL[p.role]}${product ? ` — view the ${product.name}` : ''}`,
+    };
+  });
+const SIZES = '(min-width: 1024px) 19vw, (min-width: 768px) 31vw, (min-width: 640px) 45vw, 74vw';
+---
+{section && people.length > 0 && (
+  <>
+  {/* A hashed stylesheet linked INSIDE the condition: nothing reaches the home page
+      unless the section renders, and even then the document carries one short tag,
+      not the rules. A scoped <style> is inlined into every home page by
+      build.inlineStylesheets: 'always' — rendered or not — on a document that must
+      stay within one round trip (live home ~41.5 KB of a ~41.8 KB budget). Below the
+      fold, so the extra request never delays first paint. */}
+  {/* Design notes (kept out of the shipped CSS):
+      - The row is native horizontal scroll with snap: swipe, trackpad or arrows; no script is needed to reach every person.
+      - Legibility: the dark band belongs to the TEXT BLOCK (solid ink behind every word however long the name runs), not a
+        fixed-height scrim — a fixed scrim lost to long names on narrow cards (1024 px: role label 1.71:1 over a white photo).
+      - Names scale with the CARD (container query units), so a 180 px card at 1024 px never wraps a name to three lines.
+      - Arrows sit at 34% height, over the photo and never the words; phones swipe, so arrows hide under 640 px. */}
+  <link rel="stylesheet" href={cssHref} />
+  <section class="bg-white py-14 border-t border-zinc-200/85" aria-labelledby="ambassadors-heading" data-ambassadors>
+    <div class="container mx-auto px-4 lg:px-8">
+      <div class="mb-8 max-w-2xl">
+        <h2 id="ambassadors-heading" class="text-2xl font-black tracking-tight text-gray-900">{section.heading}</h2>
+        {section.intro && <p class="mt-2 text-sm leading-relaxed text-slate-600">{section.intro}</p>}
+      </div>
+
+      <div class="gp-amb">
+        <button type="button" class="gp-amb__arrow gp-amb__arrow--prev" data-amb-prev aria-label="Previous people" aria-controls="ambassadors-track" hidden disabled>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <ul id="ambassadors-track" class="gp-amb__track" data-amb-track tabindex="-1" aria-label={section.heading}>
+          {people.map((p, i) => {
+            const Tag = p.href ? 'a' : 'div';
+            return (
+              <li class="gp-amb__item">
+                <Tag href={p.href ?? undefined} class="gp-amb__card group" aria-label={p.href ? p.label : undefined}>
+                  <img
+                    src={p.image!.src}
+                    srcset={p.image!.srcset ?? undefined}
+                    sizes={p.image!.srcset ? SIZES : undefined}
+                    width={p.image!.width ?? 600}
+                    height={p.image!.height ?? 1000}
+                    alt={p.imageAlt}
+                    loading="lazy"
+                    decoding="async"
+                    class="gp-amb__img"
+                  />
+                  <span class="gp-amb__scrim" aria-hidden="true"></span>
+                  <span class="gp-amb__text">
+                    <span class="gp-amb__role">{HOME_AMBASSADOR_ROLE_LABEL[p.role]}</span>
+                    <span class="gp-amb__name">{p.name}</span>
+                    {p.line && <span class="gp-amb__line">{p.line}</span>}
+                  </span>
+                </Tag>
+              </li>
+            );
+          })}
+        </ul>
+        <button type="button" class="gp-amb__arrow gp-amb__arrow--next" data-amb-next aria-label="Next people" aria-controls="ambassadors-track" hidden>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+
+      <div class="mt-8">
+        <a href={section.ctaHref} class="inline-flex min-h-11 items-center rounded-full border-2 border-gray-900 px-6 text-sm font-bold text-gray-900 transition-colors hover:bg-gray-900 hover:text-white">{section.ctaLabel}</a>
+      </div>
+    </div>
+  </section>
+  </>
+)}
+
+
+<script>
+  // Page the row by whole screens of cards; hide an arrow at its end. Focus is
+  // handed to the track before an arrow that holds it is disabled (a disabled
+  // button drops focus to <body> — the gallery taught us that).
+  document.querySelectorAll<HTMLElement>('[data-ambassadors]').forEach((root) => {
+    const track = root.querySelector<HTMLElement>('[data-amb-track]');
+    const prev = root.querySelector<HTMLButtonElement>('[data-amb-prev]');
+    const next = root.querySelector<HTMLButtonElement>('[data-amb-next]');
+    if (!track || !prev || !next) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const step = () => {
+      const item = track.querySelector<HTMLElement>('.gp-amb__item');
+      if (!item) return track.clientWidth;
+      const gap = parseFloat(getComputedStyle(track).columnGap || '16') || 16;
+      const per = Math.max(1, Math.floor((track.clientWidth + gap) / (item.offsetWidth + gap)));
+      return per * (item.offsetWidth + gap);
+    };
+    const setArrow = (btn: HTMLButtonElement, enabled: boolean) => {
+      if (!enabled && document.activeElement === btn) {
+        const other = btn === prev ? next : prev;
+        (other.disabled ? track : other).focus({ preventScroll: true });
+      }
+      btn.disabled = !enabled;
+    };
+    const update = () => {
+      const max = track.scrollWidth - track.clientWidth;
+      const scrollable = max > 2;
+      prev.hidden = next.hidden = !scrollable;
+      setArrow(prev, scrollable && track.scrollLeft > 2);
+      setArrow(next, scrollable && track.scrollLeft < max - 2);
+    };
+    prev.addEventListener('click', () => track.scrollBy({ left: -step(), behavior: reduced ? 'auto' : 'smooth' }));
+    next.addEventListener('click', () => track.scrollBy({ left: step(), behavior: reduced ? 'auto' : 'smooth' }));
+    let raf = 0;
+    track.addEventListener('scroll', () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(update); }, { passive: true });
+    window.addEventListener('resize', () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(update); });
+    update();
+  });
+</script>

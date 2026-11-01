@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { CustomerProfileSnapshot } from '../../../domain/customer-dna/CustomerProfile';
 import { canLinkIdentity, resolveLinkTarget, aggregateConfidence, IdentitySignalType } from '../../../domain/customer-dna/CustomerIdentity';
-import { computeFeatures, numericFeature } from '../../../domain/customer-dna/CustomerFeatures';
+import { computeFeatures, isPurchase, numericFeature } from '../../../domain/customer-dna/CustomerFeatures';
 import { deriveLifecycle, deriveValueFlags, deriveRiskFlags } from '../../../domain/customer-dna/CustomerLifecycle';
 import { NbaCandidate, NbaContext, decideNextBestAction } from '../../../domain/customer-dna/NextBestAction';
 import {
@@ -9,13 +9,18 @@ import {
   ICustomerLifecycleRepository, INbaDecisionRepository, ICustomerSignalReader,
 } from '../../ports/ICustomerDnaRepository';
 import { IAuditRepository } from '../../ports/IAuditRepository';
+import type { IIdentityConflictRepository } from '../../ports/first-party/FirstPartyPorts';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 
 type Fail = { ok: false; code: string; message: string };
 const fail = (code: string, message: string): Fail => ({ ok: false, code, message });
 
+const UUID_ACTOR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function audit(repo: IAuditRepository, actorId: string, action: string, entity: string, entityId: string, newState: unknown, previousState?: unknown) {
-  await new CreateAuditLogUseCase(repo).execute({ actorId, action, entity, entityId, previousState, newState });
+  // audit_logs.actor_id is a uuid: a system actor ('system:identity-stitch')
+  // is recorded as null (system), never as a failed insert.
+  await new CreateAuditLogUseCase(repo).execute({ actorId: UUID_ACTOR.test(actorId) ? actorId : null, action, entity, entityId, previousState, newState });
 }
 
 const DAY = 86_400_000;
@@ -29,9 +34,16 @@ export class ResolveCustomerIdentityUseCase {
   constructor(
     private readonly profiles: ICustomerProfileRepository,
     private readonly identities: ICustomerIdentityRepository,
-    private readonly audit: IAuditRepository
+    private readonly audit: IAuditRepository,
+    /** 0155: conflicts become reviewable rows (idempotent), not only audit lines. */
+    private readonly conflicts?: IIdentityConflictRepository
   ) {}
-  async execute(input: { signalType: string; identifierKey: string; accountUserId?: string | null; actorId: string }):
+  async execute(input: {
+    signalType: string; identifierKey: string; accountUserId?: string | null; actorId: string;
+    /** 0155: the customer the caller already resolved for this moment (stitching anchor). */
+    proposedCanonicalCustomerId?: string | null;
+    moment?: string | null;
+  }):
     Promise<{ ok: true; canonicalCustomerId: string; outcome: 'CREATE' | 'IDEMPOTENT' | 'CONFLICT' } | Fail> {
     const gate = canLinkIdentity({ signalType: input.signalType, identifierKey: input.identifierKey });
     if (!gate.ok) return fail(gate.reason, `Identity signal rejected: ${gate.reason}.`);
@@ -40,7 +52,9 @@ export class ResolveCustomerIdentityUseCase {
 
     // Determine the proposed canonical: an existing account profile, else a new one.
     let proposedCanonical: string;
-    if (input.accountUserId) {
+    if (input.proposedCanonicalCustomerId) {
+      proposedCanonical = input.proposedCanonicalCustomerId;
+    } else if (input.accountUserId) {
       const acct = await this.profiles.findByAccountUserId(input.accountUserId);
       proposedCanonical = acct ? acct.canonicalCustomerId : (await this.profiles.create({ accountUserId: input.accountUserId })).canonicalCustomerId;
     } else if (existing) {
@@ -52,9 +66,19 @@ export class ResolveCustomerIdentityUseCase {
     const target = resolveLinkTarget({ existingCanonicalForIdentifier: existing?.canonicalCustomerId ?? null, proposedCanonical });
 
     if (target.outcome === 'CONFLICT') {
-      if (existing) await this.identities.setStatus(existing.id, 'CONFLICT');
-      await audit(this.audit, input.actorId, 'CUSTOMER_IDENTITY_CONFLICT', 'customer_identity', existing?.id ?? input.identifierKey,
-        { signalType: gate.signalType, existing: existing?.canonicalCustomerId, proposed: proposedCanonical });
+      if (existing && existing.status !== 'CONFLICT') await this.identities.setStatus(existing.id, 'CONFLICT');
+      // A repeat of the same clash (every sign-in on a shared phone) is one
+      // conflict with a higher count, not a new audit line each time.
+      const recorded = this.conflicts && existing
+        ? await this.conflicts.record({
+          linkId: existing.id, signalType: gate.signalType, identifierKey: input.identifierKey,
+          existingCanonicalId: existing.canonicalCustomerId, proposedCanonicalId: proposedCanonical, moment: input.moment ?? null,
+        })
+        : { created: true };
+      if (recorded.created) {
+        await audit(this.audit, input.actorId, 'CUSTOMER_IDENTITY_CONFLICT', 'customer_identity', existing?.id ?? input.identifierKey,
+          { signalType: gate.signalType, existing: existing?.canonicalCustomerId, proposed: proposedCanonical });
+      }
       return { ok: true, canonicalCustomerId: target.canonicalCustomerId, outcome: 'CONFLICT' };
     }
 
@@ -80,7 +104,9 @@ export class ProjectCustomerProfileUseCase {
     private readonly features: ICustomerFeatureRepository,
     private readonly lifecycles: ICustomerLifecycleRepository,
     private readonly signals: ICustomerSignalReader,
-    private readonly audit: IAuditRepository
+    private readonly audit: IAuditRepository,
+    /** The consent system's answer for personalisation, per account. Guests stay UNKNOWN. */
+    private readonly consent?: { getPersonalisationConsent(userIds: string[]): Promise<Map<string, 'granted' | 'denied' | 'unknown'>> },
   ) {}
   async execute(input: { canonicalCustomerId: string; actorId: string; now?: Date }): Promise<{ ok: true; advanced: boolean; sourceVersion: number } | Fail> {
     const now = input.now ?? new Date();
@@ -88,14 +114,15 @@ export class ProjectCustomerProfileUseCase {
     if (!profile) return fail('NOT_FOUND', 'Customer profile not found.');
 
     const links = await this.identities.listLinks(input.canonicalCustomerId);
-    const identifierKeys = links.filter((l) => l.status === 'ACTIVE' && (l.signalType === 'STABLE_ANONYMOUS_ID' || l.signalType === 'AUTHENTICATED_CUSTOMER_ID')).map((l) => l.identifierKey);
+    const identifierKeys = links.filter((l) => l.status === 'ACTIVE' && (l.signalType === 'STABLE_ANONYMOUS_ID' || l.signalType === 'AUTHENTICATED_CUSTOMER_ID' || l.signalType === 'ORDER_CUSTOMER_RELATIONSHIP')).map((l) => l.identifierKey);
     const raw = await this.signals.readSignals({ accountUserId: profile.accountUserId, identifierKeys });
 
     const feats = computeFeatures(raw, now);
     await this.features.saveSnapshot(input.canonicalCustomerId, raw.sourceVersion, feats);
 
-    // Lifecycle inputs computed directly from real orders.
-    const activeOrders = raw.orders.filter((o) => o.status !== 'cancelled').sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    // Lifecycle inputs from PURCHASES only (paid, or cash on delivery that was
+    // delivered): an unpaid checkout is not a customer coming back.
+    const activeOrders = raw.orders.filter(isPurchase).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     const orderCount = activeOrders.length;
     const daysSinceLastOrder = orderCount ? Math.floor((now.getTime() - activeOrders[orderCount - 1].createdAt.getTime()) / DAY) : null;
     let maxGap: number | null = null;
@@ -106,7 +133,13 @@ export class ProjectCustomerProfileUseCase {
     const { stage, policyVersion } = deriveLifecycle({ orderCount, daysSinceLastOrder, maxInterOrderGapDays: maxGap });
     await this.lifecycles.saveSnapshot({ canonicalCustomerId: input.canonicalCustomerId, stage, policyVersion, sourceVersion: raw.sourceVersion });
 
-    const stamps = activeOrders.map((o) => o.createdAt.getTime());
+    // Seen = any activity (an order of any kind, a delivery), not only purchases.
+    const stamps = [...raw.orders.map((o) => o.createdAt.getTime()), ...raw.deliveries.map((d) => d.createdAt.getTime())];
+    let consentEligible: boolean | 'UNKNOWN' = 'UNKNOWN';
+    if (profile.accountUserId && this.consent) {
+      const state = (await this.consent.getPersonalisationConsent([profile.accountUserId]).catch(() => null))?.get(profile.accountUserId);
+      consentEligible = state === 'granted' ? true : state === 'denied' ? false : 'UNKNOWN';
+    }
     const snapshot: CustomerProfileSnapshot = {
       canonicalCustomerId: input.canonicalCustomerId,
       profileVersion: profile.profileVersion,
@@ -118,7 +151,7 @@ export class ProjectCustomerProfileUseCase {
       primaryLifecycleStage: stage,
       valueFlags: deriveValueFlags({ lifetimeValueUgx: numericFeature(feats, 'lifetime_value_ugx'), orderCount }),
       riskFlags: deriveRiskFlags({ deliverySuccessRate: numericFeature(feats, 'delivery_success_rate'), backorderExposure: raw.backorderCount }),
-      consentEligible: 'UNKNOWN',
+      consentEligible,
       communicationPreferences: 'UNKNOWN',
       freshness: { computedAt: now, staleAfterHours: 24 },
       computedAt: now,
@@ -182,7 +215,55 @@ export class GetCustomerDnaUseCase {
   async search(query: string, limit: number) {
     return this.profiles.search(query, Math.min(Math.max(1, limit), 50));
   }
+  /** How many customers are in each lifecycle stage (merged profiles excluded). */
+  async stageCounts() {
+    return this.profiles.stageCounts();
+  }
+  /**
+   * Identity conflicts, masked on the SERVER like the detail view: the raw
+   * identifier (an anonymous id or account id) never leaves the API — the page
+   * used to receive it and mask it only in the browser.
+   */
   async listConflicts(limit: number) {
-    return this.identities.listConflicts(Math.min(Math.max(1, limit), 100));
+    const rows = await this.identities.listConflicts(Math.min(Math.max(1, limit), 100));
+    return rows.map((row: any) => {
+      const { identifierKey, ...rest } = row;
+      const key = String(identifierKey ?? '');
+      return { ...rest, identifierMasked: maskIdentifier(key) };
+    });
+  }
+}
+
+/** First and last four characters of an identifier; short ones are fully hidden. */
+export function maskIdentifier(key: string): string {
+  return key.length > 8 ? `${key.slice(0, 4)}…${key.slice(-4)}` : '••••';
+}
+
+/**
+ * Re-project the profiles computed longest ago (nightly). A stage depends on
+ * TIME as well as data: with no new order, ACTIVE must become AT_RISK and then
+ * LAPSED. Before 2026-10-07 nothing re-projected a profile unless an admin
+ * pressed Recompute, so every stage froze where it was first computed.
+ */
+export class ReprojectStaleProfilesUseCase {
+  constructor(
+    private readonly profiles: Pick<ICustomerProfileRepository, 'listForReprojection'>,
+    private readonly project: Pick<ProjectCustomerProfileUseCase, 'execute'>,
+  ) {}
+  async execute(input: { limit: number; olderThanHours: number; now?: Date }): Promise<{ attempted: number; advanced: number; failed: number }> {
+    const now = input.now ?? new Date();
+    const ids = await this.profiles.listForReprojection(input.limit, new Date(now.getTime() - input.olderThanHours * 3_600_000));
+    let advanced = 0;
+    let failed = 0;
+    for (const canonicalCustomerId of ids) {
+      try {
+        const r = await this.project.execute({ canonicalCustomerId, actorId: 'system:customer-dna-nightly', now });
+        if (r.ok && r.advanced) advanced++;
+        if (!r.ok) failed++;
+      } catch {
+        failed++; // one bad profile never stops the batch
+      }
+    }
+    return { attempted: ids.length, advanced, failed };
   }
 }

@@ -22,7 +22,6 @@ const categoryRail = read('apps/web/src/components/recommendations/CategoryPopul
 const recommendationRail = read('apps/web/src/components/recommendations/RecommendationRail.astro');
 const recentlyViewedRail = read('apps/web/src/components/recommendations/RecentlyViewedRail.astro');
 const card = read('apps/web/src/components/recommendations/RecommendationCard.astro');
-const previewPanel = read('apps/web/src/components/recommendations/RecommendationRulePreviewPanel.astro');
 const previewPage = read('apps/web/src/pages/admin/recommendations/preview.astro');
 const pdp = read('apps/web/src/pages/products/[slug].astro');
 
@@ -68,10 +67,15 @@ describe('Slice 06-F elite recommendations intelligence', () => {
     expect(isDisplayableRecommendation({ id: 'id-only', name: 'No slug' })).toBe(false);
   });
 
-  it('rejects missing product names and unsafe or stale slugs', () => {
+  it('rejects missing product names and unsafe slugs — but NEVER a live catalogue slug', () => {
     expect(isDisplayableRecommendation({ id: '1', slug: 'missing-name' })).toBe(false);
     expect(isDisplayableRecommendation({ id: '1', slug: '../unsafe', name: 'Unsafe' })).toBe(false);
-    expect(isDisplayableRecommendation({ id: '1', slug: 'generic-fast-charger', name: 'Stale' })).toBe(false);
+    // R1 (2026-08-06): the STALE_SLUGS denylist is retired. It listed all
+    // eight live production slugs, so every rail vetoed the entire real
+    // catalogue and rendered empty since 2026-07-21. The database is the
+    // authority on which products exist; the display boundary only rejects
+    // structural problems, never specific live slugs.
+    expect(isDisplayableRecommendation({ id: '1', slug: 'generic-fast-charger', name: 'Generic Fast Charger' })).toBe(true);
   });
 
   it('rejects hidden, archived, inactive and deleted candidates', () => {
@@ -82,7 +86,7 @@ describe('Slice 06-F elite recommendations intelligence', () => {
   });
 
   it('uses a truthful UGX price display and never emits NaN or undefined', () => {
-    expect(formatRecommendationPrice(125000)).toBe('USh 125,000');
+    expect(formatRecommendationPrice(125000)).toBe('UGX 125,000');
     expect(formatRecommendationPrice(Number.NaN)).toBe('Price on request');
     expect(formatRecommendationPrice(undefined)).toBe('Price on request');
     expect(formatRecommendationPrice(0)).toBe('Price on request');
@@ -301,21 +305,16 @@ describe('Slice 06-F elite recommendations intelligence', () => {
     expect(recentlyViewedRail).not.toContain('Coming Soon');
   });
 
-  it('shows a read-only operator preview with before/after and integrity outcomes', () => {
-    expect(previewPanel).toContain('Storefront integrity preview');
-    expect(previewPanel).toContain('Candidates before');
-    expect(previewPanel).toContain('Products after');
-    expect(previewPanel).toContain('Current product excluded');
-    expect(previewPanel).toContain('Duplicates removed');
-    expect(previewPanel).toContain('Fallback reason');
-    expect(previewPanel).toContain('Empty reason');
-    expect(previewPanel).toContain('Read-only preview.');
-  });
-
-  it('does not expose mutation controls or customer-data claims in the operator preview', () => {
-    expect(previewPanel).toContain('No customer data is used.');
-    expect(previewPanel).toContain('No rule changes are saved here.');
-    expect(previewPanel).not.toMatch(/Save rule|Activate provider|Delete product/);
-    expect(previewPage).toContain('Read-only simulation');
+  it('the SSR preview page is honest about what it is (R5: the client-side panel was retired)', () => {
+    // RecommendationRulePreviewPanel.astro was deleted 2026-08-06: its only
+    // consumer was the rule-detail client script that serialized the ADMIN
+    // BEARER TOKEN and the internal API origin into hidden inputs. The
+    // server-rendered preview page carries the honesty guarantees now.
+    expect(previewPage).toContain('nothing saved');
+    expect(previewPage).toContain('synthetic');
+    expect(previewPage).toContain('Default ranking');
+    expect(previewPage).toContain('With active rules');
+    expect(previewPage).not.toMatch(/Save rule|Activate provider|Delete product/);
+    expect(previewPage).not.toContain('session-token');
   });
 });

@@ -1,36 +1,70 @@
 import { Hono, type Context } from 'hono';
+import { hashVisitToken } from '../../../application/use-cases/identity/ExperienceProfileUseCases';
+import { bodyLimit } from 'hono/body-limit';
+import { clientKey, isInternalCall } from '../clientAddress';
+import { GIFT_CARD_PHOTO_MAX_BYTES, type GiftCardPhotoRefusal } from '../../../domain/credit/GiftCardPhoto';
+import { GIFT_CARD_PHOTO_REFUSAL_WORDS, type RemoveGiftCardPhotoResult } from '../../../application/use-cases/credit/GiftCardPhotoUseCases';
+import { isGiftCardPurchaseReference } from '../../../domain/credit/GiftCardPurchase';
 import { z } from 'zod';
 import { Registry } from '../../../infrastructure/Registry';
+import { normalizeCreditCode } from '../../../domain/credit/CreditInstrument';
+import { mayProgressToPayment } from '../../../domain/inventory/Inventory';
+import { creditCodeHash } from '../../../infrastructure/credit/CreditCodeCrypto';
 import { ApiResponse } from '@goldplus/shared';
 import { customerSessionMiddleware } from '../middleware/customerSession';
 import { createHash } from 'crypto';
-import { clientIp } from '../clientAddress';
+import type { StartPaymentOutcome } from '../../../application/use-cases/commerce/StartOrderPaymentUseCase';
+import { verifyOrderByContact } from '../../../application/services/OrderContactVerification';
+import { RedisFailureLockout } from '../../../infrastructure/security/RedisFailureLockout';
 import { CHECKOUT_POLICY_VERSION } from '../../../domain/commerce/CheckoutPrincipal';
 import { isCheckoutSuccess } from '../../../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
 import { isRedirectReady } from '../../../application/use-cases/commerce/StartOrderPaymentUseCase';
-import { paymentDidConfirm } from '../../../application/use-cases/commerce/ReconcileOrderPaymentUseCase';
-import { isCartApplied, type CartOutcome } from '../../../application/use-cases/commerce/MutateCartUseCase';
-import { resolveCartCredential, cartRefusalStatus } from '../middleware/cartCredential';
+import { customerReturnKind } from '../../../application/use-cases/payments/SettlePaymentUseCase';
+import { isCartApplied, MAX_LINE_QUANTITY, type CartOutcome } from '../../../application/use-cases/commerce/MutateCartUseCase';
+import { resolveCartCredential, cartRefusalStatus, cartKeys } from '../middleware/cartCredential';
+import { verifyCartCredential } from '@goldplus/shared';
+import { resolveStorefrontDiscount } from '../../../application/pricing/StorefrontDiscountQuery';
 
-/** Rejections whose code is safe and useful to name back to the customer. */
-const TERMINAL_PUBLIC_CODES = [
-  'PRODUCT_UNAVAILABLE',
-  'PRICE_UNAVAILABLE',
-  'PRICE_CHANGED',
-  'PROMOTION_CHANGED',
-];
 import {
   applyOptionalCustomerSession,
   resolveCheckoutIntent,
 } from '../middleware/checkoutIntent';
-import { checkoutOperationIdentity, intentPrincipalKey } from '@goldplus/shared';
+import { checkoutOperationIdentity, intentPrincipalKey, normalizeUgandaDistrict } from '@goldplus/shared';
 import type { PaymentStartResponseDto } from '@goldplus/shared';
 import { logger } from '../../../infrastructure/logging/logger';
+import { PricingEvaluationError } from '../../../application/use-cases/pricing/EvaluateCartPricingUseCase';
 import { toCheckoutResponseDto } from '../../../application/mappers/toCheckoutResponseDto';
+import { GetMyOrderUseCase } from '../../../application/use-cases/orders/CustomerOrderUseCases';
+import { RequestOrderFollowUpUseCase } from '../../../application/use-cases/orders/RequestOrderFollowUpUseCase';
+import { OpenSupportTicketUseCase } from '../../../application/use-cases/governance/OpenSupportTicketUseCase';
+import { CreateAuditLogUseCase } from '../../../application/use-cases/audit/CreateAuditLogUseCase';
+import { stitchInBackground } from '../../../infrastructure/first-party/stitchInBackground';
 
 // Slice 3B: server-authoritative checkout input. Client prices/sku/names are
 // deliberately absent — only productId + quantity are trusted; extra fields
 // sent by older clients are stripped, never used.
+/**
+ * An order placed from a signed-in customer's saved address takes that address's pin (2026-10-22: it never did, so the
+ * rider got no map link and a learned with-pin time never applied). Only the customer's own address, only when the
+ * request carries no pin of its own; any failure leaves the location as sent.
+ */
+async function withSavedAddressPin<T extends { gpsLat?: number; district: string } | null | undefined>(
+  claims: { kind: string; principalId: string },
+  savedAddressId: string | null,
+  location: T,
+): Promise<T> {
+  if (!savedAddressId || claims.kind !== 'USER' || (location && typeof location.gpsLat === 'number')) return location;
+  const pin = await Registry.getInstance().addressRepo.pinForUser?.(claims.principalId, savedAddressId).catch(() => null);
+  if (!pin) return location;
+  return {
+    ...(location ?? { district: '' }),
+    gpsLat: pin.gpsLat, gpsLng: pin.gpsLng,
+    ...(pin.gpsAccuracyM !== null ? { gpsAccuracyM: pin.gpsAccuracyM } : {}),
+    ...(pin.gpsSource === 'device' || pin.gpsSource === 'pasted_link' || pin.gpsSource === 'map_place' ? { gpsSource: pin.gpsSource } : {}),
+    ...(pin.areaSlug && !(location as { areaSlug?: string } | null | undefined)?.areaSlug ? { areaSlug: pin.areaSlug } : {}),
+  } as T;
+}
+
 const checkoutBodySchema = z.object({
   customerDetails: z.object({
     name: z.string().trim().min(1).max(255),
@@ -38,10 +72,45 @@ const checkoutBodySchema = z.object({
     phone: z.string().trim().min(5).max(20),
     deliveryArea: z.string().trim().min(1).max(255),
     deliveryAddress: z.string().trim().min(1).max(255),
+    // Collect from one of our own shops: the server checks it is an active shop collection point and charges no delivery.
+    pickupPointId: z.string().uuid().nullable().optional(),
+    // The customer's own saved address the order is placed from: its pin (never shown to the browser) rides along.
+    savedAddressId: z.string().uuid().nullish(),
     deliveryLocation: z
       .object({
-        district: z.string().trim().min(1).max(100),
+        // Canonicalised against the official district list. The old location
+        // dataset shipped wrong districts (Kireka/Nansana under Mukono) and
+        // that wrongness became order rows; the boundary now refuses what the
+        // vocabulary cannot verify, and stores the canonical spelling.
+        district: z
+          .string()
+          .trim()
+          .min(1)
+          .max(100)
+          .transform((value) => {
+            // Canonical when the list knows it. When it does not (Uganda creates districts faster than any list is
+            // cut: 135 in 2021, 146 districts and cities in 2025, four more deemed created in July 2025), the order is
+            // still accepted with the customer's own words: delivery contract #8, a data gap never blocks a sale. The
+            // quote cannot price an unknown district, so it goes to the manual path and a person confirms the fee.
+            const canonical = normalizeUgandaDistrict(value);
+            if (canonical) return canonical;
+            return value
+              .replace(/[^A-Za-z' -]/g, '')
+              .trim()
+              .replace(/\s+/g, ' ')
+              .replace(/\b\w/g, (ch) => ch.toUpperCase())
+              .slice(0, 100);
+          })
+          // Optional since 2026-10-22: written directions with a pin and no district picked carry only the pin (the
+          // district then comes from the typed area line, as for any order without a structured location).
+          .optional(),
         region: z.string().trim().max(100).optional(),
+        areaSlug: z.string().trim().max(160).optional(),
+        gpsLat: z.number().min(-2.5).max(5.5).optional(),
+        gpsLng: z.number().min(28).max(36.5).optional(),
+        gpsAccuracyM: z.number().min(0).max(100000).optional(),
+        gpsSource: z.enum(['device', 'pasted_link', 'map_place']).optional(),
+        placeId: z.string().regex(/^[A-Za-z0-9_-]{10,300}$/).optional(),
         countyOrMunicipality: z.string().trim().max(150).optional(),
         subcountyDivisionTc: z.string().trim().max(150).optional(),
         parishWard: z.string().trim().max(150).optional(),
@@ -64,31 +133,451 @@ const checkoutBodySchema = z.object({
   // verified principal and the signed intent id, so the caller cannot influence
   // it at all. A field accepted here would be attacker-controlled by definition.
   couponCode: z.string().trim().min(3).max(40).nullish(),
+  // 0196: a gift card or store credit code (GPGC-/GPSC-…); format-checked and hashed before checkout sees it.
+  storeCreditCode: z.string().trim().max(40).nullish(),
   previewQuoteId: z.string().uuid().nullish(),
   acceptPriceChange: z.boolean().optional(),
+  redeemPoints: z.number().int().positive().max(1_000_000).optional(),
   // Fingerprint inputs, all optional so an older client is not rejected. They cannot be
   // used to influence WHAT is bought — that is still items + quantities only — but they
   // do make "same key, different intent" detectable in three more ways.
   paymentMethod: z.enum(['pesapal', 'offline']).nullish(),
   cartId: z.string().uuid().nullish(),
   cartVersion: z.number().int().min(1).nullish(),
+  // "How did you hear about us?" (optional). A string, not an enum: an unknown or
+  // stale answer is dropped by the attribution module, never a refused checkout.
+  heardAbout: z.string().trim().max(40).nullish(),
+  // Marketing attribution (last-touch UTM + referrer). Optional, never trusted for
+  // pricing — recorded best-effort after the order for reporting only.
+  attribution: z
+    .object({
+      source: z.string().trim().max(120).nullish(),
+      medium: z.string().trim().max(120).nullish(),
+      campaign: z.string().trim().max(160).nullish(),
+      term: z.string().trim().max(160).nullish(),
+      content: z.string().trim().max(160).nullish(),
+      landingPath: z.string().trim().max(2000).nullish(),
+      referrer: z.string().trim().max(2000).nullish(),
+      firstAt: z.string().trim().max(40).nullish(),
+      fpClientId: z.string().trim().max(255).nullish(),
+      clientIp: z.string().trim().max(64).nullish(),
+      userAgent: z.string().trim().max(1024).nullish(),
+      gaSessionId: z.string().trim().regex(/^\d{1,20}$/).nullish(),
+      gaSessionNumber: z.number().int().positive().max(1_000_000).nullish(),
+      clickIds: z.record(z.string().max(40), z.string().max(512)).nullish(),
+    })
+    .nullish(),
 });
 
 const routes = new Hono();
 const registry = Registry.getInstance();
 
-async function earnDormantLoyaltyForVerifiedOrder(orderId: string): Promise<void> {
-  const source = await registry.orderRepo.findLoyaltyEarnSource(orderId);
-  if (!source) return;
-  const result = await registry.earnLoyaltyPointsUseCase.execute({
-    userId: source.userId,
-    orderId,
-    orderTotalUgx: source.totalUgx,
-  });
-  if (!result.ok && result.code !== 'PROGRAMME_DISABLED') {
-    throw new Error(`${result.code}: ${result.message}`);
+/**
+ * Loyalty at payment time (loyalty brief PART F): points no longer vest here —
+ * vesting moved to DELIVERY confirmation via the order-transition subscriber,
+ * which closes the refused-COD earn hole structurally. What payment
+ * confirmation DOES settle is a prepaid redemption reservation: the discount
+ * was honoured in the paid amount, so the points are consumed now.
+ */
+// settleLoyaltyOnPaymentConfirmed RETIRED 2026-08-06: loyalty settlement moved
+// into SettlePaymentUseCase with the rest of the confirmation effects, so the
+// callback, the IPN, the reconciliation poller and ops re-verify cannot drift.
+
+// Public delivery-fee estimate for a destination: THE quoting service's answer,
+// under the same rule checkout charges by (the legacy zone/band model only on
+// CONFIG_INCOMPLETE), or UNAVAILABLE — never a guess dressed as a price.
+/** Parses the estimate's optional basket; malformed entries are dropped, never guessed. */
+function parseEstimateItems(raw: string | undefined | null): Array<{ productId: string; quantity: number }> {
+  if (!raw) return [];
+  const out: Array<{ productId: string; quantity: number }> = [];
+  for (const part of raw.split(',').slice(0, 50)) {
+    const [productId, qty] = part.split(':');
+    const quantity = Number(qty);
+    if (!productId || !/^[A-Za-z0-9_-]{1,64}$/.test(productId.trim())) continue;
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) continue;
+    out.push({ productId: productId.trim(), quantity });
   }
+  return out;
 }
+
+routes.get('/delivery-estimate', async (c) => {
+  const district = c.req.query('district') ?? '';
+  const area = c.req.query('area') ?? null;
+  const areaSlug = c.req.query('areaSlug') ?? null;
+  // Optional basket, `items=<productId>:<qty>,<productId>:<qty>`. With it the
+  // estimate asks the quoting service exactly what checkout will ask when it
+  // charges the order (a bus parcel is priced per parcel, so it needs one).
+  const items = parseEstimateItems(c.req.query('items'));
+  const result = await registry.getDeliveryEstimateUseCase.execute({ district, area, areaSlug, items });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } }, 400);
+  }
+  return c.json({ success: true, data: result });
+});
+
+// Public programme terms so checkout can show a truthful earn preview. Terms
+// only — the same numbers the marketing page states; never balances or ledgers.
+routes.get('/loyalty-programme', async (c) => {
+  const [active, config, programme] = await Promise.all([
+    registry.loyaltyGate.isActive(),
+    registry.loyaltyRepo.getConfig(),
+    registry.loyaltyCompletionRepo.getProgrammeConfig(),
+  ]);
+  const redemptionConfigured =
+    programme.pointValueUgx !== null && programme.redemptionMinPoints !== null && programme.redemptionMaxShareBps !== null;
+  // Mission bonuses are advertised from the ACTIVE missions themselves — the
+  // rows that actually pay — so the page cannot promise a number the engine
+  // does not award (the streak used to be read from loyalty_config instead).
+  const earning = active && !programme.killSwitch;
+  const missions = earning
+    ? (await registry.gamificationRepo.listActiveMissions().catch(() => [])).filter((m) => m.rewardPoints > 0)
+    : [];
+  const streakMission = missions.find((m) => m.kind === 'STREAK_ORDERS') ?? null;
+  const referralMission = missions.find((m) => m.kind === 'REFERRAL_COUNT') ?? null;
+  return c.json({
+    success: true,
+    data: {
+      active,
+      earnRatePer1000Ugx: active ? config.earnRatePer1000Ugx : 0,
+      expiryDays: active ? config.expiryDays : 0,
+      // PART G customer surface: value and limits shown WITH the balance —
+      // absent config is stated as not-yet-configured, never defaulted.
+      redemption: active && redemptionConfigured && !programme.killSwitch
+        ? {
+            configured: true as const,
+            pointValueUgx: programme.pointValueUgx,
+            minPoints: programme.redemptionMinPoints,
+            maxShareBps: programme.redemptionMaxShareBps,
+          }
+        : { configured: false as const },
+      // Vesting truth for customer copy: points vest on delivery.
+      vesting: 'on_delivery' as const,
+      // 0087 gamification surface: only ACTIVE earn sources appear, with the
+      // real configured values — the page never promises an unshipped mechanic.
+      earnSources: earning
+        ? {
+            verificationScan: (await registry.loyaltyCompletionRepo.getActiveRule('verification_scan').catch(() => null))?.rate ?? null,
+            counterfeitReport: (await registry.loyaltyCompletionRepo.getActiveRule('counterfeit_report').catch(() => null))?.rate ?? null,
+            phoneVerification: (await registry.loyaltyCompletionRepo.getActiveRule('phone_verification').catch(() => null))?.rate ?? null,
+            referral: programme.referralReferrerPoints !== null
+              ? {
+                  referrer: programme.referralReferrerPoints,
+                  referee: programme.referralRefereePoints,
+                  bonus: referralMission ? { friends: referralMission.threshold, points: referralMission.rewardPoints } : null,
+                }
+              : null,
+            birthday: programme.birthdayPoints,
+            streak: streakMission
+              ? { orders: streakMission.threshold, windowDays: programme.streakWindowDays, points: streakMission.rewardPoints }
+              : null,
+            // Every other active mission bonus (Five Deliveries, product checks).
+            milestones: missions
+              .filter((m) => m !== streakMission && m !== referralMission)
+              .map((m) => ({ title: m.title, description: m.description, points: m.rewardPoints })),
+          }
+        : null,
+      // Badge catalogue (0087): the real, admin-defined badges — public-safe
+      // fields only. Empty until badges are configured (never an invented list).
+      badges: active && !programme.killSwitch
+        ? await registry.gamificationRepo.listCatalogBadges().catch(() => [])
+        : [],
+      // Active tiers (0087): thresholds + service benefits, public-safe fields only.
+      tiers: active
+        ? (await registry.loyaltyTierRepo.listTiers().catch(() => []))
+            .filter((t) => t.active && t.thresholdLifetimePoints !== null)
+            .map((t) => ({ code: t.code, name: t.name, threshold: t.thresholdLifetimePoints, benefits: t.benefits ?? {} }))
+        : [],
+      termsVersion: programme.termsVersion,
+      // When the current level rules took effect (0174 stamps it at deploy):
+      // the terms date their "from this date" clauses with it.
+      termsEffectiveFrom: (await registry.loyaltyRepo.lifetimeReductionsFrom().catch(() => null))?.toISOString() ?? null,
+    },
+  });
+});
+
+/**
+ * Public business/contact info (0112) for the footer and contact points.
+ * Falls back to DEFAULT — the footer is never a database outage.
+ */
+routes.get('/business-info', async (c) => {
+  const data = await registry.businessInfoService.getPublicConfig();
+  c.header('Cache-Control', 'public, max-age=60');
+  return c.json({ success: true, data });
+});
+
+/**
+ * The product discovery taxonomy (categories, subcategories, keywords, homepage
+ * tiles, aliases) for the storefront. Falls back to DEFAULT — discovery is never
+ * a database outage.
+ */
+routes.get('/taxonomy', async (c) => {
+  const data = await registry.taxonomyService.getPublicConfig();
+  c.header('Cache-Control', 'public, max-age=60');
+  return c.json({ success: true, data });
+});
+
+/**
+ * Homepage marketing content (trust strip + business-pathway cards) for the
+ * storefront. Falls back to DEFAULT — the homepage is never a database outage.
+ */
+routes.get('/homepage-content', async (c) => {
+  const data = await registry.homepageContentService.getPublicConfig();
+  c.header('Cache-Control', 'public, max-age=60');
+  return c.json({ success: true, data });
+});
+
+/**
+ * Miscellaneous storefront copy (support intro + payment-method labels). Falls
+ * back to DEFAULT — never a database outage.
+ */
+routes.get('/storefront-copy', async (c) => {
+  const data = await registry.storefrontCopyService.getPublicConfig();
+  c.header('Cache-Control', 'public, max-age=60');
+  return c.json({ success: true, data });
+});
+
+/**
+ * The active storefront discount for DISPLAY (card/PDP/cart).
+ *
+ * Reads the SAME active promotion versions the checkout evaluator charges from,
+ * and reports the campaign ONLY when it is a single, unconditional, site-wide,
+ * auto (no coupon) PERCENTAGE_OFF within its window — the exact case the display
+ * can mirror penny-for-penny (sale = retail - floor(retail * bps / 10000)).
+ * Anything more complex returns active:false, so the storefront never previews a
+ * number different from what the evaluator will actually charge. Public + safe:
+ * it only reveals the public discount percentage and its end date.
+ */
+routes.get('/storefront-discount', async (c) => {
+  // One resolver shared with the homepage hero, so the header clock, the card
+  // prices and the hero sale slide can never disagree about the sale.
+  const data = await resolveStorefrontDiscount(registry.storefrontPricingRepo);
+  return c.json({ success: true, data });
+});
+
+/**
+ * Promo-code preview: the SAME evaluator that charges at checkout, run against
+ * the caller's basket with and without the code, so the shown effect equals the
+ * charge to the shilling. Returns the persisted quoteId — checkout passes it as
+ * previewQuoteId and the existing PRICE_CHANGED consistency gate holds the
+ * promise. Server-priced from canonical retail (client prices are ignored), so
+ * this reveals nothing a PDP does not. An unknown or unqualified code is a
+ * truthful zero with a reason, never an error page.
+ */
+/** 0196: what a gift card / store credit code is worth now. The code holder learns the balance, nothing else. */
+routes.post('/credit/check', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  c.header('Cache-Control', 'no-store');
+  const result = await registry.manageCreditUseCases.check(body?.code);
+  if (!result.ok) return c.json({ success: false, error: { code: 'STORE_CREDIT_UNAVAILABLE', message: 'That code is not right. Check each character, or call us.' } }, 404);
+  return c.json({ success: true, data: result });
+});
+
+/**
+ * 0199: buy a gift card for someone else. Opens a Pesapal payment under the purchase's own GC- reference and hands
+ * back its page; the card is issued only once Pesapal confirms the money. A signed-in buyer sees it in their account.
+ */
+routes.post('/gift-cards/purchase', async (c) => {
+  await applyOptionalCustomerSession(c);
+  const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+  c.header('Cache-Control', 'no-store');
+  if (!body) return c.json({ success: false, error: { code: 'INVALID', message: 'Fill in the form and try again.' } }, 400);
+  const result = await registry.giftCardPurchaseUseCases.start({
+    amountUgx: body.amountUgx, recipientName: body.recipientName, recipientPhone: body.recipientPhone, sendTo: body.sendTo,
+    message: body.message, fromName: body.fromName, buyerName: body.buyerName, buyerPhone: body.buyerPhone, buyerEmail: body.buyerEmail,
+    deliverOn: body.deliverOn, theme: body.theme, photoId: body.photoId, buyerUserId: ((c as Context).get('userId') as string | undefined) ?? null,
+  });
+  if (result.ok) return c.json({ success: true, data: { reference: result.reference, redirectUrl: result.redirectUrl } });
+  if (result.code === 'INVALID') return c.json({ success: false, error: { code: 'INVALID', message: 'Check the highlighted fields.', fields: result.errors } }, 400);
+  return c.json({ success: false, error: { code: result.code, message: result.message } }, result.code === 'LIMIT' ? 429 : 503);
+});
+
+/**
+ * 0199: open a gift card (the page the recipient's text links to): what it is worth, as /credit/check says, and the
+ * face the buyer designed for it. The holder of the code learns nothing they do not already hold.
+ */
+routes.post('/gift-cards/open', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  c.header('Cache-Control', 'no-store');
+  const checked = await registry.manageCreditUseCases.check(body?.code);
+  if (!checked.ok) return c.json({ success: false, error: { code: 'STORE_CREDIT_UNAVAILABLE', message: 'That code is not right. Check each character, or call us.' } }, 404);
+  const normalized = normalizeCreditCode(body?.code);
+  const face = normalized ? await registry.giftCardPurchaseUseCases.faceForCode(normalized.code) : null;
+  // A card staff issued has no face; its original value still lets the holder share "a GoldPlus gift" with an amount.
+  const originalUgx = face?.originalUgx ?? (normalized ? (await registry.creditRepo.findByCodeHash(creditCodeHash(normalized.code)))?.initialValueUgx ?? null : null);
+  return c.json({ success: true, data: { ...checked, code: normalized?.code ?? null, face, originalUgx } });
+});
+
+/** 0201: each photo refusal's HTTP status (the words come with it; the storefront shows them as they are). */
+const PHOTO_REFUSAL_STATUS: Record<GiftCardPhotoRefusal, 400 | 413 | 429 | 503> = {
+  empty: 400, not_an_image: 400, too_small: 400, too_detailed: 400, too_large: 413,
+  visitor_daily_limit: 429, shop_daily_limit: 429, unavailable: 503,
+};
+const removedPhotoResponse = (c: Context, result: RemoveGiftCardPhotoResult) => (result.ok
+  ? c.json({ success: true, data: { message: result.message } })
+  : c.json({ success: false, error: { code: result.reason === 'no_photo' ? 'NO_PHOTO' : 'NOT_FOUND', message: result.message } }, result.reason === 'no_photo' ? 409 : 404));
+
+/**
+ * 0201: the buyer's optional photo (raw image bytes; the phone has already cropped it). Re-encoded without metadata
+ * and kept until a purchase claims it. Answers the id the purchase form sends back.
+ */
+routes.post('/gift-cards/photos', bodyLimit({
+  maxSize: GIFT_CARD_PHOTO_MAX_BYTES,
+  onError: (c) => c.json({ success: false, error: { code: 'TOO_LARGE', message: GIFT_CARD_PHOTO_REFUSAL_WORDS.too_large } }, 413),
+}), async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const bytes = Buffer.from(await c.req.arrayBuffer());
+  // The uploader for the per-visitor daily ceiling (hashed in the use case). Our own server calls carry no visitor.
+  const result = await registry.giftCardPhotoUseCases.upload(bytes, isInternalCall(c) ? null : clientKey(c));
+  if (!result.ok) return c.json({ success: false, error: { code: 'PHOTO_REFUSED', reason: result.reason, message: result.message } }, PHOTO_REFUSAL_STATUS[result.reason]);
+  return c.json({ success: true, data: { photoId: result.photoId } });
+});
+
+/**
+ * 0201: the person the card is for takes the photo off it. The code is the proof, as it is for spending the card, and
+ * a guess at it is counted against the same tight lookup budget as opening one.
+ */
+routes.post('/gift-cards/photo/remove-by-code', async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const body = await c.req.json().catch(() => null);
+  const normalized = normalizeCreditCode(body?.code);
+  if (!normalized) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'That code is not right. Check each character, or call us.' } }, 404);
+  return removedPhotoResponse(c, await registry.giftCardPhotoUseCases.removeByCode(normalized.code));
+});
+
+/** 0201: the buyer takes the photo off the card they bought (the purchase's unguessable reference is the proof). */
+routes.post('/gift-cards/purchase/:reference/remove-photo', async (c) => {
+  c.header('Cache-Control', 'no-store');
+  return removedPhotoResponse(c, await registry.giftCardPhotoUseCases.removeByReference(c.req.param('reference')));
+});
+
+/**
+ * 0201: a gift card's photo. Its id is a random UUID that only the buyer (their reference) and the holder of the
+ * code (the card) are shown, so the id is the permission; never indexed, never cached by a shared cache.
+ */
+routes.get('/gift-cards/photos/:id', async (c) => {
+  const image = await registry.giftCardPhotoUseCases.image(c.req.param('id'));
+  if (!image) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No such photo.' } }, 404);
+  // A view of the stored bytes, not a copy (a Node Buffer's store is an ArrayBuffer; the type only says "like").
+  return c.body(new Uint8Array(image.buffer as ArrayBuffer, image.byteOffset, image.byteLength), 200, {
+    'Content-Type': 'image/jpeg', 'Content-Length': String(image.byteLength),
+    'Cache-Control': 'private, max-age=3600', 'X-Robots-Tag': 'noindex', 'X-Content-Type-Options': 'nosniff',
+  });
+});
+
+/** 0200: the occasions in the order the buy page shows them today (Kampala). Public: it is the calendar, nothing more. */
+routes.get('/gift-cards/occasions', async (c) => {
+  // A chosen day only outside production (local checks and screenshots); the live site always uses today.
+  const on = process.env.NODE_ENV === 'production' ? null : c.req.query('on') ?? null;
+  const data = await registry.giftCardOccasionUseCases.orderFor(new Date(), on);
+  c.header('Cache-Control', on ? 'no-store' : 'public, max-age=60');
+  return c.json({ success: true, data });
+});
+
+/** 0199: where a gift card purchase stands (the reference is unguessable; nothing in full is shown, never the code). */
+routes.get('/gift-cards/purchase/:reference', async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const data = await registry.giftCardPurchaseUseCases.publicStatus(c.req.param('reference'));
+  if (!data) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'We could not find that gift card purchase.' } }, 404);
+  return c.json({ success: true, data });
+});
+
+/** Bundles that include a product (gap analysis #9). Public, like the PDP itself; evaluator figures only. */
+routes.get('/bundles', async (c) => {
+  const productId = String(c.req.query('productId') ?? '');
+  try {
+    const data = await registry.productBundlesUseCase.forProduct(productId);
+    c.header('Cache-Control', 'public, max-age=60');
+    return c.json({ success: true, data });
+  } catch {
+    return c.json({ success: true, data: [] });
+  }
+});
+
+routes.post('/pricing-preview', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const rawItems = Array.isArray(body?.items) ? body.items.slice(0, 50) : [];
+  const mapped = rawItems
+    .map((i: any) => ({ productId: String(i?.productId ?? ''), quantity: Number(i?.quantity) }));
+  const items = mapped
+    .filter((i: any) => /^[0-9a-f-]{36}$/i.test(i.productId) && Number.isInteger(i.quantity) && i.quantity >= 1 && i.quantity <= MAX_LINE_QUANTITY);
+  // A line outside the bounds is refused, never dropped: pricing the rest
+  // showed the dropped line's value as a discount.
+  if (items.length !== mapped.length) {
+    return c.json({ success: false, error: { code: 'INVALID_BASKET', message: `Each product can be ordered in quantities of 1 to ${MAX_LINE_QUANTITY}.` } }, 400);
+  }
+  if (items.length === 0) {
+    return c.json({ success: false, error: { code: 'INVALID_BASKET', message: 'Pricing preview needs the basket items.' } }, 400);
+  }
+  const couponCode = typeof body?.couponCode === 'string' && body.couponCode.trim() ? body.couponCode.trim().slice(0, 40) : null;
+  try {
+    // Baseline first (auto promotions only), then with the code: the delta is
+    // the coupon's true effect under the live stacking rules.
+    // dryRun: the cart and checkout pages ask for the evaluator's own figure so
+    // that what they DISPLAY is what the basket is CHARGED, per product floor
+    // included, without minting a quote row on every page view.
+    const persist = body?.dryRun !== true;
+    const base = await registry.evaluateCartPricingUseCase.execute({ items, couponCode: null, persist: false });
+    const quote = couponCode
+      ? await registry.evaluateCartPricingUseCase.execute({ items, couponCode, persist })
+      : persist
+        ? await registry.evaluateCartPricingUseCase.execute({ items, couponCode: null, persist: true })
+        : base;
+    const couponDiscountUgx = couponCode ? Math.max(0, quote.discountTotalUgx - base.discountTotalUgx) : 0;
+    return c.json({
+      success: true,
+      data: {
+        quoteId: quote.id,
+        baseSubtotalUgx: quote.baseSubtotalUgx,
+        discountTotalUgx: quote.discountTotalUgx,
+        goodsTotalUgx: quote.finalTotalUgx - quote.shippingUgx - quote.taxUgx,
+        couponApplied: couponDiscountUgx > 0,
+        couponDiscountUgx,
+        couponMessage: couponCode
+          ? couponDiscountUgx > 0
+            ? null
+            : "This code doesn't match a live offer for this basket, or its conditions aren't met."
+          : null,
+        expiresAt: quote.expiresAt.toISOString(),
+      },
+    });
+  } catch (error) {
+    // Only the evaluator's own refusals are customer-safe. Anything else (a
+    // connection error, a query fault) used to reach an unauthenticated caller
+    // as its raw message and Postgres code.
+    if (error instanceof PricingEvaluationError) {
+      return c.json({ success: false, error: { code: 'PRICING_REFUSED', message: error.message } }, 400);
+    }
+    throw error;
+  }
+});
+
+/**
+ * Public odds disclosure for the reward draw (0088).
+ *
+ * Deliberately public and unauthenticated: the odds a customer is offered
+ * should be readable before they hold a card, and the terms page renders from
+ * this so the disclosure is generated by the same weights the engine selects
+ * on. Returns enabled:false — never an invented table — when draws are off.
+ */
+routes.get('/reward-draw', async (c) => {
+  const config = await registry.loyaltyCompletionRepo.getProgrammeConfig();
+  if (!config.enabled || config.killSwitch || !config.chanceEnabled) {
+    return c.json({ success: true, data: { enabled: false } });
+  }
+  const campaign = await registry.loyaltyDrawRepo.findActiveCampaignByTrigger('order_delivered');
+  if (!campaign) return c.json({ success: true, data: { enabled: false } });
+  const prizes = await registry.loyaltyDrawRepo.listPrizes(campaign.id);
+  const { publishedOdds } = await import('../../../domain/loyalty/RewardDraw');
+  return c.json({
+    success: true,
+    data: {
+      enabled: true,
+      name: (campaign as unknown as { name?: string }).name ?? campaign.code,
+      tokenExpiryDays: campaign.tokenExpiryDays,
+      odds: publishedOdds(prizes).map((o) => ({ label: o.label, oddsBps: o.oddsBps, soldOut: o.soldOut })),
+    },
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Cart
@@ -108,7 +597,7 @@ async function earnDormantLoyaltyForVerifiedOrder(orderId: string): Promise<void
 /** Bounded so an oversized or malformed payload is refused before any work. */
 const cartMutationSchema = z.object({
   productId: z.string().uuid(),
-  quantity: z.number().int().min(0).max(999).optional(),
+  quantity: z.number().int().min(0).max(MAX_LINE_QUANTITY).optional(),
   /** The version the caller believes it is changing. Optional on a first write. */
   expectedVersion: z.number().int().min(1).optional(),
 });
@@ -128,6 +617,7 @@ const CART_REFUSAL_STATUS: Record<string, 404 | 409 | 422 | 503> = {
   NOT_OWNED: 404,
   VERSION_CONFLICT: 409,
   PRODUCT_UNAVAILABLE: 409,
+  OUT_OF_STOCK: 409,
   QUANTITY_OUT_OF_BOUNDS: 422,
   CART_LIMIT_EXCEEDED: 422,
   RETRYABLE_FAILURE: 503,
@@ -136,9 +626,9 @@ const CART_REFUSAL_STATUS: Record<string, 404 | 409 | 422 | 503> = {
 const CART_REFUSAL_MESSAGE: Record<string, string> = {
   CART_NOT_FOUND: 'This basket is no longer available. Please start a new one.',
   NOT_OWNED: 'This basket is no longer available. Please start a new one.',
-  VERSION_CONFLICT: 'Your basket changed in another tab. It has been refreshed — please try again.',
+  VERSION_CONFLICT: 'Your basket changed in another tab. It has been refreshed, so please try again.',
   PRODUCT_UNAVAILABLE: 'One or more items are no longer available. Please review your basket.',
-  QUANTITY_OUT_OF_BOUNDS: 'That quantity is not allowed.',
+  QUANTITY_OUT_OF_BOUNDS: `You can order 1 to ${MAX_LINE_QUANTITY} of one product at a time.`,
   CART_LIMIT_EXCEEDED: 'Your basket has too many different products.',
   RETRYABLE_FAILURE: 'The basket service is temporarily unavailable. Please try again.',
 };
@@ -200,6 +690,19 @@ function cartResponse(c: Context, outcome: CartOutcome) {
   }
 
   const status = CART_REFUSAL_STATUS[outcome.kind] ?? 400;
+  if (outcome.kind === 'OUT_OF_STOCK') {
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: 'OUT_OF_STOCK',
+          message: outcome.available > 0 ? `Only ${outcome.available} left.` : 'This item is out of stock.',
+          details: { productIds: [outcome.reason], available: outcome.available },
+        },
+      },
+      409,
+    );
+  }
   return c.json(
     {
       success: false,
@@ -304,6 +807,46 @@ routes.post('/cart/clear', async (c) => {
   return cartResponse(c, outcome);
 });
 
+/**
+ * Which basket a signed-in customer's NEW cart credential should name.
+ *
+ * Called by the storefront only when it is about to mint a USER credential (sign-in,
+ * a new device, a lapsed credential). The answer is the customer's newest basket, so
+ * signing in again no longer strands it, with the guest basket they arrived with
+ * merged in. The guest credential is verified HERE and only a GUEST credential is
+ * honoured, so a caller cannot fold someone else's basket into their own.
+ */
+const accountCartSchema = z.object({
+  guestCredential: z.string().min(1).max(2048).optional(),
+});
+
+routes.post('/cart/account', async (c) => {
+  await applyOptionalCustomerSession(c);
+  const userId = (c as Context).get('userId') as string | undefined;
+  if (!userId) {
+    return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'Sign in required.' } }, 401);
+  }
+  const parsed = accountCartSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ success: false, error: { code: 'INVALID_CART_REQUEST', message: 'Invalid basket request.' } }, 400);
+  }
+  let guest: { cartId: string; ownerId: string } | null = null;
+  const keys = cartKeys();
+  if (parsed.data.guestCredential && keys) {
+    const verified = verifyCartCredential(keys, parsed.data.guestCredential);
+    if (verified.valid && verified.claims.ownerKind === 'GUEST') {
+      guest = { cartId: verified.claims.cartId, ownerId: verified.claims.ownerId };
+    }
+  }
+  try {
+    const result = await registry.resolveAccountCartUseCase.execute({ userId, guest });
+    return c.json({ success: true, data: result });
+  } catch (err) {
+    logger.error({ err }, 'ACCOUNT_CART_RESOLVE_FAILED');
+    return c.json({ success: false, error: { code: 'RETRYABLE_FAILURE', message: CART_REFUSAL_MESSAGE.RETRYABLE_FAILURE } }, 503);
+  }
+});
+
 routes.post('/orders/create', async (c) => {
   // Thin transport adapter. Validate input, establish identity, delegate, map.
   // Orchestration — fingerprinting, claiming, fencing, pricing, order creation,
@@ -338,17 +881,55 @@ routes.post('/orders/create', async (c) => {
   const claims = intent.claims;
   const traceId = c.req.header('x-request-id') ?? crypto.randomUUID();
 
+  // R3.1: the experience profile is resolved server-side from the HttpOnly
+  // visit token the web SSR forwards — the ONE identity join that lets a paid
+  // order be attributed to the recommendations this visitor actually saw.
+  // Resolution failure never blocks checkout.
+  let checkoutProfileId: string | null = null;
+  const rawVisitToken = c.req.header('x-gp-visit');
+  if (rawVisitToken) {
+    try {
+      checkoutProfileId = (await registry.resolveExperienceProfileUseCase.execute(rawVisitToken, 'behaviour'))?.id ?? null;
+    } catch {
+      // Provenance, not correctness.
+    }
+  }
+
+  // 0196: only the keyed hash of a gift card / store credit code goes any further than this line.
+  let storeCreditCodeHash: string | null = null;
+  if (body.storeCreditCode) {
+    const parsedCode = normalizeCreditCode(body.storeCreditCode);
+    if (!parsedCode) {
+      return c.json({ success: false, error: { code: 'STORE_CREDIT_UNAVAILABLE', message: 'That gift card or credit code is not right. Check it, or remove it to pay the full amount.' }, meta: { traceId } }, 409);
+    }
+    storeCreditCodeHash = creditCodeHash(parsedCode.code);
+  }
+
   const outcome = await registry.executeCheckoutIntentUseCase.execute({
     claims,
+    profileId: checkoutProfileId,
     // Derived server-side: a hidden form field would be caller-controlled.
     identity: checkoutOperationIdentity(claims, 'CREATE_ORDER', CHECKOUT_POLICY_VERSION),
     principalKey: intentPrincipalKey(claims),
-    customerDetails: body.customerDetails,
+    // A pin-only location (no district picked) carries an empty district: the order then takes it from the area
+    // line, as it does for any order without a structured location.
+    customerDetails: {
+      ...body.customerDetails,
+      deliveryLocation: await withSavedAddressPin(
+        claims,
+        body.customerDetails.savedAddressId ?? null,
+        body.customerDetails.deliveryLocation
+          ? { ...body.customerDetails.deliveryLocation, district: body.customerDetails.deliveryLocation.district ?? '' }
+          : body.customerDetails.deliveryLocation,
+      ),
+    },
     buyerType: body.buyerType,
     items: body.items,
     couponCode: body.couponCode ?? null,
+    storeCreditCodeHash,
     previewQuoteId: body.previewQuoteId ?? null,
     acceptPriceChange: body.acceptPriceChange ?? false,
+    redeemPoints: body.redeemPoints ?? null,
     // Fingerprint inputs. The payment method matters because online and offline are
     // materially different operations; the basket id and version pin which basket state
     // was priced, which the item list alone cannot express.
@@ -359,12 +940,58 @@ routes.post('/orders/create', async (c) => {
   });
 
   if (isCheckoutSuccess(outcome)) {
+    // 0196: credit covers the whole order: settle it now (same doors as a verified payment), then answer with
+    // the paid order. Only when the order may take payment at all (stock reserved), like an online payment.
+    let checkoutOrder = outcome.order;
+    const credited = checkoutOrder as unknown as { id: string; amountDueUgx: number; storeCreditAppliedUgx?: number; paymentStatus: string };
+    if ((credited.storeCreditAppliedUgx ?? 0) > 0 && credited.amountDueUgx === 0 && credited.paymentStatus !== 'paid' && mayProgressToPayment(outcome.reservationState)) {
+      try {
+        await registry.settleByStoreCreditUseCase.execute(credited.id, traceId);
+        checkoutOrder = (await registry.orderRepo.findById(credited.id)) ?? checkoutOrder;
+      } catch (err) {
+        // The order and its credit hold stand; the payment ops sweep and staff see an unpaid credit order.
+        logger.error({ err, orderId: credited.id, traceId }, 'STORE_CREDIT_SETTLEMENT_FAILED');
+      }
+    }
     const dto = toCheckoutResponseDto({
-      order: outcome.order,
+      order: checkoutOrder,
       reservationState: outcome.reservationState,
       deliveryFeeConfirmed: outcome.deliveryFeeConfirmed,
       idempotentReplay: outcome.idempotentReplay,
     });
+
+    // Best-effort marketing attribution — recorded AFTER the order, never affects it.
+    // Then the attribution module (0156) links the order to its visitor's recorded
+    // visits, files the optional "How did you hear about us?" answer, and credits
+    // the order under each model. Same contract: a failure never reaches the order.
+    const createdOrderId = (outcome.order as any)?.id as string | undefined;
+    if (createdOrderId) {
+      const recorded = body.attribution
+        ? registry.orderAttributionRepo
+          .record({ orderId: createdOrderId, orderNumber: (outcome.order as any).orderNumber ?? null, ...body.attribution })
+          .catch(() => undefined)
+        : Promise.resolve();
+      void recorded
+        .then(() => registry.channelAttribution.recordCheckout.execute({ orderId: createdOrderId, heardAbout: body.heardAbout ?? null }))
+        .catch((err: unknown) => logger.warn({ err, orderId: createdOrderId }, 'ORDER_CHANNEL_ATTRIBUTION_FAILED'));
+    }
+
+    // 0155: identity resolution at checkout — the order, its account (if signed
+    // in), the contact typed here and the visitor ids. Fire-and-forget.
+    if ((outcome.order as any)?.id && !outcome.idempotentReplay) {
+      stitchInBackground({
+        moment: 'ORDER_PLACED',
+        accountUserId: (outcome.order as any).userId ?? null,
+        orderId: (outcome.order as any).id,
+        contactEmail: body.customerDetails.email ?? null,
+        contactPhone: body.customerDetails.phone ?? null,
+        experienceProfileId: checkoutProfileId,
+        fpClientId: body.attribution?.fpClientId ?? null,
+      });
+    }
+
+    // COD purchases: order_confirmed (approved_cod) is appended in the order's own
+    // transaction (DrizzleOrderRepository.savePricedOrder, 0140) and delivered durably.
 
     if (outcome.kind === 'BLOCKED_STOCK') {
       // The order exists and is recorded truthfully, but it does not progress.
@@ -389,7 +1016,19 @@ routes.post('/orders/create', async (c) => {
     },
     IDEMPOTENCY_CONFLICT: {
       status: 409, code: 'IDEMPOTENCY_CONFLICT',
-      message: 'This checkout reference was already used for a different order. Start a new checkout.',
+      message: 'This checkout is already being submitted. Please wait a moment and try again.',
+    },
+    // The intent is spent and left nothing behind. The storefront mints a fresh
+    // one and submits again, so the customer never sees this.
+    INTENT_SPENT: {
+      status: 409, code: 'CHECKOUT_INTENT_SPENT',
+      message: 'This checkout session was already used. Please try again.',
+    },
+    // The intent already produced an order. Never answered by quietly creating a
+    // second one: the storefront names the existing order and offers it.
+    SUPERSEDED_BY_ORDER: {
+      status: 409, code: 'CHECKOUT_ALREADY_ORDERED',
+      message: 'You already have an order from this checkout.',
     },
     LEASE_LOST: {
       status: 409, code: 'CHECKOUT_IN_PROGRESS',
@@ -414,10 +1053,18 @@ routes.post('/orders/create', async (c) => {
     },
   };
 
-  const mapped = mapping[outcome.kind] ?? {
+  let mapped = mapping[outcome.kind] ?? {
     status: 400 as const, code: 'ORDER_FAILED',
     message: 'The order could not be completed. Please try again.',
   };
+  // A terminal refusal carries WHY. Collapsing PRODUCT_UNAVAILABLE or
+  // PRICE_CHANGED to ORDER_FAILED told the customer to "try again" for a
+  // refusal that trying again cannot fix, and left the storefront's specific
+  // wording for each of these unreachable.
+  const PUBLIC_TERMINAL_REASONS = new Set(['PRICE_CHANGED', 'PROMOTION_CHANGED', 'PRODUCT_UNAVAILABLE', 'PRICE_UNAVAILABLE', 'PROMOTION_LIMIT_REACHED', 'PAY_ON_DELIVERY_UNAVAILABLE', 'LOYALTY_REDEMPTION_REFUSED', 'STORE_CREDIT_UNAVAILABLE']);
+  if (outcome.kind === 'FAILED_FINAL' && PUBLIC_TERMINAL_REASONS.has(outcome.reason)) {
+    mapped = { status: 409, code: outcome.reason, message: mapped.message };
+  }
   if (outcome.retryAfterSeconds) c.header('Retry-After', String(outcome.retryAfterSeconds));
 
   // The kind AND the typed reason, together. The public body carries a collapsed
@@ -429,15 +1076,22 @@ routes.post('/orders/create', async (c) => {
     'CHECKOUT_REFUSED',
   );
 
-  // A known business rejection names itself; an unexpected one never leaks
-  // internal text, which can carry query fragments.
-  const publicMessage = TERMINAL_PUBLIC_CODES.includes(outcome.reason)
-    ? `${outcome.reason}: ${mapped.message}`
-    : mapped.message;
+  // A known business rejection is named by its CODE (the storefront maps it to
+  // its own wording); an unexpected one never leaks internal text, which can
+  // carry query fragments. The code used to be prefixed onto the sentence as
+  // well — "PRICE_CHANGED: The price changed…" — which put a SCREAMING_SNAKE
+  // enum in front of the customer on the most sensitive refusal there is.
+  const publicMessage = mapped.message;
 
   return c.json({
     success: false,
-    error: { code: mapped.code, message: publicMessage },
+    error: {
+      code: mapped.code,
+      message: publicMessage,
+      // Only ever the customer's OWN order, reached through their own verified
+      // intent, so this discloses nothing they cannot already see.
+      ...(outcome.existingOrder ? { existingOrder: outcome.existingOrder } : {}),
+    },
     meta: { traceId },
   }, mapped.status);
 });
@@ -458,132 +1112,27 @@ const maskEmail = (email: string | null | undefined) => {
   return name.slice(0, 1) + '***' + name.slice(-1) + '@' + domain;
 };
 
-interface RateLimitEntry {
-  count: number;
-  resetTime: number;
-}
 
-const failedAttemptsLimiter = new Map<string, RateLimitEntry>();
+// Shared across replicas: a burst of wrong contacts split between two API
+// containers never reached five on either one (proven live 2026-09-12).
+const orderContactLockout = new RedisFailureLockout('lockout:order-contact');
+
+/** Route-level wrapper: body + client address in, the shared proof out. */
+async function verifyOrderRequest(c: any) {
+  const body = await c.req.json().catch(() => null);
+  return verifyOrderByContact(
+    { reference: body?.reference, contact: body?.contact, now: Date.now() },
+    { lockout: orderContactLockout, findOrder: (reference: string) => registry.getOrderByIdUseCase.execute(reference) },
+  );
+}
 
 routes.post('/orders/lookup', async (c) => {
   try {
-    const body = await c.req.json();
-    const rawRef = body.reference;
-    const rawContact = body.contact;
-
-    // Strict type safety: reject non-string inputs immediately to prevent malformed payload abuse
-    if (typeof rawRef !== 'string' || typeof rawContact !== 'string') {
-      return c.json({
-        success: false,
-        error: {
-          code: 'VERIFICATION_FAILED',
-          message: 'We could not verify that order. Please check your reference and contact details.'
-        }
-      }, 400);
+    const verified = await verifyOrderRequest(c);
+    if (!verified.ok) {
+      return c.json({ success: false, error: { code: verified.code, message: verified.message } }, verified.status);
     }
-
-    const reference = rawRef.trim();
-    const contact = rawContact.trim();
-
-    // Enforce size limits and non-empty checks
-    if (!reference || !contact || reference.length > 80 || contact.length > 120) {
-      return c.json({
-        success: false,
-        error: {
-          code: 'VERIFICATION_FAILED',
-          message: 'We could not verify that order. Please check your reference and contact details.'
-        }
-      }, 400);
-    }
-
-    // Direct block of GP-DRAFT lookups to avoid hitting the database
-    if (reference.toUpperCase().startsWith('GP-DRAFT-')) {
-      return c.json({
-        success: false,
-        error: {
-          code: 'VERIFICATION_FAILED',
-          message: 'We could not verify that order. Please check your reference and contact details.'
-        }
-      }, 400);
-    }
-
-    const ip = clientIp(c);
-
-    // Create safe anonymous fingerprint using SHA-256 (no raw credentials stored in keys)
-    const fingerprint = createHash('sha256')
-      .update(`${ip}-${reference.toUpperCase()}`)
-      .digest('hex');
-
-    const now = Date.now();
-    const limitWindowMs = 10 * 60 * 1000; // 10 minutes
-    const maxFailedAttempts = 5;
-
-    // Self-cleaning Map inline to prevent memory growth
-    for (const [key, val] of failedAttemptsLimiter.entries()) {
-      if (val.resetTime <= now) {
-        failedAttemptsLimiter.delete(key);
-      }
-    }
-
-    // Rate Limiter Enforcement
-    const record = failedAttemptsLimiter.get(fingerprint);
-    if (record && record.resetTime > now) {
-      if (record.count >= maxFailedAttempts) {
-        return c.json({
-          success: false,
-          error: {
-            code: 'TOO_MANY_REQUESTS',
-            message: 'Too many lookup attempts. Please wait a few minutes and try again.'
-          }
-        }, 429);
-      }
-    }
-
-    const registerFailure = () => {
-      const current = failedAttemptsLimiter.get(fingerprint);
-      if (current && current.resetTime > now) {
-        current.count += 1;
-      } else {
-        failedAttemptsLimiter.set(fingerprint, {
-          count: 1,
-          resetTime: now + limitWindowMs,
-        });
-      }
-    };
-
-    const order = await registry.getOrderByIdUseCase.execute(reference);
-    if (!order) {
-      registerFailure();
-      return c.json({
-        success: false,
-        error: {
-          code: 'VERIFICATION_FAILED',
-          message: 'We could not verify that order. Please check your reference and contact details.'
-        }
-      }, 401);
-    }
-
-    const normalizedContact = contact.toLowerCase();
-    const storedEmail = (order.customerEmail ?? '').trim().toLowerCase();
-    const storedPhone = (order.customerPhone ?? '').trim();
-
-    const contactMatch =
-      (storedEmail && normalizedContact === storedEmail) ||
-      (storedPhone && normalizedContact.replace(/\s+/g, '') === storedPhone.replace(/\s+/g, ''));
-
-    if (!contactMatch) {
-      registerFailure();
-      return c.json({
-        success: false,
-        error: {
-          code: 'VERIFICATION_FAILED',
-          message: 'We could not verify that order. Please check your reference and contact details.'
-        }
-      }, 401);
-    }
-
-    // Clean rate limit tracking on success
-    failedAttemptsLimiter.delete(fingerprint);
+    const order = verified.order;
 
     // Minimize public response fields to prevent unnecessary database UUIDs or coordinates from leaking
     const maskedOrder = {
@@ -592,10 +1141,20 @@ routes.post('/orders/lookup', async (c) => {
       customerPhone: maskPhone(order.customerPhone),
       customerEmail: order.customerEmail ? maskEmail(order.customerEmail) : undefined,
       deliveryArea: order.deliveryArea,
-      items: order.items,
+      // An explicit public shape: the domain items carried internal pricing
+      // fields (canonicalUnitPrice, baseSubtotal…) and none of the names the
+      // page reads, so no line ever showed a price.
+      items: (order.items ?? []).map((it) => ({
+        name: it.name,
+        quantity: it.quantity,
+        unitPriceUgx: it.price,
+        lineTotalUgx: it.finalLineTotal ?? it.price * it.quantity,
+      })),
       subtotalUgx: order.subtotalUgx,
       deliveryFeeUgx: order.deliveryFeeUgx,
       totalUgx: order.totalUgx,
+      // 0196: the gift card / store credit part, so the page can say what is still to pay.
+      storeCreditAppliedUgx: order.storeCreditAppliedUgx,
       paymentStatus: order.paymentStatus,
       orderStatus: order.orderStatus,
       createdAt: order.createdAt,
@@ -614,25 +1173,282 @@ routes.post('/orders/lookup', async (c) => {
   }
 });
 
+/**
+ * "Ask our team to follow up on this order" (Track Order). The same proof as
+ * the lookup, then a ticket answered on the order's OWN phone — so a customer
+ * who verified with their email is not refused for a phone they were never
+ * asked for. The lockout counts a wrong contact here exactly as on lookup.
+ */
+/**
+ * Customer reviews. The shopper proves the order exactly as order tracking does
+ * (reference + the phone or email used at checkout, with the shared lockout), so
+ * these routes only ever touch the shopper's own order. Thin: the use cases decide.
+ */
+const toVerifiedOrder = (order: any) => ({
+  orderNumber: String(order.orderNumber),
+  customerPhone: String(order.customerPhone ?? ''),
+  orderStatus: String(order.orderStatus ?? ''),
+  items: (order.items ?? []).map((it: any) => ({ productId: String(it.productId ?? ''), name: String(it.name ?? '') })),
+});
+
+routes.post('/reviews/eligibility', async (c) => {
+  try {
+    const verified = await verifyOrderRequest(c);
+    if (!verified.ok) return c.json({ success: false, error: { code: verified.code, message: verified.message } }, verified.status);
+    const data = await registry.orderReviewEligibilityUseCase.execute(toVerifiedOrder(verified.order));
+    return c.json({ success: true, data: { orderNumber: verified.order.orderNumber, ...data } });
+  } catch {
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);
+  }
+});
+
+const REVIEW_REFUSALS: Record<string, { status: 400 | 409; message: string }> = {
+  NOT_DELIVERED: { status: 400, message: 'You can rate an order once it has reached you.' },
+  NOT_ON_ORDER: { status: 400, message: 'That item is not on this order.' },
+  INVALID_RATING: { status: 400, message: 'Choose between one and five stars.' },
+  TOO_LONG: { status: 400, message: 'Keep the title under 140 characters and the review under 2,000.' },
+  ALREADY_REVIEWED: { status: 409, message: 'You have already rated this item. Thank you.' },
+  ORDER_LINE_NOT_FOUND: { status: 400, message: 'That item is not on this order.' },
+  ORDER_NOT_OWNED: { status: 400, message: 'That item is not on this order.' },
+};
+
+routes.post('/reviews', async (c) => {
+  try {
+    const verified = await verifyOrderRequest(c);
+    if (!verified.ok) return c.json({ success: false, error: { code: verified.code, message: verified.message } }, verified.status);
+    const body = await c.req.json().catch(() => null);
+    const result = await registry.submitOrderReviewUseCase.execute(toVerifiedOrder(verified.order), {
+      productId: String(body?.productId ?? ''),
+      rating: Number(body?.rating),
+      title: typeof body?.title === 'string' ? body.title : null,
+      body: typeof body?.body === 'string' ? body.body : null,
+      photoIds: body?.photoIds,
+    });
+    if (!result.ok) {
+      const r = REVIEW_REFUSALS[result.reason] ?? { status: 400 as const, message: 'We could not take that review.' };
+      return c.json({ success: false, error: { code: result.reason, message: r.message } }, r.status);
+    }
+    return c.json({ success: true, data: { status: result.status, photos: result.photos ?? 0 } });
+  } catch {
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);
+  }
+});
+
+const RETURN_REFUSALS: Record<string, string> = {
+  NOT_DELIVERED: 'A return can be started once the order has reached you.',
+  NOT_ON_ORDER: 'That item is not on this order.',
+  BAD_REASON: 'Choose a reason for the return.',
+  BAD_PREFERENCE: 'Choose how the item comes back to us.',
+  TOO_LONG: 'Keep the details under 1,000 characters.',
+  NEEDS_DETAIL: 'Tell us in a few words what is wrong, so the right person calls you.',
+  PAST_CHANGE_OF_MIND: 'A change-of-mind return is within 14 days of delivery. If the item is faulty, choose that reason instead.',
+};
+
+/** Self-service returns (gap analysis #8): the same order proof as tracking and reviews, then a Care Desk task. */
+routes.post('/orders/return-request', async (c) => {
+  try {
+    const raw = await c.req.raw.clone().json().catch(() => null);
+    const verified = await verifyOrderRequest(c);
+    if (!verified.ok) return c.json({ success: false, error: { code: verified.code, message: verified.message } }, verified.status);
+    const o = verified.order as any;
+    const result = await registry.requestReturnUseCase.execute(
+      { ...toVerifiedOrder(o), customerName: o.customerName ?? null, customerEmail: o.customerEmail ?? null },
+      { productId: String(raw?.productId ?? ''), reason: String(raw?.reason ?? ''), preference: String(raw?.preference ?? ''), detail: typeof raw?.detail === 'string' ? raw.detail : null },
+    );
+    if (!result.ok) return c.json({ success: false, error: { code: result.reason, message: RETURN_REFUSALS[result.reason] ?? 'We could not take that request.' } }, 400);
+    if (result.created) {
+      await registry.sendPublicFormAcknowledgementUseCase.execute({
+        kind: 'support_ticket',
+        eventType: 'SUPPORT_REQUEST_RECEIVED',
+        template: 'SUPPORT_REQUEST_RECEIVED',
+        phone: o.customerPhone,
+        email: o.customerEmail ?? null,
+        data: { customerName: o.customerName ?? null, reference: o.orderNumber },
+        entityId: o.id ?? o.orderNumber,
+        relatedEntity: 'order',
+      }).catch(() => undefined);
+    }
+    return c.json({ success: true, data: { received: true, alreadyOpen: !result.created } });
+  } catch {
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);
+  }
+});
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** 0209: a photo for the review being written. Same pipeline and ceilings as a gift card photo; attached on submit. */
+routes.post('/reviews/photos', bodyLimit({
+  maxSize: GIFT_CARD_PHOTO_MAX_BYTES,
+  onError: (c) => c.json({ success: false, error: { code: 'TOO_LARGE', message: GIFT_CARD_PHOTO_REFUSAL_WORDS.too_large } }, 413),
+}), async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const bytes = Buffer.from(await c.req.arrayBuffer());
+  const result = await registry.reviewPhotoUseCases.upload(bytes, isInternalCall(c) ? null : clientKey(c));
+  if (!result.ok) return c.json({ success: false, error: { code: 'PHOTO_REFUSED', reason: result.reason, message: result.message } }, PHOTO_REFUSAL_STATUS[result.reason]);
+  return c.json({ success: true, data: { photoId: result.photoId } });
+});
+/** 0209: a published review's photo. Only published: moderation covers the picture as it covers the words. */
+routes.get('/reviews/photos/:id', async (c) => {
+  const image = await registry.reviewPhotoUseCases.image(c.req.param('id'));
+  if (!image) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No such photo.' } }, 404);
+  return c.body(new Uint8Array(image.buffer as ArrayBuffer, image.byteOffset, image.byteLength), 200, {
+    'Content-Type': 'image/jpeg', 'Content-Length': String(image.byteLength), 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff',
+  });
+});
+
+routes.get('/reviews/products/:productId', async (c) => {
+  const productId = c.req.param('productId');
+  // A malformed id is simply a product with no reviews — never a Postgres cast error.
+  if (!UUID_RE.test(productId)) return c.json({ success: true, data: { aggregate: null, reviews: [] } });
+  try {
+    const data = await registry.productReviewsUseCase.execute(productId, 10);
+    c.header('Cache-Control', 'public, max-age=300');
+    return c.json({ success: true, data: {
+      aggregate: data.aggregate ? { count: data.aggregate.count, average: data.aggregate.average, distribution: data.aggregate.distribution } : null,
+      reviews: data.reviews.map((r) => ({ id: r.id, rating: r.rating, title: r.title, body: r.body, verified: r.isVerifiedPurchase, createdAt: r.createdAt, helpfulCount: r.helpfulCount, photoIds: r.photoIds ?? [] })),
+    } });
+  } catch {
+    return c.json({ success: true, data: { aggregate: null, reviews: [] } });
+  }
+});
+
+/**
+ * "Was this helpful?" The storefront relays the visitor's own signed visit token in x-gp-visit; it is hashed with
+ * the identity pepper before it is stored, so nothing reusable is kept. No token, no vote.
+ */
+routes.post('/reviews/:id/vote', async (c) => {
+  // The visitor's SIGNED visit token, checked: an unchecked header let a script post with a fresh random value each
+  // time, count as a new voter every call and pin any review to the top of a product page (2026-10-22).
+  const voterKey = hashVisitToken(c.req.header('x-gp-visit') ?? '') ?? '';
+  if (!voterKey) return c.json({ success: false, error: { code: 'NO_VISITOR', message: 'Refresh the page and try again.' } }, 400);
+  const body = await c.req.json().catch(() => null);
+  try {
+    const result = await registry.voteOnReviewUseCase.execute({ reviewId: c.req.param('id'), voterKey, vote: String(body?.vote ?? '') });
+    if (result === 'invalid') return c.json({ success: false, error: { code: 'INVALID_BODY', message: 'Invalid vote.' } }, 400);
+    if (result === 'not_found') return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'That review is not available.' } }, 404);
+    return c.json({ success: true, data: { recorded: true } });
+  } catch {
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);
+  }
+});
+
+/**
+ * Questions and answers on product pages (0208, gap analysis #14). The storefront relays the visitor's signed visit
+ * token (as for review votes) so one visitor can ask a few a day; the use case saves, opens the desk task and
+ * acknowledges. Answered questions are public.
+ */
+const QUESTION_REFUSALS: Record<string, string> = {
+  NO_PRODUCT: 'That product is not available.',
+  NO_NAME: 'Tell us your name, so we know who we are answering.',
+  TOO_SHORT: 'Ask the question in a few more words.',
+  TOO_LONG: 'Keep the question under 500 characters.',
+  BAD_CONTACT: 'Use a Ugandan mobile number (07…) or an email address: we text answers to Ugandan mobiles only.',
+  CONTACT_IN_TEXT: 'Put your number or email in the box for it, not in your name or the question: those are shown on the page once we answer.',
+  TOO_MANY: 'You have asked a few questions today. Ask us the rest on WhatsApp.',
+  SHOP_BUSY: 'We have had a lot of questions today. Ask us on WhatsApp and we answer there.',
+};
+routes.post('/questions', async (c) => {
+  const askerIdentityHash = hashVisitToken(c.req.header('x-gp-visit') ?? '') ?? '';
+  if (!askerIdentityHash) return c.json({ success: false, error: { code: 'NO_VISITOR', message: 'Refresh the page and try again.' } }, 400);
+  const body = await c.req.json().catch(() => null);
+  try {
+    const result = await registry.askProductQuestionUseCase.execute({ productId: String(body?.productId ?? ''), askerIdentityHash, name: body?.name, question: body?.question, phone: body?.phone, email: body?.email });
+    if (!result.ok) return c.json({ success: false, error: { code: result.reason, message: QUESTION_REFUSALS[result.reason] ?? 'We could not take that question.' } }, result.reason === 'TOO_MANY' || result.reason === 'SHOP_BUSY' ? 429 : 400);
+    return c.json({ success: true, data: { received: true, id: result.id } });
+  } catch {
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);
+  }
+});
+routes.get('/questions/products/:productId', async (c) => {
+  const productId = c.req.param('productId');
+  if (!UUID_RE.test(productId)) return c.json({ success: true, data: { questions: [] } });
+  try {
+    c.header('Cache-Control', 'public, max-age=120');
+    return c.json({ success: true, data: { questions: await registry.productQuestionRepo.listAnswered(productId, 20) } });
+  } catch {
+    return c.json({ success: true, data: { questions: [] } });
+  }
+});
+
+routes.post('/orders/lookup/followup', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const verified = await verifyOrderByContact(
+    { reference: body?.reference, contact: body?.contact, now: Date.now() },
+    { lockout: orderContactLockout, findOrder: (reference: string) => registry.getOrderByIdUseCase.execute(reference) },
+  );
+  if (!verified.ok) {
+    return c.json({ success: false, error: { code: verified.code, message: verified.message } }, verified.status);
+  }
+  const order = verified.order;
+  const result = await new RequestOrderFollowUpUseCase(new OpenSupportTicketUseCase(registry.supportRepo)).execute({
+    order,
+    verifiedContact: String(body?.contact ?? ''),
+    note: body?.note,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: 'We could not raise the follow-up for this order. Please ask us on WhatsApp instead.' } }, 400);
+  }
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: null,
+    action: 'SUPPORT_ISSUE_OPENED',
+    entity: 'support_ticket',
+    entityId: result.ticketId,
+    newState: { source: 'track_order_followup', orderNumber: order.orderNumber },
+  });
+  await registry.sendPublicFormAcknowledgementUseCase.execute({
+    kind: 'support_ticket',
+    eventType: 'SUPPORT_REQUEST_RECEIVED',
+    template: 'SUPPORT_REQUEST_RECEIVED',
+    phone: order.customerPhone,
+    email: order.customerEmail,
+    data: { customerName: order.customerName ?? null, reference: result.ticketId },
+    entityId: result.ticketId,
+    relatedEntity: 'support_ticket',
+  }).catch(() => undefined);
+  return c.json({ success: true, data: { ticketId: result.ticketId } } satisfies ApiResponse<{ ticketId: string }>, 201);
+});
+
+/**
+ * One customer's own order.
+ *
+ * WHAT WAS WRONG
+ * This required a session but never checked WHOSE order it was, and answered
+ * with the raw domain object: unmasked phone and email, the delivery address,
+ * the delivery GPS coordinates, the line items, the internal user id and the
+ * pricing snapshot. `findById` also resolves a non-UUID as an ORDER NUMBER, and
+ * order numbers are `GP-YYYYMM-` plus four hex characters (Order.ts) — 65,536
+ * per month. So any free account could walk the whole month's orders and read
+ * every customer's personal details out of them.
+ *
+ * "Requires a session" is not "belongs to this customer". Ownership is now
+ * enforced in the use case, against the session's own verified user id, exactly
+ * as GET /account/orders/:id does. Two consequences are deliberate:
+ *   - the reply is an OrderDetailDto, never the domain object;
+ *   - lookup is by order ID only, so the enumerable order number stops being a
+ *     key here at all. The public order-number path is POST /orders/lookup,
+ *     which verifies a matching contact and masks what it returns.
+ */
 routes.get('/orders/:id', customerSessionMiddleware, async (c) => {
   try {
     const id = c.req.param('id') || '';
-    const order = await registry.getOrderByIdUseCase.execute(id);
-    
-    if (!order) {
+    const userId = c.get('userId') as string;
+    const result = await new GetMyOrderUseCase(registry.orderRepo).execute(id, userId);
+
+    // Someone else's order and a nonexistent one are answered identically, so
+    // this cannot be used to test whether an order id exists.
+    if (!result.ok) {
       return c.json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } }, 404);
     }
 
-    const res: ApiResponse<any> = {
+    const res: ApiResponse<typeof result.order> = {
       success: true,
-      data: order,
+      data: result.order,
     };
     return c.json(res);
   } catch (err: any) {
     if (err.message.includes('DATABASE_URL') || err.message.includes('relation "orders" does not exist')) {
       return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured yet' } }, 503);
     }
-    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } }, 500);
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.' } }, 500);
   }
 });
 
@@ -647,6 +1463,67 @@ routes.get('/orders/:id', customerSessionMiddleware, async (c) => {
  * The principal is now derived server-side from the verified checkout intent, and
  * outcomes are typed. This handler only maps them to status codes.
  */
+/** One answer for every way a payment may be started, so two doors cannot drift. */
+function respondToStartOutcome(c: any, outcome: StartPaymentOutcome, traceId: string) {
+  if (isRedirectReady(outcome)) {
+    const data: PaymentStartResponseDto = {
+      redirectUrl: outcome.redirectUrl,
+      orderTrackingId: outcome.orderTrackingId,
+      merchantReference: outcome.merchantReference,
+      reused: outcome.kind === 'ALREADY_STARTED',
+    };
+    return c.json({ success: true, data });
+  }
+  // Status per outcome, not one blanket 400. A server misconfiguration is a 503,
+  // an already-paid order is a 409, and neither is the caller's mistake.
+  const status =
+    outcome.kind === 'NOT_FOUND' ? 404
+    : outcome.kind === 'ALREADY_PAID' ? 409
+    : outcome.kind === 'PROVIDER_NOT_CONFIGURED' ? 503
+    : outcome.kind === 'PROVIDER_UNAVAILABLE' ? 502
+    : 409;
+  const code =
+    outcome.kind === 'PROVIDER_NOT_CONFIGURED' ? 'PAYMENT_NOT_CONFIGURED'
+    : outcome.kind === 'PROVIDER_UNAVAILABLE' ? 'PAYMENT_PROVIDER_UNAVAILABLE'
+    : outcome.reason;
+  // A stable code and a generic message; the diagnostic detail is in the log
+  // line the trace id points at, not in the customer's error box.
+  return c.json(
+    { success: false, error: { code, message: 'Payment could not be started for this order.', traceId } },
+    status as 404 | 409 | 502 | 503,
+  );
+}
+
+/**
+ * Guest pay-by-reference (2026-09-12). A customer without an account proves
+ * the order is theirs the same way the public lookup does — reference plus
+ * the checkout phone or email — and payment is then started through the SAME
+ * use case and rules as the checkout page, using the principal recorded when
+ * the order was created. Until this existed, a guest whose online payment
+ * failed after leaving the checkout had no way to pay online again except by
+ * asking us for a link.
+ */
+routes.post('/orders/lookup/pay', async (c) => {
+  const traceId = createHash('sha256').update(`${Date.now()}:${Math.random()}`).digest('hex').slice(0, 16);
+  const verified = await verifyOrderRequest(c);
+  if (!verified.ok) {
+    return c.json({ success: false, error: { code: verified.code, message: verified.message, traceId } }, verified.status);
+  }
+  const checkout = await registry.checkoutIdempotencyRepo.findByOrderId(verified.order.id);
+  if (!checkout) {
+    return c.json(
+      { success: false, error: { code: 'ORDER_NOT_PAYABLE', message: 'This order cannot be paid for online. Our team will confirm it with you.', traceId } },
+      409,
+    );
+  }
+  const outcome = await registry.startOrderPaymentUseCase.execute({
+    orderId: verified.order.id,
+    principalKey: checkout.principalKey,
+    traceId,
+  });
+  return respondToStartOutcome(c, outcome, traceId);
+});
+
 routes.post('/payments/pesapal/start', async (c) => {
   const traceId = createHash('sha256')
     .update(`${Date.now()}:${Math.random()}`)
@@ -677,145 +1554,54 @@ routes.post('/payments/pesapal/start', async (c) => {
     traceId,
   });
 
-  if (isRedirectReady(outcome)) {
-    const data: PaymentStartResponseDto = {
-      redirectUrl: outcome.redirectUrl,
-      orderTrackingId: outcome.orderTrackingId,
-      merchantReference: outcome.merchantReference,
-      reused: outcome.kind === 'ALREADY_STARTED',
-    };
-    return c.json({ success: true, data });
-  }
-
-  // Status per outcome, not one blanket 400. A server misconfiguration is a 503,
-  // an already-paid order is a 409, and neither is the caller's mistake.
-  const status =
-    outcome.kind === 'NOT_FOUND' ? 404
-    : outcome.kind === 'ALREADY_PAID' ? 409
-    : outcome.kind === 'PROVIDER_NOT_CONFIGURED' ? 503
-    : outcome.kind === 'PROVIDER_UNAVAILABLE' ? 502
-    : 409;
-
-  const code =
-    outcome.kind === 'PROVIDER_NOT_CONFIGURED' ? 'PAYMENT_NOT_CONFIGURED'
-    : outcome.kind === 'PROVIDER_UNAVAILABLE' ? 'PAYMENT_PROVIDER_UNAVAILABLE'
-    : outcome.reason;
-
-  return c.json(
-    {
-      success: false,
-      // A stable code and a generic message. The diagnostic detail is in the log
-      // line the trace id points at, not in the customer's browser.
-      error: { code, message: 'Payment could not be started for this order.', traceId },
-    },
-    status as 404 | 409 | 502 | 503,
-  );
+  return respondToStartOutcome(c, outcome, traceId);
 });
+
+/**
+ * Settle this payment and say what the CUSTOMER should be told about it.
+ *
+ * The browser return leg and the return-state lookup are two doors onto the
+ * same question, so they share one answer: reading the provider status
+ * separately in each could tell the customer "success" for a payment the
+ * settlement parked for review, and the two would disagree.
+ */
+async function describeSettlement(trackingId: string, reference: string, traceId: string): Promise<{ kind: string; code: string }> {
+  if (!trackingId || !reference) return { kind: 'unknown_attempt', code: 'MISSING_IDS' };
+  try {
+    const result = await registry.settlePaymentUseCase.execute({
+      orderTrackingId: trackingId,
+      merchantReference: reference,
+      source: 'callback',
+      traceId,
+    });
+    // ALREADY_SETTLED by THIS attempt's own money is still "your payment went
+    // through" — the second door (and an IPN that beat the browser) always
+    // finds the order already confirmed.
+    return customerReturnKind(result);
+  } catch (err) {
+    // We do not know what happened to the money, and must not guess either way.
+    console.error('[API_ERROR] PesaPal settlement failed:', err);
+    return { kind: 'unknown_attempt', code: 'SETTLEMENT_ERROR' };
+  }
+}
 
 routes.get('/payments/pesapal/callback', async (c) => {
   const trackingId = c.req.query('OrderTrackingId') || c.req.query('orderTrackingId') || '';
   const reference = c.req.query('OrderMerchantReference') || c.req.query('orderMerchantReference') || '';
-  
   const frontendCallbackUrl = process.env.PESAPAL_CALLBACK_URL || 'http://localhost:3000/checkout/pesapal/callback';
+  const traceId = c.req.header('x-request-id') ?? crypto.randomUUID();
 
-  if (!trackingId || !reference) {
-    return c.redirect(`${frontendCallbackUrl}?status=failed&message=Missing+required+parameters`);
+  // 0199: a gift card purchase (GC- reference) is not an order: settled by its own use case, shown on its own page.
+  if (isGiftCardPurchaseReference(reference)) {
+    await registry.giftCardPurchaseUseCases.settle({ trackingId, reference, source: 'callback' }).catch((err) => console.error('[API_ERROR] gift card settlement failed:', err));
+    return c.redirect(`${new URL(frontendCallbackUrl).origin}/gift-card/bought?ref=${encodeURIComponent(reference)}`);
   }
-
-  try {
-    const result = await registry.verifyPesaPalPaymentUseCase.execute({
-      orderTrackingId: trackingId,
-      merchantReference: reference,
-      source: 'callback'
-    });
-
-    // Settlement is decided ONCE, by the use case, for both the browser callback and the
-    // IPN. It advances the saga stage (nothing did before, so a paid order sat at
-    // PAYMENT_STARTED forever) and records the durable downstream events. An unverified
-    // or unrecognised payment progresses nothing at all.
-    const settlement = await registry.reconcileOrderPaymentUseCase.execute({
-      verification: { ok: result.ok, orderId: result.orderId, status: result.status },
-      traceId: c.req.header('x-request-id') ?? crypto.randomUUID(),
-    });
-
-    if (paymentDidConfirm(settlement)) {
-      // Section 9.3: PaymentConfirmed updates the existing admin alert so the
-      // order becomes ready for preparation. Idempotent — duplicate provider
-      // callbacks never duplicate effects; a failure here never blocks the flow.
-      try {
-        await registry.markFulfilmentPaymentConfirmedUseCase.execute(result.orderId, 'paid');
-      } catch (fulfilErr: any) {
-        console.error('[API_ERROR] Fulfilment payment-confirmed update failed:', fulfilErr?.message);
-      }
-      try {
-        await earnDormantLoyaltyForVerifiedOrder(result.orderId);
-      } catch (loyaltyErr: any) {
-        console.error('[API_ERROR] Loyalty paid-order earn failed:', loyaltyErr?.message);
-      }
-      // Transactional admin email (PaymentConfirmed). Idempotent per order.
-      // Payment confirmation never clears an inventory hold: stockConfirmed is
-      // derived from the fulfilment task's ON_HOLD state, not from payment.
-      try {
-        const paidOrder = await registry.orderRepo.findById(result.orderId);
-        const task = await registry.getFulfilmentOverviewUseCase.byOrderId(result.orderId);
-        if (paidOrder) {
-          await registry.enqueueAdminOrderEmailUseCase.execute({
-            order: paidOrder,
-            event: 'payment-confirmed',
-            stockConfirmed: task ? task.status !== 'ON_HOLD' : true,
-          });
-        }
-      } catch (emailErr: any) {
-        console.error('[API_ERROR] Admin payment-confirmed email enqueue failed:', emailErr?.message);
-      }
-      try {
-        const order = await registry.orderRepo.findById(result.orderId);
-        const mappedInput = registry.pesapalMeasurementMapper.map({
-          verifiedPayment: result,
-          trackingId,
-          reference,
-          customerEmail: order?.customerEmail,
-          customerPhone: order?.customerPhone,
-        });
-        await registry.reconcilePesapalOrderMeasurementUseCase.execute(mappedInput);
-      } catch (err: any) {
-        console.error('[API_ERROR] Measurement reconciliation failed in callback:', err.message);
-        try {
-          await registry.paymentMeasurementRepo.createReconciliation({
-            orderId: result.orderId || 'UNKNOWN',
-            paymentReference: reference,
-            pesapalTrackingId: trackingId,
-            status: 'FAILED',
-            amount: 0,
-            currency: 'UGX'
-          });
-        } catch (subErr: any) {
-          registry.measurementLogger.error({
-            error: err.message,
-            subError: subErr.message,
-            orderId: result.orderId,
-            trackingId,
-            reference
-          }, 'CRITICAL: Unable to record FAILED reconciliation in callback.');
-        }
-      }
-    }
-    
-    // What the CUSTOMER is told follows the settlement, not the raw provider status.
-    // Reading the status directly here could show "success" for a payment the settlement
-    // parked for review — the two would disagree, and the customer would believe the more
-    // optimistic one.
-    if (paymentDidConfirm(settlement)) {
-      return c.redirect(`${frontendCallbackUrl}?status=success&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}`);
-    }
-
-    // Deliberately no provider message in the URL: it is provider text on a page the
-    // customer sees, and the storefront maps this code to its own wording.
-    return c.redirect(`${frontendCallbackUrl}?status=${encodeURIComponent(settlement.kind.toLowerCase())}&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}&code=${encodeURIComponent(settlement.reason)}`);
-  } catch (err: any) {
-    console.error('[API_ERROR] PesaPal callback failed:', err);
-    return c.redirect(`${frontendCallbackUrl}?status=failed&message=${encodeURIComponent(err.message)}`);
-  }
+  const { kind, code } = await describeSettlement(trackingId, reference, traceId);
+  if (!trackingId || !reference) return c.redirect(`${frontendCallbackUrl}?status=unknown_attempt`);
+  const ids = `&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}`;
+  // Deliberately no provider message in the URL: the storefront maps this code
+  // to its own wording rather than printing provider text at a customer.
+  return c.redirect(`${frontendCallbackUrl}?status=${encodeURIComponent(kind)}${ids}${kind === 'success' ? '' : `&code=${encodeURIComponent(code)}`}`);
 });
 
 const handleIpn = async (c: any) => {
@@ -843,83 +1629,21 @@ const handleIpn = async (c: any) => {
   }
 
   try {
-    const result = await registry.verifyPesaPalPaymentUseCase.execute({
+    // 0199: a gift card purchase settles through its own use case; the acknowledgement is the same.
+    if (isGiftCardPurchaseReference(reference)) {
+      await registry.giftCardPurchaseUseCases.settle({ trackingId, reference, source: 'ipn' });
+      return c.json({ orderNotificationType: notificationType || 'IPNCHANGE', orderTrackingId: trackingId, orderMerchantReference: reference, status: 200 });
+    }
+    // Same single settlement path as the browser callback. An IPN for an
+    // unknown or unverifiable payment progresses nothing and is still
+    // acknowledged 200, so the provider stops retrying a question we have
+    // already answered.
+    await registry.settlePaymentUseCase.execute({
       orderTrackingId: trackingId,
       merchantReference: reference,
-      source: 'ipn'
-    });
-
-    // Settlement is decided ONCE, by the use case, for both the browser callback and the
-    // IPN. It advances the saga stage (nothing did before, so a paid order sat at
-    // PAYMENT_STARTED forever) and records the durable downstream events. An unverified
-    // or unrecognised payment progresses nothing at all.
-    const settlement = await registry.reconcileOrderPaymentUseCase.execute({
-      verification: { ok: result.ok, orderId: result.orderId, status: result.status },
+      source: 'ipn',
       traceId: c.req.header('x-request-id') ?? crypto.randomUUID(),
     });
-
-    if (paymentDidConfirm(settlement)) {
-      // Section 9.3: PaymentConfirmed updates the existing admin alert so the
-      // order becomes ready for preparation. Idempotent — duplicate provider
-      // callbacks never duplicate effects; a failure here never blocks the flow.
-      try {
-        await registry.markFulfilmentPaymentConfirmedUseCase.execute(result.orderId, 'paid');
-      } catch (fulfilErr: any) {
-        console.error('[API_ERROR] Fulfilment payment-confirmed update failed:', fulfilErr?.message);
-      }
-      try {
-        await earnDormantLoyaltyForVerifiedOrder(result.orderId);
-      } catch (loyaltyErr: any) {
-        console.error('[API_ERROR] Loyalty paid-order earn failed:', loyaltyErr?.message);
-      }
-      // Transactional admin email (PaymentConfirmed). Idempotent per order.
-      // Payment confirmation never clears an inventory hold: stockConfirmed is
-      // derived from the fulfilment task's ON_HOLD state, not from payment.
-      try {
-        const paidOrder = await registry.orderRepo.findById(result.orderId);
-        const task = await registry.getFulfilmentOverviewUseCase.byOrderId(result.orderId);
-        if (paidOrder) {
-          await registry.enqueueAdminOrderEmailUseCase.execute({
-            order: paidOrder,
-            event: 'payment-confirmed',
-            stockConfirmed: task ? task.status !== 'ON_HOLD' : true,
-          });
-        }
-      } catch (emailErr: any) {
-        console.error('[API_ERROR] Admin payment-confirmed email enqueue failed:', emailErr?.message);
-      }
-      try {
-        const order = await registry.orderRepo.findById(result.orderId);
-        const mappedInput = registry.pesapalMeasurementMapper.map({
-          verifiedPayment: result,
-          trackingId,
-          reference,
-          customerEmail: order?.customerEmail,
-          customerPhone: order?.customerPhone,
-        });
-        await registry.reconcilePesapalOrderMeasurementUseCase.execute(mappedInput);
-      } catch (err: any) {
-        console.error('[API_ERROR] Measurement reconciliation failed in IPN:', err.message);
-        try {
-          await registry.paymentMeasurementRepo.createReconciliation({
-            orderId: result.orderId || 'UNKNOWN',
-            paymentReference: reference,
-            pesapalTrackingId: trackingId,
-            status: 'FAILED',
-            amount: 0,
-            currency: 'UGX'
-          });
-        } catch (subErr: any) {
-          registry.measurementLogger.error({
-            error: err.message,
-            subError: subErr.message,
-            orderId: result.orderId,
-            trackingId,
-            reference
-          }, 'CRITICAL: Unable to record FAILED reconciliation in IPN.');
-        }
-      }
-    }
 
     return c.json({
       orderNotificationType: notificationType || 'IPNCHANGE',
@@ -932,6 +1656,26 @@ const handleIpn = async (c: any) => {
     return c.json({ error: 'An internal error occurred.' }, 500);
   }
 };
+
+/**
+ * What the settlement says about this payment NOW.
+ *
+ * The return page used to render the verdict from the instant of the redirect
+ * and keep it for ever: a customer whose payment settled seconds later still
+ * read "we could not confirm your payment, do not pay again" on every refresh,
+ * while PesaPal's own page said "Payment Received" (observed 2026-09-20).
+ * Settlement is idempotent and re-entrant by design — ALREADY_SETTLED is an
+ * expected outcome — so asking again is safe and is the only way the page can
+ * tell the truth as it stands.
+ */
+routes.get('/payments/pesapal/return-state', async (c) => {
+  const described = await describeSettlement(
+    c.req.query('OrderTrackingId') || c.req.query('orderTrackingId') || '',
+    c.req.query('OrderMerchantReference') || c.req.query('orderMerchantReference') || '',
+    c.req.header('x-request-id') ?? crypto.randomUUID(),
+  );
+  return c.json({ success: true, data: described });
+});
 
 routes.post('/payments/pesapal/ipn', handleIpn);
 routes.get('/payments/pesapal/ipn', handleIpn);

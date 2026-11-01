@@ -1,0 +1,2120 @@
+---
+import { whatsappHref } from '../lib/whatsappPrefill';
+import { cartClient } from '../lib/cartClient';
+import { chunkIds, isCartProductId } from '../lib/cart';
+import { productSrcset } from '../lib/imageSrcset';
+import { resolveCartCredential } from '../lib/cartCredential';
+import { resolveAuthenticatedUserId } from '../lib/customerAuth';
+import { readSessionToken } from '../lib/session';
+import { apiBase } from '../lib/api';
+import { HERO_SLIDE_LIBRARY, computeNbaCandidates, kampalaCutoff, type NavConfig } from '@goldplus/shared';
+import { knownDeliveryPlace } from '../lib/deliveryPlace';
+import { isSameDayDistrict } from '../lib/checkout';
+import { getBusinessInfo } from '../lib/businessInfo';
+import { getNavFeatured } from '../lib/navFeatured';
+import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../lib/storefrontDiscount';
+import { formatUgx } from '../lib/money';
+import { getNavConfig } from '../lib/navConfig';
+import { indexableCategoryHref, withIndexableHrefs } from '../lib/indexableLinks';
+
+/**
+ * GoldPlus site navigation.
+ * ONE instance, rendered once from BaseLayout. Per-visitor data is resolved
+ * server-side; all pages are dynamic + uncached, so this is safe.
+ *
+ * Stage 2: the header CONTENT (rail, contact, featured cards, flash panel, search
+ * copy, the first-order estimate, trending) is DB-backed and editable in
+ * /admin/nav. We fetch it here and fall back to DEFAULT_NAV_CONFIG — the header
+ * is never a database outage. The deep structural bodies (tile descriptors, the
+ * capacity matrix, the battery brand chips) stay in code; they match the seed.
+ */
+
+// ---- header content (CMS, DB-backed) ----
+// Cached in-process with a short TTL (getNavConfig): per-site, identical for all
+// visitors, so we do not block every page render on a fetch. Falls back to the
+// last good value / DEFAULT_NAV_CONFIG — the header never blanks on a DB hiccup.
+// Menu links point at the indexable category hubs, not noindex filter views.
+const nav: NavConfig = withIndexableHrefs(await getNavConfig());
+
+// Contact details come from business_info (/admin/business-info), which is the
+// ONE owner: it carries the dial string, the WhatsApp URL, the address, the
+// hours and the socials, and the footer already renders from it. The header
+// used to hard-code the same phone number in eight places, so editing it in the
+// admin changed the footer and left the header lying. `nav_config.contact`
+// duplicates a subset of these fields and is deliberately NOT read here — one
+// fact, one owner.
+const biz = await getBusinessInfo();
+/** WhatsApp deep link with an optional prefilled message (a stored full URL is unwrapped, never nested). */
+const waLink = (prefill?: string) => whatsappHref(biz.whatsappUrl, prefill);
+
+
+// ---- cart: read through the SIGNED credential, never an id in a URL ----
+// Resolved in middleware: a component renders after the response has begun, so
+// minting a credential here would set a cookie the browser never receives.
+// An UNKNOWN session (the check timed out) is not asked again for the header.
+const headerUserId = Astro.locals.gpUserId !== undefined
+  ? Astro.locals.gpUserId
+  : Astro.locals.gpSessionUnknown ? null : await resolveAuthenticatedUserId(Astro.cookies);
+const signedIn = headerUserId !== null;
+// The fallback (the middleware's lookup threw) only READS: it reuses whatever
+// credential verifies and never mints or replaces one, so a failed check here
+// cannot swap a signed-in customer's basket credential for a guest one.
+const headerCart = Astro.locals.gpCart !== undefined
+  ? Astro.locals.gpCart
+  : resolveCartCredential(Astro.cookies, headerUserId, { sessionUnknown: true });
+let cartCount = 0;
+let cartItems: Array<{ name: string; qty: number; price: string; productId: string; imageUrl: string | null }> = [];
+let subtotal = '0';
+if (headerCart) {
+  const result = await cartClient.read(headerCart.token, Astro.cookies.get('goldplus_session')?.value ?? null);
+  if (result.ok) {
+    cartCount = result.cart.items.reduce((a, i) => a + i.quantity, 0);
+    cartItems = result.cart.items.slice(0, 4).map((i) => ({
+      name: i.name, qty: i.quantity, price: i.unitPriceUgx.toLocaleString('en-UG'), productId: i.productId, imageUrl: null as string | null,
+    }));
+    // The basket carries no image, so the mini-cart showed the empty box for
+    // every line. The shown lines (at most four) are looked up by id, the same
+    // read the cart page makes, in batches of three in parallel with a short
+    // timeout: a slow catalogue leaves the box, never a slow header.
+    const ids = cartItems.map((c) => c.productId).filter((id) => isCartProductId(id));
+    if (ids.length) {
+      const imgById = new Map<string, string>();
+      await Promise.all(chunkIds(ids).map(async (batch) => {
+        try {
+          const r = await fetch(`${apiBase}/products?ids=${batch.join(',')}`, { signal: AbortSignal.timeout(1500) });
+          const j: any = r.ok ? await r.json().catch(() => null) : null;
+          if (j?.success && Array.isArray(j.data)) for (const p of j.data) if (p?.id && p.primaryImageUrl) imgById.set(p.id, p.primaryImageUrl);
+        } catch { /* the labelled box stays */ }
+      }));
+      cartItems = cartItems.map((c) => ({ ...c, imageUrl: imgById.get(c.productId) ?? null }));
+    }
+    subtotal = result.cart.subtotalUgx.toLocaleString('en-UG');
+  }
+}
+
+// ---- signed-in enrichment: real points + first name (never fabricated) ----
+let points = 0;
+let firstName = '';
+let visits = 2;                       // >1 unless we learn this is a first session
+let lastOrderDays: number | null = null;
+let orderInTransit = false;
+if (signedIn) {
+  const token = readSessionToken(Astro.request);
+  if (token) {
+    try {
+      const res = await fetch(`${apiBase}/account/overview`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(2500),
+      });
+      const json: any = await res.json().catch(() => null);
+      if (json?.success) {
+        const ov = json.data;
+        if (ov?.loyalty?.programmeActive && ov.loyalty.balance) {
+          points = Number(ov.loyalty.balance.available ?? ov.loyalty.balance ?? 0) || 0;
+        }
+        const rn = ov?.defaultAddress?.recipientName;
+        if (rn && typeof rn === 'string') firstName = rn.trim().split(/\s+/)[0] || '';
+        // order history powers the reorder + in-transit NBA candidates
+        const orders: any[] = Array.isArray(ov?.recentOrders) ? ov.recentOrders : [];
+        const last = orders[0];
+        const lastAt = last && (last.createdAt ?? last.placedAt ?? last.date);
+        if (lastAt) {
+          const t = new Date(lastAt).getTime();
+          if (Number.isFinite(t)) lastOrderDays = Math.max(0, Math.round((Date.now() - t) / 86400000));
+        }
+        orderInTransit = orders.some((o) => /deliver|transit|dispatch|shipp?ed|out_for/i.test(String(o?.status ?? '')));
+      }
+    } catch {
+      // A failed read leaves the header in its signed-in-but-unenriched state.
+    }
+  }
+}
+
+// ---- visit tenure for a signed-out visitor (drives welcome vs signup) ----
+// The header is on every page, so this must be cheap: the middleware minted the
+// visit cookie iff this is the first-ever document request from this browser —
+// the honest "brand-new visitor" signal, with no per-page profile lookup. A
+// resolvable-throw in private browsing would treat them as returning, so we
+// never show a first-order promo we cannot gate.
+if (!signedIn) visits = Astro.locals.gpVisitIsNew ? 1 : 2;
+
+// The sale clock is resolved AFTER navDeal (below), because the only honest
+// deadline is the one the promotion actually carries.
+const flash = HERO_SLIDE_LIBRARY.find((sl) => sl.slideKey === 'flash');
+
+// ---- points redemption value: ONE source of truth (the loyalty programme,
+// the same endpoint checkout uses). We claim a shilling value ONLY when
+// redemption is actually configured — the old hardcoded rate promised money the
+// programme may not offer (redemption is unconfigured until an operator sets it).
+let pointsRedeemUgx = 0;
+try {
+  const lpRes = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(2000) });
+  const lpJson: any = lpRes.ok ? await lpRes.json().catch(() => null) : null;
+  if (lpJson?.success && lpJson.data?.redemption?.configured) {
+    pointsRedeemUgx = Number(lpJson.data.redemption.pointValueUgx) || 0;
+  }
+} catch { /* the header never blocks on loyalty */ }
+
+// ---- Next Best Action, computed on the SERVER from real signals ----
+// The browser keeps an identical offline set as the fallback; this is what makes
+// the strip right for new vs existing customers before the page even paints.
+// The featured cross-sell cards, from REAL catalogue data (a card must never
+// name a product the shop does not carry, or quote a price no one set).
+const navFeatured = await getNavFeatured();
+const navDeal = await getStorefrontDiscount();
+
+// ---- the sale clock, from the RUNNING promotion and nothing else ----
+//
+// This used to read `nav.settings.saleEndsIso`, a hand-typed date that nobody
+// had to keep true. It said 2026-08-09 while the header still advertised a
+// "Live" flash sale, so the countdown rendered 00:00:00:00 against a deadline
+// that had already passed. The promotion evaluator knows when the discount
+// really ends; that is the only deadline allowed to drive a clock.
+//
+// saleLive is now "a real, site-wide discount is running RIGHT NOW". Every
+// piece of sale furniture — the rail chip, the flash panel, the countdown —
+// hangs off it, so when no promotion is running the header says nothing about
+// a sale instead of inventing one.
+const saleEnds = navDeal.active ? (navDeal.endsIso ?? '') : '';
+const saleLive = saleEnds ? Date.now() < new Date(saleEnds).getTime() : false;
+/** The rail's "Flash sale — Live" chip is a claim; drop it when it is untrue. */
+const railItems = saleLive ? nav.rail : nav.rail.filter((c) => c.key !== 'flash');
+const featAt = (i: number) => navFeatured.length ? navFeatured[i % navFeatured.length] : null;
+// A panel's card comes from that panel's own category, or the panel shows none.
+const featFor = (category: string) => navFeatured.find((c) => c.categoryName === category) ?? null;
+
+/**
+ * The deal panel's featured card, and whether it is HONESTLY on sale.
+ *
+ * A running campaign is not a discount. At the UGX 145,000 floor a 10% campaign
+ * takes nothing off a product already priced at the floor, yet this card said
+ * "On sale now" and printed "UGX 145,000 → UGX 145,000". The storefront's other
+ * surfaces (cart, checkout, product page, product card) were corrected to gate
+ * on the SAVING rather than the campaign; the header was missed.
+ */
+const dealFeat = featAt(0);
+const dealFeatSaleUgx =
+  navDeal.active && dealFeat?.priceUgx
+    ? salePriceUgx(dealFeat.priceUgx, navDeal.percentBps, effectiveFloorUgx(navDeal.priceFloorUgx, dealFeat.floorPriceUgx, dealFeat.priceUgx))
+    : null;
+const dealFeatOnSale =
+  dealFeatSaleUgx !== null && dealFeat?.priceUgx != null && dealFeatSaleUgx < dealFeat.priceUgx;
+const cut = kampalaCutoff(new Date(), { cutoffHour: biz.sameDayCutoffHour, closedDays: biz.closedDays });
+// "Deliver to" (the area the customer told us on this device): the same-day line names it, or says nothing about
+// same-day when it is outside Kampala & Wakiso. Unknown = the general Kampala & Wakiso line, as before.
+const navPlace = Astro.locals.gpDeliverTo !== undefined ? Astro.locals.gpDeliverTo : knownDeliveryPlace(Astro.cookies, Astro.request);
+const navPlaceSameDay = navPlace ? (isSameDayDistrict(navPlace.district) ? '1' : '0') : '';
+const nba = computeNbaCandidates({
+  signedIn, visits, cart: cartCount, points, lastOrderDays, orderInTransit,
+  beforeCutoff: cut.beforeCutoff, minsToCutoff: cut.minsToCutoff, sunday: cut.sunday, saleLive,
+  cutoffLabel: cut.cutoffLabel,
+  deliverTo: navPlace ? { label: (navPlace.label.split(',')[0] || navPlace.district).slice(0, 40), sameDay: navPlaceSameDay === '1' } : null,
+}, {
+  // the CMS offer figures drive the copy, so the server strip and the editor agree
+  firstOrderPct: nav.settings.firstOrderDiscountPct,
+  referralPct: nav.settings.referralPct,
+  pointsToUgxRate: pointsRedeemUgx, // the loyalty redemption value, or 0 = no money claim
+  firstOrderEstimate: nav.settings.firstOrderEstimateUgx,
+  salePct: navDeal.active ? navDeal.percent : 0, // the live promotion, or nothing
+});
+
+const escNav = (str: string) => str.replace(/&/g, '\\u0026').replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+const navConfigJson = escNav(JSON.stringify({
+  signedIn, firstName, points, cartCount, saleEnds,
+  firstOrderEstimate: nav.settings.firstOrderEstimateUgx,
+  firstOrderPct: nav.settings.firstOrderDiscountPct,
+  referralPct: nav.settings.referralPct,
+  pointsRate: pointsRedeemUgx,
+  trending: nav.search.trendingTerms.map((t) => [t.label, t.href]),
+  zeroResult: nav.search.zeroResultCopy,
+  // The search sheet's footer link is built in the browser, so the ONE
+  // WhatsApp URL has to reach the client too — otherwise that one link keeps
+  // pointing at a number the admin can no longer change.
+  whatsappUrl: biz.whatsappUrl,
+  // The popover's offer is the LIVE promotion or nothing. It used to promise
+  // "10% off your first order — still reserved" from a CMS number with no
+  // pricing rule behind it; the only real discount is a storewide one.
+  saleActive: navDeal.active,
+  salePct: navDeal.active ? navDeal.percent : 0,
+}));
+const nbaJson = escNav(JSON.stringify(nba));
+---
+<header class="gp-nav" id="gpNav" data-sale-ends={saleEnds}
+  data-cutoff-hour={String(biz.sameDayCutoffHour)}
+  data-closed-days={biz.closedDays.join(",")}
+  data-cutoff-label={cut.cutoffLabel}
+  data-deliver-label={navPlace ? (navPlace.label.split(',')[0] || navPlace.district).slice(0, 40) : ''}
+  data-deliver-sameday={navPlaceSameDay}>
+  <div class="gp-nav__top">
+    <div class="gp-nav__top-in gpn-container">
+      <div class="gp-nav__nba" id="gpNavNba" role="status" aria-live="off" aria-label="Recommended next step">
+        <span class="gp-nav__dot" aria-hidden="true"></span>
+        <a class="gp-nav__nba-slot" id="gpNavNbaSlot" href="/delivery/kampala-wakiso" data-in=""><span class="gp-nav__nba-txt" id="gpNavNbaText">Order before <b>{cut.cutoffLabel}</b> and it goes out today in Kampala</span><u id="gpNavNbaCta" hidden=""></u></a>
+        <button class="gp-nav__nba-x" id="gpNavNbaX" type="button" aria-label="Dismiss this message">×</button>
+      </div>
+      <span class="gp-nav__reach">
+        <a href={biz.phoneDial}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3h3l1.5 4-2 1.4a12 12 0 0 0 5.6 5.6L16 12l4 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4 6.2 2 2 0 0 1 6.5 3z"></path></svg>
+          <b>{biz.phoneDisplay}</b>
+        </a>
+        <span class="gp-nav__reach-sep" aria-hidden="true"></span>
+        <a href={biz.whatsappUrl}>
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.47 14.38c-.3-.15-1.75-.86-2.02-.96-.27-.1-.47-.15-.66.15-.2.3-.76.96-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.25-.46-2.38-1.47-.88-.79-1.47-1.75-1.65-2.05-.17-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.66-1.6-.9-2.19-.24-.57-.48-.5-.66-.5h-.57c-.2 0-.52.07-.79.37-.27.3-1.03 1.01-1.03 2.46s1.06 2.85 1.2 3.05c.15.2 2.08 3.18 5.04 4.46.7.3 1.25.48 1.68.62.71.22 1.35.19 1.86.12.57-.08 1.75-.71 1.99-1.4.25-.69.25-1.28.17-1.4-.07-.13-.27-.2-.57-.35z"></path><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 18.15h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.17 8.17 0 0 1-1.25-4.38c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.25 8.23z"></path></svg>
+          WhatsApp
+        </a>
+      </span>
+    </div>
+  </div>
+
+  <div class="gp-nav__bar gpn-container">
+    <button class="gp-nav__burger" id="gpNavBurger" type="button" aria-expanded="false" aria-controls="gpNavMega" aria-label="Open menu"><span></span><span></span><span></span></button>
+    <button class="gp-nav__msbtn" id="gpNavMSearch" type="button" aria-controls="gpNavMega" aria-label="Search products">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.75" cy="10.75" r="6.75"></circle><path d="M15.6 15.6 20.5 20.5"></path></svg>
+    </button>
+
+    <a class="gp-nav__logo" href="/" aria-label="GoldPlus home">
+      <img src="/nav/gp-wordmark-cream-160.webp" srcset="/nav/gp-wordmark-cream-105.webp 105w, /nav/gp-wordmark-cream-160.webp 160w, /nav/gp-wordmark-cream-320.webp 320w" sizes="(max-width: 980px) 91px, 105px" alt="GoldPlus" width="320" height="92">
+    </a>
+
+    <form class="gp-nav__search" role="search" action="/shop">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="10.75" cy="10.75" r="6.75"></circle><path d="M15.6 15.6 20.5 20.5"></path></svg>
+      <input type="search" name="q" placeholder={nav.search.placeholderDesktop} aria-label="Search products">
+      <a class="gp-nav__scan" href="/verification" aria-label="Check if a product is genuine">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3M7 12h10"></path></svg>
+      </a>
+      <div class="gp-nav__sheet" role="listbox" aria-label="Search suggestions"></div>
+    </form>
+
+    <div class="gp-nav__actions">
+      <a class="gp-nav__pts" href="/account/rewards" id="gpNavPtsWrap" hidden="" data-clarity-mask="true"><b id="gpNavPts">0</b> pts</a>
+      <div class="gp-nav__acct" id="gpNavAcct" data-clarity-mask="true">
+        <button class="gp-nav__act" id="gpNavAcctBtn" type="button" aria-expanded="false" aria-haspopup="true" aria-label="Account">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"></circle><path d="M4.8 20a7.4 7.4 0 0 1 14.4 0"></path></svg>
+        </button>
+        <div class="gp-nav__acct-pop" id="gpNavAcctPop"></div>
+      </div>
+      <div class="gp-nav__cartwrap" id="gpNavCartWrap">
+      <a class="gp-nav__act" href="/cart" aria-label={cartCount > 0 ? `Cart, ${cartCount} item${cartCount === 1 ? "" : "s"}` : "Cart, empty"}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 7h13l-1.4 8.4a2 2 0 0 1-2 1.6H9a2 2 0 0 1-2-1.6L5.2 4H3"></path><circle cx="9.5" cy="20" r="1.2"></circle><circle cx="16.5" cy="20" r="1.2"></circle></svg>
+        <span class="gp-nav__badge" id="gpNavCart" hidden="">0</span>
+      </a>
+        <div class="gp-nav__mini" id="gpNavMini">
+          <p class="gp-nav__mini-h">In your cart</p>
+          <div class="gp-nav__mini-list">
+            {cartItems.map((it) => (
+              <a href="/cart">
+                <span class="gp-nav__sug-img">{it.imageUrl && <img src={it.imageUrl} alt="" width="40" height="40" loading="lazy" decoding="async">}</span>
+                <span class="gp-nav__sug-t"><b>{it.name}</b><span>Qty {it.qty}</span></span>
+                <span class="gp-nav__sug-p">{it.price}</span>
+              </a>
+            ))}
+          </div>
+          <div class="gp-nav__mini-sum"><span>Subtotal</span><b>UGX {subtotal}</b></div>
+          <div class="gp-nav__mini-cut" id="gpNavMiniCut"></div>
+          <a class="gp-nav__acct-cta" href="/checkout">Checkout</a>
+          <a class="gp-nav__acct-alt" href="/cart">View cart</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="gp-nav__rail" aria-label="Product categories">
+    <div class="gp-nav__rail-in gpn-container" id="gpNavRail">
+      {railItems.map((cat) => (
+        <a class={cat.key === 'flash' ? 'gp-nav__cat gp-nav__cat--flash' : 'gp-nav__cat'} href={cat.href} data-cat={cat.key}>{cat.label}{cat.tag && <span class="gp-nav__cat-tag">{cat.tag}</span>}</a>
+      ))}
+      <span class="gp-nav__spark" id="gpNavSpark" aria-hidden="true"></span>
+      <span id="gpNavHint" hidden>Down arrow opens more links</span>
+    </div>
+  </nav>
+
+  <div class="gp-nav__mega" id="gpNavMega">
+    <div class="gp-nav__mega-in gpn-container">
+
+      <div class="gp-nav__panel" data-panel="all" data-shape="wide">
+        <div class="gp-nav__tiles gp-nav__tiles--five">
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=power')}><b>Power</b><span>Banks, batteries, chargers</span></a>
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=sound')}><b>Sound</b><span>Earbuds and headphones</span></a>
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=storage')}><b>Storage</b><span>Flash drives and memory cards</span></a>
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=car')}><b>Car</b><span>Car chargers</span></a>
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=pc')}><b>PC</b><span>Mouse and sound cards</span></a>
+          <a class="gp-nav__tile gp-nav__tile--go" href="/shop"><b>Everything →</b><span>The full range</span></a>
+        </div>
+        <div class="gp-nav__feat-col">
+          <h3>Start here</h3>
+          <ul>
+            <li><a href="/shop?sort=price-low-high">Lowest prices first</a></li>
+            <li><a href="/bulk">Buying by the carton? Bulk orders</a></li>
+            <li><a href="/verification">Verify a product</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="gp-nav__panel" data-panel="power">
+        <div>
+          <h3>Power</h3>
+          <ul>
+            <li><a href={indexableCategoryHref('/shop?category=power&q=power+bank')}>Power banks</a></li>
+            <li><a href={indexableCategoryHref('/shop?category=power&q=wall+charger')}>Wall chargers</a></li>
+            <li><a href={indexableCategoryHref('/shop?category=power&q=adapter')}>Adapters</a></li>
+            <li><a href={indexableCategoryHref('/shop?category=power&q=cable')}>Cables</a></li>
+            <li><a href={indexableCategoryHref('/shop?category=power')}><b>All Power →</b></a></li>
+          </ul>
+        </div>
+        <div class="gp-nav__finder">
+          <h3>Phone batteries</h3>
+          <p class="gp-nav__note">Find yours by phone model</p>
+          <form action="/battery-finder" role="search">
+            <input type="search" name="q" placeholder="Type your phone, e.g. Tecno Spark 10" aria-label="Find a battery for your phone model">
+          </form>
+          <div class="gp-nav__chips">
+            <a href="/battery-finder?q=Tecno">Tecno</a>
+            <a href="/battery-finder?q=Infinix">Infinix</a>
+            <a href="/battery-finder?q=itel">itel</a>
+            <a href="/battery-finder?q=Samsung">Samsung</a>
+            <a href="/battery-finder?q=iPhone">iPhone</a>
+            <a href="/battery-finder?q=Redmi">Redmi</a>
+            <a href="/battery-finder?q=Xiaomi">Xiaomi</a>
+            <a href="/battery-finder?q=Huawei">Huawei</a>
+            <a href="/battery-finder?q=Nokia">Nokia</a>
+            <a href="/battery-finder?q=Oppo">Oppo</a>
+            <a href="/battery-finder" style="color:var(--gpn-green)">All brands →</a>
+          </div>
+          <a class="gp-nav__ask" href={waLink(nav.contact.whatsappBatteryPrefill)}>
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.47 14.38c-.3-.15-1.75-.86-2.02-.96-.27-.1-.47-.15-.66.15-.2.3-.76.96-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.25-.46-2.38-1.47-.88-.79-1.47-1.75-1.65-2.05-.17-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.66-1.6-.9-2.19-.24-.57-.48-.5-.66-.5h-.57c-.2 0-.52.07-.79.37-.27.3-1.03 1.01-1.03 2.46s1.06 2.85 1.2 3.05c.15.2 2.08 3.18 5.04 4.46.7.3 1.25.48 1.68.62.71.22 1.35.19 1.86.12.57-.08 1.75-.71 1.99-1.4.25-.69.25-1.28.17-1.4-.07-.13-.27-.2-.57-.35z"></path><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 18.15h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.17 8.17 0 0 1-1.25-4.38c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.25 8.23z"></path></svg>
+            Can't find your model? Send us a photo of the old one
+          </a>
+        </div>
+        {featFor('Power Devices') && (
+          <a class="gp-nav__feat" href={`/products/${featFor('Power Devices')!.slug}`}>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featFor('Power Devices')!.imageUrl} srcset={productSrcset(featFor('Power Devices')!.imageUrl) ?? undefined} sizes={productSrcset(featFor('Power Devices')!.imageUrl) ? "200px" : undefined} alt={featFor('Power Devices')!.name} loading="lazy" decoding="async"></div>
+            <div><small>{featFor('Power Devices')!.label}</small><p>{featFor('Power Devices')!.name}</p><span>{featFor('Power Devices')!.blurb}</span></div>
+          </a>
+        )}
+      </div>
+
+      <div class="gp-nav__panel" data-panel="sound" data-shape="wide">
+        <div class="gp-nav__tiles">
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=sound&q=earbuds')}><b>Earbuds</b><span>True wireless, with a charging case</span></a>
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=sound&q=earphones')}><b>Earphones</b><span>Wired, with a mic for calls</span></a>
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=sound&q=headphones')}><b>Headphones</b><span>For everyday listening</span></a>
+        </div>
+        {/* Cross-sell slot. Every card must name the product actually in the
+             photo, the only GoldPlus photography available is the power range,
+             so non-power panels feature a power product deliberately rather than
+             captioning a power bank as an earbud. Swap in real category
+             photography when it exists and restore the category product.
+             A JSX comment, not an HTML one: an HTML comment ships to every
+             visitor on every page (~330 bytes of the home document). */}
+        {featFor('Sound Devices') && (
+          <a class="gp-nav__feat" href={`/products/${featFor('Sound Devices')!.slug}`}>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featFor('Sound Devices')!.imageUrl} srcset={productSrcset(featFor('Sound Devices')!.imageUrl) ?? undefined} sizes={productSrcset(featFor('Sound Devices')!.imageUrl) ? "200px" : undefined} alt={featFor('Sound Devices')!.name} loading="lazy" decoding="async"></div>
+            <div><small>{featFor('Sound Devices')!.label}</small><p>{featFor('Sound Devices')!.name}</p><span>{featFor('Sound Devices')!.blurb}</span></div>
+          </a>
+        )}
+      </div>
+
+      <div class="gp-nav__panel" data-panel="storage" data-shape="wide">
+        <div class="gp-nav__matrix">
+          <div class="gp-nav__matrix-row">
+            <h4><img class="gp-nav__matrix-img" src="/nav/flash-drive.webp" alt="" loading="lazy" decoding="async">Flash drives <a href={indexableCategoryHref('/shop?category=storage&q=flash+drive')}>All sizes →</a></h4>
+            <div class="gp-nav__caps">
+              <a href={indexableCategoryHref('/shop?category=storage&q=2gb+flash+drive')}>2GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=4gb+flash+drive')}>4GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=8gb+flash+drive')}>8GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=16gb+flash+drive')}>16GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=32gb+flash+drive')}>32GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=64gb+flash+drive')}>64GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=128gb+flash+drive')}>128GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=256gb+flash+drive')}>256GB</a>
+            </div>
+          </div>
+          <div class="gp-nav__matrix-row">
+            <h4><img class="gp-nav__matrix-img" src="/nav/memory-card.webp" alt="" loading="lazy" decoding="async">Memory cards <a href={indexableCategoryHref('/shop?category=storage&q=memory+card')}>All sizes →</a></h4>
+            <div class="gp-nav__caps">
+              <a href={indexableCategoryHref('/shop?category=storage&q=1gb+memory+card')}>1GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=2gb+memory+card')}>2GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=4gb+memory+card')}>4GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=8gb+memory+card')}>8GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=16gb+memory+card')}>16GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=32gb+memory+card')}>32GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=64gb+memory+card')}>64GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=128gb+memory+card')}>128GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=256gb+memory+card')}>256GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=512gb+memory+card')}>512GB</a>
+            </div>
+          </div>
+          <p class="gp-nav__note">Every genuine GoldPlus card carries a hologram code you can check. <b>A card that does not hold its size is replaced or refunded.</b></p>
+          <p class="gp-nav__note">Reading a card on a computer? <a href={indexableCategoryHref('/shop?category=storage&q=card+reader')}>Multi-slot card readers &rarr;</a></p>
+        </div>
+        {featFor('Storage Devices') && (
+          <a class="gp-nav__feat" href={`/products/${featFor('Storage Devices')!.slug}`}>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featFor('Storage Devices')!.imageUrl} srcset={productSrcset(featFor('Storage Devices')!.imageUrl) ?? undefined} sizes={productSrcset(featFor('Storage Devices')!.imageUrl) ? "200px" : undefined} alt={featFor('Storage Devices')!.name} loading="lazy" decoding="async"></div>
+            <div><small>{featFor('Storage Devices')!.label}</small><p>{featFor('Storage Devices')!.name}</p><span>{featFor('Storage Devices')!.blurb}</span></div>
+          </a>
+        )}
+      </div>
+
+      <div class="gp-nav__panel" data-panel="car" data-shape="wide">
+        <div class="gp-nav__tiles">
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=car&q=charger')}><b>Car chargers</b><span>Charge on the road from the 12V socket</span></a>
+        </div>
+        {featFor('Car Accessories') && (
+          <a class="gp-nav__feat" href={`/products/${featFor('Car Accessories')!.slug}`}>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featFor('Car Accessories')!.imageUrl} srcset={productSrcset(featFor('Car Accessories')!.imageUrl) ?? undefined} sizes={productSrcset(featFor('Car Accessories')!.imageUrl) ? "200px" : undefined} alt={featFor('Car Accessories')!.name} loading="lazy" decoding="async"></div>
+            <div><small>{featFor('Car Accessories')!.label}</small><p>{featFor('Car Accessories')!.name}</p><span>{featFor('Car Accessories')!.blurb}</span></div>
+          </a>
+        )}
+      </div>
+
+      <div class="gp-nav__panel" data-panel="pc" data-shape="wide">
+        <div class="gp-nav__tiles">
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=pc&q=mouse')}><b>Mouse</b><span>For desktop and laptop</span></a>
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=pc&q=sound+card')}><b>Sound cards</b><span>Headphone and mic jacks over USB</span></a>
+        </div>
+        {featFor('PC Accessories') && (
+          <a class="gp-nav__feat" href={`/products/${featFor('PC Accessories')!.slug}`}>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featFor('PC Accessories')!.imageUrl} srcset={productSrcset(featFor('PC Accessories')!.imageUrl) ?? undefined} sizes={productSrcset(featFor('PC Accessories')!.imageUrl) ? "200px" : undefined} alt={featFor('PC Accessories')!.name} loading="lazy" decoding="async"></div>
+            <div><small>{featFor('PC Accessories')!.label}</small><p>{featFor('PC Accessories')!.name}</p><span>{featFor('PC Accessories')!.blurb}</span></div>
+          </a>
+        )}
+      </div>
+
+      {saleLive && (
+      <div class="gp-nav__panel" data-panel="flash">
+        <div>
+          <h3>Ends in</h3>
+          <div class="gp-nav__cd" id="gpNavCd" aria-live="off">
+            <span><b data-cd="d">00</b><small>Days</small></span>
+            <span><b data-cd="h">00</b><small>Hrs</small></span>
+            <span><b data-cd="m">00</b><small>Min</small></span>
+            <span><b data-cd="s">00</b><small>Sec</small></span>
+          </div>
+          <p class="gp-nav__note" id="gpNavCdNote">{nav.flash.noteDefault}</p>
+          {/*
+            A stock meter used to sit here reading "14 left of 60 at this price"
+            behind a hard-coded 23% bar. No product, no sale, no source. There
+            is no per-price stock figure in the model to render honestly, so the
+            meter is gone rather than wired to a number an operator could type.
+          */}
+          <a class="gp-nav__flashcta" href={nav.flash.cta.href}>{nav.flash.cta.label}</a>
+        </div>
+        <div>
+          <h3>What's discounted</h3>
+          {/*
+            These rows used to advertise −40% / −35% / −30% / −25% by category.
+            No such promotion existed: the ONE running campaign is a single
+            site-wide percentage, and the categories were invented. The panel
+            now states that campaign and nothing more.
+          */}
+          <ul>
+            {/* "Up to", not "everything": the campaign stops at the price
+                floor, so an item already at the floor comes down by nothing.
+                Promising the full percent on every product was a claim the
+                basket does not honour. */}
+            <li><a href={nav.flash.cta.href}>Up to <em>−{navDeal.percent}%</em> in the shop</a></li>
+            <li><a href={nav.flash.cta.href}><b>See what's on sale →</b></a></li>
+          </ul>
+        </div>
+        {featAt(0) && (
+          <a class="gp-nav__feat" href={`/products/${featAt(0)!.slug}`}>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(0)!.imageUrl} srcset={productSrcset(featAt(0)!.imageUrl) ?? undefined} sizes={productSrcset(featAt(0)!.imageUrl) ? "200px" : undefined} alt={featAt(0)!.name} loading="lazy" decoding="async"></div>
+            <div><small>{dealFeatOnSale ? 'On sale now' : featAt(0)!.label}</small><p>{featAt(0)!.name}</p>
+              {dealFeatOnSale ? (
+                <span>{formatUgx(featAt(0)!.priceUgx!)} → <b style="color:var(--gpn-green)">{formatUgx(dealFeatSaleUgx!)}</b></span>
+              ) : (
+                <span>{featAt(0)!.blurb}</span>
+              )}
+            </div>
+          </a>
+        )}
+      </div>
+      )}
+
+      <div class="gp-nav__mob">
+        <div class="gp-nav__mhi" id="gpNavMhi"></div>
+        <form class="gp-nav__msearch" role="search" action="/shop">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="10.75" cy="10.75" r="6.75"></circle><path d="M15.6 15.6 20.5 20.5"></path></svg>
+          <input type="search" name="q" placeholder={nav.search.placeholderMobile} aria-label="Search products">
+      <div class="gp-nav__sheet" role="listbox" aria-label="Search suggestions"></div>
+        </form>
+        <div class="gp-nav__quick">
+          <a href="/shop">Shop All</a>
+          {saleLive && <a href={nav.flash.cta.href}>Flash sale <span class="gp-nav__cat-tag">Live</span></a>}
+        </div>
+        {saleLive && (
+        <a class="gp-nav__mflash" href={nav.flash.cta.href}>
+          <span>{nav.mobile.mflashPrefix} <b id="gpNavMcd">…</b></span>
+          <span class="gp-nav__mflash-go">{nav.mobile.mflashGo}</span>
+        </a>
+        )}
+
+        <div class="gp-nav__acc" data-acc="power">
+          <div class="gp-nav__acc-head"><a href={indexableCategoryHref('/shop?category=power')}>Power</a><button class="gp-nav__acc-tog" type="button" aria-expanded="false" aria-label="Show Power subcategories">+</button></div>
+          <ul>
+            <li><a href={indexableCategoryHref('/shop?category=power&q=power+bank')}>Power banks</a></li>
+            <li><a href={indexableCategoryHref('/shop?category=power&q=wall+charger')}>Wall chargers</a></li>
+            <li><a href={indexableCategoryHref('/shop?category=power&q=adapter')}>Adapters</a></li>
+            <li><a href={indexableCategoryHref('/shop?category=power&q=cable')}>Cables</a></li>
+            <li><h3>Phone batteries</h3>
+              <form class="gp-nav__mfinder" action="/battery-finder" role="search">
+                <input type="search" name="q" placeholder="Type your phone, e.g. Tecno Spark 10" aria-label="Find a battery for your phone model">
+              </form>
+              <div class="gp-nav__chips"><a href="/battery-finder?q=Tecno">Tecno</a><a href="/battery-finder?q=Infinix">Infinix</a><a href="/battery-finder?q=itel">itel</a><a href="/battery-finder?q=Samsung">Samsung</a><a href="/battery-finder?q=iPhone">iPhone</a><a href="/battery-finder?q=Redmi">Redmi</a><a href="/battery-finder?q=Xiaomi">Xiaomi</a><a href="/battery-finder?q=Huawei">Huawei</a><a href="/battery-finder?q=Nokia">Nokia</a><a href="/battery-finder?q=Oppo">Oppo</a><a href="/battery-finder" style="color:var(--gpn-green)">All brands →</a></div>
+              <a class="gp-nav__ask" href={waLink(nav.contact.whatsappBatteryPrefill)}>
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.47 14.38c-.3-.15-1.75-.86-2.02-.96-.27-.1-.47-.15-.66.15-.2.3-.76.96-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.25-.46-2.38-1.47-.88-.79-1.47-1.75-1.65-2.05-.17-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.66-1.6-.9-2.19-.24-.57-.48-.5-.66-.5h-.57c-.2 0-.52.07-.79.37-.27.3-1.03 1.01-1.03 2.46s1.06 2.85 1.2 3.05c.15.2 2.08 3.18 5.04 4.46.7.3 1.25.48 1.68.62.71.22 1.35.19 1.86.12.57-.08 1.75-.71 1.99-1.4.25-.69.25-1.28.17-1.4-.07-.13-.27-.2-.57-.35z"></path><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 18.15h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.17 8.17 0 0 1-1.25-4.38c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.25 8.23z"></path></svg>
+                Can't find your model? Send us a photo of the old one
+              </a>
+            </li>
+          </ul>
+        </div>
+        <div class="gp-nav__acc" data-acc="sound">
+          <div class="gp-nav__acc-head"><a href={indexableCategoryHref('/shop?category=sound')}>Sound</a><button class="gp-nav__acc-tog" type="button" aria-expanded="false" aria-label="Show Sound subcategories">+</button></div>
+          <ul>
+            <li><a href={indexableCategoryHref('/shop?category=sound&q=earbuds')}>Earbuds</a></li>
+            <li><a href={indexableCategoryHref('/shop?category=sound&q=earphones')}>Earphones</a></li>
+            <li><a href={indexableCategoryHref('/shop?category=sound&q=headphones')}>Headphones</a></li>
+          </ul>
+        </div>
+        <div class="gp-nav__acc" data-acc="storage">
+          <div class="gp-nav__acc-head"><a href={indexableCategoryHref('/shop?category=storage')}>Storage</a><button class="gp-nav__acc-tog" type="button" aria-expanded="false" aria-label="Show Storage sizes">+</button></div>
+          <ul>
+            <li><h3>Flash drives</h3><div class="gp-nav__caps"><a href={indexableCategoryHref('/shop?category=storage&q=2gb+flash+drive')}>2GB</a><a href={indexableCategoryHref('/shop?category=storage&q=4gb+flash+drive')}>4GB</a><a href={indexableCategoryHref('/shop?category=storage&q=8gb+flash+drive')}>8GB</a><a href={indexableCategoryHref('/shop?category=storage&q=16gb+flash+drive')}>16GB</a><a href={indexableCategoryHref('/shop?category=storage&q=32gb+flash+drive')}>32GB</a><a href={indexableCategoryHref('/shop?category=storage&q=64gb+flash+drive')}>64GB</a><a href={indexableCategoryHref('/shop?category=storage&q=128gb+flash+drive')}>128GB</a><a href={indexableCategoryHref('/shop?category=storage&q=256gb+flash+drive')}>256GB</a></div></li>
+            <li><h3>Memory cards</h3><div class="gp-nav__caps"><a href={indexableCategoryHref('/shop?category=storage&q=1gb+memory+card')}>1GB</a><a href={indexableCategoryHref('/shop?category=storage&q=2gb+memory+card')}>2GB</a><a href={indexableCategoryHref('/shop?category=storage&q=4gb+memory+card')}>4GB</a><a href={indexableCategoryHref('/shop?category=storage&q=8gb+memory+card')}>8GB</a><a href={indexableCategoryHref('/shop?category=storage&q=16gb+memory+card')}>16GB</a><a href={indexableCategoryHref('/shop?category=storage&q=32gb+memory+card')}>32GB</a><a href={indexableCategoryHref('/shop?category=storage&q=64gb+memory+card')}>64GB</a><a href={indexableCategoryHref('/shop?category=storage&q=128gb+memory+card')}>128GB</a><a href={indexableCategoryHref('/shop?category=storage&q=256gb+memory+card')}>256GB</a><a href={indexableCategoryHref('/shop?category=storage&q=512gb+memory+card')}>512GB</a></div></li>
+          </ul>
+        </div>
+        <div class="gp-nav__acc" data-acc="car">
+          <div class="gp-nav__acc-head"><a href={indexableCategoryHref('/shop?category=car')}>Car</a><button class="gp-nav__acc-tog" type="button" aria-expanded="false" aria-label="Show Car subcategories">+</button></div>
+          <ul>
+            <li><a href={indexableCategoryHref('/shop?category=car&q=charger')}>Car chargers</a></li>
+          </ul>
+        </div>
+        <div class="gp-nav__acc" data-acc="pc">
+          <div class="gp-nav__acc-head"><a href={indexableCategoryHref('/shop?category=pc')}>PC</a><button class="gp-nav__acc-tog" type="button" aria-expanded="false" aria-label="Show PC subcategories">+</button></div>
+          <ul>
+            <li><a href={indexableCategoryHref('/shop?category=pc&q=mouse')}>Mouse</a></li>
+            <li><a href={indexableCategoryHref('/shop?category=pc&q=sound+card')}>Sound cards</a></li>
+          </ul>
+        </div>
+        <div class="gp-nav__mreach">
+          <a href={biz.phoneDial}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3h3l1.5 4-2 1.4a12 12 0 0 0 5.6 5.6L16 12l4 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4 6.2 2 2 0 0 1 6.5 3z"></path></svg>Call us</a>
+          <a href={biz.whatsappUrl}><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.47 14.38c-.3-.15-1.75-.86-2.02-.96-.27-.1-.47-.15-.66.15-.2.3-.76.96-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.25-.46-2.38-1.47-.88-.79-1.47-1.75-1.65-2.05-.17-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.66-1.6-.9-2.19-.24-.57-.48-.5-.66-.5h-.57c-.2 0-.52.07-.79.37-.27.3-1.03 1.01-1.03 2.46s1.06 2.85 1.2 3.05c.15.2 2.08 3.18 5.04 4.46.7.3 1.25.48 1.68.62.71.22 1.35.19 1.86.12.57-.08 1.75-.71 1.99-1.4.25-.69.25-1.28.17-1.4-.07-.13-.27-.2-.57-.35z"></path><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 18.15h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.17 8.17 0 0 1-1.25-4.38c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.25 8.23z"></path></svg>WhatsApp</a>
+        </div>
+        <p class="gp-nav__mnote">{biz.phoneDisplay} · {biz.shopHours}, {biz.openDays}</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="gp-nav__scrim" id="gpNavScrim"></div>
+</header>
+
+<style is:global>
+/* Poppins — reuse the self-hosted files the hero already ships (CSP font-src 'self') */
+/* Metric-matched local fallback for Poppins (2026-09-13). Until the woff2 arrives the text
+   renders in Arial (or its metric twins Liberation Sans / Arimo on Linux) scaled to Poppins'
+   advance widths and vertical metrics, so the swap does not rewrap the hero copy — the
+   swap was a layout shift of 0.006–0.26 on mobile Lighthouse. Computed from the shipped
+   poppins-*.woff2 against Arial / Arial Bold; nothing is downloaded. */
+@font-face{font-family:'Poppins Fallback';font-style:normal;font-weight:400;src:local('Arial'),local('ArialMT'),local('Liberation Sans'),local('LiberationSans'),local('Arimo'),local('Helvetica');size-adjust:110.02%;ascent-override:95.44%;descent-override:31.81%;line-gap-override:9.09%;}
+@font-face{font-family:'Poppins Fallback';font-style:normal;font-weight:600;src:local('Arial Bold'),local('Arial-BoldMT'),local('Liberation Sans Bold'),local('LiberationSans-Bold'),local('Arimo Bold'),local('Helvetica Bold');size-adjust:104.36%;ascent-override:100.61%;descent-override:33.54%;line-gap-override:9.58%;}
+@font-face{font-family:'Poppins Fallback';font-style:normal;font-weight:700;src:local('Arial Bold'),local('Arial-BoldMT'),local('Liberation Sans Bold'),local('LiberationSans-Bold'),local('Arimo Bold'),local('Helvetica Bold');size-adjust:105%;ascent-override:100%;descent-override:33.33%;line-gap-override:9.52%;}
+
+/* =====================================================================
+   GOLDPLUS NAVIGATION v2
+   Fewer things, each doing one job. The logo is the logo. Contact lives
+   in the contact strip. The rail is the navigation. Nothing is said twice.
+   ===================================================================== */
+body.gph-nav-demo{display:block;margin:0;padding:0;background:#0A0A0A;min-height:100vh;}
+body.gph-nav-demo .gp-hero{margin-top:22px;}
+
+/* ===== ALIGNMENT: the header shares the SITE's content container =====
+   The storefront wraps every section in Tailwind's `.container mx-auto px-4
+   lg:px-8` (default stepped breakpoints; 16px gutter -> 32px at lg). A single
+   fixed max-width cannot match a STEPPED container, so .gpn-container replicates
+   it EXACTLY and the four header rows use it: the header lines up with the hero
+   and every section by construction, at every width, not by eye. */
+:root{ --gpn-gutter:16px; }
+@media (min-width:1024px){ :root{ --gpn-gutter:32px; } }
+.gpn-container{ width:100%; margin-inline:auto; padding-inline:var(--gpn-gutter); }
+@media (min-width:640px){ .gpn-container{ max-width:640px; } }
+@media (min-width:768px){ .gpn-container{ max-width:768px; } }
+@media (min-width:1024px){ .gpn-container{ max-width:1024px; } }
+@media (min-width:1280px){ .gpn-container{ max-width:1280px; } }
+@media (min-width:1536px){ .gpn-container{ max-width:1536px; } }
+
+.gp-nav{
+  --gpn-green:#93D500;
+  --gpn-ink:#0A0A0A;
+  --gpn-cream:#F3EFE8;
+  --gpn-line:rgba(243,239,228,.12);
+  --gpn-muted:rgba(243,239,228,.6);
+  --gpn-panel:#0F0F0F;
+  --gpn-ease:cubic-bezier(.22,.9,.28,1);
+  position:relative;z-index:60;background:var(--gpn-ink);
+  box-shadow:0 1px 0 rgba(147,213,0,.14), 0 18px 40px -26px rgba(10,10,10,.6);
+  font-family:'Poppins','Poppins Fallback',system-ui,sans-serif;color:var(--gpn-cream);
+}
+.gp-nav,.gp-nav *,.gp-nav *::before,.gp-nav *::after{box-sizing:border-box;}
+/* The reset must NOT outweigh component rules: `.gp-nav a` is (0,1,1) and
+   silently beat every single-class colour rule at (0,1,0), so styled links
+   fell back to cream, including cream-on-green CTAs at 1.76:1.
+   `:where()` contributes zero specificity, so this lands at (0,0,1): it still
+   overrides the global `a` colour, but any component class beats it. */
+:where(.gp-nav) a{text-decoration:none;color:inherit;}
+/* Same zero-specificity treatment as the anchor reset above, and for the same
+   reason: `.gp-nav button` at (0,1,1) beat `.gp-nav__acct-cta` at (0,1,0) and
+   stripped the fill off the primary sign-up CTA. */
+:where(.gp-nav) button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;}
+/* #4: a 20px glyph in a 44px box sits 12px in; pull leading/trailing controls
+   out by that residual so the marks go flush with page content, the hit box
+   overhangs harmlessly into the gutter. */
+.gp-nav__burger{margin-left:-12px;}
+.gp-nav__cartwrap{margin-right:-12px;}
+.gp-nav :focus-visible{outline:2px solid var(--gpn-green);outline-offset:3px;border-radius:6px;}
+
+/* ---------- contact strip: the two ways to reach a human ---------- */
+.gp-nav__top{border-bottom:1px solid var(--gpn-line);font-size:12px;}
+.gp-nav__top-in{
+  height:38px;
+  display:flex;align-items:center;justify-content:space-between;gap:20px;
+}
+/* ---------- next best action ----------
+   One line, one job: the single most useful thing this visitor could do
+   next. Ranked by the same kind of engine the hero used, so the two
+   never contradict each other. */
+.gp-nav__nba{display:flex;align-items:center;gap:9px;color:var(--gpn-muted);min-width:0;flex:1;align-self:stretch;}
+.gp-nav__nba-slot{
+  display:flex;align-items:center;gap:7px;min-width:0;align-self:stretch;
+  color:var(--gpn-muted);white-space:nowrap;overflow:hidden;
+  opacity:0;transform:translateY(4px);
+  transition:opacity .4s var(--gpn-ease),transform .4s var(--gpn-ease),color .2s;
+}
+.gp-nav__nba-slot[data-in]{opacity:1;transform:none;}
+.gp-nav__nba-slot:hover{color:var(--gpn-cream);}
+.gp-nav__nba-slot b{color:var(--gpn-cream);font-weight:600;}
+.gp-nav__nba-slot em{font-style:normal;color:var(--gpn-green);font-weight:600;}
+/* only the sentence shrinks; the action is a flex sibling at flex:none, so
+   ellipsis never eats "Finish order →" on a narrow phone */
+.gp-nav__nba-txt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.gp-nav__nba-slot u{text-decoration:none;color:var(--gpn-green);font-weight:600;flex:none;}
+.gp-nav__nba-slot:hover u{text-decoration:underline;}
+.gp-nav__nba-x{
+  width:22px;height:22px;flex:none;border-radius:50%;line-height:1;font-size:15px;
+  color:rgba(243,239,228,.35);display:none;place-items:center;
+}
+.gp-nav__nba:hover .gp-nav__nba-x{display:grid;}
+.gp-nav__nba-x:hover{color:var(--gpn-cream);background:rgba(243,239,228,.08);}
+.gp-nav__dot[data-urgent]{background:#E8C96A;}
+.gp-nav__dot{position:relative;width:5px;height:5px;border-radius:50%;background:var(--gpn-green);flex:none;}
+/* the pulse is a ring scaled on the compositor: no box-shadow repaint per frame */
+.gp-nav__dot::after{content:"";position:absolute;inset:-1px;border-radius:50%;border:2px solid rgba(147,213,0,.5);animation:gpn-live 2.6s ease-out infinite;will-change:transform,opacity;}
+@keyframes gpn-live{0%{transform:scale(1);opacity:.9}70%{transform:scale(3.4);opacity:0}100%{transform:scale(3.4);opacity:0}}
+
+.gp-nav__reach{display:flex;align-items:center;gap:4px;flex:none;}
+.gp-nav__reach a{
+  display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 10px;border-radius:999px;
+  color:var(--gpn-muted);letter-spacing:.01em;
+  transition:color .22s var(--gpn-ease),background .22s var(--gpn-ease);
+}
+.gp-nav__reach a:hover{color:var(--gpn-cream);background:rgba(243,239,228,.07);}
+.gp-nav__reach svg{width:14px;height:14px;flex:none;}
+.gp-nav__reach b{font-weight:600;color:var(--gpn-cream);font-variant-numeric:tabular-nums;letter-spacing:.02em;}
+.gp-nav__reach a:hover svg{color:var(--gpn-green);}
+.gp-nav__reach-sep{width:1px;height:14px;background:var(--gpn-line);}
+
+/* ---------- main bar ---------- */
+.gp-nav__bar{
+  height:80px;
+  display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:24px;
+}
+.gp-nav__logo{display:block;line-height:0;flex:none;padding-block:9px;}  /* #8: 44px hit box, mark size unchanged */
+.gp-nav__logo img{height:30px;width:auto;display:block;transition:opacity .25s var(--gpn-ease);}
+.gp-nav__logo:hover img{opacity:.8;}
+
+.gp-nav__search{position:relative;max-width:480px;width:100%;justify-self:center;}
+.gp-nav__search input{
+  width:100%;height:44px;padding:0 44px;
+  background:rgba(243,239,228,.045);border:1px solid var(--gpn-line);border-radius:999px;
+  color:var(--gpn-cream);font:400 14.5px 'Poppins',sans-serif;
+  transition:border-color .3s var(--gpn-ease),background .3s var(--gpn-ease);
+}
+.gp-nav__search input::placeholder{color:rgba(243,239,228,.42);}
+.gp-nav__search input:focus{outline:none;border-color:rgba(147,213,0,.5);background:rgba(243,239,228,.075);}
+.gp-nav__search > svg{position:absolute;left:17px;top:50%;transform:translateY(-50%);width:17px;height:17px;color:rgba(243,239,228,.5);pointer-events:none;transition:color .25s var(--gpn-ease);}
+.gp-nav__search:focus-within > svg{color:var(--gpn-green);}
+.gp-nav__scan svg{width:18px;height:18px;}
+.gp-nav__scan{position:absolute;right:5px;top:50%;transform:translateY(-50%);
+  width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:rgba(243,239,228,.45);}
+.gp-nav__scan:hover{color:var(--gpn-green);background:rgba(147,213,0,.1);}
+
+.gp-nav__actions{display:flex;align-items:center;gap:2px;}
+.gp-nav__act{
+  width:44px;height:44px;display:grid;place-items:center;border-radius:12px;position:relative;
+  color:var(--gpn-cream);transition:background .22s var(--gpn-ease);
+}
+.gp-nav__act:hover{background:rgba(243,239,228,.07);}
+.gp-nav__act svg{width:20px;height:20px;}
+.gp-nav__pts{
+  display:inline-flex;align-items:baseline;gap:5px;height:32px;padding:0 13px;margin-right:6px;
+  border:1px solid rgba(147,213,0,.3);border-radius:999px;font-size:11.5px;color:var(--gpn-muted);
+  white-space:nowrap;transition:border-color .25s,background .25s;
+}
+.gp-nav__pts b{color:var(--gpn-green);font-weight:600;font-size:13px;font-variant-numeric:tabular-nums;}
+.gp-nav__pts:hover{border-color:rgba(147,213,0,.6);background:rgba(147,213,0,.08);}
+.gp-nav__badge{
+  position:absolute;top:5px;right:5px;min-width:17px;height:17px;padding:0 5px;
+  display:grid;place-items:center;border-radius:999px;
+  background:var(--gpn-green);color:var(--gpn-ink);font-size:10px;font-weight:700;
+}
+.gp-nav__badge[hidden]{display:none;}
+.gp-nav__pts[hidden]{display:none;}
+.gp-nav__badge[data-bump]{animation:gpn-bump .5s var(--gpn-ease);}
+@keyframes gpn-bump{0%{transform:scale(1)}40%{transform:scale(1.32)}100%{transform:scale(1)}}
+
+/* mobile toggle — deliberately NOT the brand mark */
+.gp-nav__burger{display:none;width:44px;height:44px;border-radius:12px;position:relative;}
+.gp-nav__msbtn{display:none;width:44px;height:44px;border-radius:12px;place-items:center;color:var(--gpn-cream);}
+.gp-nav__msbtn svg{width:20px;height:20px;}
+.gp-nav__burger span{
+  position:absolute;left:12px;width:20px;height:2px;border-radius:2px;background:var(--gpn-cream);
+  transition:transform .4s var(--gpn-ease),opacity .25s;
+}
+.gp-nav__burger span:nth-child(1){top:15px;}
+.gp-nav__burger span:nth-child(2){top:21px;}
+.gp-nav__burger span:nth-child(3){top:27px;}
+.gp-nav[data-open] .gp-nav__burger span:nth-child(1){transform:translateY(6px) rotate(45deg);background:var(--gpn-green);}
+.gp-nav[data-open] .gp-nav__burger span:nth-child(2){opacity:0;}
+.gp-nav[data-open] .gp-nav__burger span:nth-child(3){transform:translateY(-6px) rotate(-45deg);background:var(--gpn-green);}
+
+/* ---------- rail ---------- */
+.gp-nav__rail{border-top:1px solid var(--gpn-line);position:relative;}
+.gp-nav__rail-in{
+  height:48px;
+  display:flex;align-items:center;gap:32px;position:relative;
+}
+.gp-nav__cat{
+  position:relative;height:100%;display:flex;align-items:center;gap:8px;
+  font-size:13.5px;font-weight:500;color:var(--gpn-muted);
+  transition:color .22s var(--gpn-ease);
+}
+.gp-nav__cat:hover,.gp-nav__cat[data-on],.gp-nav__cat[aria-current]{color:var(--gpn-cream);}
+.gp-nav__cat-tag{
+  padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;background:var(--gpn-green);color:var(--gpn-ink);
+}
+.gp-nav__spark{
+  position:absolute;bottom:-1px;left:0;height:2px;width:0;background:var(--gpn-green);border-radius:2px;
+  box-shadow:0 0 12px rgba(147,213,0,.55);opacity:0;pointer-events:none;
+  transition:transform .42s var(--gpn-ease),width .42s var(--gpn-ease),opacity .28s;
+}
+.gp-nav__spark[data-show]{opacity:1;}
+
+/* ---------- one panel, contents swap per category ---------- */
+.gp-nav__mega{
+  position:absolute;left:0;right:0;top:100%;z-index:59;
+  background:var(--gpn-panel);border-top:1px solid var(--gpn-line);
+  box-shadow:0 30px 64px rgba(0,0,0,.55);
+  display:grid;grid-template-rows:0fr;
+  transition:grid-template-rows .42s var(--gpn-ease);
+}
+.gp-nav[data-open] .gp-nav__mega{grid-template-rows:1fr;}
+.gp-nav__mega-in{
+  width:100%;justify-self:stretch;   /* #3: fill the animating grid track, THEN center */
+  min-height:0;overflow-x:hidden;overflow-y:auto;
+  max-height:min(78vh,560px);      /* short windows scroll rather than clip */
+}
+.gp-nav__panel{display:none;grid-template-columns:1fr 1fr 296px;gap:34px;padding:28px 0 30px;}
+.gp-nav__panel[data-on]{display:grid;align-items:stretch;}
+.gp-nav[data-open] .gp-nav__panel[data-on] > *{animation:gpn-rise .42s var(--gpn-ease) both;}
+.gp-nav__panel[data-on] > *:nth-child(2){animation-delay:60ms;}
+.gp-nav__panel[data-on] > *:nth-child(3){animation-delay:120ms;}
+@keyframes gpn-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+.gp-nav__panel h3{
+  margin:0 0 14px;font-size:10.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--gpn-green);
+}
+.gp-nav__panel ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;}
+.gp-nav__panel li a{
+  display:block;padding:7px 0;font-size:14px;color:var(--gpn-muted);
+  transition:color .18s,transform .22s var(--gpn-ease);
+}
+.gp-nav__panel li a:hover{color:var(--gpn-cream);transform:translateX(4px);}
+.gp-nav__panel li a b{font-weight:500;color:var(--gpn-green);}
+
+.gp-nav__tiles--five{grid-template-columns:repeat(3,1fr);}
+.gp-nav__tile--go{border-color:rgba(147,213,0,.35);}
+.gp-nav__tile--go b{color:var(--gpn-green);}
+.gp-nav__feat-col h3{margin:0 0 14px;}
+.gp-nav__feat{display:flex;flex-direction:column;gap:13px;}
+.gp-nav__feat-card{
+  position:relative;                 /* percentage heights need a resolved parent —
+                                        without it the image sizes off its own width */
+  background:var(--gpn-cream);border-radius:999px 999px 16px 16px;height:132px;
+  overflow:hidden;isolation:isolate;
+}
+.gp-nav__feat-card img{
+  position:absolute;inset:13%;width:74%;height:74%;object-fit:contain;
+  mix-blend-mode:multiply;
+  filter:brightness(1.09) contrast(1.04);transition:transform .6s var(--gpn-ease);
+}
+.gp-nav__feat:hover .gp-nav__feat-card img{transform:scale(1.05);}
+.gp-nav__feat small{font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--gpn-green);font-weight:700;}
+.gp-nav__feat p{margin:5px 0 0;font-size:13.5px;font-weight:600;line-height:1.35;}
+.gp-nav__feat span{display:block;margin-top:3px;font-size:12.5px;color:var(--gpn-muted);}
+
+.gp-nav__cat--flash .gp-nav__cat-tag{animation:gpn-tag 2.6s ease-in-out infinite;}
+@keyframes gpn-tag{0%,100%{opacity:1}50%{opacity:.72}}
+.gp-nav__cd{display:flex;gap:8px;margin-bottom:14px;}
+.gp-nav__cd span{
+  min-width:56px;padding:9px 8px 7px;text-align:center;
+  border:1px solid var(--gpn-line);border-radius:10px;
+}
+.gp-nav__cd b{display:block;font-size:19px;font-weight:700;color:var(--gpn-green);font-variant-numeric:tabular-nums;line-height:1;}
+.gp-nav__cd small{display:block;margin-top:4px;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--gpn-muted);}
+.gp-nav__flashcta{
+  display:inline-flex;align-items:center;height:42px;padding:0 20px;border-radius:999px;
+  background:var(--gpn-green);color:var(--gpn-ink);font-size:13px;font-weight:600;
+  transition:box-shadow .3s;
+}
+.gp-nav__flashcta:hover{box-shadow:0 8px 26px rgba(147,213,0,.35);}
+.gp-nav__panel li a em{font-style:normal;color:var(--gpn-green);font-weight:600;margin-left:6px;}
+.gp-nav__scrim{position:fixed;inset:0;z-index:58;background:rgba(4,4,4,.55);
+  opacity:0;visibility:hidden;transition:opacity .35s,visibility .35s;}
+.gp-nav[data-open] .gp-nav__scrim{opacity:1;visibility:visible;}
+/* The scrim is fixed and full-screen inside the header's own stacking context,
+   so without a level of their own the header rows sat UNDER it: with a mega menu
+   open, the hovered category link, the search box and the logo all clicked the
+   scrim (which just closed the menu). Rows above the scrim; the bar above the
+   rail so its search/account/cart pop-overs still cover the rail and mega panel.
+   Mobile keeps its own rule below. Found by the Firefox desktop journey, 2026-09-13. */
+.gp-nav__top,.gp-nav__rail{position:relative;z-index:61;}
+.gp-nav__bar{position:relative;z-index:62;}
+
+.gp-nav__mob{display:none;}
+
+/* ---------- mobile ---------- */
+@media (max-width:980px){
+  /* Sticky on phones (owner decision 2026-09-24): the strip above the bar
+     scrolls away and the 60px bar stays, so the menu (search is inside it)
+     and the cart are always one tap away. It never moves on its own (nothing to reduce for reduced
+     motion), and scroll-padding keeps a focused field or an #anchor clear of
+     it (WCAG 2.4.11). --gpn-stick is the strip's real height, set by script. */
+  .gp-nav{position:sticky;top:calc(0px - var(--gpn-stick,34px));}
+  html{scroll-padding-top:72px;}
+  .gp-nav__top-in{height:34px;justify-content:center;}
+  .gp-nav__nba{font-size:11px;justify-content:center;}
+  .gp-nav__nba-x{display:none!important;}
+  .gp-nav__reach{display:none;}
+  .gp-nav__bar{grid-template-columns:auto auto 1fr auto;height:60px;gap:4px;}
+  .gp-nav__search,.gp-nav__rail,.gp-nav__pts{display:none;}
+  .gp-nav__burger{display:block;}
+  /* Search was three taps away on phones (menu, scroll, field). One tap now. */
+  .gp-nav__msbtn{display:grid;}
+  .gp-nav__logo{justify-self:center;}
+  .gp-nav__logo img{height:26px;}
+  .gp-nav__scrim{display:none;}
+
+  .gp-nav__ticker,.gp-nav__top,.gp-nav__bar{position:relative;z-index:61;background:var(--gpn-ink);}
+  .gp-nav__mega{
+    display:block;grid-template-rows:none;
+    position:fixed;inset:0;max-height:none;height:100dvh;background:var(--gpn-ink);
+    border:0;box-shadow:none;transform:translateY(-100%);visibility:hidden;
+    transition:transform .46s var(--gpn-ease),visibility 0s linear .46s;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  }
+  /* the desktop clamp is (0,3,0); a bare .gp-nav__mega rule cannot beat it
+     inside a media query, so match its specificity or the overlay stays 420px */
+  .gp-nav[data-open] .gp-nav__mega{transform:none;max-height:none;grid-template-rows:none;visibility:visible;transition-delay:0s;}
+  .gp-nav__mega-in{padding-block:calc(var(--gpn-head,94px) + 16px) 36px;max-height:none;overflow:visible;}
+  .gp-nav__panel{display:none!important;}
+  .gp-nav__mob{display:block;}
+
+  .gp-nav__msearch{position:relative;margin-bottom:18px;}
+  .gp-nav__msearch input{
+    width:100%;height:50px;padding:0 16px 0 44px;border-radius:14px;
+    background:rgba(243,239,228,.06);border:1px solid var(--gpn-line);
+    color:var(--gpn-cream);font:400 16px 'Poppins',sans-serif;
+  }
+  .gp-nav__msearch input:focus{outline:none;border-color:rgba(147,213,0,.5);}
+  .gp-nav__msearch > svg{position:absolute;left:16px;top:25px;transform:translateY(-50%);width:17px;height:17px;color:rgba(243,239,228,.45);}
+
+  .gp-nav__quick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;}
+  .gp-nav__quick a{
+    min-height:52px;display:flex;align-items:center;justify-content:center;gap:7px;
+    border:1px solid var(--gpn-line);border-radius:14px;font-size:14px;font-weight:600;
+  }
+  .gp-nav__quick a:last-child{border-color:rgba(147,213,0,.4);}
+
+  .gp-nav__mflash{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    min-height:56px;padding:0 16px;margin-bottom:20px;border-radius:14px;
+    background:rgba(147,213,0,.1);border:1px solid rgba(147,213,0,.35);
+    font-size:14px;
+  }
+  .gp-nav__mflash b{color:var(--gpn-green);font-weight:700;font-variant-numeric:tabular-nums;}
+  .gp-nav__mflash-go{color:var(--gpn-green);font-weight:600;flex:none;}
+  .gp-nav__acc{border-top:1px solid var(--gpn-line);}
+  .gp-nav__acc:last-of-type{border-bottom:1px solid var(--gpn-line);}
+  .gp-nav__acc-head{display:flex;align-items:stretch;}
+  .gp-nav__acc-head > a{flex:1;display:flex;align-items:center;font-size:16px;font-weight:600;min-height:58px;}
+  .gp-nav__acc-tog{width:58px;display:grid;place-items:center;color:var(--gpn-green);font-size:22px;line-height:1;
+    transition:transform .35s var(--gpn-ease);}
+  .gp-nav__acc[data-exp] .gp-nav__acc-tog{transform:rotate(45deg);}
+  /* visibility, not just max-height:0: a collapsed list's links must leave the
+     tab order and the accessibility tree, and flip back only after the close */
+  .gp-nav__acc ul{list-style:none;margin:0;padding:0;max-height:0;overflow:hidden;visibility:hidden;
+    transition:max-height .42s var(--gpn-ease),visibility 0s linear .42s;}
+  .gp-nav__acc[data-exp] ul{max-height:360px;visibility:visible;transition-delay:0s;}
+  /* :where() zero-weights the accordion default (0,0,1) so component classes
+     like .gp-nav__ask keep their own colour. (0,2,1) beat them before. */
+  :where(.gp-nav__acc li) a{display:block;padding:13px 0 13px 15px;font-size:14.5px;color:var(--gpn-muted);}
+  .gp-nav__acc li:last-child a{padding-bottom:18px;}
+
+  /* the two ways to reach a human, thumb-sized */
+  .gp-nav__mreach{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:24px;}
+  .gp-nav__mreach a{
+    min-height:56px;display:flex;align-items:center;justify-content:center;gap:9px;
+    border-radius:14px;font-size:14px;font-weight:600;
+  }
+  .gp-nav__mreach a:first-child{border:1px solid var(--gpn-line);}
+  .gp-nav__mreach a:last-child{background:var(--gpn-green);color:var(--gpn-ink);}
+  .gp-nav__mreach svg{width:18px;height:18px;}
+  .gp-nav__mnote{margin:12px 0 0;font-size:12px;color:var(--gpn-muted);text-align:center;}
+}
+@media (max-width:380px){
+  .gp-nav__logo img{height:23px;}
+}
+@media (prefers-reduced-motion:reduce){
+  .gp-nav *,.gp-nav *::before,.gp-nav *::after{animation:none!important;transition-duration:.01ms!important;}
+}
+
+
+
+/* ---------- mini cart: the cut-off follows the order, not the other way round ---------- */
+.gp-nav__cartwrap{position:relative;}
+.gp-nav__mini{
+  position:absolute;right:0;top:calc(100% + 10px);width:320px;z-index:70;
+  background:var(--gpn-panel);border:1px solid var(--gpn-line);border-radius:16px;
+  box-shadow:0 24px 54px rgba(0,0,0,.6);padding:16px;
+  opacity:0;visibility:hidden;transform:translateY(-6px);
+  transition:opacity .25s var(--gpn-ease),transform .25s var(--gpn-ease),visibility .25s;
+}
+.gp-nav__cartwrap[data-open] .gp-nav__mini{opacity:1;visibility:visible;transform:none;}
+.gp-nav__cartwrap[data-empty] .gp-nav__mini{display:none;}
+.gp-nav__mini-h{margin:0 0 10px;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--gpn-muted);}
+.gp-nav__mini-list{display:flex;flex-direction:column;margin:0 -6px;}
+.gp-nav__mini-list a{display:flex;align-items:center;gap:11px;padding:8px 6px;border-radius:10px;}
+.gp-nav__mini-list a:hover{background:rgba(243,239,228,.06);}
+.gp-nav__mini-list .gp-nav__sug-img{width:40px;height:40px;}
+.gp-nav__mini-list .gp-nav__sug-p{font-size:12.5px;}
+.gp-nav__mini-sum{
+  display:flex;justify-content:space-between;align-items:baseline;
+  margin:11px 0 12px;padding-top:11px;border-top:1px solid var(--gpn-line);font-size:12.5px;color:var(--gpn-muted);
+}
+.gp-nav__mini-sum b{font-size:15px;color:var(--gpn-cream);font-variant-numeric:tabular-nums;}
+.gp-nav__mini-cut{
+  /* Running text, not flex: as a flex row every text run and <b> became its
+     own column ("Kampala & Wakiso: check out in | 1h 47m | for | same-day"). */
+  display:block;margin-bottom:12px;padding:9px 12px;border-radius:10px;
+  background:rgba(147,213,0,.08);border:1px solid rgba(147,213,0,.28);
+  font-size:12px;color:var(--gpn-muted);line-height:1.4;
+}
+.gp-nav__mini-cut b{color:var(--gpn-green);font-weight:600;}
+.gp-nav__mini .gp-nav__acct-alt{margin-top:8px;}
+
+/* ---------- account ---------- */
+.gp-nav__acct{position:relative;}
+.gp-nav__acct-pop{
+  position:absolute;right:0;top:calc(100% + 10px);width:280px;z-index:70;
+  background:var(--gpn-panel);border:1px solid var(--gpn-line);border-radius:16px;
+  box-shadow:0 24px 54px rgba(0,0,0,.6);padding:18px;
+  opacity:0;visibility:hidden;transform:translateY(-6px);
+  transition:opacity .25s var(--gpn-ease),transform .25s var(--gpn-ease),visibility .25s;
+}
+.gp-nav__acct[data-open] .gp-nav__acct-pop{opacity:1;visibility:visible;transform:none;}
+.gp-nav__hi{margin:0 0 3px;font-size:15px;font-weight:600;color:var(--gpn-cream);}
+.gp-nav__hi-sub{margin:0 0 15px;font-size:12.5px;color:var(--gpn-muted);line-height:1.45;}
+.gp-nav__hi-sub b{color:var(--gpn-green);font-weight:600;}
+.gp-nav__acct-cta{
+  display:flex;align-items:center;justify-content:center;height:44px;border-radius:11px;
+  background:var(--gpn-green);color:var(--gpn-ink);font-size:13.5px;font-weight:600;margin-bottom:9px;
+}
+.gp-nav__acct-cta:hover{color:var(--gpn-ink);box-shadow:0 8px 22px rgba(147,213,0,.3);}
+.gp-nav__acct-alt{
+  display:flex;align-items:center;justify-content:center;height:44px;border-radius:11px;
+  border:1px solid var(--gpn-line);font-size:13px;color:var(--gpn-cream);
+}
+.gp-nav__acct-alt:hover{border-color:rgba(147,213,0,.45);color:var(--gpn-cream);}
+.gp-nav__acct-links{display:flex;flex-direction:column;gap:1px;margin:0 -6px;}
+.gp-nav__acct-links a{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 6px;border-radius:9px;font-size:13.5px;color:var(--gpn-muted);
+}
+.gp-nav__acct-links a:hover{background:rgba(243,239,228,.06);color:var(--gpn-cream);}
+.gp-nav__acct-links b{color:var(--gpn-green);font-weight:600;font-size:12.5px;}
+/* the reserved-reward card — deliberately looks held, not handed over */
+.gp-nav__hold{
+  display:block;margin-bottom:13px;padding:13px 14px;border-radius:12px;
+  border:1px dashed rgba(147,213,0,.42);background:rgba(147,213,0,.07);
+}
+.gp-nav__hold-tag{
+  display:block;margin-bottom:6px;font-size:9.5px;font-weight:700;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--gpn-green);
+}
+.gp-nav__hold b{display:block;font-size:14.5px;font-weight:600;color:var(--gpn-cream);line-height:1.25;}
+.gp-nav__hold span{display:block;margin-top:5px;font-size:11.5px;color:var(--gpn-muted);line-height:1.45;}
+.gp-nav__hold em{font-style:normal;color:var(--gpn-green);font-weight:600;}
+
+/* one field to start: the phone carries over to /register, which asks for the rest */
+.gp-nav__join{display:flex;flex-direction:column;gap:8px;margin-bottom:9px;}
+.gp-nav__join input{
+  height:44px;padding:0 14px;border-radius:11px;
+  background:rgba(243,239,228,.05);border:1px solid var(--gpn-line);
+  color:var(--gpn-cream);font:400 13.5px 'Poppins',sans-serif;
+}
+.gp-nav__join input::placeholder{color:rgba(243,239,228,.34);}
+.gp-nav__join input:focus{outline:none;border-color:rgba(147,213,0,.55);background:rgba(243,239,228,.07);}
+.gp-nav__join .gp-nav__acct-cta{margin-bottom:0;border:0;width:100%;font-family:inherit;cursor:pointer;}
+.gp-nav__join-note{margin:0 0 11px;font-size:11px;color:rgba(243,239,228,.42);line-height:1.4;}
+
+.gp-nav__acct-code{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin-bottom:14px;padding:11px 13px;border-radius:11px;
+  border:1px dashed rgba(147,213,0,.45);background:rgba(147,213,0,.06);
+  font-size:13px;font-weight:700;letter-spacing:.08em;color:var(--gpn-green);cursor:pointer;
+}
+.gp-nav__acct-code small{font-size:10.5px;font-weight:500;letter-spacing:.04em;color:var(--gpn-muted);}
+
+/* mobile: the greeting leads the menu */
+.gp-nav__mhi{margin:0 0 16px;}
+.gp-nav__mhi h2{margin:0 0 4px;font-size:20px;font-weight:600;color:var(--gpn-cream);letter-spacing:-.01em;}
+.gp-nav__mhi p{margin:0;font-size:13px;color:var(--gpn-muted);line-height:1.5;}
+.gp-nav__mhi p b{color:var(--gpn-green);}
+.gp-nav__mhi-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;}
+.gp-nav__mhi-row a{
+  min-height:50px;display:flex;align-items:center;justify-content:center;
+  border-radius:12px;font-size:13.5px;font-weight:600;
+}
+.gp-nav__mhi-row a:first-child{background:var(--gpn-green);color:var(--gpn-ink);}
+.gp-nav__mhi-row a:last-child{border:1px solid var(--gpn-line);color:var(--gpn-cream);}
+/* one-field sign-up, mobile. Same rules as the desktop popover but sized for
+   thumbs: 52px row, and 16px type because iOS zooms the page on focus below 16 */
+.gp-nav__mjoin{display:flex;gap:9px;margin-top:14px;}
+.gp-nav__mjoin input{
+  flex:1;min-width:0;height:52px;padding:0 15px;border-radius:12px;
+  background:rgba(243,239,228,.05);border:1px solid var(--gpn-line);
+  color:var(--gpn-cream);font:400 16px 'Poppins',system-ui,sans-serif;
+}
+.gp-nav__mjoin input::placeholder{color:rgba(243,239,228,.34);}
+.gp-nav__mjoin input:focus{outline:none;border-color:rgba(147,213,0,.55);background:rgba(243,239,228,.07);}
+.gp-nav__mjoin button{
+  flex:none;height:52px;padding:0 22px;border-radius:12px;border:0;
+  background:var(--gpn-green);color:var(--gpn-ink);
+  font:600 14px 'Poppins',system-ui,sans-serif;cursor:pointer;
+}
+/* a real touch target, not a bare text link: 44px box, margin trimmed so the
+   visual gap below "Claim it" stays at ~12px */
+.gp-nav__mhi-alt{display:inline-flex;align-items:center;min-height:44px;margin-top:2px;font-size:13px;color:var(--gpn-muted);}
+.gp-nav__mhi-alt:hover{color:var(--gpn-cream);}
+
+/* ---------- search: a real search experience, not a text box ---------- */
+.gp-nav__search{position:relative;}
+.gp-nav__sheet{
+  position:absolute;left:0;right:0;top:calc(100% + 10px);z-index:70;
+  background:var(--gpn-panel);border:1px solid var(--gpn-line);border-radius:18px;
+  box-shadow:0 26px 60px rgba(0,0,0,.6);
+  padding:16px 6px 8px;
+  opacity:0;visibility:hidden;transform:translateY(-6px);
+  transition:opacity .25s var(--gpn-ease),transform .25s var(--gpn-ease),visibility .25s;
+  max-height:min(70vh,480px);overflow-y:auto;
+}
+.gp-nav__search[data-open] .gp-nav__sheet{opacity:1;visibility:visible;transform:none;}
+.gp-nav__sh-h{
+  padding:0 14px;margin:0 0 9px;font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--gpn-muted);display:flex;justify-content:space-between;align-items:center;
+}
+.gp-nav__sh-h button{font-size:10px;letter-spacing:.06em;color:var(--gpn-muted);text-transform:none;}
+.gp-nav__sh-h button:hover{color:var(--gpn-green);}
+.gp-nav__sh-sec + .gp-nav__sh-sec{margin-top:14px;padding-top:14px;border-top:1px solid var(--gpn-line);}
+
+.gp-nav__trend{display:flex;flex-wrap:wrap;gap:7px;padding:0 14px;}
+.gp-nav__trend a{
+  display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:999px;
+  border:1px solid var(--gpn-line);font-size:12.5px;color:var(--gpn-muted);
+  transition:border-color .2s,color .2s,background .2s;
+}
+.gp-nav__trend a:hover,.gp-nav__trend a[data-sel]{border-color:rgba(147,213,0,.5);color:var(--gpn-cream);background:rgba(147,213,0,.07);}
+.gp-nav__trend i{font-style:normal;font-size:10.5px;font-weight:700;color:var(--gpn-green);font-variant-numeric:tabular-nums;}
+
+.gp-nav__sug{display:flex;flex-direction:column;}
+.gp-nav__sug a{
+  display:flex;align-items:center;gap:13px;padding:9px 14px;border-radius:12px;
+  transition:background .18s;
+}
+.gp-nav__sug a:hover,.gp-nav__sug a[data-sel]{background:rgba(243,239,228,.06);}
+.gp-nav__sug-img{
+  width:44px;height:44px;flex:none;border-radius:10px;background:var(--gpn-cream);
+  background-image:linear-gradient(135deg,transparent 46%,rgba(10,10,10,.07) 46% 54%,transparent 54%);
+  display:grid;place-items:center;overflow:hidden;isolation:isolate;
+}
+.gp-nav__sug-img img{width:82%;height:82%;object-fit:contain;mix-blend-mode:multiply;filter:brightness(1.09) contrast(1.04);}
+.gp-nav__sug-t{flex:1;min-width:0;}
+.gp-nav__sug-t b{display:block;font-size:13.5px;font-weight:500;color:var(--gpn-cream);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.gp-nav__sug-t b mark{background:none;color:var(--gpn-green);font-weight:700;}
+.gp-nav__sug-t span{display:block;margin-top:2px;font-size:11.5px;color:var(--gpn-muted);}
+.gp-nav__sug-p{font-size:13px;font-weight:600;color:var(--gpn-cream);flex:none;font-variant-numeric:tabular-nums;}
+.gp-nav__sug-cat{font-size:11px;color:var(--gpn-green);flex:none;}
+
+.gp-nav__sh-foot{
+  margin-top:12px;padding:11px 14px 4px;border-top:1px solid var(--gpn-line);
+  display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px;
+}
+.gp-nav__sh-foot a{color:var(--gpn-green);display:inline-flex;align-items:center;gap:7px;}
+.gp-nav__sh-foot a:hover{text-decoration:underline;}
+.gp-nav__sh-foot svg{width:14px;height:14px;}
+.gp-nav__sh-keys{color:var(--gpn-muted);display:flex;gap:10px;}
+.gp-nav__sh-keys kbd{
+  font:inherit;font-size:10px;padding:2px 5px;border:1px solid var(--gpn-line);border-radius:4px;
+  color:var(--gpn-muted);
+}
+.gp-nav__sh-empty{padding:14px;font-size:13px;color:var(--gpn-muted);}
+.gp-nav__sh-empty b{color:var(--gpn-cream);}
+
+@media (max-width:980px){
+  .gp-nav__sheet{position:static;opacity:1;visibility:visible;transform:none;
+    background:none;border:0;box-shadow:none;padding:0;max-height:none;
+    display:none;}
+  .gp-nav__msearch[data-open] .gp-nav__sheet{display:block;margin-top:14px;}
+  .gp-nav__sh-keys{display:none;}
+  .gp-nav__sug a{padding:11px 4px;}
+  .gp-nav__trend{padding:0 2px;}
+  .gp-nav__sh-h{padding:0 2px;}
+  .gp-nav__sh-foot{padding:11px 2px 4px;flex-direction:column;align-items:flex-start;}
+}
+
+/* ---------- panel shapes: the menu fits the catalogue, not the reverse ---------- */
+.gp-nav__panel{grid-template-columns:1fr 1fr 296px;}
+.gp-nav__panel[data-shape="wide"]{grid-template-columns:1fr 296px;}
+.gp-nav__note{margin:-8px 0 12px;font-size:12px;color:var(--gpn-muted);}
+.gp-nav__note b{color:var(--gpn-cream);font-weight:600;}
+.gp-nav__note a{color:var(--gpn-green);font-weight:500;}
+
+/* battery finder — searching beats listing once the range is wide */
+.gp-nav__finder form{margin:0;}
+.gp-nav__finder input{
+  width:100%;height:42px;padding:0 15px;margin-bottom:12px;
+  background:rgba(243,239,228,.05);border:1px solid var(--gpn-line);border-radius:10px;
+  color:var(--gpn-cream);font:400 13.5px 'Poppins',sans-serif;
+}
+.gp-nav__finder input::placeholder{color:rgba(243,239,228,.4);}
+.gp-nav__finder input:focus{outline:none;border-color:rgba(147,213,0,.5);}
+.gp-nav__chips{display:flex;flex-wrap:wrap;gap:7px;}
+.gp-nav__ask{
+  display:inline-flex;align-items:center;gap:9px;margin-top:13px;
+  font-size:12.5px;color:var(--gpn-green);
+}
+.gp-nav__ask svg{width:15px;height:15px;flex:none;}
+.gp-nav__ask:hover{text-decoration:underline;}
+.gp-nav__chips a{
+  padding:7px 12px;border:1px solid var(--gpn-line);border-radius:999px;
+  font-size:12.5px;color:var(--gpn-muted);
+  transition:border-color .2s,color .2s,background .2s;
+}
+.gp-nav__chips a:hover{border-color:rgba(147,213,0,.5);color:var(--gpn-cream);background:rgba(147,213,0,.07);}
+
+/* capacity matrix — people shop storage by size, not by product type */
+.gp-nav__matrix{display:flex;flex-direction:column;gap:16px;}
+.gp-nav__feat-card--photo{background:#F3EFE8;}
+.gp-nav__feat-card--photo img{object-fit:contain;padding:8%;mix-blend-mode:multiply;filter:brightness(1.07) contrast(1.03);}
+.gp-nav__matrix-img{width:34px;height:34px;border-radius:8px;background:#F3EFE8;object-fit:contain;padding:2px;margin-right:9px;vertical-align:middle;display:inline-block;}
+.gp-nav__matrix-row h4{
+  margin:0 0 9px;font-size:13.5px;font-weight:600;color:var(--gpn-cream);
+  display:flex;align-items:center;gap:9px;
+}
+.gp-nav__matrix-row h4 a{color:var(--gpn-green);font-size:11.5px;font-weight:500;}
+.gp-nav__caps{display:flex;flex-wrap:wrap;gap:6px;}
+.gp-nav__caps a{
+  min-width:56px;padding:8px 10px;text-align:center;
+  border:1px solid var(--gpn-line);border-radius:9px;
+  font-size:12.5px;font-weight:500;color:var(--gpn-muted);
+  font-variant-numeric:tabular-nums;
+  transition:border-color .2s,color .2s,background .2s;
+}
+.gp-nav__caps a:hover{border-color:rgba(147,213,0,.5);color:var(--gpn-cream);background:rgba(147,213,0,.07);}
+
+/* tiles — a two-item category shouldn't pretend to be a six-item one */
+.gp-nav__tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;grid-auto-rows:1fr;align-content:stretch;}
+.gp-nav__tile{
+  display:flex;flex-direction:column;justify-content:center;
+  padding:16px 18px;border:1px solid var(--gpn-line);border-radius:14px;
+  transition:border-color .25s var(--gpn-ease),background .25s var(--gpn-ease);
+}
+.gp-nav__tile:hover{border-color:rgba(147,213,0,.4);background:rgba(147,213,0,.05);}
+.gp-nav__tile b{display:block;font-size:14.5px;font-weight:600;color:var(--gpn-cream);}
+.gp-nav__tile span{display:block;margin-top:4px;font-size:12.5px;color:var(--gpn-muted);line-height:1.4;}
+
+@media (max-width:980px){
+  .gp-nav__acc .gp-nav__chips,.gp-nav__acc .gp-nav__caps{padding:0 0 16px 15px;}
+  /* 44px, not the desktop 38 — these capacity chips ARE mobile storage navigation */
+  .gp-nav__acc .gp-nav__chips a,.gp-nav__acc .gp-nav__caps a{min-height:44px;display:flex;align-items:center;justify-content:center;}
+  .gp-nav__acc h3{margin:14px 0 8px 15px;font-size:13px;color:var(--gpn-cream);}
+  .gp-nav__acc[data-exp] ul{max-height:640px;}
+  .gp-nav__mfinder{margin:0 0 12px 15px;}
+  .gp-nav__mfinder input{
+    width:calc(100% - 15px);height:48px;padding:0 15px;border-radius:11px;
+    background:rgba(243,239,228,.05);border:1px solid var(--gpn-line);
+    color:var(--gpn-cream);font:400 14px 'Poppins',sans-serif;
+  }
+  .gp-nav__mfinder input:focus{outline:none;border-color:rgba(147,213,0,.5);}
+  .gp-nav__acc .gp-nav__ask{margin:2px 0 16px 15px;line-height:1.45;}
+}
+
+.gp-nav[data-mode="night"]{--gpn-cream:#E7E3DA;--gpn-muted:rgba(231,227,218,.54);--gpn-green:#83BE00;}
+.gp-nav[data-mode="night"] .gp-nav__feat-card{background:#D6D1C3;}
+.gp-nav[data-mode="day"]{--gpn-cream:#FFFDF7;--gpn-muted:rgba(255,253,247,.7);}
+</style>
+
+<script nonce={Astro.locals.cspNonce} is:inline set:html={`window.__GPNAV=${navConfigJson};window.GP_NBA=${nbaJson};`}></script>
+
+<script>
+  /* The shop's clock is Africa/Kampala, and its cutoff and closed days are set
+     by the operator in business_info. Both client blocks below used to read
+     the VISITOR's clock and a hardcoded 17:00/Sunday, so a customer outside
+     EAT, or one whose device clock was off, was told a deadline the shop does
+     not keep, and changing the cutoff in admin moved nothing here. */
+  function gpShopNow(){
+    try { return new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })); }
+    catch (e) { return new Date(); }
+  }
+  function gpCutoffHour(el){
+    var v = parseInt(el && el.getAttribute('data-cutoff-hour'), 10);
+    return isFinite(v) ? v : 17;
+  }
+  function gpClosedDays(el){
+    var raw = (el && el.getAttribute('data-closed-days')) || '';
+    return raw.split(',').map(function(x){ return parseInt(x, 10); }).filter(function(x){ return isFinite(x); });
+  }
+
+(function(){
+  'use strict';
+  var nav = document.getElementById('gpNav'); if (!nav) return;
+  var CFG = window.__GPNAV || {};  // server-injected per-visitor truth
+  // CMS-owned offer figures, fanned out to every copy site so editing them in
+  // /admin/nav is reflected everywhere (no hardcoded percentages that drift).
+  // The only discount the popover may name is the live storewide promotion.
+  var SALE_ON = CFG.saleActive === true && Number(CFG.salePct) > 0;
+  var RATE_SALE = SALE_ON ? Number(CFG.salePct) : 0;
+  var RATE_PTS = CFG.pointsRate != null ? CFG.pointsRate : 0; // 0 = redemption not configured; claim no shilling value
+
+  /* ---- visitor counter ----
+     First-party, non-identifying: a count and a timestamp. Everything that
+     distinguishes a first-time visitor from a returning one depends on this,
+     so it is incremented ONCE per load, HERE, before any block (segment,
+     greeting, NBA) reads it. In private browsing localStorage throws and the
+     visitor is treated as returning, never show a first-order promo you
+     cannot gate. */
+  var gpVisits = 0, gpVisitsKnown = false;
+  (function(){
+    try {
+      gpVisits = parseInt(localStorage.getItem('gp_visits') || '0', 10) + 1;
+      localStorage.setItem('gp_visits', String(gpVisits));
+      localStorage.setItem('gp_last', String(Date.now()));
+      gpVisitsKnown = true;
+    } catch(e){
+      try { window.__gpVisitsFallback = 2; } catch(e2){}
+    }
+  })();
+
+  // ---- §10 instrumentation: nav_events via the same-origin relay ----
+  // Segment is derived from the POST-increment count so it matches the greeting
+  // and NBA the visitor actually sees (v===1 first visit → 'new', v>1 → 'returning').
+  var gpSeg = CFG.signedIn ? 'signed_in' : (gpVisitsKnown ? (gpVisits > 1 ? 'returning' : 'new') : 'unknown');
+  var gpSeen = {};
+  window.gpNavTrack = function(type, d){
+    d = d || {};
+    try {
+      var body = JSON.stringify({ eventType:type, itemKey:d.itemKey||'', position:d.position||0, segment:gpSeg, term:(d.term!=null?String(d.term):null) });
+      // Beacon first for every event (low priority, off the load's critical chain);
+      // fetch only when the browser refuses the beacon.
+      if (navigator.sendBeacon && navigator.sendBeacon('/api/nav/events', new Blob([body],{type:'application/json'}))) return;
+      fetch('/api/nav/events', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', keepalive:true, body:body }).catch(function(){});
+    } catch(e){}
+  };
+  nav.addEventListener('click', function(e){
+    var t = e.target; if (!t || !t.closest) return;
+    var wa = t.closest('a[href^="https://wa.me/"]');
+    if (wa){ var place = wa.closest('.gp-nav__finder') ? 'panel-power' : (wa.closest('.gp-nav__sh-foot') ? 'search-foot' : 'bar'); window.gpNavTrack('WHATSAPP_TAP', { itemKey: place }); return; }
+    if (t.closest('.gp-nav__sheet [data-opt]')){ window.gpNavTrack('SEARCH_SUGGEST_CLICK', {}); return; }
+    if (t.closest('.gp-nav__mini a[href="/checkout"]')){ window.gpNavTrack('MINICART_CHECKOUT', {}); return; }
+    var slot = t.closest('.gp-nav__nba-slot');
+    if (slot){ window.gpNavTrack('NBA_CLICK', { itemKey: slot.getAttribute('data-nba') || '' }); return; }
+  });
+  nav.addEventListener('submit', function(e){
+    var f = e.target;
+    if (f && f.closest && (f.closest('.gp-nav__finder') || f.closest('.gp-nav__mfinder'))){
+      var mi = f.querySelector('input[name=q]') || f.querySelector('input[name=model]');
+      window.gpNavTrack('BATTERY_FINDER_SUBMIT', { itemKey: 'power', term: mi ? mi.value : '' });
+    }
+  }, true);
+  var mega = document.getElementById('gpNavMega');
+  var burger = document.getElementById('gpNavBurger');
+  var scrim = document.getElementById('gpNavScrim');
+  var rail = document.getElementById('gpNavRail');
+  var spark = document.getElementById('gpNavSpark');
+  var panels = mega.querySelectorAll('.gp-nav__panel');
+  var mq = function(){ return window.innerWidth <= 980; };
+  var qs = function(k){ var m = location.search.match(new RegExp('[?&]' + k + '=([^&]+)')); return m && decodeURIComponent(m[1]); };
+
+  /* ---- open / close ---- */
+  /* the phone drawer covers the page, so the page leaves the tab order and the
+     accessibility tree while it is open; cleared on every close */
+  var behind = [document.querySelector('main'), document.querySelector('footer')];
+  function inert(on){ for (var j=0;j<behind.length;j++) if (behind[j]) behind[j].inert = on; }
+  /* a phone drawer left open while the window grows past 980px is closed, so
+     the page is never stranded inert under the desktop menu */
+  window.addEventListener('resize', function(){ if (!mq() && behind[0] && behind[0].inert) close(); }, { passive:true });
+  var measure = function(){};
+  function open(){
+    measure();
+    nav.setAttribute('data-open','');
+    burger.setAttribute('aria-expanded','true');
+    burger.setAttribute('aria-label','Close menu');
+    if (mq()){ document.body.style.overflow = 'hidden'; inert(true); }
+  }
+  function close(){
+    inert(false);
+    nav.removeAttribute('data-open');
+    nav.removeAttribute('data-cat');
+    burger.setAttribute('aria-expanded','false');
+    burger.setAttribute('aria-label','Open menu');
+    document.body.style.overflow = '';
+    for (var i=0;i<panels.length;i++) panels[i].removeAttribute('data-on');
+    var on = rail.querySelector('.gp-nav__cat[data-on]');
+    if (on){ on.removeAttribute('data-on'); on.setAttribute('aria-expanded','false'); }
+    if (!current) spark.removeAttribute('data-show'); else moveSpark(current);
+  }
+  burger.addEventListener('click', function(){
+    nav.hasAttribute('data-open') ? close() : open();
+  });
+  var msBtn = document.getElementById('gpNavMSearch');
+  if (msBtn) msBtn.addEventListener('click', function(){
+    if (!nav.hasAttribute('data-open')) open();
+    var f = mega.querySelector('.gp-nav__msearch input');
+    mega.scrollTop = 0;
+    if (f) { try { f.focus({ preventScroll: true }); } catch (e) { f.focus(); } }
+  });
+  scrim.addEventListener('click', close);
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape' || !nav.hasAttribute('data-open')) return;
+    var back = rail.querySelector('.gp-nav__cat[data-on]'), inNav = nav.contains(document.activeElement);
+    close();
+    if (mq()) burger.focus(); else if (inNav && back) back.focus();
+  });
+
+  /* ---- the spark ---- */
+  function moveSpark(el){
+    if (!el) return;
+    var r = el.getBoundingClientRect(), p = rail.getBoundingClientRect();
+    spark.style.width = r.width + 'px';
+    spark.style.transform = 'translateX(' + (r.left - p.left) + 'px)';
+    spark.setAttribute('data-show','');
+  }
+
+  /* ---- desktop: hovering a category opens ITS panel ---- */
+  var cats = rail.querySelectorAll('.gp-nav__cat');
+  var current = null, closeT = null;
+
+  function show(id, el){
+    if (id && !gpSeen['panel:'+id]){ gpSeen['panel:'+id]=1; window.gpNavTrack('PANEL_OPEN', { itemKey:id }); }
+    for (var i=0;i<panels.length;i++){
+      panels[i].removeAttribute('data-on');
+      if (panels[i].getAttribute('data-panel') === id) panels[i].setAttribute('data-on','');
+    }
+    var prev = rail.querySelector('.gp-nav__cat[data-on]');
+    if (prev){ prev.removeAttribute('data-on'); prev.setAttribute('aria-expanded','false'); }
+    if (el){ el.setAttribute('data-on',''); el.setAttribute('aria-expanded','true'); }
+    nav.setAttribute('data-cat', id);
+    moveSpark(el);
+    open();
+  }
+
+  for (var i=0;i<cats.length;i++){
+    (function(el){
+      var id = el.getAttribute('data-cat');
+      /* ArrowDown is the only key that opens a panel, and a screen reader in
+         browse mode never says so on its own: the link carries the hint. */
+      if (id){ el.setAttribute('aria-haspopup','true'); el.setAttribute('aria-expanded','false'); if (mega.querySelector('.gp-nav__panel[data-panel="' + id + '"]')) el.setAttribute('aria-describedby','gpNavHint'); }
+      el.addEventListener('mouseenter', function(){
+        if (mq()) return;
+        clearTimeout(closeT);
+        if (id) show(id, el); else { close(); moveSpark(el); }
+      });
+      /* Focus only moves the spark. Opening every panel on focus made Tab
+         flash five panels and left only the LAST one reachable; the panel
+         behind a link opens with ArrowDown, which also moves focus into it. */
+      el.addEventListener('focus', function(){ if (!mq()) moveSpark(el); });
+      el.addEventListener('keydown', function(e){
+        if (mq() || !id || e.key !== 'ArrowDown') return;
+        var p = mega.querySelector('.gp-nav__panel[data-panel="' + id + '"]');
+        if (!p) return;
+        e.preventDefault(); clearTimeout(closeT); show(id, el);
+        var f = p.querySelector('a[href],input,button'); if (f) f.focus();
+      });
+      /* the rail marks the category the shopper is IN: ?category=power-devices
+         belongs to "Power" (/shop?category=power), and "Shop All" only when no
+         category is chosen */
+      var h = el.getAttribute('href') || '', hc = (h.match(/[?&]category=([^&]+)/) || [])[1], cq = qs('category') || '';
+      if (id !== 'flash' && location.pathname === h.split('?')[0] && (hc ? cq === hc || cq.indexOf(hc + '-') === 0 : !cq)){
+        el.setAttribute('aria-current','page'); current = el;
+      }
+    })(cats[i]);
+  }
+  if (current) requestAnimationFrame(function(){ moveSpark(current); });
+
+  /* a diagonal path from the rail into the panel must not close it */
+  nav.addEventListener('mouseleave', function(){
+    if (mq()) return;
+    closeT = setTimeout(close, 260);
+  });
+  nav.addEventListener('mouseenter', function(){ clearTimeout(closeT); });
+  /* the scrim is INSIDE the header, so resting on it never fires the header's
+     mouseleave: treat reaching the scrim as leaving, and coming back as return */
+  scrim.addEventListener('mouseenter', function(){ if (mq()) return; clearTimeout(closeT); closeT = setTimeout(close, 260); });
+  mega.addEventListener('mouseenter', function(){ clearTimeout(closeT); });
+  rail.addEventListener('mouseenter', function(){ clearTimeout(closeT); });
+  /* keyboard focus leaving the header must not leave a panel over the page
+     (WCAG 2.4.11). No relatedTarget is a click that does not move focus
+     (Safari links), so a pointer still over the header keeps the panel open. */
+  nav.addEventListener('focusout', function(e){
+    if (mq() || !nav.hasAttribute('data-open')) return;
+    var r = e.relatedTarget;
+    if (r ? !nav.contains(r) : !nav.matches(':hover')) close();
+  });
+
+  /* ---- mobile: accordions, with the label staying a real link ---- */
+  mega.addEventListener('click', function(e){
+    var tog = e.target.closest('.gp-nav__acc-tog');
+    if (!tog) return;
+    var acc = tog.closest('.gp-nav__acc');
+    var open_ = acc.hasAttribute('data-exp');
+    open_ ? acc.removeAttribute('data-exp') : acc.setAttribute('data-exp','');
+    tog.setAttribute('aria-expanded', open_ ? 'false' : 'true');
+  });
+
+  /* ---- overlay clears the real header height ---- */
+  (function(){
+    var bar = nav.querySelector('.gp-nav__bar');
+    /* The overlay is fixed to the viewport and the header is sticky on phones,
+       so the bar's bottom is read against the viewport, again on every open. */
+    measure = function(){
+      nav.style.setProperty('--gpn-head', Math.round(Math.max(0, bar.getBoundingClientRect().bottom)) + 'px');
+      nav.style.setProperty('--gpn-stick', bar.offsetTop + 'px');
+    };
+    measure();
+    window.addEventListener('resize', measure, { passive:true });
+    if (window.ResizeObserver) new ResizeObserver(measure).observe(bar);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
+  })();
+
+  /* ---- mini cart ---- */
+  (function(){
+    var wrap = document.getElementById('gpNavCartWrap');
+    var cut = document.getElementById('gpNavMiniCut');
+    if (!wrap) return;
+    var t = null;
+    function open(){ if (window.innerWidth <= 980) return; clearTimeout(t); wrap.setAttribute('data-open',''); if (!gpSeen.minicart){ gpSeen.minicart=1; window.gpNavTrack('MINICART_OPEN', {}); } }
+    function shut(){ t = setTimeout(function(){ wrap.removeAttribute('data-open'); }, 220); }
+    wrap.addEventListener('mouseenter', open);
+    wrap.addEventListener('mouseleave', shut);
+    wrap.addEventListener('focusin', open);
+    wrap.addEventListener('focusout', function(e){ if (!wrap.contains(e.relatedTarget)) shut(); });
+
+    /* the cart carries the same promise as the hero and the top strip, read
+       from the operator's cutoff on the shop's own clock */
+    function tick(){
+      if (!cut) return;
+      var navEl = document.getElementById('gpNav');
+      var d = gpShopNow(), h = d.getHours(), m = d.getMinutes();
+      var cutoffHour = gpCutoffHour(navEl);
+      if (gpClosedDays(navEl).indexOf(d.getDay()) !== -1){ cut.innerHTML = 'Closed today. This order goes out on the <b>next working day</b>'; return; }
+      if (h >= cutoffHour){ cut.innerHTML = "Today's run has left. This order goes out <b>tomorrow morning</b>"; return; }
+      var mins = (cutoffHour - h) * 60 - m;
+      var left = mins >= 60 ? Math.floor(mins/60) + 'h ' + (mins%60) + 'm' : mins + ' minutes';
+      cut.innerHTML = 'Kampala &amp; Wakiso: check out in <b>' + left + '</b> and it goes out <b>today</b>.';
+    }
+    tick(); setInterval(tick, 60000);
+  })();
+
+  /* ---- the sale clock: same deadline as the hero, never a second one ---- */
+  (function(){
+    var end = new Date(nav.getAttribute('data-sale-ends')).getTime();
+    if (!isFinite(end)) return;
+    var cd = document.getElementById('gpNavCd');
+    var note = document.getElementById('gpNavCdNote');
+    var mcd = document.getElementById('gpNavMcd');
+    var flashCat = rail.querySelector('.gp-nav__cat--flash');
+    var cells = cd ? { d:cd.querySelector('[data-cd=d]'), h:cd.querySelector('[data-cd=h]'),
+                       m:cd.querySelector('[data-cd=m]'), s:cd.querySelector('[data-cd=s]') } : null;
+    function pad(n){ return (n < 10 ? '0' : '') + n; }
+    function tick(){
+      var left = end - Date.now();
+      if (left <= 0){
+        /* the sale is over: retire it rather than leave a dead promise */
+        if (flashCat) flashCat.style.display = 'none';
+        var p = mega.querySelector('.gp-nav__panel[data-panel=flash]');
+        if (p) p.style.display = 'none';
+        var mf = mega.querySelector('.gp-nav__mflash');
+        if (mf) mf.style.display = 'none';
+        return;
+      }
+      var s = Math.floor(left/1000), d = Math.floor(s/86400),
+          h = Math.floor(s%86400/3600), m = Math.floor(s%3600/60), sec = s%60;
+      if (cells){ cells.d.textContent = pad(d); cells.h.textContent = pad(h);
+                  cells.m.textContent = pad(m); cells.s.textContent = pad(sec); }
+      if (mcd) mcd.textContent = d > 0 ? d + 'd ' + pad(h) + 'h' : pad(h) + ':' + pad(m) + ':' + pad(sec);
+      if (note) note.innerHTML = d === 0
+        ? 'Final hours. <b>Same verified stock, less money.</b>'
+        : 'Same verified stock. Less money, until the clock runs out.';
+    }
+    tick(); setInterval(tick, 1000);
+  })();
+
+
+  /* ---------------- search: suggestions, trends, recents ----------------
+     Typed-ahead over a small local index. On the live site swap INDEX for a
+     real predictive-search endpoint; the rendering and keyboard handling
+     stay exactly as they are. */
+  (function(){
+    /* bundled: blob URL from window.__resources; unbundled: the live URL */
+    function R(id, url){ return (window.__resources && window.__resources[id]) || url; }
+
+    var INDEX = [];  // Stage 3 wires the real /products/suggest endpoint
+    var TREND = (CFG.trending && CFG.trending.length) ? CFG.trending : [];  // seeded from the CMS (query logs)
+    var RKEY = 'gp_recent';
+    function recents(){ try { return JSON.parse(localStorage.getItem(RKEY) || '[]'); } catch(e){ return []; } }
+    function remember(q){
+      if (!q) return;
+      try {
+        var r = recents().filter(function(x){ return x.toLowerCase() !== q.toLowerCase(); });
+        r.unshift(q); localStorage.setItem(RKEY, JSON.stringify(r.slice(0,5)));
+      } catch(e){}
+    }
+    function esc(s){ return s.replace(/[&<>"]/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]; }); }
+    function mark(t,q){
+      var i = t.toLowerCase().indexOf(q.toLowerCase());
+      if (i < 0 || !q) return esc(t);
+      return esc(t.slice(0,i)) + '<mark>' + esc(t.slice(i,i+q.length)) + '</mark>' + esc(t.slice(i+q.length));
+    }
+
+    function wire(form){
+      if (!form) return;
+      var input = form.querySelector('input[type=search]');
+      var sheet = form.querySelector('.gp-nav__sheet');
+      if (!input || !sheet) return;
+      var sel = -1;
+
+      function idle(){
+        var r = recents(), h = '';
+        if (r.length){
+          h += '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Recent<button type="button" data-clear>Clear</button></p><div class="gp-nav__sug">';
+          h += r.map(function(q){ return '<a href="/shop?q=' + encodeURIComponent(q) + '" data-opt><span class="gp-nav__sug-t"><b>' + esc(q) + '</b></span></a>'; }).join('');
+          h += '</div></div>';
+        }
+        if (TREND.length){
+          h += '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Trending in Kampala</p><div class="gp-nav__trend">';
+          h += TREND.map(function(t,i){ return '<a href="' + esc(t[1]) + '" data-opt><i>' + (i+1) + '</i>' + esc(t[0]) + '</a>'; }).join('');
+          h += '</div></div>';
+        } else if (!r.length){
+          /* nothing searched yet and no trend list: plain ways in, no ranking claimed */
+          h += '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Start with</p><div class="gp-nav__trend">' +
+            '<a href="/battery-finder" data-opt>Phone batteries</a><a href="/shop?category=power&amp;q=power+bank" data-opt>Power banks</a><a href="/shop?category=storage&amp;q=memory+card" data-opt>Memory cards</a></div></div>';
+        }
+        h += foot();
+        sheet.innerHTML = h;
+      }
+      function foot(){
+        return '<div class="gp-nav__sh-foot"><a href="' + (CFG.whatsappUrl || '#') + '">' +
+          '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.47 14.38c-.3-.15-1.75-.86-2.02-.96-.27-.1-.47-.15-.66.15-.2.3-.76.96-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.25-.46-2.38-1.47-.88-.79-1.47-1.75-1.65-2.05-.17-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.66-1.6-.9-2.19-.24-.57-.48-.5-.66-.5h-.57c-.2 0-.52.07-.79.37-.27.3-1.03 1.01-1.03 2.46s1.06 2.85 1.2 3.05c.15.2 2.08 3.18 5.04 4.46.7.3 1.25.48 1.68.62.71.22 1.35.19 1.86.12.57-.08 1.75-.71 1.99-1.4.25-.69.25-1.28.17-1.4-.07-.13-.27-.2-.57-.35z"/><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 18.15h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.17 8.17 0 0 1-1.25-4.38c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.25 8.23z"/></svg>' +
+          'Ask us on WhatsApp</a><span class="gp-nav__sh-keys"><span><kbd>&uarr;</kbd><kbd>&darr;</kbd> move</span><span><kbd>&crarr;</kbd> open</span></span></div>';
+      }
+      /* A dropped connection or a failed relay is NOT an empty catalogue: say so,
+         keep the form submit as the way forward, and never count it as a zero
+         result (compatibility programme finding, 2026-09-13). */
+      function renderUnavailable(q){
+        sheet.innerHTML = '<div class="gp-nav__sh-empty">Couldn&#39;t load suggestions for <b>' + esc(q) + '</b>. Check your connection, or press Enter to search the full range.</div>' + foot();
+      }
+      function renderHits(q, hits){
+        if (!hits.length){
+          var zr = (CFG.zeroResult || 'No match for <b>{q}</b>. Try a phone model, a size, or a category, or ask us directly.').replace('{q}', esc(q));
+          /* A phone brand or the word battery is battery intent: the catalogue
+             names packs by model, so the product matcher cannot see the brand.
+             Hand the query to the finder, which answers honestly or asks. */
+          var finder = /\b(batter(y|ies)|tecno|infinix|itel|samsung|iphone|apple|redmi|xiaomi|huawei|nokia|oppo|vivo|realme|pixel)\b/i.test(q)
+            ? '<div class="gp-nav__sug"><a href="/battery-finder?q=' + encodeURIComponent(q) + '" data-opt data-sug="' + esc(q) + '"><span class="gp-nav__sug-img"></span><span><b>Find a battery for your phone</b><br><small>Checks ' + esc(q) + ' against models we have matched</small></span></a></div>'
+            : '';
+          sheet.innerHTML = '<div class="gp-nav__sh-empty">' + zr + '</div>' + finder + foot();
+          if (window.gpNavTrack) window.gpNavTrack('SEARCH_ZERO', { term: q });
+          return;
+        }
+        var h = '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Products</p><div class="gp-nav__sug">';
+        h += hits.map(function(p){
+          var img = p.i ? '<span class="gp-nav__sug-img"><img src="' + p.i + '" alt="" loading="lazy"></span>'
+                        : '<span class="gp-nav__sug-img"></span>';
+          return '<a href="' + p.u + '" data-opt data-sug="' + esc(p.t) + '">' + img +
+            '<span class="gp-nav__sug-t"><b>' + mark(p.t,q) + '</b><span>' + esc(p.c) + '</span></span>' +
+            '<span class="gp-nav__sug-p">' + esc(p.p) + '</span></a>';
+        }).join('');
+        h += '</div></div>' + foot();
+        sheet.innerHTML = h;
+        if (!gpSeen['sshown:'+q]){ gpSeen['sshown:'+q]=1; window.gpNavTrack('SEARCH_SUGGEST_SHOWN', { position: hits.length }); }
+      }
+      /* real predictive search over the public autocomplete, via a same-origin
+         relay; the newest keystroke always wins, and any failure degrades to the
+         honest empty state. */
+      var searchAbort = null, searchSeq = 0;
+      function results(q){
+        var seq = ++searchSeq;
+        try { if (searchAbort) searchAbort.abort(); } catch(e){}
+        try { searchAbort = ('AbortController' in window) ? new AbortController() : null; } catch(e){ searchAbort = null; }
+        fetch('/api/search/suggest?q=' + encodeURIComponent(q), searchAbort ? { signal: searchAbort.signal } : undefined)
+          .then(function(r){ return r.ok ? r.json() : null; })
+          .then(function(j){
+            if (seq !== searchSeq) return;
+            if (!j || j.success !== true){ renderUnavailable(q); return; }
+            var rows = j.data || [];
+            var hits = rows.slice(0,6).map(function(p){
+              return { t: p.name, c: p.categoryName || '',
+                       p: (typeof p.priceUgx === 'number' ? 'UGX ' + p.priceUgx.toLocaleString('en-UG') : ''),
+                       u: '/products/' + p.slug, i: p.imageUrl || null };
+            });
+            renderHits(q, hits);
+          })
+          .catch(function(e){ if (seq !== searchSeq || (e && e.name === 'AbortError')) return; renderUnavailable(q); });
+      }
+      function opts(){ return sheet.querySelectorAll('[data-opt]'); }
+      function highlight(){
+        var o = opts();
+        for (var i=0;i<o.length;i++) o[i].removeAttribute('data-sel');
+        if (sel >= 0 && o[sel]){ o[sel].setAttribute('data-sel',''); }
+      }
+      function show(){ form.setAttribute('data-open',''); }
+      function hide(){ form.removeAttribute('data-open'); sel = -1; }
+
+      input.addEventListener('focus', function(){ if (!input.value) idle(); else results(input.value); show(); });
+      var debT = null;
+      input.addEventListener('input', function(){
+        sel = -1; show();
+        var v = input.value.trim();
+        clearTimeout(debT);
+        if (!v){ idle(); return; }
+        debT = setTimeout(function(){ results(v); }, 150);
+      });
+      input.addEventListener('keydown', function(e){
+        var o = opts();
+        if (e.key === 'ArrowDown'){ e.preventDefault(); sel = Math.min(sel+1, o.length-1); highlight(); }
+        else if (e.key === 'ArrowUp'){ e.preventDefault(); sel = Math.max(sel-1, -1); highlight(); }
+        else if (e.key === 'Enter'){
+          remember(input.value.trim());
+          if (sel >= 0 && o[sel]){ e.preventDefault(); location.href = o[sel].getAttribute('href'); }
+        }
+        else if (e.key === 'Escape'){ hide(); input.blur(); }
+      });
+      sheet.addEventListener('click', function(e){
+        if (e.target.closest('[data-clear]')){
+          try { localStorage.removeItem(RKEY); } catch(err){}
+          idle();
+        }
+      });
+      form.addEventListener('submit', function(){ remember(input.value.trim()); });
+      document.addEventListener('click', function(e){ if (!form.contains(e.target)) hide(); });
+      /* desktop only: the phone sheet sits in the drawer, where hiding it on a
+         tap would move the suggestion out from under the finger */
+      form.addEventListener('focusout', function(e){
+        if (mq()) return;
+        var r = e.relatedTarget;
+        if (r ? !form.contains(r) : !form.matches(':hover')) hide();
+      });
+    }
+    wire(nav.querySelector('.gp-nav__search'));
+    wire(nav.querySelector('.gp-nav__msearch'));
+  })();
+
+
+  /* ---------------- greeting + account ----------------
+     A returning shopper is greeted by name and time of day. A first-time
+     visitor is offered the one thing worth signing up for. The signal is the
+     same first-party visit counter the hero uses, so the two never disagree. */
+  (function(){
+    var pop = document.getElementById('gpNavAcctPop');
+    var btn = document.getElementById('gpNavAcctBtn');
+    var wrap = document.getElementById('gpNavAcct');
+    var mhi = document.getElementById('gpNavMhi');
+    function st(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+
+    // The name is the visitor's own recipientName — escape before it reaches
+    // innerHTML (defence in depth alongside the fixed __GPNAV serialisation).
+    var esch = function(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]; }); };
+    var name = esch(CFG.firstName || '');
+    var visits = parseInt(st('gp_visits') || '0', 10) || window.__gpVisitsFallback || 2;
+    var known = CFG.signedIn === true;  /* signed in (server truth) */
+    var returning = visits > 1;       /* been here before, not signed in */
+
+    function partOfDay(){
+      var h = new Date().getHours();
+      if (h < 12) return 'Good morning';
+      if (h < 17) return 'Good afternoon';
+      return 'Good evening';
+    }
+
+    var CTX_visits = visits;
+
+    function popHTML(){
+      if (known){
+        return '<p class="gp-nav__hi">' + partOfDay() + ', ' + name + '</p>' +
+          '<p class="gp-nav__hi-sub">You have <b>' + POINTS.toLocaleString() + ' points</b>' + (RATE_PTS > 0 ? '. That is a UGX ' + (POINTS*RATE_PTS).toLocaleString() + ' discount on your next order' : '') + '.</p>' +
+          '<div class="gp-nav__acct-links">' +
+            '<a href="/account">Your orders</a>' +
+            '<a href="/account/rewards">Rewards <b>' + POINTS.toLocaleString() + ' pts</b></a>' +
+            '<a href="/account/rewards#refer">Refer a friend <b>Earn points</b></a>' +
+            '<a href="/account#settings">Account settings</a>' +
+            '<a href="/logout">Sign out</a>' +
+          '</div>';
+      }
+      /* The offer block shows the live sale or nothing. No "reserved" tag, no
+         counting the visitor's visits back at them: neither was true. */
+      var saleBlock = SALE_ON
+        ? '<div class="gp-nav__hold">' +
+            '<span class="gp-nav__hold-tag">On now</span>' +
+            '<b>Up to ' + RATE_SALE + '% off</b>' +
+            '<span>Comes off at checkout. No code needed</span>' +
+          '</div>'
+        : '';
+      if (returning){
+        return '<p class="gp-nav__hi">Welcome back</p>' +
+          saleBlock +
+          '<form class="gp-nav__join" action="/register" method="get">' +
+            '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" ' +
+              'placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
+            '<button class="gp-nav__acct-cta" type="submit">Join free</button>' +
+          '</form>' +
+          '<a class="gp-nav__acct-alt" href="/account">Sign in instead</a>';
+      }
+      /* first-time visitor */
+      return '<p class="gp-nav__hi">' + partOfDay() + '</p>' +
+        saleBlock +
+        '<form class="gp-nav__join" action="/register" method="get">' +
+          '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" ' +
+            'placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
+          '<button class="gp-nav__acct-cta" type="submit">Join free</button>' +
+        '</form>' +
+        /* Registration also asks for an email and a password, and signing in is
+           by email: the note says so instead of "your number is your account". */
+        '<p class="gp-nav__join-note">Next, an email and a password. You sign in with your email.</p>' +
+        '<a class="gp-nav__acct-alt" href="/account">I already have an account</a>';
+    }
+
+    function mobileHTML(){
+      if (known){
+        return '<h2>' + partOfDay() + ', ' + name + '</h2>' +
+          '<p>You have <b>' + POINTS.toLocaleString() + ' points</b> waiting' + (RATE_PTS > 0 ? '. That is a UGX ' + (POINTS*RATE_PTS).toLocaleString() + ' discount on your next order' : '') + '.</p>' +
+          '<div class="gp-nav__mhi-row"><a href="/account/rewards">Your rewards</a><a href="/account">Your orders</a></div>';
+      }
+      var saleLine = SALE_ON ? '<b>Up to ' + RATE_SALE + '% off</b> right now. It comes off at checkout. ' : '';
+      if (returning){
+        return '<h2>Welcome back</h2>' +
+          '<p>' + saleLine + 'Points start counting from the order you make today.</p>' +
+          '<form class="gp-nav__mjoin" action="/register" method="get">' +
+            '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
+            '<button type="submit">Join free</button>' +
+          '</form>' +
+          '<a class="gp-nav__mhi-alt" href="/account">Sign in instead</a>';
+      }
+      return '<h2>' + partOfDay() + '</h2>' +
+        '<p>' + saleLine + 'Join free with your phone, an email and a password.</p>' +
+        '<form class="gp-nav__mjoin" action="/register" method="get">' +
+          '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
+          '<button type="submit">Join free</button>' +
+        '</form>' +
+        '<a class="gp-nav__mhi-alt" href="/account">I already have an account</a>';
+    }
+
+    /* points only exist for a signed-in shopper */
+    var ptsWrap = document.getElementById('gpNavPtsWrap');
+    var ptsVal = document.getElementById('gpNavPts');
+    var POINTS = CFG.points || 0;                  /* real loyalty balance */
+    if (ptsWrap && POINTS > 0){
+      ptsVal.textContent = POINTS.toLocaleString();
+      ptsWrap.hidden = false;
+      ptsWrap.setAttribute('aria-label', POINTS.toLocaleString() + ' loyalty points');
+    }
+
+    /* the cart badge appears only when there is something in it */
+    var badgeEl = document.getElementById('gpNavCart');
+    var CART = CFG.cartCount || 0;                 /* real cart count */
+    var cartLink = nav.querySelector('.gp-nav__cartwrap a[href="/cart"]');
+    if (badgeEl && CART > 0){
+      badgeEl.textContent = CART; badgeEl.hidden = false;
+      if (cartLink) cartLink.setAttribute('aria-label', 'Cart, ' + CART + (CART === 1 ? ' item' : ' items'));
+    } else if (cartLink){
+      cartLink.setAttribute('aria-label', 'Cart, empty');
+    }
+    /* an empty cart has nothing to preview */
+    var wrapEl = document.getElementById('gpNavCartWrap');
+    if (wrapEl && CART === 0) wrapEl.setAttribute('data-empty','');
+
+    if (pop) pop.innerHTML = popHTML();
+    if (mhi) mhi.innerHTML = mobileHTML();
+    if (btn) btn.setAttribute('aria-label', known ? partOfDay() + ', ' + name : 'Account');
+
+    if (btn && wrap){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var on = wrap.hasAttribute('data-open');
+        on ? wrap.removeAttribute('data-open') : wrap.setAttribute('data-open','');
+        btn.setAttribute('aria-expanded', on ? 'false' : 'true');
+      });
+      document.addEventListener('click', function(e){
+        if (!wrap.contains(e.target)){ wrap.removeAttribute('data-open'); btn.setAttribute('aria-expanded','false'); }
+      });
+      document.addEventListener('keydown', function(e){
+        if (e.key === 'Escape'){ wrap.removeAttribute('data-open'); btn.setAttribute('aria-expanded','false'); }
+      });
+      /* the popover holds a form now — keep clicks inside it from closing the panel */
+      wrap.addEventListener('click', function(e){ e.stopPropagation(); });
+    }
+  })();
+
+  /* ---- cart ---- */
+  var badge = document.getElementById('gpNavCart');
+  window.gpCartCount = function(n){
+    if (!badge) return;
+    badge.textContent = n;
+    badge.hidden = !(n > 0);
+    var w = document.getElementById('gpNavCartWrap');
+    if (w){ n > 0 ? w.removeAttribute('data-empty') : w.setAttribute('data-empty',''); }
+    if (n > 0){
+      badge.setAttribute('data-bump','');
+      setTimeout(function(){ badge.removeAttribute('data-bump'); }, 520);
+    }
+  };
+
+  /* ---------------- NEXT BEST ACTION ----------------
+     The strip is one slot showing the single most useful thing THIS visitor
+     could do next. Candidates declare when they apply and how strongly;
+     the highest scorer wins, and up to three rotate.
+
+     To drive this from the real recommendation engine, set
+       window.GP_NBA = [{id, text, href, cta, score, urgent}, ...]
+     before this script runs, or resolve window.GP_NBA_PROMISE (a promise of
+     that array). Anything returned replaces the local candidates entirely.
+     The local set below is the offline fallback and must always be safe to
+     show. It never claims anything the site cannot honour. */
+  (function(){
+    var slot = document.getElementById('gpNavNbaSlot');
+    var txt  = document.getElementById('gpNavNbaText');
+    var ctaEl = document.getElementById('gpNavNbaCta');
+    var dot  = nav.querySelector('.gp-nav__dot');
+    var xBtn = document.getElementById('gpNavNbaX');
+    if (!slot) return;
+
+    function st(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+    function set(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
+
+    var d = gpShopNow(), hour = d.getHours(), day = d.getDay();
+    var cutoffHour = gpCutoffHour(nav), closedDays = gpClosedDays(nav);
+    var isClosedToday = closedDays.indexOf(day) !== -1;
+    var minsToCutoff = (cutoffHour - hour) * 60 - d.getMinutes();
+    var saleEnd = new Date(nav.getAttribute('data-sale-ends')).getTime();
+
+    var CTX = {
+      name: CFG.firstName || '',
+      signedIn: CFG.signedIn === true,
+      visits: parseInt(st('gp_visits') || '0', 10) || window.__gpVisitsFallback || 2,
+      cart: CFG.cartCount || 0,
+      points: CFG.points || 0,
+      lastOrderDays: st('gp_last_order') ? (Date.now() - parseInt(st('gp_last_order'),10)) / 864e5 : null,
+      orderInTransit: st('gp_order_status') === 'out_for_delivery',
+      beforeCutoff: !isClosedToday && hour < cutoffHour,
+      minsToCutoff: minsToCutoff,
+      sunday: isClosedToday,
+      saleLive: isFinite(saleEnd) ? Date.now() < saleEnd : false
+    };
+
+    function money(n){ return 'UGX ' + n.toLocaleString(); }
+
+    /* --- the local candidate set --- */
+    function candidates(){
+      var c = [];
+
+      /* ---- signed-in: things only we can know ---- */
+      if (CTX.orderInTransit) c.push({ id:'transit', urgent:true, score:100,
+        text:'Your order is <b>out for delivery</b> today', cta:'Track it', href:'/account' });
+
+      /* Cart beats sign-in status: an anonymous visitor with items in the
+         basket is the highest-intent person on the site, and gating this on
+         being signed in left them with a generic delivery line. */
+      /* on /cart and /checkout the basket IS the page: pointing back at the
+         cart from checkout is a step backwards, and from /cart a self-link */
+      var inFunnel = /^\/(cart|checkout)(\/|$)/.test(location.pathname);
+      /* Same-day DISPATCH is for Kampala & Wakiso only, so every line names the area, in the same words as cart
+         and checkout (lib/checkout.ts sameDayCutoffCopy().scoped). It promises when the order goes OUT, never when
+         it arrives: not every Wakiso area is in rider range (delivery contract #10). Up-country is confirmed by phone. */
+      var SD = 'Kampala & Wakiso: ';
+      /* "Deliver to": the customer's own area. In Kampala & Wakiso the line names it; outside, no same-day line at
+         all (it would be a promise this customer cannot have). Unknown: the general line above. */
+      /* The strip renders with innerHTML: strip markup characters from the area name (it came from a cookie). */
+      var DL = (nav.getAttribute('data-deliver-label') || '').replace(/[<>&"]/g, '');
+      var DSD = nav.getAttribute('data-deliver-sameday') || '';
+      if (DL && DSD === '1') SD = DL + ': ';
+      var noSameDay = DSD === '0';
+      var hm = Math.floor(CTX.minsToCutoff/60) + 'h ' + (CTX.minsToCutoff%60) + 'm';
+      if (CTX.cart > 0 && CTX.beforeCutoff && !inFunnel && !noSameDay) c.push({ id:'cart-cutoff', score:96,
+        text: CTX.minsToCutoff <= 60
+          ? SD + 'only <em>' + CTX.minsToCutoff + ' minutes</em> left for it to go out today'
+          : SD + 'check out in <b>' + hm + '</b> and it goes out today',
+        short: CTX.minsToCutoff <= 60
+          ? SD + '<em>' + CTX.minsToCutoff + ' min</em> left to go out today'
+          : SD + '<b>' + hm + '</b> left to go out today',
+        cta:'Finish order', href:'/cart' });
+
+      /* same cart, past the cut-off: still worth finishing, honest promise
+         (it GOES OUT then; when it arrives depends on where it is going) */
+      if (CTX.cart > 0 && !CTX.beforeCutoff && !inFunnel) c.push({ id:'cart-later', score:94,
+        text:'Your basket is waiting. Order now and it goes out <b>' + (CTX.sunday ? 'on the next working day' : 'tomorrow morning') + '</b>',
+        short:'Basket saved. It goes out <b>' + (CTX.sunday ? 'next working day' : 'tomorrow') + '</b>',
+        cta:'Finish order', href:'/cart' });
+
+      if (CTX.signedIn && CTX.points >= 1000 && RATE_PTS > 0) c.push({ id:'points', score:88,
+        text:'You have <em>' + CTX.points.toLocaleString() + ' points</em>. That is a ' + money(CTX.points * RATE_PTS) + ' discount',
+        short:'<em>' + money(CTX.points * RATE_PTS) + '</em> in points to spend',
+        cta:'Spend them', href:'/account/rewards' });
+
+      if (CTX.signedIn && CTX.lastOrderDays !== null && CTX.lastOrderDays > 150) c.push({ id:'reorder', score:84,
+        text:'Your last order was <b>' + Math.round(CTX.lastOrderDays/30) + ' months</b> ago. Phone battery fading?',
+        short:'Last order <b>' + Math.round(CTX.lastOrderDays/30) + ' months</b> ago. Battery fading?',
+        cta:'Find your model', href:'/battery-finder' });
+
+      if (CTX.signedIn) c.push({ id:'refer', score:62,
+        text:'Introduce a friend. You both earn <em>points</em> when their first order is delivered',
+        short:'Introduce a friend. You both earn <em>points</em>',
+        cta:'Get your link', href:'/account/rewards#refer' });
+
+      /* ---- not signed in: the useful, honest defaults (mirrors nba.ts) ---- */
+      if (!CTX.signedIn && CTX.visits <= 1) c.push({ id:'welcome', score:60,
+        text:'Join free and earn <em>points</em> on every delivered order',
+        short:'Join free and earn <em>points</em> on every order',
+        cta:'Join free', href:'/register' });
+
+      if (!CTX.signedIn && CTX.visits > 1) c.push({ id:'signup', score:55,
+        text:'Join free, and points start with your next delivered order',
+        short:'Join free. Points start with your next order',
+        cta:'Join free', href:'/register' });
+
+      /* the live sale with its real percentage — never a typed figure */
+      if (CTX.saleLive && RATE_SALE > 0) c.push({ id:'sale', score:92,
+        text:'Up to <em>' + RATE_SALE + '% off</em> right now. It comes off at checkout',
+        short:'Up to <em>' + RATE_SALE + '% off</em>, on now',
+        cta:'Get the discount', href:'/shop' });
+
+      /* ---- always available, and always true ---- */
+      if (CTX.sunday) c.push({ id:'sunday', score:40,
+        text:'Closed today. Orders go out again on the <b>next working day</b>',
+        short:'Delivery resumes <b>next working day</b>', href:'/delivery/kampala-wakiso' });
+      else if (CTX.beforeCutoff && !noSameDay) c.push({ id:'cutoff', score:CTX.minsToCutoff <= 60 ? 90 : 50, urgent:CTX.minsToCutoff <= 60,
+        text: CTX.minsToCutoff <= 60
+          ? SD + 'only <em>' + CTX.minsToCutoff + ' minutes</em> left to order for it to go out today'
+          : 'Order before <b>' + (nav.getAttribute('data-cutoff-label') || '5:00pm') + '</b> and it goes out today in ' + (DL && DSD === '1' ? DL : 'Kampala and Wakiso'),
+        short: CTX.minsToCutoff <= 60
+          ? SD + '<em>' + CTX.minsToCutoff + ' min</em> left to go out today'
+          : SD + 'order by <b>' + (nav.getAttribute('data-cutoff-label') || '5:00pm') + '</b>, out today',
+        href:'/delivery/kampala-wakiso' });
+      else if (!noSameDay) c.push({ id:'aftercutoff', score:44,
+        text:"Today's run has left. Order now and it goes out <b>tomorrow morning</b>",
+        short:'Next delivery run is <b>tomorrow</b>', href:'/delivery/kampala-wakiso' });
+
+      /* outside the same-day zone: what IS true for them (mirrors nba.ts upcountryNavLine) */
+      if (noSameDay && DL) c.push({ id:'upcountry', score:48,
+        text:'Delivering to <b>' + DL.replace(/[<>&"]/g, '') + '</b>? We confirm your delivery day by phone',
+        short:'Delivering to <b>' + DL.replace(/[<>&"]/g, '') + '</b>: we call to confirm the day', href:'/delivery/kampala-wakiso' });
+
+      c.push({ id:'verify', score:30,
+        text:'Verified original GoldPlus products, with a code you can check', cta:'How we verify', href:'/verification' });
+
+      return c;
+    }
+
+    var dismissed = (st('gp_nba_x') || '').split(',').filter(Boolean);
+    var list = [], i = 0, timer = null, rendered = false;
+
+    function isNarrow(){ return window.innerWidth <= 980; }
+
+    function render(n){
+      var item = list[n]; if (!item) return;
+      slot.removeAttribute('data-in');
+      setTimeout(function(){
+        /* mobile fits ~58 characters at 11px, not the ~72 desktop allows, so the
+           longest messages carry a `short` variant rather than being ellipsised */
+        txt.innerHTML = (isNarrow() && item.short) ? item.short : item.text;
+        if (ctaEl){
+          ctaEl.innerHTML = item.cta ? item.cta + ' &rarr;' : '';
+          ctaEl.hidden = !item.cta;
+        }
+        slot.setAttribute('href', item.href || '#');
+        slot.setAttribute('data-nba', item.id);
+        if (!gpSeen['nba:'+item.id]){ gpSeen['nba:'+item.id]=1; window.gpNavTrack('NBA_IMPRESSION', { itemKey:item.id, position:n+1 }); }
+        if (dot){ item.urgent ? dot.setAttribute('data-urgent','') : dot.removeAttribute('data-urgent'); }
+        slot.setAttribute('data-in','');
+      }, rendered ? 320 : 0);
+      rendered = true;
+    }
+
+    /* deliberately no rotation — see the note above */
+    function start(){}
+
+    function build(source){
+      list = (source || candidates())
+        .filter(function(x){ return dismissed.indexOf(x.id) < 0; })
+        .sort(function(a,b){ return (b.score||0) - (a.score||0); })
+        .slice(0,3);   /* only the first is shown; the rest are dismissal fallbacks */
+      if (!list.length) list = [{ id:'fallback', score:0, text:'Verified original electronics, delivered across Uganda', href:'/shop' }];
+      i = 0; render(0); start();
+    }
+
+    if (xBtn) xBtn.addEventListener('click', function(){
+      var id = slot.getAttribute('data-nba');
+      if (id && dismissed.indexOf(id) < 0){ dismissed.push(id); set('gp_nba_x', dismissed.join(',')); }
+      if (id) window.gpNavTrack('NBA_DISMISS', { itemKey:id });
+      build(window.GP_NBA);
+    });
+
+    /* real engine wins if it is there; otherwise the local set renders immediately */
+    try { build(window.GP_NBA); }
+    catch (err){ if (window.console) console.error('[gp-nba]', err); }
+    if (window.GP_NBA_PROMISE && window.GP_NBA_PROMISE.then){
+      window.GP_NBA_PROMISE.then(function(rows){ if (rows && rows.length) build(rows); }).catch(function(){});
+    }
+    /* the cut-off candidates go stale as the clock moves */
+    setInterval(function(){ if (!window.GP_NBA) build(); }, 60000);
+  })();
+
+  /* ---- automatic day / night, from the visitor's own clock ----
+     Uganda sits on the equator, so a fixed split is accurate all year;
+     reading the DEVICE clock means a Ugandan abroad still gets their own
+     local mode. ?mode=day / ?mode=night forces it for QA. */
+  (function(){
+    var DAY_START = 6.5, DAY_END = 18.75;
+    function current(){
+      var d = new Date(), h = d.getHours() + d.getMinutes()/60;
+      return (h >= DAY_START && h < DAY_END) ? 'day' : 'night';
+    }
+    function apply(m){ if (nav.getAttribute('data-mode') !== m) nav.setAttribute('data-mode', m); }
+    var forced = qs('mode');
+    apply(forced === 'day' || forced === 'night' ? forced : current());
+    if (forced !== 'day' && forced !== 'night'){
+      setInterval(function(){ apply(current()); }, 120000);
+      document.addEventListener('visibilitychange', function(){ if (!document.hidden) apply(current()); });
+    }
+  })();
+})();
+</script>

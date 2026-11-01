@@ -1,5 +1,6 @@
 # Pin Node.js LTS version (node:20-alpine)
-FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS base
+# Node 22 LTS (2026-10-07): Node 20 reached end of life in April 2026, and Astro 6 needs 22.12+.
+FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS base
 
 # Install pnpm
 RUN npm install -g pnpm@9.1.4
@@ -10,9 +11,19 @@ FROM base AS builder
 # Declare build args
 ARG PUBLIC_API_BASE_URL
 ENV PUBLIC_API_BASE_URL=$PUBLIC_API_BASE_URL
+# GTM web container + first-party tagging server (Astro inlines these at build).
+ARG PUBLIC_GTM_ID
+ENV PUBLIC_GTM_ID=$PUBLIC_GTM_ID
+ARG PUBLIC_METRICS_URL
+ENV PUBLIC_METRICS_URL=$PUBLIC_METRICS_URL
+# Microsoft Clarity project id (heatmaps/recordings); empty = not loaded.
+ARG PUBLIC_CLARITY_ID
+ENV PUBLIC_CLARITY_ID=$PUBLIC_CLARITY_ID
 
 # Copy configuration files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+# SheetJS ships fixed releases outside npm; the reviewed tarball is vendored (sha256 in vendor/README.md).
+COPY vendor ./vendor
 COPY apps/web/package.json ./apps/web/
 COPY packages/shared/package.json ./packages/shared/
 
@@ -29,6 +40,10 @@ RUN pnpm -F @goldplus/web build
 
 # Prune dev dependencies for production runtime
 RUN pnpm install --prod --frozen-lockfile
+
+# COPY preserves host file modes; a root-only (600) file in the deploy checkout
+# is unreadable by the non-root runtime user at serve time.
+RUN chmod -R a+rX /app/node_modules /app/packages/shared /app/apps/web/dist /app/apps/web/node_modules /app/apps/web/package.json
 
 FROM base AS runner
 # Set production environment

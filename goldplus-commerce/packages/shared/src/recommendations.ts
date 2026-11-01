@@ -1,37 +1,73 @@
-export type RecommendationPlacement =
-  | "product_related"
-  | "complete_setup"
-  | "cart_addon"
-  | "home_trending"
-  | "category_popular"
-  | "recently_viewed";
+/**
+ * THE placement registry (R1, 2026-08-06). These six identifiers are the whole
+ * placement vocabulary, shared verbatim by the engine, the validators, the
+ * rules admin and every storefront rail. This array is the single runtime
+ * source — the API-side copies in RecommendationValidation and
+ * RecommendationRuleValidationService were retired in favour of importing it,
+ * because three hand-maintained copies of one vocabulary is how a placement
+ * quietly becomes "unknown".
+ */
+export const RECOMMENDATION_PLACEMENTS = [
+  "product_related",
+  "complete_setup",
+  "cart_addon",
+  "home_trending",
+  "category_popular",
+  "recently_viewed",
+] as const;
 
-export type RecommendationEventType =
-  | "PAGE_VIEW"
-  | "PRODUCT_VIEWED"
-  | "CATEGORY_VIEWED"
-  | "PRODUCT_SEARCHED"
-  | "PRODUCT_ADDED_TO_CART"
-  | "PRODUCT_REMOVED_FROM_CART"
-  | "PRODUCT_PURCHASED"
-  | "RECOMMENDATION_VIEWED"
-  | "RECOMMENDATION_IMPRESSION"
-  | "RECOMMENDATION_CLICKED"
-  | "RECOMMENDATION_ADD_TO_CART"
-  | "CART_ADD"
-  | "CART_REMOVE"
-  | "CART_QUANTITY_CHANGE"
-  | "CHECKOUT_STARTED"
-  | "QUOTE_STARTED"
-  | "QUOTE_SUBMITTED"
-  | "SUPPORT_STARTED"
-  | "SUPPORT_SUBMITTED"
-  | "DEALER_APPLICATION_STARTED"
-  | "DEALER_APPLICATION_SUBMITTED"
-  | "CUSTOMER_IDENTIFIED"
-  | "LOCATION_PERMISSION_GRANTED"
-  | "LOCATION_CAPTURED"
-  | "LOCATION_PERMISSION_DENIED";
+export type RecommendationPlacement = (typeof RECOMMENDATION_PLACEMENTS)[number];
+
+export function isRecommendationPlacement(value: unknown): value is RecommendationPlacement {
+  return typeof value === "string" && (RECOMMENDATION_PLACEMENTS as readonly string[]).includes(value);
+}
+
+/**
+ * THE event vocabulary — one list, shared by producer validation and analytics.
+ * R1 additions: RECOMMENDATION_RESPONSE (a server-native fact written by the
+ * engine itself, so serving/fill/fallback truth no longer depends on a browser
+ * beacon), RECOMMENDATION_DISMISSED (an explicit negative signal), and
+ * RECOMMENDATION_ERROR (an engine failure made observable instead of a silent
+ * catch). The phantom analytics type `RECOMMENDATION_CLICK` (singular) was
+ * never in this vocabulary and the queries that matched it were corrected —
+ * do not add it here.
+ */
+export const RECOMMENDATION_EVENT_TYPES = [
+  "PAGE_VIEW",
+  "PRODUCT_VIEWED",
+  "CATEGORY_VIEWED",
+  "PRODUCT_SEARCHED",
+  "PRODUCT_ADDED_TO_CART",
+  "PRODUCT_REMOVED_FROM_CART",
+  "PRODUCT_PURCHASED",
+  "RECOMMENDATION_VIEWED",
+  "RECOMMENDATION_IMPRESSION",
+  "RECOMMENDATION_CLICKED",
+  "RECOMMENDATION_ADD_TO_CART",
+  "RECOMMENDATION_RESPONSE",
+  "RECOMMENDATION_DISMISSED",
+  "RECOMMENDATION_ERROR",
+  "CART_ADD",
+  "CART_REMOVE",
+  "CART_QUANTITY_CHANGE",
+  "CHECKOUT_STARTED",
+  "QUOTE_STARTED",
+  "QUOTE_SUBMITTED",
+  "SUPPORT_STARTED",
+  "SUPPORT_SUBMITTED",
+  "DEALER_APPLICATION_STARTED",
+  "DEALER_APPLICATION_SUBMITTED",
+  "CUSTOMER_IDENTIFIED",
+  "LOCATION_PERMISSION_GRANTED",
+  "LOCATION_CAPTURED",
+  "LOCATION_PERMISSION_DENIED",
+] as const;
+
+export type RecommendationEventType = (typeof RECOMMENDATION_EVENT_TYPES)[number];
+
+export function isRecommendationEventType(value: unknown): value is RecommendationEventType {
+  return typeof value === "string" && (RECOMMENDATION_EVENT_TYPES as readonly string[]).includes(value);
+}
 
 export type RecommendationReasonCode =
   | "SAME_CATEGORY"
@@ -52,7 +88,61 @@ export type RecommendationReasonCode =
 export type RecommendationStrategy =
   | "rule_based_v1"
   | "business_rules_v2"
-  | "ml_ranked_v3";
+  | "ml_ranked_v3"
+  | "deterministic_v3";
+
+/**
+ * R3 (2026-08-06): every candidate names where it came from, and every source
+ * names its evidential state. "Unknown never silently becomes zero": a source
+ * that lacks evidence says INSUFFICIENT_SAMPLE instead of contributing noise.
+ */
+export type RecommendationCandidateSource =
+  | "EXACT_PRODUCT_COMPATIBILITY"
+  | "COMPLEMENTARY_HEURISTIC"
+  | "SAME_CATEGORY_ATTRIBUTE_MATCH"
+  | "RECENT_PAID_ORDER_VELOCITY"
+  | "RECENT_ENGAGEMENT_VELOCITY"
+  | "SEARCH_QUERY_AFFINITY"
+  | "CATEGORY_BESTSELLER"
+  | "GLOBAL_BESTSELLER"
+  | "NEW_AND_ELIGIBLE"
+  | "CURATED_DEFAULT"
+  | "DETERMINISTIC_CATALOGUE_FALLBACK"
+  | "MATERIALIZED_CACHE";
+
+export type RecommendationSourceState =
+  | "SUPPORTED"
+  | "SUPPORTED_WITH_LIMITATIONS"
+  | "INSUFFICIENT_SAMPLE"
+  | "STALE"
+  | "UNSUPPORTED"
+  | "DEGRADED";
+
+/** A surface may be empty only for one of these reasons — never silently. */
+export type RecommendationEmptyReason =
+  | "NO_ELIGIBLE_PRODUCTS"
+  | "CATALOGUE_EMPTY"
+  | "ALL_SUPPRESSED"
+  | "NO_COMPATIBLE_PRODUCTS"
+  | "DEPENDENCY_UNAVAILABLE";
+
+export interface RecommendationSourceReport {
+  source: RecommendationCandidateSource;
+  state: RecommendationSourceState;
+  /** How many candidates this source contributed to the pool (pre-ranking). */
+  candidates: number;
+}
+
+export interface RecommendationResponseMeta {
+  requestId: string;
+  policyVersion: string;
+  /** 0 = primary strategy; each fallback ladder step increments. */
+  fallbackLevel: number;
+  sources: RecommendationSourceReport[];
+  emptyReason?: RecommendationEmptyReason;
+  /** R8: server-assigned experiment variant, when a rec_ experiment is RUNNING. Assigned server-side; the client can neither choose nor alter it. */
+  experiment?: { experimentKey: string; variantKey: string };
+}
 
 export interface RecommendationItemDto {
   productId: string;
@@ -60,6 +150,8 @@ export interface RecommendationItemDto {
   name: string;
   imageUrl?: string;
   price?: number;
+  /** 0127 — the product's own floor (Price A); null/absent = not discountable. */
+  floorPriceUgx?: number | null;
   currency?: string;
   score: number;
   reasonCodes: RecommendationReasonCode[];
@@ -72,6 +164,13 @@ export interface RecommendationItemDto {
   reasonCode?: string;
   railRenderId?: string;
   impressionId?: string;
+
+  // R3 explanation fields
+  candidateSource?: RecommendationCandidateSource;
+  fallbackLevel?: number;
+
+  /** R9: the engine sets { kind: "in_stock" } because the item passed available-to-promise in SQL on this request; display layers may carry the wider vocabulary. */
+  availability?: import("./types/product").ProductAvailability;
 }
 
 export interface RecommendationResponseDto {
@@ -79,6 +178,8 @@ export interface RecommendationResponseDto {
   items: RecommendationItemDto[];
   generatedAt: string;
   strategy: RecommendationStrategy;
+  /** R3: how this response was produced — present on every new response. */
+  meta?: RecommendationResponseMeta;
 }
 
 export interface UtmPayload {
@@ -245,6 +346,15 @@ export interface RecommendationAnalyticsResponse {
     missingPlacement: number;
     missingProductId: number;
     missingAnonymousId: number;
+    /** Client-produced events, the only population that can hold a browser id. */
+    identityEligibleEvents?: number;
+    /** Missing count scoped to that same population, so the share is valid. */
+    missingAnonymousIdEligible?: number;
+    /** Events attributable to no visitor at all — the figure that matters. */
+    eventsWithoutAnyIdentity?: number;
+    /** Recommendation events, the only population that carries a placement. */
+    placementEligibleEvents?: number;
+    missingPlacementEligible?: number;
     latestEventAt: string | null;
     trackingStatus: AnalyticsTrackingStatus;
     dataQualityWarnings: string[];
@@ -263,3 +373,38 @@ export interface RecommendationAnalyticsResponse {
   unavailableMetrics: UnavailableMetric[];
 }
 
+
+/**
+ * Things WE emit about our own rendering: the engine answered, a rail was
+ * drawn, a rail scrolled into view, the engine failed. They are evidence about
+ * the system, never about what a person chose to do, and must never feed a
+ * profile feature — otherwise rendering strengthens the profile, which changes
+ * rendering (the loop closed on 2026-09-20).
+ */
+export const SYSTEM_EXPOSURE_EVENT_TYPES = [
+  "RECOMMENDATION_RESPONSE",
+  "RECOMMENDATION_ERROR",
+  "RECOMMENDATION_IMPRESSION",
+  "RECOMMENDATION_VIEWED",
+] as const satisfies readonly RecommendationEventType[];
+
+/**
+ * Things a visitor did. Derived, so a NEW event type counts as visitor activity
+ * only after someone has decided it is not a system exposure — the
+ * classification test fails the build until it is placed in one list.
+ */
+export const VISITOR_ACTION_EVENT_TYPES: readonly RecommendationEventType[] = RECOMMENDATION_EVENT_TYPES.filter(
+  (t) => !(SYSTEM_EXPOSURE_EVENT_TYPES as readonly string[]).includes(t),
+);
+
+/**
+ * Hero and nav telemetry: events the PAGE fires by itself when something is
+ * drawn. They are recorded, but they must never create a visitor profile —
+ * on the first minute after the 2026-09-20 release, automatic hero IMPRESSION
+ * and nav NBA_IMPRESSION beacons alone minted 5 profiles with no action at all.
+ * Anything not matched here (a click, opening a panel, a search the visitor
+ * typed) is something the visitor did.
+ */
+export function isAutomaticExposureEvent(eventType: string): boolean {
+  return /(^|_)IMPRESSION$|_SHOWN$|^RECOMMENDATION_VIEWED$|^SEARCH_ZERO$/.test(String(eventType ?? '').toUpperCase());
+}
