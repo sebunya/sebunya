@@ -82,6 +82,13 @@ async function enqueueInTx(tx: Tx, m: GiftCardOutboxMessage, relatedEntityId: st
   if (values) await tx.insert(outboxEvents).values(values).onConflictDoNothing({ target: outboxEvents.idempotencyKey });
 }
 
+/**
+ * A purchase started but not yet paid still counts toward the daily limits (2026-11 review), or ten parallel starts
+ * would each see nothing paid and all go through. One whose payment page never opened stops counting after ten
+ * minutes, so a Pesapal hiccup does not lock an honest buyer out for the day.
+ */
+const AWAITING_LIVE = sql`(status = 'awaiting_payment' and (order_tracking_id is not null or created_at > now() - interval '10 minutes'))`;
+
 /** 0199: gift cards bought online. Every status change is a compare-and-set on the current status. */
 export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepository {
   async create(
@@ -117,7 +124,7 @@ export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepos
     const last9 = lastNine(buyerPhone);
     const [r] = rowsOf(await db.execute(sql`
       select count(*)::int as started,
-             coalesce(sum(amount_ugx) filter (where status in ('paid','issued')), 0)::bigint as paid
+             coalesce(sum(amount_ugx) filter (where status in ('paid','issued') or ${AWAITING_LIVE}), 0)::bigint as paid
         from gift_card_purchases
        where right(regexp_replace(buyer_phone, '\\D', '', 'g'), 9) = ${last9} and created_at >= ${since}`));
     return { started: Number(r?.started ?? 0), paidUgx: Number(r?.paid ?? 0) };
@@ -125,7 +132,8 @@ export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepos
 
   async paidSince(since: Date): Promise<number> {
     const [r] = rowsOf(await db.execute(sql`select coalesce(sum(amount_ugx), 0)::bigint as paid from gift_card_purchases
-                                             where status in ('paid','issued') and paid_at >= ${since}`));
+                                             where (status in ('paid','issued') and paid_at >= ${since})
+                                                or (${AWAITING_LIVE} and created_at >= ${since})`));
     return Number(r?.paid ?? 0);
   }
 

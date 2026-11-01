@@ -295,4 +295,22 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     expect((await repo.byReference(p.reference)).photoId).toBeNull();
     expect((await raw`select count(*)::int as n from gift_card_photos where id = ${mine}`)[0].n).toBe(0);
   });
+
+  it('daily limits count purchases started but not yet paid (2026-11 review)', async () => {
+    const since = new Date(Date.now() - 60_000);
+    const phone = `+2567${String(Date.now()).slice(-8)}`;
+    const shopBefore = await repo.paidSince(since);
+    const p = await create({ buyerPhone: phone, amountUgx: 400_000 });
+    await repo.recordStarted(p.id, `T-${p.reference}`, 'https://pay/x');
+    expect((await repo.buyerActivity(phone, since)).paidUgx).toBe(400_000);
+    expect(await repo.paidSince(since)).toBe(shopBefore + 400_000);
+    // A start whose payment page never opened stops holding the limit after ten minutes.
+    const q = await create({ buyerPhone: phone, amountUgx: 300_000 });
+    expect((await repo.buyerActivity(phone, since)).paidUgx).toBe(700_000);
+    await raw`update gift_card_purchases set created_at = now() - interval '11 minutes' where id = ${q.id}`;
+    expect((await repo.buyerActivity(phone, new Date(Date.now() - 3_600_000))).paidUgx).toBe(400_000);
+    // Abandoned starts free the limit.
+    await repo.markUnpaid(p.id, 'abandoned', '0 test');
+    expect((await repo.buyerActivity(phone, since)).paidUgx).toBe(0);
+  });
 });
