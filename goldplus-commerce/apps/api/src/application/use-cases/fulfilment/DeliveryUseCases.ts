@@ -13,7 +13,7 @@ import { IFulfilmentReportRepository, FulfilmentReport } from '../../ports/IFulf
 import { IAuditRepository } from '../../ports/IAuditRepository';
 import { IOrderTransitionPort } from '../../ports/IOrderTransitionPort';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
-import { mirrorOrderDispatched } from './DispatchUseCases';
+import { cashOnDeliveryConfirmed, mirrorOrderDispatched } from './DispatchUseCases';
 
 /** What the quote capture needs to know about a recorded delivery attempt (0189). */
 export interface IDeliveryCaptureMirror {
@@ -78,7 +78,9 @@ export class RecordDeliveryUseCase {
      * Optional and best-effort: a capture that fails never voids a truthfully
      * recorded delivery.
      */
-    private readonly captureMirror?: IDeliveryCaptureMirror
+    private readonly captureMirror?: IDeliveryCaptureMirror,
+    /** The dispatch record: whether an operator confirmed cash on delivery (its payment policy). */
+    private readonly dispatches?: { getByTask(taskId: string): Promise<{ paymentPolicy: string } | null> },
   ) {}
 
   async execute(input: {
@@ -202,7 +204,7 @@ export class RecordDeliveryUseCase {
           const caughtUp = await mirrorOrderDispatched(this.orderTransitions, snapshot.orderId, {
             actorId: input.actorId,
             note: `Catch-up before recording attempt ${attempt}`,
-            cashOnDelivery: snapshot.paymentStatus !== 'paid',
+            cashOnDelivery: await cashOnDeliveryConfirmed(snapshot, this.dispatches),
             paid: snapshot.paymentStatus === 'paid',
           });
           if (caughtUp === 'dispatched') {
@@ -258,6 +260,7 @@ export class CompleteOrderForDeliveredTaskUseCase {
     private readonly audit: IAuditRepository,
     private readonly orderTransitions: IOrderTransitionPort,
     private readonly orders: { findById(id: string): Promise<{ orderStatus: string } | null> },
+    private readonly dispatches?: { getByTask(taskId: string): Promise<{ paymentPolicy: string } | null> },
   ) {}
 
   async execute(input: { orderId: string; actorId: string }): Promise<
@@ -276,7 +279,7 @@ export class CompleteOrderForDeliveredTaskUseCase {
     const base = { actorId: input.actorId, actorType: 'administrator' as const, source: 'fulfilment' as const, reasonCode: 'delivery_outcome', note: 'Delivered by the rider (recorded on the task); order brought up to date' };
     try {
       if (order.orderStatus !== 'dispatched') {
-        const caught = await mirrorOrderDispatched(this.orderTransitions, input.orderId, { actorId: input.actorId, note: 'Catch-up for a recorded delivery', cashOnDelivery: task.paymentStatus !== 'paid', paid: task.paymentStatus === 'paid' });
+        const caught = await mirrorOrderDispatched(this.orderTransitions, input.orderId, { actorId: input.actorId, note: 'Catch-up for a recorded delivery', cashOnDelivery: await cashOnDeliveryConfirmed(task, this.dispatches), paid: task.paymentStatus === 'paid' });
         if (caught !== 'dispatched') throw new Error('not dispatched');
       }
       await this.orderTransitions.transition(input.orderId, 'delivered', base);

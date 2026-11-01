@@ -1594,6 +1594,7 @@ export class Registry {
   public readonly getDeliveryHistoryUseCase = new GetDeliveryHistoryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo);
   public readonly completeOrderForDeliveredTaskUseCase = new CompleteOrderForDeliveredTaskUseCase(
     this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo, this.orderTransitionService, { findById: (id: string) => this.orderRepo.findById(id) },
+    this.fulfilmentDispatchRepo,
   );
   public readonly recordDeliveryUseCase = new RecordDeliveryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo, this.orderTransitionService, {
     // 0189: the quote capture learns the outcome. actual_minutes is dispatch → handover (one outbound leg + last
@@ -1637,7 +1638,7 @@ export class Registry {
         }
       }
     },
-  });
+  }, this.fulfilmentDispatchRepo);
   public readonly getFulfilmentReportUseCase = new GetFulfilmentReportUseCase(this.fulfilmentReportRepo);
 
   // Customer DNA & NBA: canonical profile projection + next-best action.
