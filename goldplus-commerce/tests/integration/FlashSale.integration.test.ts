@@ -28,7 +28,7 @@ suite('flash sale allocation (real PostgreSQL, U5)', () => {
     return p.id;
   };
   const mkSaleItem = async (productId: string, allocated: number, sold = 0): Promise<string> => {
-    const [sale] = await raw`insert into flash_sales (name, starts_at, ends_at, status) values ('S', now(), now() + interval '1 hour', 'live') returning id`;
+    const [sale] = await raw`insert into flash_sales (name, starts_at, ends_at, status) values ('S', now() - interval '1 minute', now() + interval '1 hour', 'live') returning id`;
     saleIds.push(sale.id);
     const [item] = await raw`insert into flash_sale_items (flash_sale_id, product_id, flash_price_ugx, original_price_ugx, units_allocated, units_sold) values (${sale.id}, ${productId}, 5000, 10000, ${allocated}, ${sold}) returning id`;
     itemIds.push(item.id);
@@ -85,6 +85,15 @@ suite('flash sale allocation (real PostgreSQL, U5)', () => {
     expect(results.filter((r) => r.ok).length).toBe(2); // limit is 2, even across sessions
     expect(results.filter((r) => !r.ok && r.reason === 'PER_CUSTOMER_LIMIT').length).toBe(1);
   }, 30_000);
+
+  it('a cancelled sale hands out no more reservations', async () => {
+    const product = await mkProduct(100);
+    const item = await mkSaleItem(product, 10);
+    const [row] = await raw`select flash_sale_id from flash_sale_items where id = ${item}`;
+    await repo.cancelSale(row.flash_sale_id, new Date());
+    const r = await repo.reserve({ flashSaleItemId: item, customerIdentityHash: 'c', idempotencyKey: `after-cancel-${item}`, reservationToken: randomUUID(), ttlSeconds: 900, now: new Date() });
+    expect(r).toEqual({ ok: false, reason: 'SALE_NOT_LIVE' });
+  });
 
   it('AC6: reservations expire after the TTL and return units to the pool', async () => {
     const product = await mkProduct(0);
