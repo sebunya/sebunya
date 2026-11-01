@@ -94,7 +94,7 @@ const earnWays: Array<{
 if (programme) {
   earnWays.push({
     label: "Every delivered order",
-    detail: "Points vest the day your order is delivered. Placed while signed in.",
+    detail: "Points vest the day your order is delivered. Placed signed in, or signed out with your verified phone number.",
     points: `${programme.earnRatePer1000Ugx} pts / 1,000 UGX`,
   });
 }
@@ -133,10 +133,10 @@ if (src?.referral?.referrer) {
     });
   }
 }
-if (src?.streak) {
+if (src?.streak && src.streak.windowDays != null) {
   earnWays.push({
     label: "Keep a delivery streak",
-    detail: `${src.streak.orders} delivered orders in a row, each within ${src.streak.windowDays ?? 90} days of the last.`,
+    detail: `${src.streak.orders} delivered orders in a row, each within ${src.streak.windowDays} days of the last.`,
     points: `${src.streak.points} pts`,
   });
 }
@@ -185,7 +185,7 @@ const BENEFIT_LABELS: Record<string, string> = {
 <BaseLayout
   title={programme ? "GoldPlus Rewards | Earn points on every delivered order" : "GoldPlus Rewards | Coming soon"}
   description={programme
-    ? `GoldPlus Rewards is live: earn ${programme.earnRatePer1000Ugx} points per 1,000 UGX on every delivered order placed while signed in.`
+    ? `GoldPlus Rewards is live: earn ${programme.earnRatePer1000Ugx} points per 1,000 UGX on every delivered order, signed in or on your verified phone.`
     : "GoldPlus Rewards is being prepared. Nothing is live yet."}
 >
   {/* A div, not a second main element: BaseLayout already provides the page's main landmark. */}
@@ -217,7 +217,7 @@ const BENEFIT_LABELS: Record<string, string> = {
                 <div class="rounded-2xl border border-white/10 bg-white/5 p-5">
                   <dt class="text-xs font-black uppercase tracking-wider text-slate-400">Earning</dt>
                   <dd class="mt-2 text-sm leading-relaxed text-slate-200">
-                    <strong class="text-white">{programme.earnRatePer1000Ugx} points per 1,000 UGX</strong> of the order total, on every order placed while signed in.
+                    <strong class="text-white">{programme.earnRatePer1000Ugx} points per 1,000 UGX</strong> of the order total, on every order placed signed in, or signed out with the phone number verified on your account. Verifying your phone also credits your recent signed-out orders.
                     Points become available when the order is <strong class="text-white">delivered</strong>.
                   </dd>
                 </div>

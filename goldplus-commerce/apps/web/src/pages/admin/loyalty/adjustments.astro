@@ -60,7 +60,10 @@ if (Astro.request.method === "POST") {
         notice = { kind: "success", text: `Adjustment of ${points > 0 ? "+" : ""}${points} points posted (entry ${String(json.data.entryId).slice(0, 8)}).` };
       } else {
         // Keep the same key so a retry of this same adjustment stays idempotent.
-        notice = { kind: "error", text: json?.error?.message || `Adjustment refused (HTTP ${res.status}).` };
+        const stepUp = json?.error?.code === "MFA_STEP_UP_REQUIRED" || json?.error?.code === "MFA_ENROLMENT_REQUIRED";
+        notice = { kind: "error", text: stepUp
+          ? `${json.error.message} Verify on Two-step verification (/admin/security/mfa), then try again. Nothing was posted.`
+          : json?.error?.message || `Adjustment refused (HTTP ${res.status}).` };
         idempotencyKey = submittedKey || idempotencyKey; keepPoints = String(form.get("points") || ""); keepReason = reason;
       }
     }

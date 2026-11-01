@@ -70,6 +70,14 @@ class FakeLedger {
     return this.entries.filter((e) => e.accountId === accountId) as any;
   }
 
+  reversed: string[] = [];
+  async reverseEntry(entryId: string) {
+    const e = this.entries.find((x) => x.id === entryId)!;
+    this.reversed.push(entryId);
+    this.entries.push({ ...e, id: `rev-${entryId}`, points: -e.points, idempotencyKey: `reversal:${entryId}`, type: 'reversal' });
+    return { ok: true };
+  }
+
   pointsFor(userId: string) {
     return this.entries.filter((e) => e.accountId === `acct-${userId}`).reduce((s, e) => s + e.points, 0);
   }
@@ -147,13 +155,15 @@ class FakeReferrals {
     const row = this.rows.find((r) => r.refereeUserId === refereeUserId && r.status === 'pending');
     return row ? { id: row.id, code: row.code, referrerUserId: row.referrerUserId } : null;
   }
-  async markAwarded(id: string) {
-    const row = this.rows.find((r) => r.id === id);
+  async markAwarded(id: string, _a?: string, _b?: string, _o?: string, _by?: string | null, fromStatus = 'pending') {
+    const row = this.rows.find((r) => r.id === id && r.status === fromStatus);
     if (row) row.status = 'awarded';
+    return Boolean(row);
   }
-  async markRejected(id: string) {
-    const row = this.rows.find((r) => r.id === id);
+  async markRejected(id: string, _reason?: string, _by?: string | null, fromStatus = 'held') {
+    const row = this.rows.find((r) => r.id === id && r.status === fromStatus);
     if (row) row.status = 'rejected';
+    return Boolean(row);
   }
   heldOn = new Map<string, { reason: string; orderId: string }>();
   async markHeld(id: string, reason: string, orderId: string) {
@@ -345,6 +355,27 @@ describe('referrals', () => {
     expect(await decide.execute({ referralId: row.id, decision: 'release', actorId: 'admin' })).toMatchObject({ ok: true, status: 'awarded', referrerUserId: 'ring' });
     expect(ledger.entries).toHaveLength(2);
     expect(await decide.execute({ referralId: row.id, decision: 'release', actorId: 'admin' })).toMatchObject({ ok: false, code: 'NOT_HELD' });
+  });
+
+  it('two people deciding one held referral at once: the later decision loses and leaves no payout behind (2026-11 review)', async () => {
+    const code = await referrals.getOrCreateCode('r1');
+    await new RecordReferralUseCase(completion as any, referrals as any).execute({ refereeUserId: 'raced', code });
+    const row = referrals.rows.find((r) => r.refereeUserId === 'raced')!;
+    await referrals.markHeld(row.id, 'ORDER_TO_REFERRER_PHONE', 'o1');
+    const uc = new QualifyReferralOnDeliveryUseCase(ledger as any, completion as any, referrals as any, gamification as any, async () => undefined);
+    const decide = new DecideHeldReferralUseCase(completion as any, referrals as any, uc);
+    // Both read 'held'; the refusal writes first.
+    const stale = { ...(await referrals.findById(row.id))! };
+    (referrals as any).findById = async () => stale;
+    expect(await decide.execute({ referralId: row.id, decision: 'refuse', actorId: 'a', reason: 'same phone' })).toMatchObject({ ok: true, status: 'rejected' });
+    expect(await decide.execute({ referralId: row.id, decision: 'release', actorId: 'b' })).toMatchObject({ ok: false, code: 'NOT_HELD' });
+    expect(row.status).toBe('rejected');
+    expect(ledger.entries.reduce((s, e) => s + e.points, 0)).toBe(0);
+    // And a refusal arriving after a release does not overwrite 'awarded'.
+    (referrals as any).findById = async () => ({ ...stale, status: 'held' });
+    row.status = 'awarded';
+    expect(await decide.execute({ referralId: row.id, decision: 'refuse', actorId: 'a', reason: 'late' })).toMatchObject({ ok: false, code: 'NOT_HELD' });
+    expect(row.status).toBe('awarded');
   });
 });
 

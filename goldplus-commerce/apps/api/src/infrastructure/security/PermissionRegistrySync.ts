@@ -29,13 +29,16 @@ import { ROLE_PERMISSION_BASELINES } from '@goldplus/shared';
 
 const SYNC_LOCK_KEY = 74123001;
 
+/** The audit action that marks a governance role's baseline as seeded (once, ever). */
+export const BASELINE_SEEDED_ACTION = 'permission_registry.baseline_seeded';
+
 export interface PermissionSyncSummary {
   permissionsInserted: number;
   rolesCreated: number;
   adminGrantsAdded: number;
   legacyGrantsAdded: number;
   legalReviewerGrantsAdded: number;
-  /** Baseline grants written to governance roles that held NO permission at all (first seed only). */
+  /** Baseline grants written to governance roles never seeded before (first seed only, marked in the audit log). */
   baselineGrantsAdded: number;
   bootstrapAdminAssigned: boolean;
   permissionsBeyondRegistry: number;
@@ -100,11 +103,26 @@ export async function syncPermissionRegistry(): Promise<PermissionSyncSummary> {
       if (roleName === PLATFORM_ADMINISTRATOR_ROLE) continue;
       const roleId = await findRoleId(roleName);
       if (!roleId) continue;
+      // A role is seeded ONCE, recorded by a marker audit row. "Holds nothing" alone used to mean "never seeded",
+      // so a role an operator emptied on purpose got its whole baseline back at the next boot (2026-11 review).
+      const [marked] = await tx
+        .select({ id: auditLogs.id })
+        .from(auditLogs)
+        .where(sql`${auditLogs.action} = ${BASELINE_SEEDED_ACTION} and ${auditLogs.entityId} = ${roleId}`)
+        .limit(1);
+      if (marked) continue;
+      const markSeeded = (grants: number) => tx.insert(auditLogs).values({
+        actorId: null, action: BASELINE_SEEDED_ACTION, entity: 'role', entityId: roleId, previousState: null, newState: { role: roleName, grants },
+      });
       const [held] = await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(rolePermissions)
         .where(eq(rolePermissions.roleId, roleId));
-      if (Number(held?.n ?? 0) > 0) continue;
+      if (Number(held?.n ?? 0) > 0) {
+        // Seeded before the marker existed (or set by hand): record it, so emptying it later is respected.
+        await markSeeded(0);
+        continue;
+      }
       const baselineIds = (ROLE_PERMISSION_BASELINES[roleName] ?? [])
         .map((code) => existingByCode.get(code))
         .filter((v): v is string => Boolean(v));
@@ -114,6 +132,7 @@ export async function syncPermissionRegistry(): Promise<PermissionSyncSummary> {
         .values(baselineIds.map((permissionId) => ({ roleId, permissionId })))
         .onConflictDoNothing()
         .returning({ permissionId: rolePermissions.permissionId });
+      await markSeeded(granted.length);
       baselineGrantsAdded += granted.length;
       if (roleName === 'LEGAL_REVIEWER') legalReviewerGrantsAdded = granted.length;
     }

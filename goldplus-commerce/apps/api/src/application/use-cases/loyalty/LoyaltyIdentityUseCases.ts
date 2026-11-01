@@ -3,7 +3,7 @@ import { ILoyaltyCompletionRepository } from '../../ports/ILoyaltyCompletion';
 import { IAuditRepository } from '../../ports/IAuditRepository';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import { normalizeUgandanPhone } from '@goldplus/shared';
-import { earnExpiresAt } from '../../../domain/loyalty/LoyaltyLedger';
+import { computeEarnPoints, earnExpiresAt } from '../../../domain/loyalty/LoyaltyLedger';
 
 type Fail = { ok: false; code: string; message: string };
 const fail = (code: string, message: string): Fail => ({ ok: false, code, message });
@@ -245,11 +245,10 @@ export class BackfillGuestOrdersUseCase {
     let credited = 0;
     for (const order of orders) {
       if (order.buyerType !== 'retail') continue; // PART K exclusion holds here too
-      const points = Math.min(
-        Math.floor(order.totalUgx / 1000) * config.earnRatePer1000Ugx,
-        capRemaining - pointsTotal,
-      );
-      if (points <= 0) break; // per-customer cap reached
+      // The same earn rule (and per-entry ceiling) a signed-in order gets.
+      if (capRemaining - pointsTotal <= 0) break; // per-customer cap reached
+      const points = Math.min(computeEarnPoints(order.totalUgx, config), capRemaining - pointsTotal);
+      if (points <= 0) continue; // this order earns nothing (under UGX 1,000); later ones still can
       const earnedOn = new Date();
       const expiresAt = earnExpiresAt(earnedOn, config.expiryDays);
       try {

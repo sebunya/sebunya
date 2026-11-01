@@ -164,11 +164,21 @@ export class DrizzleLoyaltyDrawRepository implements ILoyaltyDrawRepository {
       .onConflictDoNothing();
   }
 
-  async incrementPrizeAward(prizeId: string): Promise<void> {
-    await db
+  async incrementPrizeAward(prizeId: string): Promise<boolean> {
+    const rows = await db
       .update(loyaltyDrawPrizes)
       .set({ awardsMade: sql`${loyaltyDrawPrizes.awardsMade} + 1` })
-      .where(eq(loyaltyDrawPrizes.id, prizeId));
+      .where(and(eq(loyaltyDrawPrizes.id, prizeId),
+        sql`(${loyaltyDrawPrizes.maxAwards} is null or ${loyaltyDrawPrizes.awardsMade} < ${loyaltyDrawPrizes.maxAwards})`))
+      .returning({ id: loyaltyDrawPrizes.id });
+    return rows.length > 0;
+  }
+
+  async releasePrizeAward(prizeId: string): Promise<void> {
+    await db
+      .update(loyaltyDrawPrizes)
+      .set({ awardsMade: sql`${loyaltyDrawPrizes.awardsMade} - 1` })
+      .where(and(eq(loyaltyDrawPrizes.id, prizeId), sql`${loyaltyDrawPrizes.awardsMade} > 0`));
   }
 
   async incrementCampaignTotals(campaignId: string, pointsAwarded: number, tokensGranted: number): Promise<void> {
@@ -198,6 +208,16 @@ export class DrizzleLoyaltyDrawRepository implements ILoyaltyDrawRepository {
       .update(loyaltyDrawTokens)
       .set({ status: 'expired', expiresAt: now })
       .where(and(eq(loyaltyDrawTokens.id, tokenId), eq(loyaltyDrawTokens.status, 'available')))
+      .returning({ id: loyaltyDrawTokens.id });
+    return rows.length > 0;
+  }
+
+  async voidPlayedUnawardedToken(tokenId: string, now: Date): Promise<boolean> {
+    const rows = await db
+      .update(loyaltyDrawTokens)
+      .set({ status: 'expired', expiresAt: now })
+      .where(and(eq(loyaltyDrawTokens.id, tokenId), eq(loyaltyDrawTokens.status, 'played'),
+        sql`not exists (select 1 from loyalty_draw_results r where r.token_id = ${loyaltyDrawTokens.id})`))
       .returning({ id: loyaltyDrawTokens.id });
     return rows.length > 0;
   }

@@ -69,7 +69,11 @@ TLIST=$(echo $TABLES | tr ' ' ',')
 psql_run <<SQL
 begin;
 set local lock_timeout = '10s';
+-- Dealer accounts are a staff decision about the customer, not test data: keep the flag across the reset
+-- (2026-11 review: truncating loyalty_accounts dropped every is_dealer flag).
+create temp table keep_dealers on commit drop as select user_id from loyalty_accounts where is_dealer;
 truncate $TLIST;
+insert into loyalty_accounts (user_id, is_dealer) select user_id, true from keep_dealers;
 update outbox_events
    set is_processed = true, status = 'processed', processed_at = now(),
        last_error = 'CANCELLED: loyalty reset, all orders were tests (2026-10-07)'
@@ -78,10 +82,14 @@ update outbox_events
 -- counters are recorded here rather than in the dump.
 insert into audit_logs (actor_id, action, entity, entity_id, previous_state, new_state)
 select null, 'LOYALTY_TEST_DATA_RESET', 'loyalty_programme', gen_random_uuid(),
-       jsonb_build_object('scratchCardCampaigns', coalesce(jsonb_agg(jsonb_build_object('id', id, 'pointsAwarded', points_awarded, 'tokensGranted', tokens_granted)), '[]'::jsonb)),
+       jsonb_build_object('scratchCardCampaigns', coalesce(jsonb_agg(jsonb_build_object('id', id, 'pointsAwarded', points_awarded, 'tokensGranted', tokens_granted)), '[]'::jsonb),
+                          'prizeAwardsMade', (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'awardsMade', awards_made)), '[]'::jsonb) from loyalty_draw_prizes),
+                          'dealerAccounts', (select count(*) from keep_dealers)),
        jsonb_build_object('reason', 'every order so far was a test', 'backup', '$DUMP')
 from loyalty_draw_campaigns;
 update loyalty_draw_campaigns set points_awarded = 0, tokens_granted = 0;
+-- Prize caps count awards from the results just emptied: without this a capped prize stayed "sold out".
+update loyalty_draw_prizes set awards_made = 0;
 commit;
 SQL
 

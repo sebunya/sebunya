@@ -281,7 +281,22 @@ const shareSource = opened ? {
       if (++moves % 8 === 0 && cleared() > 0.45) reveal();
     };
     paint();
-    window.addEventListener('resize', () => { if (!revealed) paint(); });
+    // A phone fires resize when its address bar slides away mid-scratch. Repainting then wiped what was scratched
+    // (2026-11 review): repaint only when the panel really changed size, and carry the scratched area across.
+    window.addEventListener('resize', () => {
+      if (revealed || !ctx) return;
+      const r = canvas.getBoundingClientRect();
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      if (Math.round(r.width * dpr) === canvas.width && Math.round(r.height * dpr) === canvas.height) return;
+      const before = document.createElement('canvas');
+      before.width = canvas.width; before.height = canvas.height;
+      before.getContext('2d')?.drawImage(canvas, 0, 0);
+      paint();
+      if (moves === 0) return;
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.drawImage(before, 0, 0, r.width, r.height);
+      ctx.globalCompositeOperation = 'source-over';
+    });
     canvas.addEventListener('pointerdown', (e) => { drawing = true; last = null; canvas.setPointerCapture(e.pointerId); scratchAt(e); });
     canvas.addEventListener('pointermove', (e) => { if (drawing) scratchAt(e); });
     const stop = () => { drawing = false; last = null; if (!revealed && cleared() > 0.45) reveal(); };

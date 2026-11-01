@@ -88,9 +88,12 @@ export interface IGiftCardPurchaseRepository {
   byTrackingId(trackingId: string): Promise<GiftCardPurchaseRecord | null>;
   /** The provider transaction opened for this purchase (once; a second call changes nothing). */
   recordStarted(id: string, trackingId: string, redirectUrl: string): Promise<void>;
-  /** Purchases this buyer phone (last nine digits) started, and paid in UGX, since `since`. */
+  /**
+   * Purchases this buyer phone (last nine digits) started since `since`, and the UGX they hold: paid or issued, plus
+   * any still awaiting a live payment (2026-11 review: unpaid starts count, or parallel starts beat the daily limit).
+   */
   buyerActivity(buyerPhone: string, since: Date): Promise<{ started: number; paidUgx: number }>;
-  /** UGX paid for online gift cards by everyone since `since` (the shop-wide daily ceiling). */
+  /** UGX paid, or awaiting a live payment, for online gift cards by everyone since `since` (the shop-wide daily ceiling). */
   paidSince(since: Date): Promise<number>;
   /**
    * awaiting_payment (or failed / abandoned: a payment Pesapal confirms after we gave up) -> paid, with the provider's confirmation, and (in the same transaction) the buyer's

@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { requireStepUp } from '../../middleware/requireStepUp';
 import { isRedemptionHalted } from '../../../../application/use-cases/loyalty/LoyaltyCompletionUseCases';
 import { Registry } from '../../../../infrastructure/Registry';
 import { CreateAuditLogUseCase } from '../../../../application/use-cases/audit/CreateAuditLogUseCase';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
-import { csvCell } from '../../csv';
+import { csvCell, csvDate } from '../../csv';
 
 // Audit entity ids are uuids; the loyalty config is a singleton, so it gets a
 // fixed, well-known uuid rather than a free-text marker.
@@ -218,7 +219,8 @@ export default routes;
 // ── Loyalty completion admin (brief PARTs D.4/K/L/N/O, stages 5–14) ────────
 // Every liability mutation stays on a MUTATING permission with audit.
 
-routes.post('/adjust', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+// Points are a cash liability: creating them needs the same fresh second factor as creating store credit (2026-11 review).
+routes.post('/adjust', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), requireStepUp('payment_refund'), async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body?.userId || body?.points === undefined || !body?.reason || !body?.idempotencyKey) {
     return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'userId, points, reason and idempotencyKey are required.' } } satisfies ApiResponse<never>, 400);
@@ -521,7 +523,10 @@ routes.get('/liability', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), asyn
 routes.get('/finance-export.csv', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const rows = await Registry.getInstance().loyaltyCompletionRepo.liabilitySnapshotsForExport();
   const header = 'snapshot_date,points_outstanding,points_issued,points_redeemed,points_expired,points_clawed_back,pending_points,point_value_ugx,liability_ugx,breakage_estimate_bps,redemption_rate_bps';
-  const lines = rows.map((r) => header.split(',').map((k) => r[k] ?? '').join(','));
+  // bigint/numeric columns arrive as strings: written as numbers, so a negative figure is not mistaken for a formula.
+  const cell = (k: string, v: unknown) => k === 'snapshot_date' ? csvDate(v)
+    : csvCell(typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v);
+  const lines = rows.map((r) => header.split(',').map((k) => cell(k, r[k])).join(','));
   return c.text([header, ...lines].join('\n'), 200, { 'Content-Type': 'text/csv' });
 });
 

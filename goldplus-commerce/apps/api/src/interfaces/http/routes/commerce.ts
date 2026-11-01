@@ -267,7 +267,8 @@ routes.get('/loyalty-programme', async (c) => {
                 }
               : null,
             birthday: programme.birthdayPoints,
-            streak: streakMission
+            // No window means streaks are off in the engine (missionProgress): never advertise one then.
+            streak: streakMission && programme.streakWindowDays !== null
               ? { orders: streakMission.threshold, windowDays: programme.streakWindowDays, points: streakMission.rewardPoints }
               : null,
             // Every other active mission bonus (Five Deliveries, product checks).

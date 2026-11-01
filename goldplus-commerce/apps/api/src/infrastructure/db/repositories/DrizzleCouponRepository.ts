@@ -123,33 +123,49 @@ export class DrizzleCouponRepository implements ICouponRepository {
           })
           .onConflictDoNothing({ target: [couponRedemptions.couponId, couponRedemptions.orderId] })
           .returning({ id: couponRedemptions.id });
-        if (inserted.length === 0) {
-          const existing = await tx
-            .select({ id: couponRedemptions.id })
-            .from(couponRedemptions)
-            .where(and(eq(couponRedemptions.couponId, input.couponId), eq(couponRedemptions.orderId, input.orderId)))
-            .limit(1);
-          return { ok: true, alreadyRedeemed: true, redemptionId: existing[0].id };
-        }
-
         // 2. Conditional counter gate. Under READ COMMITTED a concurrent request
         //    that lost the race re-reads the committed count and the predicate
         //    now fails, so exactly one of N racers passes. Never read-then-write.
         const now = new Date();
-        const gate = await tx
-          .update(couponCodes)
-          .set({ redemptionCount: sql`${couponCodes.redemptionCount} + 1` })
-          .where(sql`${couponCodes.id} = ${input.couponId}
-            AND ${couponCodes.isActive} = true
-            AND (${couponCodes.maxRedemptions} IS NULL OR ${couponCodes.redemptionCount} < ${couponCodes.maxRedemptions})
-            AND (${couponCodes.startsAt} IS NULL OR ${couponCodes.startsAt} <= ${now})
-            AND (${couponCodes.expiresAt} IS NULL OR ${couponCodes.expiresAt} > ${now})`)
-          .returning({ id: couponCodes.id });
-        if (gate.length === 0) {
-          // Roll the slot insert back and report why the gate closed.
-          const c = await tx.select().from(couponCodes).where(eq(couponCodes.id, input.couponId)).limit(1);
-          throw new CouponGateError(this.gateReason(c[0], now));
+        const takeSlot = async () => {
+          const gate = await tx
+            .update(couponCodes)
+            .set({ redemptionCount: sql`${couponCodes.redemptionCount} + 1` })
+            .where(sql`${couponCodes.id} = ${input.couponId}
+              AND ${couponCodes.isActive} = true
+              AND (${couponCodes.maxRedemptions} IS NULL OR ${couponCodes.redemptionCount} < ${couponCodes.maxRedemptions})
+              AND (${couponCodes.startsAt} IS NULL OR ${couponCodes.startsAt} <= ${now})
+              AND (${couponCodes.expiresAt} IS NULL OR ${couponCodes.expiresAt} > ${now})`)
+            .returning({ id: couponCodes.id });
+          if (gate.length === 0) {
+            // Roll the slot insert back and report why the gate closed.
+            const c = await tx.select().from(couponCodes).where(eq(couponCodes.id, input.couponId)).limit(1);
+            throw new CouponGateError(this.gateReason(c[0], now));
+          }
+        };
+
+        if (inserted.length === 0) {
+          const existing = await tx
+            .select({ id: couponRedemptions.id, wasReversed: couponRedemptions.wasReversed })
+            .from(couponRedemptions)
+            .where(and(eq(couponRedemptions.couponId, input.couponId), eq(couponRedemptions.orderId, input.orderId)))
+            .for('update')
+            .limit(1);
+          // A redemption reversed earlier gave its slot back to the coupon. Using the code again on the same order
+          // must take a slot again through the gate (2026-11 review: it was reported as already redeemed, so the
+          // order kept the discount while the count let another customer past the limit).
+          if (existing[0].wasReversed) {
+            await takeSlot();
+            await tx
+              .update(couponRedemptions)
+              .set({ wasReversed: false, reversedAt: null, discountAmountUgx: input.discountAmountUgx, customerIdentityHash: input.customerIdentityHash })
+              .where(eq(couponRedemptions.id, existing[0].id));
+            return { ok: true, alreadyRedeemed: false, redemptionId: existing[0].id };
+          }
+          return { ok: true, alreadyRedeemed: true, redemptionId: existing[0].id };
         }
+
+        await takeSlot();
         return { ok: true, alreadyRedeemed: false, redemptionId: inserted[0].id };
       });
     } catch (err) {

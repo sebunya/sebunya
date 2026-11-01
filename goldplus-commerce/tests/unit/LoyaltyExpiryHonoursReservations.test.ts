@@ -53,14 +53,32 @@ describe('a failed consume at delivery is reported and stops haunting the balanc
     expect(completion.recordFraudSignal).toHaveBeenCalledWith(expect.objectContaining({ signalType: 'REDEMPTION_CARRIED_NEGATIVE' }));
   });
 
-  it('any other refusal (a merged account) releases the stuck reservation and records an ops signal', async () => {
+  it('an account merged after the reservation: the survivor pays; nothing is released (2026-11 review)', async () => {
     const completion = completionFake();
-    const repo = { appendDebitIfAvailable: vi.fn().mockResolvedValue({ ok: false, code: 'ACCOUNT_MERGED' }), append: vi.fn() };
+    const repo = {
+      appendDebitIfAvailable: vi.fn()
+        .mockResolvedValueOnce({ ok: false, code: 'ACCOUNT_MERGED' })
+        .mockResolvedValueOnce({ ok: true, entry: { id: 'e-surv' } }),
+      append: vi.fn(),
+      mergedInto: vi.fn().mockResolvedValue('survivor'),
+    };
+    const out = await new ConsumeRedemptionUseCase(repo as never, completion as never).settleOnDelivery('o1');
+    expect(out).toEqual({ ok: true });
+    expect(repo.appendDebitIfAvailable).toHaveBeenLastCalledWith(expect.objectContaining({ accountId: 'survivor', points: -1_000, idempotencyKey: 'redeem:r1' }), expect.any(Date), expect.anything());
+    expect(completion.markReservation).toHaveBeenCalledWith('r1', 'applied', 'e-surv');
+    expect(completion.markReservation).not.toHaveBeenCalledWith('r1', 'released');
+    expect(completion.recordFraudSignal).toHaveBeenCalledWith(expect.objectContaining({ signalType: 'REDEMPTION_SETTLED_ON_SURVIVOR' }));
+  });
+
+  it('a merged account whose survivor cannot be found is reported, not released and not called an idempotency conflict', async () => {
+    const completion = completionFake();
+    const repo = { appendDebitIfAvailable: vi.fn().mockResolvedValue({ ok: false, code: 'ACCOUNT_MERGED' }), append: vi.fn(), mergedInto: vi.fn().mockResolvedValue(null) };
     const out = await new ConsumeRedemptionUseCase(repo as never, completion as never).settleOnDelivery('o1');
     expect(out).toMatchObject({ ok: false, code: 'ACCOUNT_MERGED' });
+    expect((out as { message: string }).message).not.toMatch(/idempotency/i);
     expect(repo.append).not.toHaveBeenCalled();
     expect(completion.recordFraudSignal).toHaveBeenCalledWith(expect.objectContaining({ signalType: 'REDEMPTION_CONSUME_FAILED_AT_DELIVERY' }));
-    expect(completion.markReservation).toHaveBeenCalledWith('r1', 'released');
+    expect(completion.markReservation).not.toHaveBeenCalled();
   });
 });
 

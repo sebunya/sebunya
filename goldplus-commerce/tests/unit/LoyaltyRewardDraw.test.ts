@@ -306,7 +306,13 @@ class FakeDraws {
   }
   async incrementPrizeAward(prizeId: string) {
     const p = this.prizes.find((x) => x.id === prizeId);
-    if (p) p.awardsMade += 1;
+    if (!p || (p.maxAwards !== null && p.awardsMade >= p.maxAwards)) return false;
+    p.awardsMade += 1;
+    return true;
+  }
+  async releasePrizeAward(prizeId: string) {
+    const p = this.prizes.find((x) => x.id === prizeId);
+    if (p && p.awardsMade > 0) p.awardsMade -= 1;
   }
   async incrementCampaignTotals(_id: string, points: number) {
     this.campaign.pointsAwarded += points;
@@ -446,6 +452,44 @@ describe('playing a card', () => {
     await playUc(9999).execute({ userId: 'u1', tokenId });
     expect(draws.campaign.pointsAwarded).toBe(1000);
     expect(draws.prizes.find((p) => p.id === 'p1000')!.awardsMade).toBe(1);
+  });
+
+  it('two plays racing for the last of a capped prize: the loser draws again from what is left (2026-11 review)', async () => {
+    const tokenId = await grantOne();
+    const top = draws.prizes.find((p) => p.id === 'p1000')!;
+    top.maxAwards = 1;
+    top.awardsMade = 1; // another play just took the last one...
+    const stale = draws.prizes.map((p) => ({ ...p, awardsMade: p.id === 'p1000' ? 0 : p.awardsMade }));
+    const fresh = draws.listPrizes.bind(draws);
+    let calls = 0;
+    (draws as any).listPrizes = async () => (++calls === 1 ? stale : fresh()); // ...after this play read the list
+    const rolls = [9999, 0];
+    const uc = new PlayDrawTokenUseCase(completion as any, draws as any, ledger as any, () => rolls.shift()!, async () => undefined);
+    expect(await uc.execute({ userId: 'u1', tokenId })).toMatchObject({ ok: true, points: 25 });
+    expect(top.awardsMade).toBe(1);
+    expect(ledger.pointsFor('u1')).toBe(25);
+  });
+
+  it('a refund that cancels the card mid-play makes the play take its prize back (2026-11 review)', async () => {
+    const tokenId = await grantOne();
+    const recordResult = draws.recordResult.bind(draws);
+    (draws as any).recordResult = async (input: any) => { await recordResult(input); draws.tokens.get(tokenId)!.status = 'expired'; };
+    (ledger as any).reverseEntry = async (entryId: string) => {
+      const e = ledger.entries.find((x: any) => x.id === entryId)!;
+      ledger.entries.push({ ...e, id: `rev-${entryId}`, points: -e.points, idempotencyKey: `reversal:${entryId}` });
+      return { ok: true };
+    };
+    expect(await playUc(9999).execute({ userId: 'u1', tokenId })).toMatchObject({ ok: false, code: 'TOKEN_REVOKED' });
+    expect(ledger.pointsFor('u1')).toBe(0);
+    expect(draws.prizes.find((p) => p.id === 'p1000')!.awardsMade).toBe(0);
+    expect(draws.campaign.pointsAwarded).toBe(0);
+  });
+
+  it('gives the prize slot back when the award fails after taking it', async () => {
+    const tokenId = await grantOne();
+    ledger.failNext = true;
+    await expect(playUc(9999).execute({ userId: 'u1', tokenId })).rejects.toThrow('LEDGER_DOWN');
+    expect(draws.prizes.find((p) => p.id === 'p1000')!.awardsMade).toBe(0);
   });
 });
 

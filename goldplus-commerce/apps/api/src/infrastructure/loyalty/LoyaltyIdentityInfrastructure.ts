@@ -84,16 +84,19 @@ export class DrizzleLoyaltyIdentityRepository implements ILoyaltyIdentityReposit
   }
 
   async guestOrdersForPhone(phoneE164: string, lookbackDays: number) {
-    // Exact-match on the E.164 and the local 0-prefixed form — orders store
-    // whatever the customer typed; both shapes are the SAME verified number.
-    const local = phoneE164.replace('+256', '0');
+    // Orders store whatever the customer typed ('0772 123 456', '256772123456', '+256-772…'): match on the
+    // normalised number, the same rule the pending-points read uses (2026-11 review: an exact match showed the
+    // points as pending and then never backfilled them).
+    const last9 = phoneE164.replace(/\D/g, '').slice(-9);
+    if (!/^\+256\d{9}$/.test(phoneE164)) return [];
     const rows = (await db.execute(sql`
       select id, total_amount, buyer_type from orders
       where user_id is null
         and ${LOYALTY_PAYMENT_QUALIFIES_SQL}
         and status in ('delivered', 'completed')
         and created_at > now() - (${lookbackDays} || ' days')::interval
-        and (customer_phone = ${phoneE164} or customer_phone = ${local})
+        and regexp_replace(customer_phone, '[\\s().-]', '', 'g') ~ '^(\\+?256|0)?[0-9]{9}$'
+        and right(regexp_replace(customer_phone, '\\D', '', 'g'), 9) = ${last9}
       -- Oldest first, so which orders fill the per-customer cap is deterministic.
       order by created_at asc, id asc`)) as unknown as Array<{
       id: string;

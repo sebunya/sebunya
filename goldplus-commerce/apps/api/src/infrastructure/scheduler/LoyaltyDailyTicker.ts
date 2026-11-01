@@ -39,25 +39,48 @@ const START_DELAY_MS = 90 * 1000;
 let timer: NodeJS.Timeout | null = null;
 let running = false;
 
+/** One step of the sweep: a failure is logged and reported as the step's result, and the next step still runs. */
+async function isolated<T>(step: string, run: () => Promise<T>): Promise<T | { error: string }> {
+  try {
+    return await run();
+  } catch (error) {
+    const message = (error as Error)?.message ?? String(error);
+    // eslint-disable-next-line no-console
+    console.error("[loyalty-sweep] step failed", step, message);
+    return { error: message };
+  }
+}
+
+/**
+ * Every step in its own try/catch (2026-11 review): the expiry/liability sweep used to run bare, so one throw from it
+ * (a statement timeout on one account) skipped birthdays, missions, tiers, scratch-card expiry and the
+ * control-totals reconciliation, every 6 hours until fixed.
+ */
+export async function runLoyaltySweepOnce(registry: Pick<Registry,
+  'runLoyaltyDailySweepUseCase' | 'awardBirthdayPointsUseCase' | 'catchUpMissionAwardsUseCase' | 'evaluateTiersUseCase' | 'loyaltyDrawRepo'
+> = Registry.getInstance(), reconcile: (now: Date) => Promise<unknown> = reconcileControlTotals): Promise<Record<string, unknown>> {
+  const result = await isolated('sweep', () => registry.runLoyaltyDailySweepUseCase.execute(new Date()));
+  // 0087: birthday awards (idempotent per user+year) and tier evaluation ride the same sweep.
+  const birthdays = await isolated('birthdays', () => registry.awardBirthdayPointsUseCase.execute(new Date()));
+  // Missions completed by events that already passed (a mission activated
+  // after customers qualified). Before tiers, so a bonus counts today.
+  const missions = await isolated('missions', () => registry.catchUpMissionAwardsUseCase.execute());
+  const tiers = await isolated('tiers', () => registry.evaluateTiersUseCase.execute());
+  // 0088: unplayed scratch cards expire on their own clock.
+  const drawTokensExpired = await isolated('drawTokens', () => registry.loyaltyDrawRepo.expireTokensDueBefore(new Date()));
+  // DoD #1: a closed day's ledger position must never change.
+  const reconciliation = await isolated('reconciliation', () => reconcile(new Date()));
+  const summary = { sweep: result, birthdays, missions, tiers, drawTokensExpired, reconciliation };
+  // eslint-disable-next-line no-console
+  console.log('[loyalty-sweep]', JSON.stringify(summary));
+  return summary;
+}
+
 async function runOnce(): Promise<void> {
   if (running) return;
   running = true;
   try {
-    const registry = Registry.getInstance();
-    const result = await registry.runLoyaltyDailySweepUseCase.execute(new Date());
-    // 0087: birthday awards (idempotent per user+year) and tier evaluation
-    // ride the same sweep — each isolated so one failure never stops the rest.
-    const birthdays = await registry.awardBirthdayPointsUseCase.execute(new Date()).catch(() => ({ awarded: -1 }));
-    // Missions completed by events that already passed (a mission activated
-    // after customers qualified). Before tiers, so a bonus counts today.
-    const missions = await registry.catchUpMissionAwardsUseCase.execute().catch(() => ({ candidates: -1, awarded: -1 }));
-    const tiers = await registry.evaluateTiersUseCase.execute().catch(() => ({ evaluated: -1, changed: -1 }));
-    // 0088: unplayed scratch cards expire on their own clock.
-    const drawTokensExpired = await registry.loyaltyDrawRepo.expireTokensDueBefore(new Date()).catch(() => -1);
-    // DoD #1: a closed day's ledger position must never change.
-    const reconciliation = await reconcileControlTotals(new Date()).catch((error) => ({ checked: -1, discrepancies: [], error: (error as Error).message }));
-    // eslint-disable-next-line no-console
-    console.log('[loyalty-sweep]', JSON.stringify({ ...result, birthdays, missions, tiers, drawTokensExpired, reconciliation }));
+    await runLoyaltySweepOnce();
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('[loyalty-sweep] failed', (error as Error).message);

@@ -155,7 +155,8 @@ describeIf('store credit and gift cards (real PostgreSQL)', () => {
     await raw`update orders set total_amount = 42_000 where id = ${o}`; // delivery fee corrected down
     expect(await repo.captureForOrder(o, new Date())).toBe(42_000);
     expect(await balance(card.id)).toBe(58_000);
-    expect(Number((await raw`select store_credit_applied_ugx from orders where id = ${o}`)[0].store_credit_applied_ugx)).toBe(42_000);
+    expect(Number((await raw`select store_credit_applied_ugx from orders where id = ${o}`)[0].store_credit_applied_ugx)).toBe(42_000);    // The trimmed part never paid for the order, so it is not a refund: no points are clawed back for it (2026-11 review).
+    expect((await repo.refundedSoFarForOrder(o)).refundedUgx).toBe(0);
   });
 
   it('the database refuses to rewrite or delete card money', async () => {

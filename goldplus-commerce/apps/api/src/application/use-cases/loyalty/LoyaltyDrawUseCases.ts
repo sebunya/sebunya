@@ -59,7 +59,13 @@ export interface ILoyaltyDrawRepository {
     ledgerEntryId: string | null;
     prizeSnapshot: unknown;
   }): Promise<void>;
-  incrementPrizeAward(prizeId: string): Promise<void>;
+  /**
+   * Takes one award of this prize, only while it has capacity (awards_made < max_awards, checked in the same write).
+   * False when another play took the last one first (2026-11 review: two plays could both win a one-left prize).
+   */
+  incrementPrizeAward(prizeId: string): Promise<boolean | void>;
+  /** Gives back an award taken by incrementPrizeAward when the play then failed before paying. */
+  releasePrizeAward?(prizeId: string): Promise<void>;
   incrementCampaignTotals(campaignId: string, pointsAwarded: number, tokensGranted: number): Promise<void>;
   findResultByToken(tokenId: string): Promise<{ pointsAwarded: number; prizeId: string } | null>;
   expireTokensDueBefore(now: Date): Promise<number>;
@@ -203,16 +209,25 @@ export class PlayDrawTokenUseCase {
     // already been made: replaying it hit the same idempotency key, recorded a
     // duplicate result and returned a 500, so the card could never be used.
     let awarded = false;
+    let takenPrizeId: string | null = null;
     try {
       const campaign = await this.draws.findCampaignById(existing.campaignId);
       if (!campaign) throw new Error('CAMPAIGN_MISSING');
-      const prizes = await this.draws.listPrizes(campaign.id);
-      const eligible = availablePrizes(prizes);
-      const total = totalWeight(eligible);
-      if (total <= 0) throw new Error('NO_PRIZES_AVAILABLE');
-
-      const snapshot = prizeSnapshot(prizes);
-      const prize = selectPrize(prizes, this.randomInt(total));
+      // The prize is taken (capacity checked in the same write) before any points move. Losing the last one of a
+      // prize to another play means drawing again from what is left.
+      let prize: DrawPrize | null = null;
+      let snapshot: ReturnType<typeof prizeSnapshot> | null = null;
+      for (let attempt = 0; attempt < 3 && !prize; attempt++) {
+        const prizes = await this.draws.listPrizes(campaign.id);
+        const total = totalWeight(availablePrizes(prizes));
+        if (total <= 0) throw new Error('NO_PRIZES_AVAILABLE');
+        const pick = selectPrize(prizes, this.randomInt(total));
+        if (!pick) throw new Error('NO_PRIZES_AVAILABLE');
+        if ((await this.draws.incrementPrizeAward(pick.id)) === false) continue;
+        prize = pick;
+        snapshot = prizeSnapshot(prizes);
+        takenPrizeId = pick.id;
+      }
       if (!prize) throw new Error('NO_PRIZES_AVAILABLE');
 
       const account = await this.loyalty.getOrCreateAccount(input.userId);
@@ -239,7 +254,14 @@ export class PlayDrawTokenUseCase {
         ledgerEntryId: entry.id,
         prizeSnapshot: snapshot,
       });
-      await this.draws.incrementPrizeAward(prize.id);
+      // The order this card came from may have been refunded while it was being played: the refund cancels a card
+      // it finds mid-play (no result yet), and the prize is taken back here (2026-11 review).
+      const after = await this.draws.findToken(claimed.id);
+      if (after && after.status !== 'played') {
+        await this.loyalty.reverseEntry(entry.id, 'Scratch card prize reversed: order refunded while the card was played');
+        await this.draws.releasePrizeAward?.(prize.id).catch(() => undefined);
+        return fail('TOKEN_REVOKED', 'This card was cancelled because the order it came with was refunded.');
+      }
       await this.draws.incrementCampaignTotals(campaign.id, prize.pointsAwarded, 0);
       await this.notify({ userId: input.userId, points: prize.pointsAwarded, label: prize.label }).catch(() => undefined);
 
@@ -247,6 +269,7 @@ export class PlayDrawTokenUseCase {
     } catch (error) {
       // The customer keeps their card only if nothing was awarded yet.
       if (!awarded) await this.draws.releaseToken(input.tokenId).catch(() => undefined);
+      if (!awarded && takenPrizeId) await this.draws.releasePrizeAward?.(takenPrizeId).catch(() => undefined);
       if ((error as Error).message === 'NO_PRIZES_AVAILABLE') {
         return fail('NO_PRIZES_AVAILABLE', 'No prizes are currently available. Your card has been kept.');
       }
@@ -325,6 +348,11 @@ export interface DrawRefundPort {
   drawsForSource(sourceType: string, sourceId: string): Promise<Array<{ tokenId: string; status: string; ledgerEntryId: string | null }>>;
   /** Voids a card nobody has played yet; false when it was played (or gone) first. */
   voidAvailableToken(tokenId: string, now: Date): Promise<boolean>;
+  /**
+   * Cancels a card that is being played right now (claimed, no result recorded yet); false once a result exists.
+   * The play notices after recording its result and takes the prize back itself.
+   */
+  voidPlayedUnawardedToken?(tokenId: string, now: Date): Promise<boolean>;
 }
 
 /**
@@ -348,10 +376,16 @@ export class ReverseDrawOnRefundUseCase {
         voided++;
         continue;
       }
+      // Claimed by a play that has not recorded its prize yet: cancel the card; that play reverses its own prize.
+      if (draw.status !== 'expired' && !draw.ledgerEntryId && this.draws.voidPlayedUnawardedToken
+        && (await this.draws.voidPlayedUnawardedToken(draw.tokenId, this.now()))) {
+        voided++;
+        continue;
+      }
       // Played (possibly a moment ago, by the customer): take the prize back.
-      const [latest] = draw.status === 'available'
-        ? (await this.draws.drawsForSource('order', input.orderId)).filter((d) => d.tokenId === draw.tokenId)
-        : [draw];
+      const [latest] = draw.ledgerEntryId
+        ? [draw]
+        : (await this.draws.drawsForSource('order', input.orderId)).filter((d) => d.tokenId === draw.tokenId);
       if (latest?.ledgerEntryId) {
         const r = await this.ledger.reverseEntry(latest.ledgerEntryId, `Scratch card prize reversed: order refunded (${input.reason})`.slice(0, 300));
         if (r.ok && !r.replay) reversed++;
