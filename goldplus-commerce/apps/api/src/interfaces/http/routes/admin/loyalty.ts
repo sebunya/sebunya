@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { isRedemptionHalted } from '../../../../application/use-cases/loyalty/LoyaltyCompletionUseCases';
 import { Registry } from '../../../../infrastructure/Registry';
 import { CreateAuditLogUseCase } from '../../../../application/use-cases/audit/CreateAuditLogUseCase';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
+import { csvCell } from '../../csv';
 
 // Audit entity ids are uuids; the loyalty config is a singleton, so it gets a
 // fixed, well-known uuid rather than a free-text marker.
@@ -35,6 +37,12 @@ routes.get('/operations', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), asy
 routes.post('/accounts/:id/expire', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const registry = Registry.getInstance();
   const accountId = String(c.req.param('id') ?? '');
+  // The same rule the sweep follows: while customers cannot spend points,
+  // none expire. This route skipped it.
+  const config = await registry.loyaltyCompletionRepo.getProgrammeConfig();
+  if (isRedemptionHalted(config, await registry.loyaltyGate.isActive())) {
+    return c.json({ success: false, error: { code: 'REDEMPTION_HALTED', message: 'Redemption is paused, so no points expire. Resume redemption first.' } } satisfies ApiResponse<never>, 409);
+  }
   const entries = await registry.expireLoyaltyPointsUseCase.execute({ accountId });
   for (const entry of entries) {
     await new CreateAuditLogUseCase(registry.auditRepo).execute({
@@ -70,10 +78,14 @@ routes.put('/config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (
 
 routes.post('/entries/:id/reverse', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => ({}));
+  const reason = String(body?.reason ?? '').trim();
+  if (reason.length < 5) {
+    return c.json({ success: false, error: { code: 'REASON_REQUIRED', message: 'Say why this entry is reversed (at least 5 characters). The customer sees it in their history.' } } satisfies ApiResponse<never>, 400);
+  }
   const registry = Registry.getInstance();
   const result = await registry.reverseLoyaltyEntryUseCase.execute({
     entryId: String(c.req.param('id') ?? ''),
-    reason: String(body?.reason ?? ''),
+    reason,
   });
   if (!result.ok) {
     return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, result.code === 'NOT_FOUND' ? 404 : 400);
@@ -88,4 +100,490 @@ routes.post('/entries/:id/reverse', requirePermissions([PERMISSIONS.SETTINGS_MAN
   return c.json({ success: true, data: result.value });
 });
 
+// ---- Gamification scaffold (§32 tail) -----------------------------------
+// Definitions + DRY evaluation over real commerce data. Awards are refused with
+// LOYALTY_DORMANT while loyalty_config.enabled is false — the award ledger stays
+// empty until activation, matching the loyalty core's own rule.
+
+routes.get('/gamification', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const data = await registry.gamificationRepo.listMissions();
+  const loyaltyEnabled = await registry.gamificationRepo.loyaltyEnabled();
+  return c.json({ success: true, data: { ...data, loyaltyEnabled, awardsBlockedReason: loyaltyEnabled ? null : 'LOYALTY_DORMANT' } });
+});
+
+routes.post('/gamification/missions', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const clean = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : '');
+  const key = clean(body?.key, 60).toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  const title = clean(body?.title, 200);
+  const kind = clean(body?.kind, 30);
+  const threshold = Number(body?.threshold);
+  const rewardPoints = Number(body?.rewardPoints) || 0;
+  const { EVALUABLE_MISSION_KINDS, MISSION_REWARD_MAX_POINTS } = await import('../../../../application/use-cases/loyalty/LoyaltyGamificationUseCases');
+  if (!key || !title || !(EVALUABLE_MISSION_KINDS as readonly string[]).includes(kind) || !Number.isInteger(threshold) || threshold < 1
+    || !Number.isInteger(rewardPoints) || rewardPoints < 0 || rewardPoints > MISSION_REWARD_MAX_POINTS) {
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: `key, title, a kind that can complete (${EVALUABLE_MISSION_KINDS.join(', ')}), an integer threshold >= 1 and reward points 0–${MISSION_REWARD_MAX_POINTS} are required.` } }, 400);
+  }
+  const registry = Registry.getInstance();
+  const row = await registry.gamificationRepo.createMission({ key, title, description: clean(body?.description, 500) || null, kind, threshold, rewardPoints, createdBy: (c.get('user') as any).id });
+  if (!row) return c.json({ success: false, error: { code: 'DUPLICATE', message: 'A mission with this key already exists.' } }, 409);
+  const { CreateAuditLogUseCase } = await import('../../../../application/use-cases/audit/CreateAuditLogUseCase');
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({ actorId: (c.get('user') as any).id, action: 'GAMIFICATION_MISSION_CREATED', entity: 'gamification_mission', entityId: row.id, newState: { key, kind, threshold, rewardPoints } });
+  return c.json({ success: true, data: row });
+});
+
+routes.post('/gamification/badges', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const clean = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : '');
+  const key = clean(body?.key, 60).toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  const title = clean(body?.title, 200);
+  if (!key || !title) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'key and title are required.' } }, 400);
+  const registry = Registry.getInstance();
+  const row = await registry.gamificationRepo.createBadge({ key, title, description: clean(body?.description, 500) || null, missionId: typeof body?.missionId === 'string' && body.missionId ? body.missionId : null });
+  if (!row) return c.json({ success: false, error: { code: 'DUPLICATE', message: 'A badge with this key already exists.' } }, 409);
+  const { CreateAuditLogUseCase } = await import('../../../../application/use-cases/audit/CreateAuditLogUseCase');
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({ actorId: (c.get('user') as any).id, action: 'GAMIFICATION_BADGE_CREATED', entity: 'gamification_badge', entityId: row.id, newState: { key, missionId: row.missionId } });
+  return c.json({ success: true, data: row });
+});
+
+// Activate, archive or retune a mission. Awards stay once-ever per customer
+// (ledger key mission:<key>:<user>), so archiving and reactivating never pays
+// twice, and a changed reward applies only to customers who complete later.
+routes.patch('/gamification/missions/:id', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const { EVALUABLE_MISSION_KINDS, MISSION_STATUSES, MISSION_REWARD_MAX_POINTS } = await import('../../../../application/use-cases/loyalty/LoyaltyGamificationUseCases');
+  const patch: { status?: string; threshold?: number; rewardPoints?: number; description?: string | null } = {};
+  if (body?.status !== undefined) {
+    if (!(MISSION_STATUSES as readonly string[]).includes(body.status)) {
+      return c.json({ success: false, error: { code: 'BAD_INPUT', message: `status must be one of ${MISSION_STATUSES.join(', ')}.` } }, 400);
+    }
+    patch.status = body.status;
+  }
+  if (body?.threshold !== undefined) {
+    if (!Number.isInteger(body.threshold) || body.threshold < 1 || body.threshold > 1000) {
+      return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'threshold must be a whole number from 1 to 1000.' } }, 400);
+    }
+    patch.threshold = body.threshold;
+  }
+  if (body?.rewardPoints !== undefined) {
+    if (!Number.isInteger(body.rewardPoints) || body.rewardPoints < 0 || body.rewardPoints > MISSION_REWARD_MAX_POINTS) {
+      return c.json({ success: false, error: { code: 'BAD_INPUT', message: `rewardPoints must be a whole number from 0 to ${MISSION_REWARD_MAX_POINTS}.` } }, 400);
+    }
+    patch.rewardPoints = body.rewardPoints;
+  }
+  if (body?.description !== undefined) {
+    // What the customer reads on their rewards page; it should name the same
+    // number as the threshold, so the two are edited together.
+    if (body.description !== null && typeof body.description !== 'string') {
+      return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'description must be text.' } }, 400);
+    }
+    const text = typeof body.description === 'string' ? body.description.trim().slice(0, 500) : '';
+    patch.description = text || null;
+  }
+  if (Object.keys(patch).length === 0) {
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Nothing to change: send status, threshold, rewardPoints or description.' } }, 400);
+  }
+  const registry = Registry.getInstance();
+  const before = await registry.gamificationRepo.findMission(c.req.param('id') ?? '');
+  if (!before) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Mission not found.' } }, 404);
+  if (patch.status === 'ACTIVE' && !(EVALUABLE_MISSION_KINDS as readonly string[]).includes(before.kind)) {
+    return c.json({ success: false, error: { code: 'NOT_EVALUABLE', message: `A ${before.kind} mission has no data source, so nobody could ever complete it. It cannot be activated.` } }, 400);
+  }
+  const row = await registry.gamificationRepo.updateMission(before.id, patch);
+  const { CreateAuditLogUseCase } = await import('../../../../application/use-cases/audit/CreateAuditLogUseCase');
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: (c.get('user') as any).id,
+    action: 'GAMIFICATION_MISSION_UPDATED',
+    entity: 'gamification_mission',
+    entityId: before.id,
+    previousState: { status: before.status, threshold: before.threshold, rewardPoints: before.rewardPoints, description: before.description },
+    newState: patch,
+  });
+  return c.json({ success: true, data: row });
+});
+
+routes.post('/gamification/missions/:id/dry-evaluate', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const mission = await registry.gamificationRepo.findMission(c.req.param('id') ?? '');
+  if (!mission) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Mission not found.' } }, 404);
+  const result = await registry.gamificationRepo.dryEvaluate(mission);
+  const loyaltyEnabled = await registry.gamificationRepo.loyaltyEnabled();
+  return c.json({ success: true, data: { mission: { id: mission.id, key: mission.key, kind: mission.kind, threshold: mission.threshold }, ...result, awardsBlockedReason: loyaltyEnabled ? null : 'LOYALTY_DORMANT', awarded: 0 } });
+});
+
 export default routes;
+
+
+// ── Loyalty completion admin (brief PARTs D.4/K/L/N/O, stages 5–14) ────────
+// Every liability mutation stays on a MUTATING permission with audit.
+
+routes.post('/adjust', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body?.userId || body?.points === undefined || !body?.reason || !body?.idempotencyKey) {
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'userId, points, reason and idempotencyKey are required.' } } satisfies ApiResponse<never>, 400);
+  }
+  const result = await Registry.getInstance().manualAdjustLoyaltyUseCase.execute({
+    userId: String(body.userId),
+    points: Number(body.points),
+    reason: String(body.reason),
+    actorId: (c.get('user') as any).id as string,
+    idempotencyKey: String(body.idempotencyKey),
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: { entryId: result.entryId } });
+});
+
+// A member's current balance and recent ledger, read before a manual
+// adjustment so the operator sees what they are changing.
+routes.get('/members/:userId', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const userId = String(c.req.param('userId') ?? '').trim();
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) {
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'userId must be a uuid.' } } satisfies ApiResponse<never>, 400);
+  }
+  // A mistyped id must not look like a real member with a zero balance.
+  if (!(await Registry.getInstance().userRepo.findById(userId))) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No customer account has this id.' } } satisfies ApiResponse<never>, 404);
+  }
+  const history = await Registry.getInstance().getLoyaltyHistoryUseCase.execute({ userId });
+  return c.json({ success: true, data: { userId, programmeActive: history.programmeActive, balance: history.balance, entries: history.entries.slice(-20).reverse() } });
+});
+
+// The programme's money settings as stored, so the admin form can show them
+// and send back only what the operator changed.
+routes.get('/programme-config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const config = await Registry.getInstance().loyaltyCompletionRepo.getProgrammeConfig();
+  return c.json({ success: true, data: config });
+});
+
+routes.put('/programme-config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body) return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Body must be JSON.' } } satisfies ApiResponse<never>, 400);
+  // PATCH semantics: only the keys in the body change (SaveLoyaltyProgrammeConfigUseCase).
+  const result = await Registry.getInstance().saveLoyaltyProgrammeConfigUseCase.execute(body, (c.get('user') as any).id);
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: result.config });
+});
+
+// 0088: reward-draw oversight. Campaigns, live prize table with published
+// odds, outstanding-card liability and spend against the budget cap.
+routes.get('/draws', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const campaigns = await registry.loyaltyDrawRepo.listCampaignsWithStats();
+  const config = await registry.loyaltyCompletionRepo.getProgrammeConfig();
+  const { publishedOdds, maxPrizePoints, availablePrizes } = await import('../../../../domain/loyalty/RewardDraw');
+  return c.json({
+    success: true,
+    data: {
+      chanceEnabled: config.chanceEnabled,
+      programmeEnabled: config.enabled && !config.killSwitch,
+      campaigns: campaigns.map((camp) => ({
+        id: camp.id,
+        code: camp.code,
+        name: camp.name,
+        active: camp.active,
+        triggerEvent: (camp as unknown as { triggerEvent?: string }).triggerEvent ?? null,
+        budgetCapPoints: camp.budgetCapPoints,
+        pointsAwarded: camp.pointsAwarded,
+        outstandingTokens: camp.outstandingTokens,
+        // Worst-case liability if every outstanding card wins the top prize.
+        outstandingLiabilityPoints: maxPrizePoints(availablePrizes(camp.prizes)) * camp.outstandingTokens,
+        odds: publishedOdds(camp.prizes),
+      })),
+    },
+  });
+});
+
+// 0090: the recorded legal basis for running draws. Reading it is how anyone
+// checks whether the mechanic is permitted; writing it is how Rob records a
+// licence or counsel's opinion. Draws refuse to run while the basis is 'none'.
+routes.get('/draws/compliance', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const record = await registry.loyaltyDrawRepo.getComplianceRecord();
+  const state = await registry.loyaltyDrawRepo.getCompliance();
+  const { canRunDraw } = await import('../../../../domain/loyalty/RewardDraw');
+  const permitted = canRunDraw(state, new Date());
+  return c.json({
+    success: true,
+    data: {
+      ...record,
+      permittedToRun: permitted.ok,
+      blockedReason: permitted.ok ? null : permitted.reason,
+    },
+  });
+});
+
+routes.put('/draws/compliance', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const basis = String(body?.basis ?? '');
+  if (!['none', 'licensed', 'counsel_advised_exempt', 'business_accepted'].includes(basis)) {
+    return c.json({ success: false, error: { code: 'BAD_BASIS', message: 'basis must be none, licensed, counsel_advised_exempt or business_accepted.' } } satisfies ApiResponse<never>, 400);
+  }
+  const str = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
+  const isoDate = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  const licenceReference = str(body?.licenceReference, 120);
+  const licenceExpiresAt = isoDate(body?.licenceExpiresAt);
+  const counselReference = str(body?.counselReference, 300);
+  const counselOpinionDate = isoDate(body?.counselOpinionDate);
+  // null / absent = no age restriction on this promotion (the default).
+  const minAge =
+    body?.minAge === null || body?.minAge === undefined || body?.minAge === ''
+      ? null
+      : Number(body.minAge);
+  // The same conditions the database CHECKs enforce, refused here with a
+  // message that says which field is missing rather than a constraint error.
+  if (basis === 'licensed' && (!licenceReference || !licenceExpiresAt)) {
+    return c.json({ success: false, error: { code: 'LICENCE_INCOMPLETE', message: 'A licensed basis requires licenceReference and licenceExpiresAt (YYYY-MM-DD).' } } satisfies ApiResponse<never>, 400);
+  }
+  if (basis === 'counsel_advised_exempt' && (!counselReference || !counselOpinionDate)) {
+    return c.json({ success: false, error: { code: 'OPINION_INCOMPLETE', message: 'An exemption basis requires counselReference and counselOpinionDate (YYYY-MM-DD).' } } satisfies ApiResponse<never>, 400);
+  }
+  if (minAge !== null && (!Number.isInteger(minAge) || minAge < 13 || minAge > 30)) {
+    return c.json({ success: false, error: { code: 'BAD_MIN_AGE', message: 'minAge must be null (no restriction) or a whole number between 13 and 30.' } } satisfies ApiResponse<never>, 400);
+  }
+  // A business acceptance must say what was accepted and why.
+  if (basis === 'business_accepted' && !str(body?.notes, 1000)) {
+    return c.json({ success: false, error: { code: 'NOTES_REQUIRED', message: 'A business_accepted basis requires notes recording the decision.' } } satisfies ApiResponse<never>, 400);
+  }
+  const registry = Registry.getInstance();
+  const actorId = (c.get('user') as any).id;
+  const previous = await registry.loyaltyDrawRepo.getComplianceRecord();
+  const saved = await registry.loyaltyDrawRepo.saveCompliance({
+    basis,
+    licenceReference,
+    licenceIssuer: str(body?.licenceIssuer, 160),
+    licenceExpiresAt,
+    counselReference,
+    counselOpinionDate,
+    minAge,
+    notes: str(body?.notes, 1000),
+    acknowledgedBy: actorId,
+  });
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId,
+    action: 'LOYALTY_DRAW_COMPLIANCE_RECORDED',
+    entity: 'loyalty_draw_compliance',
+    entityId: saved?.id ?? 'compliance',
+    previousState: { basis: previous?.basis ?? 'none' },
+    newState: { basis, licenceReference, licenceExpiresAt, counselReference, counselOpinionDate, minAge },
+  });
+  return c.json({ success: true, data: saved });
+});
+
+// Every play, for the Board or an auditor.
+routes.get('/draws/regulatory-export.csv', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const rows = await Registry.getInstance().loyaltyDrawRepo.regulatoryExport();
+  const headers = ['created_at', 'result_id', 'campaign_code', 'prize_label', 'weight', 'points_awarded', 'user_id', 'token_id', 'source_type', 'source_id', 'card_granted_at', 'ledger_entry_id'];
+  const csv = [headers.join(','), ...rows.map((r) => headers.map((h) => csvCell(r[h])).join(','))].join('\n');
+  c.header('Content-Type', 'text/csv; charset=utf-8');
+  c.header('Content-Disposition', 'attachment; filename="goldplus-draw-regulatory-export.csv"');
+  return c.body(csv);
+});
+
+// Activation is explicit and audited, and still requires chance_enabled on the
+// programme config — two independent switches, either of which stops the draw.
+// 0090 adds a third precondition: a recorded compliance basis.
+routes.post('/draws/:id/activation', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const active = Boolean(body?.active);
+  const registry = Registry.getInstance();
+  if (active) {
+    const state = await registry.loyaltyDrawRepo.getCompliance();
+    const { canRunDraw } = await import('../../../../domain/loyalty/RewardDraw');
+    const permitted = canRunDraw(state, new Date());
+    if (!permitted.ok) {
+      return c.json({
+        success: false,
+        error: {
+          code: permitted.reason,
+          message:
+            permitted.reason === 'COMPLIANCE_BASIS_MISSING'
+              ? 'Record a compliance basis first (PUT /admin/loyalty/draws/compliance) — either an LGRB licence or a written opinion from counsel.'
+              : 'The recorded licence has expired. Update it before activating.',
+        },
+      } satisfies ApiResponse<never>, 409);
+    }
+  }
+  const campaign = await registry.loyaltyDrawRepo.setCampaignActive(c.req.param('id') ?? '', active, (c.get('user') as any).id);
+  if (!campaign) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Campaign not found.' } } satisfies ApiResponse<never>, 404);
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: (c.get('user') as any).id,
+    action: active ? 'LOYALTY_DRAW_ACTIVATED' : 'LOYALTY_DRAW_PAUSED',
+    entity: 'loyalty_draw_campaign',
+    entityId: campaign.id,
+    newState: { code: campaign.code, active },
+  });
+  return c.json({ success: true, data: { id: campaign.id, code: campaign.code, active: campaign.active } });
+});
+
+// 0089: the draw budget is a configuration value, not a code change. Stated
+// in POINTS because that is what the engine enforces; the response echoes the
+// UGX equivalent at the current point value so the two never drift silently.
+routes.put('/draws/:id/budget', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const budgetCapPoints = Number(body?.budgetCapPoints);
+  if (!Number.isInteger(budgetCapPoints) || budgetCapPoints <= 0 || budgetCapPoints > 100_000_000) {
+    return c.json({ success: false, error: { code: 'INVALID_VALUE', message: 'budgetCapPoints must be a positive whole number.' } } satisfies ApiResponse<never>, 400);
+  }
+  const registry = Registry.getInstance();
+  const campaigns = await registry.loyaltyDrawRepo.listCampaignsWithStats();
+  const campaign = campaigns.find((camp) => camp.id === c.req.param('id'));
+  if (!campaign) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Campaign not found.' } } satisfies ApiResponse<never>, 404);
+  // Refusing to set a cap below what has already been paid out keeps the
+  // spent/cap relationship meaningful rather than instantly "over budget".
+  if (budgetCapPoints < campaign.pointsAwarded) {
+    return c.json({
+      success: false,
+      error: { code: 'BELOW_SPENT', message: `This campaign has already awarded ${campaign.pointsAwarded} points; the cap cannot be lower.` },
+    } satisfies ApiResponse<never>, 400);
+  }
+  await registry.loyaltyDrawRepo.setCampaignBudget(campaign.id, budgetCapPoints, (c.get('user') as any).id);
+  const config = await registry.loyaltyCompletionRepo.getProgrammeConfig();
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: (c.get('user') as any).id,
+    action: 'LOYALTY_DRAW_BUDGET_CHANGED',
+    entity: 'loyalty_draw_campaign',
+    entityId: campaign.id,
+    previousState: { budgetCapPoints: campaign.budgetCapPoints },
+    newState: { budgetCapPoints },
+  });
+  return c.json({
+    success: true,
+    data: {
+      id: campaign.id,
+      budgetCapPoints,
+      budgetCapUgx: config.pointValueUgx === null ? null : budgetCapPoints * config.pointValueUgx,
+    },
+  });
+});
+
+// 0087 / 0202: referral oversight — the funnel (link opens → joined → ordered → paid), the list with held referrals
+// first, and the decision a person makes on a held one.
+routes.get('/referrals', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const status = c.req.query('status') ?? null;
+  const days = Number(c.req.query('days') ?? 30);
+  const [rows, funnel] = await Promise.all([
+    registry.loyaltyReferralRepo.adminList(status),
+    registry.loyaltyReferralRepo.funnel(Number.isFinite(days) ? days : 30),
+  ]);
+  return c.json({ success: true, data: { rows, funnel } });
+});
+
+routes.post('/referrals/:id/decision', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const body = await c.req.json().catch(() => null);
+  const decision = body?.decision === 'release' ? 'release' : body?.decision === 'refuse' ? 'refuse' : null;
+  if (!decision) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'decision must be release or refuse.' } } satisfies ApiResponse<never>, 400);
+  const actorId = (c.get('user') as any).id as string;
+  const id = String(c.req.param('id') ?? '');
+  const out = await registry.decideHeldReferralUseCase.execute({ referralId: id, decision, actorId, reason: typeof body?.reason === 'string' ? body.reason.slice(0, 100) : undefined });
+  if (!out.ok) return c.json({ success: false, error: { code: out.code, message: out.message } } satisfies ApiResponse<never>, out.code === 'NOT_FOUND' ? 404 : 409);
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId, action: decision === 'release' ? 'LOYALTY_REFERRAL_RELEASED' : 'LOYALTY_REFERRAL_REFUSED', entity: 'loyalty_referral', entityId: id,
+    previousState: { status: 'held' }, newState: { status: out.status, reason: body?.reason ?? null },
+  });
+  // A released referral is the referrer's completion event (Friends & Family), as on delivery.
+  if (out.status === 'awarded') await registry.evaluateGamificationForUserUseCase.execute({ userId: out.referrerUserId }).catch(() => undefined);
+  return c.json({ success: true, data: out });
+});
+
+routes.get('/fraud-signals', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const rows = await Registry.getInstance().loyaltyCompletionRepo.adminFraudSignals();
+  return c.json({ success: true, data: rows });
+});
+
+routes.get('/liability', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const [totals, config] = await Promise.all([
+    registry.loyaltyCompletionRepo.ledgerTotals(),
+    registry.loyaltyCompletionRepo.getProgrammeConfig(),
+  ]);
+  const snapshots = await registry.loyaltyCompletionRepo.recentLiabilitySnapshots();
+  return c.json({
+    success: true,
+    data: {
+      totals,
+      liabilityUgx: config.pointValueUgx !== null ? totals.outstanding * config.pointValueUgx : null,
+      pointValueUgx: config.pointValueUgx,
+      budgetCapPoints: config.budgetCapPoints,
+      killSwitch: config.killSwitch,
+      snapshots,
+    },
+  });
+});
+
+// Finance export (PART O): CSV of the daily snapshots.
+routes.get('/finance-export.csv', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const rows = await Registry.getInstance().loyaltyCompletionRepo.liabilitySnapshotsForExport();
+  const header = 'snapshot_date,points_outstanding,points_issued,points_redeemed,points_expired,points_clawed_back,pending_points,point_value_ugx,liability_ugx,breakage_estimate_bps,redemption_rate_bps';
+  const lines = rows.map((r) => header.split(',').map((k) => r[k] ?? '').join(','));
+  return c.text([header, ...lines].join('\n'), 200, { 'Content-Type': 'text/csv' });
+});
+
+routes.post('/accounts/merge', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body?.mergedAccountId || !body?.survivorAccountId || !body?.note) {
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'mergedAccountId, survivorAccountId and note are required.' } } satisfies ApiResponse<never>, 400);
+  }
+  const result = await Registry.getInstance().mergeLoyaltyAccountsUseCase.execute({
+    mergedAccountId: String(body.mergedAccountId),
+    survivorAccountId: String(body.survivorAccountId),
+    actorId: (c.get('user') as any).id as string,
+    note: String(body.note),
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: { merged: true } });
+});
+
+routes.post('/accounts/:id/dealer-flag', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const isDealer = Boolean(body?.isDealer);
+  await Registry.getInstance().loyaltyCompletionRepo.setDealerFlag(String(c.req.param('id')), isDealer);
+  await new CreateAuditLogUseCase(Registry.getInstance().auditRepo).execute({
+    actorId: (c.get('user') as any).id,
+    action: 'LOYALTY_DEALER_FLAGGED',
+    entity: 'loyalty_account',
+    entityId: String(c.req.param('id')),
+    newState: { isDealer },
+  });
+  return c.json({ success: true, data: { isDealer } });
+});
+
+routes.get('/tiers', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const data = await (Registry.getInstance().loyaltyTierRepo as any).listTiers();
+  return c.json({ success: true, data });
+});
+
+routes.put('/tiers/:code', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body) return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Body must be JSON.' } } satisfies ApiResponse<never>, 400);
+  const result = await (Registry.getInstance().loyaltyTierRepo as any).saveTier({
+    code: String(c.req.param('code')),
+    name: body.name ? String(body.name) : undefined,
+    thresholdLifetimePoints: body.thresholdLifetimePoints === null || body.thresholdLifetimePoints === undefined || body.thresholdLifetimePoints === '' ? null : Number(body.thresholdLifetimePoints),
+    benefits: body.benefits ?? null,
+    active: Boolean(body.active),
+    updatedBy: (c.get('user') as any).id as string,
+  });
+  if (!result.ok) return c.json({ success: false, error: { code: 'ACTIVATION_BLOCKED', message: result.message } } satisfies ApiResponse<never>, 400);
+  await new CreateAuditLogUseCase(Registry.getInstance().auditRepo).execute({
+    actorId: (c.get('user') as any).id,
+    action: 'LOYALTY_TIER_SAVED',
+    entity: 'loyalty_tier',
+    entityId: String(c.req.param('code')),
+    newState: result.tier,
+  });
+  return c.json({ success: true, data: result.tier });
+});
+
+routes.post('/tiers/evaluate', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const result = await Registry.getInstance().evaluateTiersUseCase.execute();
+  return c.json({ success: true, data: result });
+});

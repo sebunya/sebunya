@@ -1,0 +1,274 @@
+import { createHash, createHmac, randomInt } from 'node:crypto';
+import { and, eq, gte, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { db } from '../db/client';
+import { LOYALTY_PAYMENT_QUALIFIES_SQL } from '../db/LoyaltyEarnEligibilitySql';
+import { users } from '../db/schema/identity';
+import { loyaltyAccountMerges, phoneVerificationCodes } from '../db/schema/loyalty';
+import { outboxEvents } from '../db/schema/system';
+import { ILoyaltyIdentityRepository, IOtpSender } from '../../application/use-cases/loyalty/LoyaltyIdentityUseCases';
+import type { LoyaltyProgrammeConfigPatch, LoyaltyProgrammeConfigWriterPort } from '../../application/use-cases/loyalty/SaveLoyaltyProgrammeConfigUseCase';
+
+export class DrizzleLoyaltyIdentityRepository implements ILoyaltyIdentityRepository {
+  async createOtp(input: { userId: string; phoneE164: string; codeHash: string; expiresAt: Date }): Promise<void> {
+    await db.insert(phoneVerificationCodes).values({
+      userId: input.userId,
+      phoneE164: input.phoneE164,
+      codeHash: input.codeHash,
+      expiresAt: input.expiresAt,
+    });
+  }
+
+  /** Most recent issue, consumed or not — the cooldown is about ISSUING. */
+  async lastOtpIssuedAt(userId: string): Promise<Date | null> {
+    const row = await db.query.phoneVerificationCodes.findFirst({
+      where: eq(phoneVerificationCodes.userId, userId),
+      orderBy: (t, { desc }) => [desc(t.createdAt)],
+    });
+    return row?.createdAt ?? null;
+  }
+
+  async otpCountSince(userId: string, since: Date): Promise<number> {
+    const [row] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(phoneVerificationCodes)
+      .where(
+        and(
+          eq(phoneVerificationCodes.userId, userId),
+          gte(phoneVerificationCodes.createdAt, since),
+        ),
+      );
+    return row?.n ?? 0;
+  }
+
+  async latestOtp(userId: string) {
+    const row = await db.query.phoneVerificationCodes.findFirst({
+      where: and(eq(phoneVerificationCodes.userId, userId), isNull(phoneVerificationCodes.consumedAt)),
+      orderBy: (t, { desc }) => [desc(t.createdAt)],
+    });
+    return row
+      ? { id: row.id, phoneE164: row.phoneE164, codeHash: row.codeHash, attempts: row.attempts, expiresAt: row.expiresAt, consumedAt: row.consumedAt }
+      : null;
+  }
+
+  async bumpOtpAttempts(id: string): Promise<number> {
+    const [row] = await db
+      .update(phoneVerificationCodes)
+      .set({ attempts: sql`${phoneVerificationCodes.attempts} + 1` })
+      .where(eq(phoneVerificationCodes.id, id))
+      .returning({ attempts: phoneVerificationCodes.attempts });
+    return row?.attempts ?? 99;
+  }
+
+  async consumeOtp(id: string): Promise<void> {
+    await db.update(phoneVerificationCodes).set({ consumedAt: new Date() }).where(eq(phoneVerificationCodes.id, id));
+  }
+
+  async markPhoneVerified(userId: string, phoneE164: string): Promise<void> {
+    await db.update(users).set({ phone: phoneE164, phoneVerifiedAt: new Date() }).where(eq(users.id, userId));
+  }
+
+  async phoneHeldByAnother(userId: string, phoneE164: string): Promise<boolean> {
+    const e164 = (phoneE164 ?? '').trim();
+    if (!/^\+256\d{9}$/.test(e164)) return false;
+    const national = e164.slice(4);
+    const row = await db.query.users.findFirst({
+      where: and(inArray(users.phone, [e164, `256${national}`, `0${national}`, national]), ne(users.id, userId)),
+      columns: { id: true },
+    });
+    return !!row;
+  }
+
+  async phoneVerifiedAt(userId: string): Promise<Date | null> {
+    const row = await db.query.users.findFirst({ where: eq(users.id, userId) });
+    return (row as { phoneVerifiedAt?: Date | null } | undefined)?.phoneVerifiedAt ?? null;
+  }
+
+  async guestOrdersForPhone(phoneE164: string, lookbackDays: number) {
+    // Exact-match on the E.164 and the local 0-prefixed form — orders store
+    // whatever the customer typed; both shapes are the SAME verified number.
+    const local = phoneE164.replace('+256', '0');
+    const rows = (await db.execute(sql`
+      select id, total_amount, buyer_type from orders
+      where user_id is null
+        and ${LOYALTY_PAYMENT_QUALIFIES_SQL}
+        and status in ('delivered', 'completed')
+        and created_at > now() - (${lookbackDays} || ' days')::interval
+        and (customer_phone = ${phoneE164} or customer_phone = ${local})
+      -- Oldest first, so which orders fill the per-customer cap is deterministic.
+      order by created_at asc, id asc`)) as unknown as Array<{
+      id: string;
+      total_amount: string | number;
+      buyer_type: string;
+    }>;
+    return rows.map((r) => ({ orderId: r.id, totalUgx: Number(r.total_amount), buyerType: r.buyer_type }));
+  }
+
+  async recordMerge(input: { mergedAccountId: string; survivorAccountId: string; actorId: string | null; note: string | null }): Promise<boolean> {
+    const rows = await db
+      .insert(loyaltyAccountMerges)
+      .values({
+        mergedAccountId: input.mergedAccountId,
+        survivorAccountId: input.survivorAccountId,
+        actorId: input.actorId,
+        note: input.note,
+      })
+      .onConflictDoNothing()
+      .returning();
+    return rows.length > 0;
+  }
+
+  async mergedInto(accountId: string): Promise<string | null> {
+    const row = await db.query.loyaltyAccountMerges.findFirst({ where: eq(loyaltyAccountMerges.mergedAccountId, accountId) });
+    return row?.survivorAccountId ?? null;
+  }
+
+  async mergedSources(survivorAccountId: string): Promise<string[]> {
+    const rows = await db.query.loyaltyAccountMerges.findMany({ where: eq(loyaltyAccountMerges.survivorAccountId, survivorAccountId) });
+    return rows.map((r) => r.mergedAccountId);
+  }
+
+  /** 0087: the two profile facts the gamification surfaces branch on. */
+  async identityFacts(userId: string): Promise<{ phoneVerifiedAt: Date | null; dateOfBirth: string | null }> {
+    const row = await db.query.users.findFirst({ where: eq(users.id, userId) });
+    const typed = row as { phoneVerifiedAt?: Date | null; dateOfBirth?: string | null } | undefined;
+    return { phoneVerifiedAt: typed?.phoneVerifiedAt ?? null, dateOfBirth: typed?.dateOfBirth ?? null };
+  }
+
+  /** 0087: DOB is set-once — the birthday earn source cannot be gamed by cycling dates. */
+  async setDateOfBirthOnce(userId: string, isoDate: string): Promise<{ ok: boolean }> {
+    const rows = await db
+      .update(users)
+      .set({ dateOfBirth: isoDate })
+      .where(and(eq(users.id, userId), isNull(users.dateOfBirth)))
+      .returning({ id: users.id });
+    return { ok: rows.length > 0 };
+  }
+}
+
+/**
+ * OTP through the existing outbox → SMS path — never a parallel sender.
+ *
+ * The event type is its own, and that is the entire point of this class.
+ *
+ * It used to enqueue as LOYALTY_EXPIRY_WARNING, on the reasoning that both are
+ * "SMS-first customer messages". They are routed identically, but they are not
+ * the same KIND of message, and the routing table is not the only thing reading
+ * the event type: governance classifies from it too. A loyalty expiry warning
+ * is marketing and correctly requires consent; a verification code is a
+ * security challenge the customer asked for seconds ago. Wearing the loyalty
+ * event's identity meant every OTP was refused NO_CONSENT_FOR_MARKETING, and
+ * phone verification never delivered a single code.
+ *
+ * PHONE_VERIFICATION_REQUESTED classifies as TRANSACTIONAL, exactly as
+ * PASSWORD_RESET does after the same defect was found there. Marketing consent
+ * is untouched — a genuine LOYALTY_EXPIRY_WARNING still requires it.
+ */
+export const PHONE_VERIFICATION_EVENT_TYPE = 'PHONE_VERIFICATION_REQUESTED';
+
+export class OutboxOtpSender implements IOtpSender {
+  async send(phoneE164: string, code: string): Promise<'sent' | 'skipped'> {
+    await db
+      .insert(outboxEvents)
+      .values({
+        eventType: PHONE_VERIFICATION_EVENT_TYPE,
+        payload: {
+          kind: 'phone_verification',
+          message: `Your GoldPlus verification code is ${code}. It expires in 10 minutes.`,
+          // The same code the message already carries, as a value, so a WhatsApp
+          // authentication template can fill {{code}} without parsing the text.
+          code,
+          expiresInMinutes: 10,
+          customerPhone: phoneE164,
+          customerEmail: null,
+        } as never,
+        idempotencyKey: `otp:${phoneE164}:${createHash('sha256').update(code).digest('hex').slice(0, 16)}`,
+        status: 'pending',
+        channel: 'sms',
+        template: 'PHONE_VERIFICATION',
+        dryRunOnly: false,
+        relatedEntity: 'user_phone',
+      })
+      .onConflictDoNothing({ target: outboxEvents.idempotencyKey });
+    return 'sent';
+  }
+}
+
+/**
+ * Keyed: a plain SHA-256 of a six-digit code is reversed by trying all 900,000, so anyone able to read the
+ * verification table could read live codes. The key is OTP_HASH_KEY, else derived from JWT_SECRET (as the MFA
+ * key is). Changing the key only invalidates codes still waiting (ten minutes); customers ask for a new one.
+ */
+let otpKey: Buffer | null = null;
+export const otpHash = (v: string) => {
+  otpKey ??= createHash('sha256')
+    .update(`goldplus-otp:${process.env.OTP_HASH_KEY || process.env.JWT_SECRET || 'local-test-only-otp-key-material-000000000000'}`)
+    .digest();
+  return createHmac('sha256', otpKey).update(v).digest('hex');
+};
+export const otpRandom = () => String(randomInt(100000, 999999));
+
+/* ── Tier repository (0086, PART L) ─────────────────────────────────────── */
+import { loyaltyTierAssignments, loyaltyTiers } from '../db/schema/loyalty';
+import { ILoyaltyTierRepository } from '../../application/use-cases/loyalty/LoyaltyProgrammeUseCases';
+
+export class DrizzleLoyaltyTierRepository implements ILoyaltyTierRepository {
+  async activeTiers() {
+    const rows = await db.query.loyaltyTiers.findMany({ where: eq(loyaltyTiers.active, true) });
+    return rows
+      .filter((r) => r.thresholdLifetimePoints !== null)
+      .map((r) => ({ code: r.code, name: r.name, thresholdLifetimePoints: r.thresholdLifetimePoints as number, rank: r.rank }));
+  }
+
+  async currentAssignment(accountId: string) {
+    const row = await db.query.loyaltyTierAssignments.findFirst({ where: eq(loyaltyTierAssignments.accountId, accountId) });
+    if (!row) return null;
+    // Any tier, active or not: the rank says whether a change is up or down.
+    const tier = await db.query.loyaltyTiers.findFirst({ where: eq(loyaltyTiers.code, row.tierCode) });
+    return { tierCode: row.tierCode, rank: tier?.rank ?? null };
+  }
+
+  async assign(accountId: string, tierCode: string): Promise<void> {
+    await db
+      .insert(loyaltyTierAssignments)
+      .values({ accountId, tierCode, assignedAt: new Date() })
+      .onConflictDoUpdate({ target: loyaltyTierAssignments.accountId, set: { tierCode, assignedAt: new Date() } });
+  }
+
+  async listTiers() {
+    return db.query.loyaltyTiers.findMany({ orderBy: (t, { asc }) => [asc(t.rank)] });
+  }
+
+  async saveTier(input: { code: string; name?: string; thresholdLifetimePoints: number | null; benefits: unknown; active: boolean; updatedBy: string }) {
+    // Activation blocked until the threshold is set (unset means unset).
+    if (input.active && input.thresholdLifetimePoints === null) {
+      return { ok: false as const, message: `Tier ${input.code} cannot activate: threshold unset.` };
+    }
+    const [row] = await db
+      .update(loyaltyTiers)
+      .set({
+        ...(input.name ? { name: input.name } : {}),
+        thresholdLifetimePoints: input.thresholdLifetimePoints,
+        benefits: input.benefits ?? null,
+        active: input.active,
+        updatedBy: input.updatedBy,
+        updatedAt: new Date(),
+      })
+      .where(eq(loyaltyTiers.code, input.code))
+      .returning();
+    return row ? { ok: true as const, tier: row } : { ok: false as const, message: 'Unknown tier.' };
+  }
+}
+
+/* ── Programme-config writer (nulls preserved; nothing defaults) ─────────── */
+import { loyaltyConfig } from '../db/schema/loyalty';
+
+export class LoyaltyProgrammeConfigWriter implements LoyaltyProgrammeConfigWriterPort {
+  /** PATCH: a key that is absent is left exactly as it is; null clears a nullable field. */
+  async save(input: LoyaltyProgrammeConfigPatch): Promise<void> {
+    const set: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(input)) {
+      if (value !== undefined) set[key] = value;
+    }
+    await db.update(loyaltyConfig).set({ ...(set as Partial<typeof loyaltyConfig.$inferInsert>), updatedAt: new Date() });
+  }
+}

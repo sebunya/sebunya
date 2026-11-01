@@ -1,0 +1,427 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AccountNav from '../../components/AccountNav.astro';
+import EmptyState from '../../components/EmptyState.astro';
+import Notice from '../../components/Notice.astro';
+import ReferralCard from '../../components/ReferralCard.astro';
+import { apiBase } from '../../lib/api';
+import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/login?returnTo=/account/rewards', 303);
+}
+
+// 0087 claim actions are SERVER-side form posts: the session token is an
+// httpOnly cookie the browser cannot read, so a fetch from the page could not
+// authenticate. This also means both actions work with JavaScript disabled.
+let actionStatus: '' | 'success' | 'error' = '';
+let actionMessage = '';
+let drawResult: { label: string; points: number } | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? '');
+  const authedPost = (path: string, body: unknown) =>
+    fetch(`${apiBase}${path}`, {
+      method: path === '/account/date-of-birth' ? 'PUT' : 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(8000),
+    });
+  try {
+    if (intent === 'phone-request') {
+      const res = await authedPost('/account/phone/request-verification', { phone: String(form.get('phone') ?? '') });
+      const json: any = await res.json().catch(() => null);
+      if (json?.success) {
+        actionStatus = 'success';
+        actionMessage = 'We sent a 6-digit code by SMS. Enter it below.';
+      } else {
+        actionStatus = 'error';
+        actionMessage = json?.error?.message ?? 'Could not send the code.';
+      }
+    } else if (intent === 'phone-verify') {
+      const res = await authedPost('/account/phone/verify', { code: String(form.get('code') ?? '') });
+      const json: any = await res.json().catch(() => null);
+      if (json?.success) {
+        actionStatus = 'success';
+        const earned = Number(json.data?.loyaltyPoints ?? 0);
+        const backfilled = Number(json.data?.backfilledPoints ?? 0);
+        actionMessage = `Phone verified.${earned > 0 ? ` ${earned.toLocaleString('en-UG')} points added.` : ''}${backfilled > 0 ? ` ${backfilled.toLocaleString('en-UG')} points credited from earlier orders.` : ''}`;
+      } else {
+        actionStatus = 'error';
+        actionMessage = json?.error?.message ?? 'That code was not accepted.';
+      }
+    } else if (intent === 'play-draw') {
+      const res = await authedPost('/account/draw/play', { tokenId: String(form.get('tokenId') ?? '') });
+      const json: any = await res.json().catch(() => null);
+      if (json?.success) {
+        actionStatus = 'success';
+        drawResult = { label: String(json.data?.label ?? ''), points: Number(json.data?.points ?? 0) };
+        actionMessage = `You won ${drawResult.points.toLocaleString('en-UG')} points: ${drawResult.label}.`;
+      } else {
+        actionStatus = 'error';
+        actionMessage = json?.error?.message ?? 'Could not play that card.';
+      }
+    } else if (intent === 'date-of-birth') {
+      const res = await authedPost('/account/date-of-birth', { dateOfBirth: String(form.get('dateOfBirth') ?? '') });
+      const json: any = await res.json().catch(() => null);
+      if (json?.success) {
+        actionStatus = 'success';
+        actionMessage = 'Date of birth saved. We will mark the day.';
+      } else {
+        actionStatus = 'error';
+        actionMessage = json?.error?.message ?? 'Could not save that date.';
+      }
+    }
+  } catch {
+    actionStatus = 'error';
+    actionMessage = 'The service is unreachable right now. Please try again shortly.';
+  }
+}
+
+let data: any = null;
+let me: any = null;
+let programme: any = null;
+let draw: any = null;
+/** The invite card: the site banner's "Get your link" lands here (#refer). */
+let referral: any = null;
+/** Durable "is a code outstanding?" state. Server truth, not POST-response memory. */
+let verificationState: any = null;
+let loadError = '';
+try {
+  const authed = { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(6000) };
+  const [res, verifyStateRes, meRes, programmeRes, drawRes, referralRes] = await Promise.all([
+    fetch(`${apiBase}/account/gamification`, authed),
+    // Is a verification already in progress? Asked on EVERY load, so leaving
+    // the page and coming back finds the same challenge instead of a bare code
+    // box with no explanation.
+    fetch(`${apiBase}/account/phone/verification-state`, authed).catch(() => null),
+    // 0087: which earn actions are still open to this customer.
+    fetch(`${apiBase}/account/me`, authed).catch(() => null),
+    fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(4000) }).catch(() => null),
+    // 0088: scratch cards and the published odds.
+    fetch(`${apiBase}/account/draw`, authed).catch(() => null),
+    fetch(`${apiBase}/account/referral`, authed).catch(() => null),
+  ]);
+  if (res.status === 401) {
+    Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' });
+    return Astro.redirect('/login?returnTo=/account/rewards', 303);
+  }
+  const json: any = await res.json().catch(() => null);
+  if (json?.success) data = json.data;
+  else loadError = json?.error?.message ?? 'Could not load your rewards.';
+  const meJson: any = meRes ? await meRes.json().catch(() => null) : null;
+  if (meJson?.success) me = meJson.data;
+  const programmeJson: any = programmeRes ? await programmeRes.json().catch(() => null) : null;
+  if (programmeJson?.success && programmeJson.data?.active) programme = programmeJson.data;
+  const drawJson: any = drawRes ? await drawRes.json().catch(() => null) : null;
+  if (drawJson?.success && drawJson.data?.enabled) draw = drawJson.data;
+  const referralJson: any = referralRes ? await referralRes.json().catch(() => null) : null;
+  if (referralJson?.success && referralJson.data?.active) referral = referralJson.data;
+  const verifyStateJson: any = verifyStateRes ? await verifyStateRes.json().catch(() => null) : null;
+  if (verifyStateJson?.success) verificationState = verifyStateJson.data;
+} catch {
+  loadError = 'The rewards service is unreachable right now.';
+}
+
+// Open actions: only shown when the programme actually pays for them AND the
+// customer has not already claimed them.
+const src = programme?.earnSources ?? null;
+const canVerifyPhone = Boolean(src?.phoneVerification) && me && !me.phoneVerified;
+
+// Durable verification-in-progress state. Derived from the server, never from
+// the POST that sent the code — that response is gone the moment the customer
+// navigates away, and the challenge is not.
+const verificationPending = verificationState?.status === 'ACTIVE';
+const verificationExpired = verificationState?.status === 'EXPIRED';
+const asTime = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' }) : null;
+const verificationExpiresAt = verificationPending ? asTime(verificationState?.expiresAt) : null;
+const verificationResendAt = asTime(verificationState?.resendAvailableAt);
+const canAddBirthday = Boolean(src?.birthday) && me && !me.dateOfBirthSet;
+
+const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' });
+const pct = (progress: number, threshold: number) =>
+  Math.max(0, Math.min(100, Math.round((progress / Math.max(1, threshold)) * 100)));
+---
+
+<BaseLayout robotsMeta="noindex,follow" title="Rewards">
+  <div class="container mx-auto px-4 lg:px-8 py-10 lg:py-14">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6 pb-6 border-b border-brand-borderGrey">
+      <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal tracking-tight">Rewards</h1>
+      <a href="/logout" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal">Sign out &rarr;</a>
+    </div>
+
+    <AccountNav active="rewards" />
+
+    {loadError && <Notice kind="not-configured" title="Rewards unavailable" message={loadError} />}
+
+    {actionMessage && (
+      <div class={`mb-6 rounded-2xl border px-5 py-4 text-sm font-bold ${actionStatus === 'success' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-800'}`} role="status" aria-live="polite">
+        {actionMessage}
+      </div>
+    )}
+
+    {data && (
+      <div class="space-y-6">
+        {(draw?.tokens?.length > 0 || drawResult) && (
+          <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+            <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">
+              {draw?.campaign?.name ?? 'Scratch card'}
+            </h2>
+
+            {drawResult ? (
+              <div class="rounded-2xl border-2 border-brand-primary bg-brand-primary/10 p-6 text-center" role="status" aria-live="polite">
+                <p class="text-xs font-black uppercase tracking-widest text-brand-mutedGrey">You won</p>
+                <p class="mt-2 text-4xl font-black text-brand-charcoal">{drawResult.points.toLocaleString('en-UG')}</p>
+                <p class="mt-1 text-sm font-bold text-brand-charcoal">points: {drawResult.label}</p>
+                <p class="mt-3 text-xs text-brand-mutedGrey">Added to your balance. <a href="/account/loyalty" class="font-bold underline underline-offset-2">See your points</a></p>
+              </div>
+            ) : (
+              <p class="text-sm text-brand-charcoal leading-relaxed">
+                {draw?.campaign?.description ?? 'Every delivered order earns one card.'}
+                {' '}<strong>Every card wins points</strong>. Only the amount varies, and playing costs nothing.
+              </p>
+            )}
+
+            {draw?.tokens?.length > 0 && (
+              <div class="mt-5" data-scratch-area>
+                <form method="POST" data-scratch-form>
+                  <input type="hidden" name="intent" value="play-draw" />
+                  <input type="hidden" name="tokenId" value={draw.tokens[0].id} />
+                  <button
+                    type="submit"
+                    class="w-full sm:w-auto min-h-11 rounded-full bg-brand-charcoal px-8 py-3 text-xs font-black uppercase tracking-wider text-white"
+                    data-scratch-play
+                  >
+                    Scratch to reveal
+                  </button>
+                </form>
+                <p class="mt-2 text-xs text-brand-mutedGrey">
+                  {draw.tokens.length === 1
+                    ? `1 card waiting · expires ${new Date(draw.tokens[0].expiresAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })}`
+                    : `${draw.tokens.length} cards waiting · next expires ${new Date(draw.tokens[0].expiresAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })}`}
+                </p>
+              </div>
+            )}
+
+            {draw?.odds?.length > 0 && (
+              <details class="mt-5 rounded-xl border border-brand-borderGrey bg-gray-50 p-4">
+                <summary class="cursor-pointer text-xs font-black uppercase tracking-widest text-brand-mutedGrey">
+                  Your chance of each prize
+                </summary>
+                <table class="mt-3 w-full text-sm">
+                  <thead>
+                    <tr class="text-left text-[10px] font-bold uppercase tracking-widest text-brand-mutedGrey border-b border-brand-borderGrey">
+                      <th class="py-2 pr-4">Prize</th>
+                      <th class="py-2">Chance</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-brand-borderGrey">
+                    {draw.odds.map((o: any) => (
+                      <tr>
+                        <td class="py-2 pr-4 font-bold text-brand-charcoal">{o.label}</td>
+                        <td class="py-2 text-brand-mutedGrey">
+                          {o.soldOut ? 'All claimed' : `${(o.oddsBps / 100).toFixed(2)}%`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p class="mt-3 text-xs text-brand-mutedGrey leading-relaxed">
+                  Odds are calculated from the live prize table and are the same for everyone. No purchase is needed to
+                  play a card you already have, and cards are not for sale. Full rules in the
+                  <a href="/loyalty-terms" class="font-bold underline underline-offset-2">rewards terms</a>.
+                </p>
+              </details>
+            )}
+          </section>
+        )}
+
+        {(canVerifyPhone || canAddBirthday) && (
+          <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+            <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Points you can claim now</h2>
+            <div class="space-y-5">
+              {canVerifyPhone && (
+                <div id="verify-phone-card">
+                  <p class="font-bold text-brand-charcoal">
+                    Verify your phone number
+                    <span class="ml-2 text-[10px] font-black uppercase tracking-widest text-brand-primaryInk">{src.phoneVerification} pts</span>
+                  </p>
+
+                  {/* A code is outstanding. This state is read from the server on
+                      every load, so leaving the page and coming back finds it
+                      again, the code lives in an SMS, but the journey lives in
+                      the database. */}
+                  {verificationPending ? (
+                    <>
+                      <p class="text-xs text-brand-mutedGrey mt-1 leading-relaxed">
+                        We sent a 6-digit code by SMS to <span class="font-bold text-brand-charcoal">{verificationState.maskedPhone}</span>. Enter it below.
+                        {verificationExpiresAt && <> It expires at {verificationExpiresAt}.</>}
+                      </p>
+                      <form method="POST" class="mt-3 flex flex-wrap items-center gap-2">
+                        <input type="hidden" name="intent" value="phone-verify" />
+                        <label class="sr-only" for="verify-code">6-digit verification code</label>
+                        <input
+                          id="verify-code"
+                          name="code"
+                          type="text"
+                          inputmode="numeric"
+                          autocomplete="one-time-code"
+                          maxlength="6"
+                          placeholder="6-digit code"
+                          required
+                          autofocus
+                          class="min-h-11 w-40 rounded-xl border border-brand-borderGrey px-4 py-2 text-base sm:text-sm tracking-widest"
+                        />
+                        <button type="submit" class="min-h-11 rounded-full bg-brand-primary px-5 py-2.5 text-xs font-black uppercase tracking-wider text-gray-950">Verify</button>
+                      </form>
+
+                      {/* Resending is bounded, so the button tells the truth about
+                          when it is actually available rather than failing later. */}
+                      <form method="POST" class="mt-3 flex flex-wrap items-center gap-2">
+                        <input type="hidden" name="intent" value="phone-request" />
+                        <input type="hidden" name="phone" value={me?.phone ?? ''} />
+                        {verificationResendAt ? (
+                          <p class="text-xs text-brand-mutedGrey">
+                            You can ask for another code from {verificationResendAt}.
+                          </p>
+                        ) : (
+                          <button type="submit" class="min-h-11 rounded-full border border-brand-borderGrey px-5 py-2.5 text-xs font-black uppercase tracking-wider text-brand-charcoal">
+                            Send a new code
+                          </button>
+                        )}
+                      </form>
+                    </>
+                  ) : (
+                    <>
+                      <p class="text-xs text-brand-mutedGrey mt-1 leading-relaxed">
+                        {verificationExpired
+                          ? 'That code has expired. Ask for a new one below.'
+                          : 'A verified number keeps one account per customer and is how we reach you about a delivery. Once only.'}
+                      </p>
+                      <form method="POST" class="mt-3 flex flex-wrap items-center gap-2">
+                        <input type="hidden" name="intent" value="phone-request" />
+                        <label class="sr-only" for="verify-phone">Phone number to verify</label>
+                        <input
+                          id="verify-phone"
+                          name="phone"
+                          type="tel"
+                          inputmode="tel"
+                          autocomplete="tel"
+                          placeholder="07XX XXX XXX"
+                          required
+                          class="min-h-11 rounded-xl border border-brand-borderGrey px-4 py-2 text-base sm:text-sm"
+                          value={me?.phone ?? ''}
+                        />
+                        <button type="submit" class="min-h-11 rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white">Send code</button>
+                      </form>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {canAddBirthday && (
+                <div class={canVerifyPhone ? 'border-t border-brand-borderGrey pt-5' : ''}>
+                  <p class="font-bold text-brand-charcoal">
+                    Add your date of birth
+                    <span class="ml-2 text-[10px] font-black uppercase tracking-widest text-brand-primary">{src.birthday} pts a year</span>
+                  </p>
+                  <p class="text-xs text-brand-mutedGrey mt-1 leading-relaxed">
+                    We use it for your birthday points and nothing else. You can only set it once. Contact support to correct it.
+                  </p>
+                  <form method="POST" class="mt-3 flex flex-wrap items-center gap-2">
+                    <input type="hidden" name="intent" value="date-of-birth" />
+                    <label class="sr-only" for="dob">Date of birth</label>
+                    <input id="dob" name="dateOfBirth" type="date" required class="min-h-11 rounded-xl border border-brand-borderGrey px-4 py-2 text-base sm:text-sm" />
+                    <button type="submit" class="min-h-11 rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white">Save</button>
+                  </form>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+          <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Badges earned</h2>
+          {data.badges.length === 0 ? (
+            <EmptyState title="No badges yet" message="Complete missions below to earn badges." />
+          ) : (
+            <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {data.badges.map((b: any) => (
+                <li class="border border-brand-borderGrey rounded-xl p-4">
+                  <p class="font-bold text-brand-charcoal">{b.title}</p>
+                  {b.description && <p class="text-xs text-brand-mutedGrey mt-1 leading-relaxed">{b.description}</p>}
+                  <p class="text-[11px] text-brand-mutedGrey mt-2">Awarded {formatDate(b.awardedAt)}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {referral && (
+          <ReferralCard
+            referral={referral}
+            bonus={src?.referral?.bonus ?? null}
+            bonusPaid={Boolean(data.missions?.find((m: any) => m.kind === 'REFERRAL_COUNT')?.completed)}
+          />
+        )}
+
+        <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+          <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Missions</h2>
+          {data.missions.length === 0 ? (
+            <EmptyState title="No missions running" message="When missions launch, your progress toward each will show here." />
+          ) : (
+            <ul class="space-y-4">
+              {data.missions.map((m: any) => (
+                <li class="border border-brand-borderGrey rounded-xl p-4">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="font-bold text-brand-charcoal">{m.title}</p>
+                    {m.rewardPoints > 0 && (
+                      <span class="text-[10px] font-black uppercase tracking-widest text-brand-primaryInk">{m.rewardPoints} pts</span>
+                    )}
+                  </div>
+                  {m.description && <p class="text-xs text-brand-mutedGrey mt-1 leading-relaxed">{m.description}</p>}
+                  {m.progress !== null ? (
+                    <div class="mt-3">
+                      <div class="flex items-center justify-between text-[11px] font-bold text-brand-mutedGrey mb-1">
+                        <span>{m.completed ? 'Complete' : `${m.progress} of ${m.threshold}`}</span>
+                        <span>{m.completed ? 100 : pct(m.progress, m.threshold)}%</span>
+                      </div>
+                      <div class="h-2 rounded-full bg-brand-borderGrey/60 overflow-hidden">
+                        <div
+                          class={`h-full rounded-full ${m.completed ? 'bg-green-500' : 'bg-brand-primary'}`}
+                          style={`width: ${m.completed ? 100 : pct(m.progress, m.threshold)}%`}
+                        ></div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p class="text-[11px] text-brand-mutedGrey mt-2 italic">{m.progressNote}</p>
+                  )}
+                  {m.kind === 'REFERRAL_COUNT' && referral && !m.completed && (
+                    <a href="#refer" class="mt-3 inline-flex min-h-11 items-center text-xs font-black uppercase tracking-wider text-brand-primaryInk underline underline-offset-2">Get your invite link</a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    )}
+  </div>
+
+  {/* Reveal feedback only. The outcome is decided entirely on the server —
+      this just stops a double submit and shows the card is being scratched. */}
+  <script nonce={Astro.locals.cspNonce} is:inline>
+    (function () {
+      var form = document.querySelector('[data-scratch-form]');
+      if (!form) return;
+      var btn = form.querySelector('[data-scratch-play]');
+      form.addEventListener('submit', function () {
+        if (!btn) return;
+        btn.disabled = true;
+        btn.textContent = 'Scratching…';
+      });
+    })();
+  </script>
+</BaseLayout>

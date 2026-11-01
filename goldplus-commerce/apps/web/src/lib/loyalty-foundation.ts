@@ -26,7 +26,10 @@ export const FORBIDDEN_LOYALTY_CLAIMS = Object.freeze([
   "VIP unlocked",
   "Guaranteed cashback",
   "Claim reward",
-  "Your balance",
+  // Post-activation, balances are real in the account area and the public page
+  // may honestly point at them ("Your balance … lives in your account"). What
+  // stays forbidden is STATING a balance value outside the account surface.
+  "Your balance is",
   "Discount unlocked",
   "Offer applied",
   "You won",
@@ -37,7 +40,7 @@ export const FORBIDDEN_LOYALTY_CLAIMS = Object.freeze([
 
 export const VISUAL_PROGRESS_PREVIEW = Object.freeze({
   title: "Programme setup preview",
-  label: "Preview only — not customer progress",
+  label: "Preview only, not customer progress",
   setupPercent: 25,
   steps: Object.freeze([
     { label: "Foundation and safeguards", state: "Prepared" },
