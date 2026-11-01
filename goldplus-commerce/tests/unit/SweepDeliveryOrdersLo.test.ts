@@ -425,7 +425,9 @@ describe('track order tells the truth about money, contrast and totals', () => {
   const page = read('apps/web/src/pages/track-order.astro');
 
   it('a wholesale order under review is "placed", and "preparing" makes no payment claim', () => {
-    expect(page).toMatch(/if \(s === 'processing'\) return 1;/);
+    // The mapping now lives in lib/orderProgress (shared with /orders/:id).
+    expect(page).toMatch(/orderProgressStage/);
+    expect(read('apps/web/src/lib/orderProgress.ts')).toMatch(/if \(s === 'processing'\) return 1;/);
     expect(page).not.toMatch(/\['processing', 'pending_owner_review'\]/);
     expect(page).not.toMatch(/We have checked your payment/);
   });

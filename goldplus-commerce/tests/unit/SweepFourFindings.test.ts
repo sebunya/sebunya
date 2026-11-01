@@ -159,7 +159,7 @@ describe('a failure says what it is', () => {
   });
 
   it('the order paths have deadlines', () => {
-    expect(read('apps/web/src/lib/checkoutClient.ts').match(/AbortSignal\.timeout\(CHECKOUT_TIMEOUT_MS\)/g)?.length).toBe(2);
+    expect(read('apps/web/src/lib/checkoutClient.ts').match(/AbortSignal\.timeout\(CHECKOUT_TIMEOUT_MS\)/g)?.length).toBe(3); // + pay by reference (review 212)
     expect(read('apps/web/src/pages/orders/[id].astro')).toMatch(/AbortSignal\.timeout\(8_000\)/);
   });
 
