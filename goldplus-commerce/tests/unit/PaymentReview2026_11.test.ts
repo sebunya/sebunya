@@ -53,3 +53,15 @@ describe('paid-orders catch-up (review 2026-11)', () => {
     expect(head).toMatch(/not exists \(select 1 from checkout_idempotency ci where ci\.order_id = o\.id and ci\.stage = 'PAYMENT_REVIEW'\)/);
   });
 });
+
+describe('payment attempt updated_at (review 2026-11)', () => {
+  it('a timestamp-only or same-status write does not move updated_at', async () => {
+    const { attemptWriteChangesAttempt } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzlePaymentAttemptRepository');
+    expect(attemptWriteChangesAttempt('completed', {})).toBe(false);
+    expect(attemptWriteChangesAttempt('completed', { status: 'completed' })).toBe(false);
+    expect(attemptWriteChangesAttempt('pending', { status: 'completed' })).toBe(true);
+    expect(attemptWriteChangesAttempt('pending', { orderTrackingId: 't1' })).toBe(true);
+    const src = api('infrastructure/db/repositories/DrizzlePaymentAttemptRepository.ts');
+    expect(src).toMatch(/updatedAt: attemptWriteChangesAttempt\(current\?\.status, update\) \? new Date\(\) : undefined/);
+  });
+});
