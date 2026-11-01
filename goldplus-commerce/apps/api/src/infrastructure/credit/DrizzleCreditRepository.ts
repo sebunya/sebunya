@@ -52,8 +52,15 @@ export async function holdStoreCreditInTx(
  * Everything an order has had back, in shillings: items returned to the gift card, cash refunded through Pesapal, and
  * store credit issued for it (a refund as credit, still live or spent). Loyalty claws back by this running share.
  */
+/**
+ * The note on the RETURN a capture writes when the order total went down after the card was applied. That money never
+ * left the card for the order, so it is not a refund: counting it clawed back points for nothing (2026-11 review).
+ */
+export const CAPTURE_TRIM_NOTE = 'Order total lowered after the card was applied';
+
 const refundedSoFarSql = (orderId: string) => sql`
-  select (select coalesce(sum(amount_ugx), 0) from credit_ledger where order_id = ${orderId} and type = 'RETURN')
+  select (select coalesce(sum(amount_ugx), 0) from credit_ledger where order_id = ${orderId} and type = 'RETURN'
+            and note is distinct from ${CAPTURE_TRIM_NOTE})
        + (select coalesce(sum(r.amount_ugx), 0) from payment_refunds r join payment_attempts a on a.id = r.payment_attempt_id
            where a.order_id = ${orderId} and (r.status = 'settled' or (r.status = 'requested' and r.provider_status = ${PROVIDER_ACCEPTED_STATUS})))
        + (select coalesce(sum(initial_value_ugx), 0) from credit_instruments where source_order_id = ${orderId} and status = 'active') as back`;
@@ -196,7 +203,7 @@ export class DrizzleCreditRepository implements ICreditRepository {
       if (excess > 0) {
         await tx.execute(sql`select id from credit_instruments where id = ${holds[0].instrument_id} for update`);
         await tx.execute(sql`insert into credit_ledger (instrument_id, type, amount_ugx, order_id, note)
-                             values (${holds[0].instrument_id}, 'RETURN', ${excess}, ${orderId}, 'Order total lowered after the card was applied')`);
+                             values (${holds[0].instrument_id}, 'RETURN', ${excess}, ${orderId}, ${CAPTURE_TRIM_NOTE})`);
         await tx.execute(sql`update orders set store_credit_applied_ugx = ${captured - excess} where id = ${orderId}`);
         captured -= excess;
       }
