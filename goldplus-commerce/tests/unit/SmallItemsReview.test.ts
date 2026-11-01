@@ -13,12 +13,16 @@ describe('smaller review items (211, 212, 213)', () => {
     for (const line of idRoutes) expect(line).toMatch(/'\/:id[^']*', requireTaskId,/);
   });
 
-  it('admin order transition and note refuse a non-uuid id, and a note needs a real order', () => {
+  it('admin order transition and note resolve a uuid or an order number, 404 anything else, and a note needs a real order', () => {
     const src = read('apps/api/src/interfaces/http/routes/admin/orders.ts');
+    // The order page opens by number too (orderRepo.findById takes both) and posts back with the same value.
+    const resolver = src.slice(src.indexOf('async function resolveOrderId'), src.indexOf("routes.post('/:id/transition'"));
+    expect(resolver).toMatch(/if \(ORDER_ID\.test\(value\)\) return value;/);
+    expect(resolver).toMatch(/orderRepo\.findById\(value\)/);
     const transition = src.slice(src.indexOf("routes.post('/:id/transition'"), src.indexOf("routes.post('/:id/note'"));
-    expect(transition).toMatch(/if \(!ORDER_ID\.test\(orderId\)\) return notFound\(c\);/);
+    expect(transition).toMatch(/const orderId = await resolveOrderId\(c\.req\.param\('id'\) \?\? ''\);\s+if \(!orderId\) return notFound\(c\);/);
     const note = src.slice(src.indexOf("routes.post('/:id/note'"));
-    expect(note).toMatch(/if \(!ORDER_ID\.test\(orderId\)\) return notFound\(c\);/);
+    expect(note).toMatch(/const orderId = await resolveOrderId\(c\.req\.param\('id'\) \?\? ''\);\s+if \(!orderId\) return notFound\(c\);/);
     expect(note.indexOf('orderRepo.findById(orderId)')).toBeLessThan(note.indexOf('ORDER_NOTE_ADDED'));
   });
 
