@@ -93,11 +93,18 @@ export interface Config {
  * environment-specific assembly (prod required-and-strong, test safe defaults)
  * stays in validateEnv; this schema is the invariant every path must meet.
  */
+export const PRODUCTION_SECRET_MIN_LENGTHS = {
+  jwtSecret: 32,
+  identityHashPepper: 32,
+  mtnWebhookSecret: 24,
+  airtelWebhookSecret: 24,
+} as const;
+
 export const configSchema = z.object({
   nodeEnv: z.string().min(1),
   databaseUrl: z.string().min(1),
-  // Secret minimum lengths are a PRODUCTION rule, enforced in validateEnv's
-  // checkRequired; development and staging boot with shorter local secrets.
+  // Secret minimum lengths are a PRODUCTION rule (superRefine below);
+  // development and staging boot with shorter local secrets.
   jwtSecret: z.string().min(1),
   publicApiBaseUrl: z.string().url(),
   bootstrapAdminEmail: z.string().optional(),
@@ -147,6 +154,13 @@ export const configSchema = z.object({
       qaAllowNetwork: z.boolean(),
     })
     .optional(),
+}).superRefine((cfg, ctx) => {
+  if (cfg.nodeEnv !== 'production') return;
+  for (const [key, min] of Object.entries(PRODUCTION_SECRET_MIN_LENGTHS) as Array<[keyof typeof PRODUCTION_SECRET_MIN_LENGTHS, number]>) {
+    if (cfg[key].length < min) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `must be at least ${min} characters in production` });
+    }
+  }
 });
 
 /** Type derived from the schema — the single source of truth for the shape. */
