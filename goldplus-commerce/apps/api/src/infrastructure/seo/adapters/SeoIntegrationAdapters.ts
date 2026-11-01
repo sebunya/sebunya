@@ -416,7 +416,8 @@ export class GoogleAdsKeywordAdapter implements SeoIntegrationAdapter {
 
 // ── Registry ──────────────────────────────────────────────────────────────────
 
-export function adapterFor(providerId: string, fetchImpl: typeof fetch = fetch): SeoIntegrationAdapter | null {
+export function adapterFor(providerId: string, injectedFetch?: typeof fetch): SeoIntegrationAdapter | null {
+  const fetchImpl = injectedFetch ?? fetch;
   switch (providerId) {
     case 'google-search-console': return new GscAdapter(fetchImpl);
     case 'google-analytics-4': return new Ga4Adapter(fetchImpl);
@@ -432,7 +433,9 @@ export function adapterFor(providerId: string, fetchImpl: typeof fetch = fetch):
     case 'backlink-provider-generic':
     case 'ai-engine-observation':
       return new GenericSlotAdapter(providerId);
-    case 'custom-readonly-rest': return new CustomReadOnlyRestAdapter(fetchImpl);
+    // No injected fetch: the custom connector uses its own transport pinned to
+    // the DNS answer it checked (DNS-rebinding defence).
+    case 'custom-readonly-rest': return new CustomReadOnlyRestAdapter(injectedFetch);
     default: return null;
   }
 }
