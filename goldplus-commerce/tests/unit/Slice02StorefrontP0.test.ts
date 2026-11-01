@@ -26,7 +26,10 @@ describe('Slice 02 storefront P0 protected contract', () => {
     const heroLibrary = read('packages/shared/src/hero/library.ts');
     expect(homepage).toContain('href="/shop"');
     expect(homepage + heroLibrary).toContain('Shop all products');
-    expect(homepage + heroLibrary).toContain('/verification');
+    // A real CTA link, not just the string anywhere in either file. The old
+    // href="/verification" no longer holds (the link is rendered from the
+    // library), so the slide's ctaUrl is asserted instead.
+    expect(heroLibrary).toMatch(/ctaUrl: '\/verification'/);
     expect(shop).toContain('Browse categories');
   });
 
