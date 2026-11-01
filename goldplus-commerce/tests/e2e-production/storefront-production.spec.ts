@@ -5,7 +5,27 @@ import { test, expect } from "@playwright/test";
  * Read-only: no order is placed, no form submitted, no admin mutation.
  * Accessibility checks are structural (landmarks, labels, headings, alt text,
  * keyboard focus) — recorded honestly as such, not claimed as a full audit.
+ *
+ * Read-only is ENFORCED, not just promised: every page request that would
+ * write (any non-GET/HEAD request, e.g. sendBeacon event relays) is aborted,
+ * and analytics / ad tags are blocked, so a run never lands in production
+ * analytics, recommendation evidence or ad-platform reporting as a real visit.
+ * (The synthetic PAGE_VIEW POST to /api/rec/events that used to live here was
+ * removed for the same reason.)
  */
+
+const TRACKER_HOSTS = /(^|\.)(google-analytics\.com|googletagmanager\.com|googleadservices\.com|doubleclick\.net|clarity\.ms|facebook\.(com|net)|tiktok\.com|analytics\.tiktok\.com|bing\.com|licdn\.com|linkedin\.com|ads-twitter\.com|twitter\.com|x\.com|snapchat\.com|sc-static\.net|spotify\.com|pdst\.fm)$/;
+
+test.beforeEach(async ({ context }) => {
+  await context.route("**/*", (route) => {
+    const req = route.request();
+    let host = "";
+    try { host = new URL(req.url()).hostname; } catch { /* data: or blob: */ }
+    if (TRACKER_HOSTS.test(host)) return route.abort();
+    if (req.method() !== "GET" && req.method() !== "HEAD") return route.abort();
+    return route.continue();
+  });
+});
 
 test.describe("homepage", () => {
   test("renders with rails, a signed visit cookie, and no mock trackers", async ({ page, context }) => {
@@ -147,26 +167,5 @@ test.describe("keyboard operation", () => {
     await expect(focused).toHaveCount(1);
     const tag = await focused.evaluate((el) => el.tagName.toLowerCase());
     expect(["a", "button", "input"]).toContain(tag);
-  });
-});
-
-test.describe("event capture is same-origin", () => {
-  test("the relay endpoint answers on the storefront origin (no CORS dependency)", async ({ page }) => {
-    await page.goto("/");
-    const status = await page.evaluate(async () => {
-      const res = await fetch("/api/rec/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({
-          eventType: "PAGE_VIEW",
-          anonymousId: "anon_e2e_probe_0001",
-          source: "e2e",
-          metadata: { probe: "r31-playwright" },
-        }),
-      });
-      return res.status;
-    });
-    expect(status).toBe(200);
   });
 });
