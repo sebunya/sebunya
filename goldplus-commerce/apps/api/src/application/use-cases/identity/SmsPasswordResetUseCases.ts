@@ -51,6 +51,7 @@ export const SMS_RESET_MAX_PER_DAY = 10;
  */
 export const SMS_RESET_MAX_PER_PLACE_PER_DAY = 3;
 const MIN_PASSWORD_LENGTH = 8;
+const MAX_PASSWORD_LENGTH = 200; // matches ChangePasswordUseCase
 
 /** Identical for every input, by design. */
 export const GENERIC_SMS_RESET_ACKNOWLEDGEMENT =
@@ -220,6 +221,11 @@ export class ResetPasswordWithSmsCodeUseCase {
     // the five guesses.
     if (password.length < MIN_PASSWORD_LENGTH) {
       return { ok: false, code: 'WEAK_PASSWORD', message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` };
+    }
+    // Same ceiling as change-password: a multi-megabyte "password" is CPU for the hasher, and one set here could
+    // never be changed later.
+    if (password.length > MAX_PASSWORD_LENGTH) {
+      return { ok: false, code: 'WEAK_PASSWORD', message: `Password must be at most ${MAX_PASSWORD_LENGTH} characters.` };
     }
 
     const invalid = (): ResetPasswordWithSmsCodeResult => ({ ok: false, code: 'CODE_INVALID', message: CODE_INVALID_MESSAGE });

@@ -36,6 +36,7 @@ const TOKEN_BYTES = 32;
 const TOKEN_TTL_MINUTES = 60;
 const MAX_REQUESTS_PER_HOUR = 3;
 const MIN_PASSWORD_LENGTH = 8;
+const MAX_PASSWORD_LENGTH = 200; // matches ChangePasswordUseCase
 
 /** The generic answer. Identical for every input, by design. */
 // "is on its way" was a claim about a message in transit; delivery is not
@@ -145,6 +146,11 @@ export class ResetPasswordUseCase {
         code: 'WEAK_PASSWORD',
         message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
       };
+    }
+    // Same ceiling as change-password: a multi-megabyte "password" is CPU for the hasher, and one set here could
+    // never be changed later.
+    if (password.length > MAX_PASSWORD_LENGTH) {
+      return { ok: false, code: 'WEAK_PASSWORD', message: `Password must be at most ${MAX_PASSWORD_LENGTH} characters.` };
     }
     if (!raw) {
       return { ok: false, code: 'INVALID_TOKEN', message: 'This reset link is not valid. Request a new one.' };
