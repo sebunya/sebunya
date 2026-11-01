@@ -44,3 +44,12 @@ describe('refund ledger counts store credit (review 2026-11)', () => {
     expect(reserve).toMatch(/refundableUgx = cashRefundableUgx\(/);
   });
 });
+
+describe('paid-orders catch-up (review 2026-11)', () => {
+  it('excludes cancelled orders and checkouts held in PAYMENT_REVIEW at the top level', () => {
+    const src = api('infrastructure/payments/PaidOrdersOwedEffects.ts');
+    const head = src.slice(src.indexOf("where o.payment_status = 'paid'"), src.indexOf('and exists (select 1 from payment_attempts'));
+    expect(head).toMatch(/o\.status not in \('cancelled', 'failed'\)/);
+    expect(head).toMatch(/not exists \(select 1 from checkout_idempotency ci where ci\.order_id = o\.id and ci\.stage = 'PAYMENT_REVIEW'\)/);
+  });
+});

@@ -23,6 +23,11 @@ export async function listPaidOrdersOwedConfirmedEffects(since: Date, limit: num
     from orders o
     left join fulfilment_tasks t on t.order_id = o.id
     where o.payment_status = 'paid'
+      -- Never a cancelled order (money met an order that could not take it) or one whose checkout a person holds
+      -- in PAYMENT_REVIEW: both are a person's to settle, and the catch-up ran every success effect on them
+      -- (task marked paid, packers alerted, "payment received" texted; review 2026-11).
+      and o.status not in ('cancelled', 'failed')
+      and not exists (select 1 from checkout_idempotency ci where ci.order_id = o.id and ci.stage = 'PAYMENT_REVIEW')
       and o.updated_at >= ${since}
       and exists (select 1 from payment_attempts pa where pa.order_id = o.id and pa.status = 'completed')
       and (
