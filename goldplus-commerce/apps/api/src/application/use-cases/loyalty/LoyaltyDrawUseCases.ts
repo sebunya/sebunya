@@ -59,7 +59,13 @@ export interface ILoyaltyDrawRepository {
     ledgerEntryId: string | null;
     prizeSnapshot: unknown;
   }): Promise<void>;
-  incrementPrizeAward(prizeId: string): Promise<void>;
+  /**
+   * Takes one award of this prize, only while it has capacity (awards_made < max_awards, checked in the same write).
+   * False when another play took the last one first (2026-11 review: two plays could both win a one-left prize).
+   */
+  incrementPrizeAward(prizeId: string): Promise<boolean | void>;
+  /** Gives back an award taken by incrementPrizeAward when the play then failed before paying. */
+  releasePrizeAward?(prizeId: string): Promise<void>;
   incrementCampaignTotals(campaignId: string, pointsAwarded: number, tokensGranted: number): Promise<void>;
   findResultByToken(tokenId: string): Promise<{ pointsAwarded: number; prizeId: string } | null>;
   expireTokensDueBefore(now: Date): Promise<number>;
@@ -203,16 +209,25 @@ export class PlayDrawTokenUseCase {
     // already been made: replaying it hit the same idempotency key, recorded a
     // duplicate result and returned a 500, so the card could never be used.
     let awarded = false;
+    let takenPrizeId: string | null = null;
     try {
       const campaign = await this.draws.findCampaignById(existing.campaignId);
       if (!campaign) throw new Error('CAMPAIGN_MISSING');
-      const prizes = await this.draws.listPrizes(campaign.id);
-      const eligible = availablePrizes(prizes);
-      const total = totalWeight(eligible);
-      if (total <= 0) throw new Error('NO_PRIZES_AVAILABLE');
-
-      const snapshot = prizeSnapshot(prizes);
-      const prize = selectPrize(prizes, this.randomInt(total));
+      // The prize is taken (capacity checked in the same write) before any points move. Losing the last one of a
+      // prize to another play means drawing again from what is left.
+      let prize: DrawPrize | null = null;
+      let snapshot: ReturnType<typeof prizeSnapshot> | null = null;
+      for (let attempt = 0; attempt < 3 && !prize; attempt++) {
+        const prizes = await this.draws.listPrizes(campaign.id);
+        const total = totalWeight(availablePrizes(prizes));
+        if (total <= 0) throw new Error('NO_PRIZES_AVAILABLE');
+        const pick = selectPrize(prizes, this.randomInt(total));
+        if (!pick) throw new Error('NO_PRIZES_AVAILABLE');
+        if ((await this.draws.incrementPrizeAward(pick.id)) === false) continue;
+        prize = pick;
+        snapshot = prizeSnapshot(prizes);
+        takenPrizeId = pick.id;
+      }
       if (!prize) throw new Error('NO_PRIZES_AVAILABLE');
 
       const account = await this.loyalty.getOrCreateAccount(input.userId);
@@ -239,7 +254,6 @@ export class PlayDrawTokenUseCase {
         ledgerEntryId: entry.id,
         prizeSnapshot: snapshot,
       });
-      await this.draws.incrementPrizeAward(prize.id);
       await this.draws.incrementCampaignTotals(campaign.id, prize.pointsAwarded, 0);
       await this.notify({ userId: input.userId, points: prize.pointsAwarded, label: prize.label }).catch(() => undefined);
 
@@ -247,6 +261,7 @@ export class PlayDrawTokenUseCase {
     } catch (error) {
       // The customer keeps their card only if nothing was awarded yet.
       if (!awarded) await this.draws.releaseToken(input.tokenId).catch(() => undefined);
+      if (!awarded && takenPrizeId) await this.draws.releasePrizeAward?.(takenPrizeId).catch(() => undefined);
       if ((error as Error).message === 'NO_PRIZES_AVAILABLE') {
         return fail('NO_PRIZES_AVAILABLE', 'No prizes are currently available. Your card has been kept.');
       }

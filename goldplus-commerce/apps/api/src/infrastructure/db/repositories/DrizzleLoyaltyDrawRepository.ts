@@ -164,11 +164,21 @@ export class DrizzleLoyaltyDrawRepository implements ILoyaltyDrawRepository {
       .onConflictDoNothing();
   }
 
-  async incrementPrizeAward(prizeId: string): Promise<void> {
-    await db
+  async incrementPrizeAward(prizeId: string): Promise<boolean> {
+    const rows = await db
       .update(loyaltyDrawPrizes)
       .set({ awardsMade: sql`${loyaltyDrawPrizes.awardsMade} + 1` })
-      .where(eq(loyaltyDrawPrizes.id, prizeId));
+      .where(and(eq(loyaltyDrawPrizes.id, prizeId),
+        sql`(${loyaltyDrawPrizes.maxAwards} is null or ${loyaltyDrawPrizes.awardsMade} < ${loyaltyDrawPrizes.maxAwards})`))
+      .returning({ id: loyaltyDrawPrizes.id });
+    return rows.length > 0;
+  }
+
+  async releasePrizeAward(prizeId: string): Promise<void> {
+    await db
+      .update(loyaltyDrawPrizes)
+      .set({ awardsMade: sql`${loyaltyDrawPrizes.awardsMade} - 1` })
+      .where(and(eq(loyaltyDrawPrizes.id, prizeId), sql`${loyaltyDrawPrizes.awardsMade} > 0`));
   }
 
   async incrementCampaignTotals(campaignId: string, pointsAwarded: number, tokensGranted: number): Promise<void> {
