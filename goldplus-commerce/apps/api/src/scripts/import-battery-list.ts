@@ -2,6 +2,7 @@ import '../config/env';
 import { readFileSync } from 'node:fs';
 import { Registry } from '../infrastructure/Registry';
 import { endDbConnection } from '../infrastructure/db/client';
+import { parseBatteryImportStage, parseStockQuantity, stockReason } from './lib/stockRunArgs';
 
 /**
  * Stages the owner's battery price list through the battery importer (0125),
@@ -13,18 +14,18 @@ import { endDbConnection } from '../infrastructure/db/client';
  *   2. PRICE_UPDATE — Price D, resolved through that alias.
  * Four eyes: the uploader cannot approve; APPROVER_USER_ID does.
  *
- *   ACTOR_USER_ID=<uploader> APPROVER_USER_ID=<second admin> ROWS_FILE=/import/batteries.json [DRY_RUN=1] [STAGE=catalogue|price|stock] [QUANTITY=200] \
+ *   ACTOR_USER_ID=<uploader> APPROVER_USER_ID=<second admin> ROWS_FILE=/import/batteries.json [DRY_RUN=1] [STAGE=catalogue|price|stock] [QUANTITY=200] [REASON=...] \
  *     npx tsx src/scripts/import-battery-list.ts
+ * Any other STAGE, or a QUANTITY that is not a whole number, is refused before anything is uploaded.
  */
 type Row = { item: string; price: number; sourceNo: string };
 const uuid = (v: unknown) => /^[0-9a-f-]{36}$/i.test(String(v ?? ''));
 const csvCell = (v: string) => `"${v.replace(/"/g, '""')}"`;
 
-async function runSession(kind: 'BATTERY_CATALOGUE' | 'PRICE_UPDATE' | 'STOCK_COUNT', rows: Row[], actorId: string, approverId: string, dryRun: boolean) {
+async function runSession(kind: 'BATTERY_CATALOGUE' | 'PRICE_UPDATE' | 'STOCK_COUNT', rows: Row[], actorId: string, approverId: string, dryRun: boolean, count: number, reason: string) {
   const uc = Registry.getInstance().batteryImportUseCases;
-  const count = Number(process.env.QUANTITY ?? 200);
   const header = kind === 'BATTERY_CATALOGUE' ? 'ITEM,CATEGORY,SOURCE_NO' : kind === 'PRICE_UPDATE' ? 'ITEM,PRICE' : 'ITEM,COUNT,REASON';
-  const lines = rows.map((r) => kind === 'BATTERY_CATALOGUE' ? `${csvCell(r.item)},Phone Battery,${r.sourceNo}` : kind === 'PRICE_UPDATE' ? `${csvCell(r.item)},${r.price}` : `${csvCell(r.item)},${count},${csvCell('Owner: 200 units of every product in stock (2026-08-31)')}`);
+  const lines = rows.map((r) => kind === 'BATTERY_CATALOGUE' ? `${csvCell(r.item)},Phone Battery,${r.sourceNo}` : kind === 'PRICE_UPDATE' ? `${csvCell(r.item)},${r.price}` : `${csvCell(r.item)},${count},${csvCell(reason)}`);
   const up = await uc.upload({
     importType: kind, name: `Battery price list 18-8-2026 — ${kind} (${rows.length})`, filename: `batteries-18-8-2026-${kind.toLowerCase()}.csv`,
     mime: 'text/csv', buffer: Buffer.from([header, ...lines].join('\n'), 'utf8'), sheetName: null, actorId,
@@ -67,11 +68,11 @@ async function main(): Promise<void> {
   if (!uuid(actorId)) throw new Error('ACTOR_USER_ID must be the uploading admin uuid.');
   const dryRun = process.env.DRY_RUN === '1';
   if (!dryRun && (!uuid(approverId) || approverId === actorId)) throw new Error('APPROVER_USER_ID must be a DIFFERENT admin uuid (four eyes).');
+  const kind = parseBatteryImportStage(process.env.STAGE);
+  const count = kind === 'STOCK_COUNT' ? parseStockQuantity(process.env.QUANTITY) : 0;
+  const reason = stockReason(count, process.env.REASON);
   const rows = JSON.parse(readFileSync(String(process.env.ROWS_FILE ?? '/import/batteries.json'), 'utf8')) as Row[];
-  const stage = String(process.env.STAGE ?? 'catalogue');
-  if (stage === 'catalogue') await runSession('BATTERY_CATALOGUE', rows, actorId, approverId, dryRun);
-  else if (stage === 'stock') await runSession('STOCK_COUNT', rows, actorId, approverId, dryRun);
-  else await runSession('PRICE_UPDATE', rows, actorId, approverId, dryRun);
+  await runSession(kind, rows, actorId, approverId, dryRun, count, reason);
 }
 
 main().then(() => endDbConnection()).catch(async (e) => { console.error(e); await endDbConnection(); process.exit(1); });
