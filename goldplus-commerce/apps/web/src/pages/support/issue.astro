@@ -1,4 +1,5 @@
 ---
+import { readClientAddress } from '../../lib/forwardClient';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import FormField from '../../components/FormField.astro';
 import FormFeedback from '../../components/FormFeedback.astro';
@@ -34,11 +35,12 @@ if (Astro.request.method === 'POST') {
     errors.description = 'Please describe the issue in at least 20 characters.';
   }
   
-  if (!isValidEmail(email)) {
-    errors.email = 'A valid email address is required.';
+  // Email is optional: the phone number is the channel we reply on.
+  if (email && !isValidEmail(email)) {
+    errors.email = 'That email address does not look right. Check it, or leave it blank.';
   }
   if (!isValidUgandanPhone(phone)) {
-    errors.phone = 'A valid Ugandan phone number is required (e.g., +256700000000).';
+    errors.phone = 'A valid Ugandan phone number is required (e.g. 07XX XXX XXX).';
   }
 
   // Location optional per audit guideline
@@ -71,12 +73,12 @@ if (Astro.request.method === 'POST') {
       email, 
       phone,
       metadata
-    });
+    }, null, readClientAddress(Astro));
     
     reference = result.ok ? result.reference : undefined;
     if (result.ok) {
       status = 'received';
-      message = 'Your support request has been received. Our team can contact you using the email or phone number provided.';
+      message = 'We have your request. Our team will contact you on the phone number you gave. Keep the reference below in case you need to ask about it.';
       values = {};
     } else {
       status = 'error';
@@ -86,26 +88,26 @@ if (Astro.request.method === 'POST') {
     }
   } else {
     status = 'error';
-    message = 'Please correct the errors below before submitting.';
+    message = 'Some details are missing. Check the highlighted fields below.';
   }
 }
 ---
 
-<BaseLayout title="Report a technical issue">
+<BaseLayout title="Report a Product or Website Issue | GoldPlus" description="Describe the GoldPlus product or website issue and the steps that led to it. Share relevant details so the team can review your report.">
   <div class="container mx-auto px-4 lg:px-8 py-16">
     <div class="max-w-2xl mx-auto">
       <h1 class="text-2xl sm:text-3xl font-black text-gray-900 mb-2">Report a technical issue</h1>
-      <p class="text-slate-500 mb-8 leading-relaxed font-medium text-sm sm:text-base">
+      <p class="text-slate-600 mb-8 leading-relaxed font-medium text-sm sm:text-base">
         Describe what's happening so our technical team can help you. The more detail, the faster we can resolve it.
       </p>
 
       <FormFeedback status={status} message={message} reference={reference} />
 
       <form method="POST" action="/support/issue" novalidate id="supportForm" class="space-y-6">
-        <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs space-y-6">
+        <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 space-y-6">
           
           <fieldset class="space-y-5">
-            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Product & Issue Details</legend>
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Product & Issue Details</legend>
             <FormField 
               id="subject" 
               name="subject" 
@@ -140,7 +142,7 @@ if (Astro.request.method === 'POST') {
           </fieldset>
 
           <fieldset class="space-y-4 pt-4 border-t border-slate-100">
-            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Location Context (Optional)</legend>
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Location Context (Optional)</legend>
             <UgandaLocationPicker 
                name="locationJson" 
                label="Location related to this issue" 
@@ -159,14 +161,13 @@ if (Astro.request.method === 'POST') {
           </fieldset>
 
           <fieldset class="pt-4 border-t border-slate-100">
-             <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Your Contact Details</legend>
+             <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Your Contact Details</legend>
              <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <FormField 
                   id="email" 
                   name="email" 
-                  label="Email address" 
+                  label="Email address (optional)" 
                   type="email"
-                  required 
                   defaultValue={values.email} 
                   autocomplete="email"
                   errorMessage={errors.email}
@@ -179,19 +180,19 @@ if (Astro.request.method === 'POST') {
                   required 
                   defaultValue={values.phone} 
                   autocomplete="tel"
-                  placeholder="+2567..."
+                  placeholder="07XX XXX XXX"
                   errorMessage={errors.phone}
                 />
              </div>
-             <p class="text-xs text-slate-400 mt-3 font-medium">We use these only to follow up about your support request.</p>
+             <p class="text-xs text-slate-500 mt-3 font-medium">We use these only to follow up about your support request.</p>
           </fieldset>
         </div>
 
         <div class="flex items-center gap-4">
-          <button type="submit" id="submitBtn" class="bg-brand-primary text-gray-955 px-8 py-2.5 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/20 transition-all text-xs tracking-wider uppercase shadow-xs cursor-pointer active:scale-98">
+          <button type="submit" id="submitBtn" class="min-h-12 bg-brand-primary text-gray-950 px-8 py-3 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/20 transition-all text-sm cursor-pointer active:scale-[0.98]">
             Submit issue
           </button>
-          <a href="/support" class="text-xs font-bold text-slate-400 hover:text-gray-900 transition-colors hover:underline">Cancel</a>
+          <a href="/support" class="text-xs font-bold text-slate-600 hover:text-gray-900 transition-colors hover:underline">Cancel</a>
         </div>
       </form>
     </div>
@@ -252,8 +253,9 @@ if (Astro.request.method === 'POST') {
         setError('description', 'Description must be at least 20 characters.');
       }
 
-      if (!isValidEmail(emailInput.value)) {
-        setError('email', 'Enter a valid email address.');
+      // Optional, as on the server: only a mistyped address is an error.
+      if (emailInput.value.trim() && !isValidEmail(emailInput.value)) {
+        setError('email', 'Check the email, or leave it blank.');
       }
 
       if (!isValidUgandanPhone(phoneInput.value)) {

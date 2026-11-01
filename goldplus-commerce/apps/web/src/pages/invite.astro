@@ -1,0 +1,59 @@
+---
+/**
+ * The friend's welcome (2026-10-22): who invited them, what they get, and one button. /r/<code> lands here with the
+ * code remembered in this browser, so there is nothing to type: "Create my account" and the invite is on it. A
+ * signed-in visitor has it added by the middleware on this very page (and reads the note above).
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { apiBase } from '../lib/api';
+import { jsonApiHeaders } from '../lib/forwardClient';
+import { normaliseInviteCode, rememberedInvite } from '../lib/referralInvite';
+
+const code = normaliseInviteCode(Astro.url.searchParams.get('code')) ?? rememberedInvite(Astro.cookies);
+let invite: { inviter: string; refereePoints: number | null } | null = null;
+if (code) {
+  try {
+    const res = await fetch(`${apiBase}/referrals/invite/${encodeURIComponent(code)}`, { headers: jsonApiHeaders(null), signal: AbortSignal.timeout(3000) });
+    const json: any = res.ok ? await res.json().catch(() => null) : null;
+    if (json?.success) invite = { inviter: String(json.data.inviter), refereePoints: typeof json.data.refereePoints === 'number' ? json.data.refereePoints : null };
+  } catch {
+    invite = null;
+  }
+}
+const signedIn = !!Astro.locals.gpUserId;
+const title = invite ? `${invite.inviter} invited you to GoldPlus` : 'GoldPlus';
+const points = invite?.refereePoints ? invite.refereePoints.toLocaleString('en-UG') : null;
+---
+
+<BaseLayout robotsMeta="noindex,follow" title={title} description={invite ? `Genuine batteries, chargers and electronics in Kampala. ${points ? `Join with ${invite.inviter}'s invite and get ${points} points after your first delivery.` : `Join with ${invite.inviter}'s invite.`}` : 'Genuine batteries, chargers and electronics in Kampala.'}>
+  <div class="container mx-auto px-4 lg:px-8 py-12 md:py-20">
+    <div class="max-w-md mx-auto bg-white border border-slate-200/80 rounded-2xl p-8" data-invite>
+      {invite ? (
+        <>
+          <p class="text-xs font-bold uppercase tracking-widest text-slate-500 mb-3">You have been invited</p>
+          <h1 class="text-2xl md:text-3xl font-black text-gray-900 tracking-tight mb-3">{invite.inviter} invited you to GoldPlus</h1>
+          <p class="text-sm text-slate-700 leading-relaxed mb-6">
+            Genuine batteries, chargers and electronics, delivered in Kampala.
+            {points ? <> Create your account and you get <strong>{points} points</strong> when your first order is delivered.</> : null}
+            {' '}Your invite is saved on this phone, so there is no code to type.
+          </p>
+          {signedIn ? (
+            <a href="/" class="block w-full min-h-12 text-center bg-brand-primary text-gray-950 py-3 rounded-full font-bold text-sm">Start shopping</a>
+          ) : (
+            <>
+              <a href="/register" class="block w-full min-h-12 text-center bg-brand-primary text-gray-950 py-3 rounded-full font-bold text-sm" data-invite-join>Create my account</a>
+              <a href="/" class="mt-3 block w-full text-center text-sm font-bold text-slate-600 underline">Look around first</a>
+              <p class="mt-4 text-xs text-slate-500 leading-relaxed">Already have an account? <a href="/login" class="font-bold underline">Sign in</a>. Invites count for new customers, before their first order is delivered.</p>
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          <h1 class="text-2xl font-black text-gray-900 tracking-tight mb-3">This invite link is not active</h1>
+          <p class="text-sm text-slate-700 leading-relaxed mb-6">The link may be mistyped, or invites are paused at the moment. You can still shop and create an account.</p>
+          <a href="/" class="block w-full min-h-12 text-center bg-brand-primary text-gray-950 py-3 rounded-full font-bold text-sm">Go to the shop</a>
+        </>
+      )}
+    </div>
+  </div>
+</BaseLayout>
