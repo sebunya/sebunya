@@ -190,3 +190,14 @@ export function renderDeliveryQuotePanel(q: any, opts: DeliveryQuotePanelOptions
   out.push('</div>');
   return out.join('');
 }
+
+/** Whether a location payload is the one the "collect" choice writes (it carries a pickup point id). */
+export function isPickupPayload(value: string | null | undefined): boolean {
+  if (!value || !value.startsWith('{')) return false;
+  try {
+    const parsed = JSON.parse(value) as { pickupPointId?: unknown };
+    return typeof parsed?.pickupPointId === 'string' && parsed.pickupPointId.length > 0;
+  } catch {
+    return false;
+  }
+}

@@ -43,6 +43,45 @@ export interface StructuredDeliveryLocation {
   placeId?: string;
 }
 
+/**
+ * The area and pin a new saved address keeps from the location the order was
+ * quoted by, so the next checkout to it is priced the same way. A Google Places
+ * pin (map_place) is NOT kept: its coordinates may be held only briefly (Places
+ * terms), and the address book keeps them indefinitely.
+ */
+export function savedAddressPlace(loc: StructuredDeliveryLocation | null | undefined): {
+  areaSlug?: string;
+  gpsLat?: number;
+  gpsLng?: number;
+  gpsAccuracyM?: number;
+  gpsSource?: 'device' | 'pasted_link';
+} {
+  if (!loc) return {};
+  const out: ReturnType<typeof savedAddressPlace> = {};
+  if (loc.areaSlug) out.areaSlug = loc.areaSlug;
+  if (
+    typeof loc.gpsLat === 'number' && typeof loc.gpsLng === 'number' && Number.isFinite(loc.gpsLat) && Number.isFinite(loc.gpsLng)
+    && (loc.gpsSource === 'device' || loc.gpsSource === 'pasted_link')
+  ) {
+    out.gpsLat = loc.gpsLat;
+    out.gpsLng = loc.gpsLng;
+    out.gpsSource = loc.gpsSource;
+    if (typeof loc.gpsAccuracyM === 'number' && Number.isFinite(loc.gpsAccuracyM)) out.gpsAccuracyM = loc.gpsAccuracyM;
+  }
+  return out;
+}
+
+/**
+ * Which saved-address radio a checkout render checks. A re-render keeps the
+ * customer's posted choice ('' = "Deliver somewhere else"); a plain view, or a
+ * posted id that is not theirs, gets the default.
+ */
+export function resolveCheckedAddressId(posted: string | null, ownIds: string[], defaultId: string | null): string | null {
+  if (posted === null) return defaultId;
+  if (posted === '') return '';
+  return ownIds.includes(posted) ? posted : defaultId;
+}
+
 export function validateCheckoutPayload(payload: Partial<CheckoutPayload>): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
@@ -117,7 +156,9 @@ export function prepareCheckoutPayload(formData: FormData, cartItems: CartItem[]
           items: cartItems.map(item => ({
             productId: item.productId,
             quantity: Number(item.quantity) || 1
-          }))
+          })),
+          // The duplicate-order key, as on the other branches: a typed address must not lose it.
+          clientOrderKey: String(formData.get('clientOrderKey') || '').trim() || undefined
         };
       }
 

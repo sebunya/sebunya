@@ -31,8 +31,11 @@ import {
   ORDER_RECEIPT_COOKIE,
   ORDER_RECEIPT_PATH,
   ORDER_RECEIPT_MAX_AGE_SECONDS,
+  savedAddressPlace,
+  resolveCheckedAddressId,
 } from '../lib/checkout';
 import { parseLocalCartCookie } from '../lib/cart';
+import { isPickupPayload } from '../lib/deliveryQuotePanel';
 import { resolveCheckoutIntent, issueFreshCheckoutIntent, clearCheckoutIntent } from '../lib/checkoutIntent';
 import { requestSession } from '../lib/customerAuth';
 import { cartClient } from '../lib/cartClient';
@@ -174,6 +177,23 @@ let offerNewOrder = false;
 let receivedActionLabel = 'View & track this order';
 let values: Record<string, string> = {};
 let errors: Record<string, string> = {};
+/**
+ * The saved address the customer last chose, as posted ('' = "Deliver somewhere
+ * else"); null when nothing was posted (a plain view: the default is chosen).
+ * The re-render must show THEIR choice: re-checking the default hid the new
+ * address and pickup block, and the next submit silently went to the default.
+ */
+let postedAddressId: string | null = null;
+/** What the customer typed, for a re-render: the form must never come back empty after a refusal. */
+const valuesFromForm = (formData: FormData): Record<string, string> => ({
+  name: String(formData.get('name') || '').trim(),
+  email: String(formData.get('email') || '').trim(),
+  phone: String(formData.get('phone') || '').trim(),
+  locationJson: String(formData.get('locationJson') || '').trim(),
+  deliveryAddress: String(formData.get('deliveryAddress') || '').trim(),
+  deliveryMethod: String(formData.get('deliveryMethod') || 'door').trim() === 'pickup' ? 'pickup' : 'door',
+  pickupPointId: String(formData.get('pickupPointId') || '').trim(),
+});
 // What the confirmation page recaps. Filled as the order is placed.
 let receiptTotalUgx: number | null = null;
 let receiptFeeConfirmed: boolean | null = null;
@@ -332,6 +352,20 @@ if (originDecision.allowed && sessionUnknown && Astro.request.method === 'POST')
   status = 'error';
   message = 'We could not confirm your sign-in just now, so nothing has been placed. Please wait a moment and try again.';
 }
+// Nothing is placed on these two refusals, but what the customer typed comes
+// back with the form (it used to come back blank, and a sign-in blip cost them
+// the whole checkout). Reading the body places and mints nothing.
+if (Astro.request.method === 'POST' && (!originDecision.allowed || sessionUnknown)) {
+  try {
+    const formData = await Astro.request.formData();
+    values = valuesFromForm(formData);
+    couponCodeValue = String(formData.get('couponCode') || '').trim().slice(0, 40);
+    storeCreditCodeValue = String(formData.get('storeCreditCode') || '').trim().slice(0, 40);
+    if (formData.has('addressId')) postedAddressId = String(formData.get('addressId') || '').trim();
+  } catch {
+    /* an unreadable body simply re-renders empty */
+  }
+}
 const checkoutIntent = originDecision.allowed && !sessionUnknown
   ? resolveCheckoutIntent(Astro.cookies, authenticatedUserId)
   : null;
@@ -352,15 +386,8 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
   const formData = await Astro.request.formData();
   
   // Extract raw strings for re-populating inputs on errors
-  values = {
-    name: String(formData.get('name') || '').trim(),
-    email: String(formData.get('email') || '').trim(),
-    phone: String(formData.get('phone') || '').trim(),
-    locationJson: String(formData.get('locationJson') || '').trim(),
-    deliveryAddress: String(formData.get('deliveryAddress') || '').trim(),
-    deliveryMethod: String(formData.get('deliveryMethod') || 'door').trim() === 'pickup' ? 'pickup' : 'door',
-    pickupPointId: String(formData.get('pickupPointId') || '').trim(),
-  };
+  values = valuesFromForm(formData);
+  if (formData.has('addressId')) postedAddressId = String(formData.get('addressId') || '').trim();
   couponCodeValue = String(formData.get('couponCode') || '').trim().slice(0, 40);
   storeCreditCodeValue = String(formData.get('storeCreditCode') || '').trim().slice(0, 40);
   heardAboutValue = parseHeardAbout(formData.get('heardAbout')) ?? '';
@@ -383,6 +410,12 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
     ? pickupPoints.find((p) => p.id === values.pickupPointId) ?? null
     : null;
   const collecting = values.deliveryMethod === 'pickup' && pickupPoints.length > 0;
+  // Delivering, but the location still holds the pickup line from an earlier "collect" choice: that is not a
+  // delivery place (it became a door delivery addressed to the shop), so it counts as no place chosen.
+  if (!collecting && isPickupPayload(values.locationJson)) {
+    formData.set('locationJson', '');
+    values.locationJson = '';
+  }
   if (collecting && pickupPoint) {
     const pickupText = `Pickup point: ${pickupPoint.name}${pickupPoint.physicalAddress ? `, ${pickupPoint.physicalAddress}` : ''}`;
     formData.set('locationJson', JSON.stringify({ manual: true, rawAddressText: pickupText }));
@@ -567,6 +600,9 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
                   phone: values.phone,
                   district,
                   areaDetails: payload.customerDetails.deliveryArea,
+                  // The area and pin this order was quoted and charged by, so the next checkout to this address is
+                  // priced the same way (without them it fell back to district-level pricing).
+                  ...savedAddressPlace(payload.customerDetails.deliveryLocation),
                   makeDefault: savedAddresses.length === 0,
                 }),
               });
@@ -657,6 +693,11 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
         const paid = existing.paymentStatus === 'paid';
         reference = existing.orderNumber;
         createdOrderId = existing.orderId;
+        // The basket on screen IS that order, so it is emptied exactly as for a fresh order: otherwise the customer
+        // comes back to a basket of things they already ordered. A PAID order needs no intent any more either; kept,
+        // it answered every later checkout of the same items with "already paid".
+        await clearBasketAfterOrder();
+        if (paid) clearCheckoutIntent(Astro.cookies);
         if (!paid && paymentMethod === 'pesapal') {
            const payRes = await startPayment({
               orderId: existing.orderId,
@@ -750,6 +791,9 @@ if (status === 'received' && reference) {
     return Astro.redirect(`${ORDER_RECEIPT_PATH}?ref=${encodeURIComponent(reference)}`, 303);
   }
 }
+
+// The radio to check: the customer's posted choice on a re-render, else the default.
+const checkedAddressId = resolveCheckedAddressId(postedAddressId, savedAddresses.map((a) => a.id), defaultAddress?.id ?? null);
 
 /** Where each field error sends the customer, in the order the form asks. */
 const FIELD_TARGET: Record<string, { target: string; label: string }> = {
@@ -1017,7 +1061,7 @@ const checkoutSavingLabel = basketSavingLabel(
                              data-district={a.district}
                              data-area={a.areaDetails}
                              data-area-slug={a.areaSlug ?? ''}
-                             checked={a.id === defaultAddress?.id}
+                             checked={a.id === checkedAddressId}
                              class="mt-0.5 w-5 h-5 accent-[#456B00] cursor-pointer js-address-choice"
                            />
                            <span class="min-w-0">
@@ -1030,7 +1074,7 @@ const checkoutSavingLabel = basketSavingLabel(
                          </label>
                        ))}
                        <label class="flex items-center gap-3 p-3.5 border border-dashed border-slate-300 rounded-xl hover:border-brand-primary cursor-pointer select-none transition-all has-[:checked]:border-brand-primary">
-                         <input type="radio" name="addressId" value="" class="w-5 h-5 accent-[#456B00] cursor-pointer js-address-choice" />
+                         <input type="radio" name="addressId" value="" checked={checkedAddressId === ''} class="w-5 h-5 accent-[#456B00] cursor-pointer js-address-choice" />
                          <span class="font-bold text-gray-900 text-sm">Deliver somewhere else</span>
                        </label>
                      </fieldset>
@@ -1350,7 +1394,7 @@ const checkoutSavingLabel = basketSavingLabel(
   import { track, captureClickIdsServerSide } from '../lib/telemetry';
   import { getCheckoutAttribution } from '../lib/attribution';
   import { publicApiBase } from '../lib/api';
-  import { buildDeliveryQuoteRequest, renderDeliveryQuotePanel, DELIVERY_QUOTE_UNREACHABLE_HTML, manualDeliveryAreaLine, escapeQuoteText } from '../lib/deliveryQuotePanel';
+  import { buildDeliveryQuoteRequest, renderDeliveryQuotePanel, DELIVERY_QUOTE_UNREACHABLE_HTML, manualDeliveryAreaLine, escapeQuoteText, isPickupPayload } from '../lib/deliveryQuotePanel';
 
   document.addEventListener('DOMContentLoaded', () => {
     const dataEl  = document.getElementById('checkout-telemetry-data');
@@ -1839,6 +1883,15 @@ const checkoutSavingLabel = basketSavingLabel(
       pickerBlock?.classList.toggle('hidden', pickup);
       (landmarkField as HTMLElement | undefined)?.classList.toggle('hidden', pickup);
       if (pickup) applyPickupSelection();
+      else clearPickupPayload();
+    }
+    // Back to "Deliver to me": the pickup location written into the payload must go, or the order is a door
+    // delivery addressed to the shop (and the page keeps saying "Collect free"). The customer picks their place again.
+    function clearPickupPayload() {
+      const payloadEl = formEl?.querySelector('.js-final-payload') as HTMLInputElement | null;
+      if (!payloadEl || !isPickupPayload(payloadEl.value)) return;
+      payloadEl.value = '';
+      payloadEl.dispatchEvent(new Event('change', { bubbles: true }));
     }
     function applyPickupSelection() {
       const opt = pickupSelect?.selectedOptions?.[0];
