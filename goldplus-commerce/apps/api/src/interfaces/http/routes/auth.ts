@@ -1,12 +1,82 @@
-import { Hono } from 'hono';
+import { Hono, Context } from 'hono';
+import { fpClientIdFromCookieHeader } from '@goldplus/shared';
+import { createHash } from 'node:crypto';
 import { Registry } from '../../../infrastructure/Registry';
 import { AuthenticateUserUseCase } from '../../../application/use-cases/identity/AuthenticateUserUseCase';
+import { RegisterCustomerUseCase } from '../../../application/use-cases/identity/RegisterCustomerUseCase';
 import { ApiResponse } from '@goldplus/shared';
+import { logger } from '../../../infrastructure/logging/logger';
 import { clientIp } from '../clientAddress';
+import { BASKET_REMINDERS_COPY_VERSION } from '../../../domain/consent/BasketReminderConsent';
+import { SESSION_LIFETIMES } from '../../../domain/identity/SessionPolicy';
 
 import { CreateAuditLogUseCase } from '../../../application/use-cases/audit/CreateAuditLogUseCase';
+import { bearerTokenFrom, resolveLiveSession } from '../middleware/liveSession';
+import { MfaService } from '../../../infrastructure/security/MfaService';
+import { authMiddleware } from '../middleware/auth';
+import { stitchInBackground } from '../../../infrastructure/first-party/stitchInBackground';
 
 const routes = new Hono();
+
+/**
+ * Issue a durable session on login, best-effort. A session-store hiccup must
+ * never block a valid login — the short-lived access token still works; refresh
+ * is simply unavailable until the store recovers. Gated out of the test
+ * environment so the hermetic unit suite (which drives /auth/login against the
+ * real app without a database) stays network-free; the durable behaviour is
+ * proven by the real-PostgreSQL integration suite.
+ */
+async function issueSessionSafely(
+  registry: ReturnType<typeof Registry.getInstance>,
+  userId: string,
+  c: Context,
+): Promise<{ refreshToken: string; refreshExpiresAt: string; familyId: string } | null> {
+  if (process.env.NODE_ENV === 'test') return null;
+  try {
+    const ipHash = createHash('sha256').update(clientIp(c)).digest('hex');
+    const uaHash = createHash('sha256')
+      .update(c.req.header('user-agent') ?? '')
+      .digest('hex');
+    const s = await registry.sessionService.issue({ userId, ipHash, userAgentHash: uaHash });
+    return { refreshToken: s.refreshToken, refreshExpiresAt: s.refreshExpiresAt.toISOString(), familyId: s.familyId };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The tokens a sign-in hands out. With a refresh credential the access token is
+ * SHORT (SESSION_LIFETIMES.accessTtlMs, 15 min) and the website renews it;
+ * a stolen one is useful for minutes. Without one (session store down) the
+ * long token the use case signed is kept, so a sign-in never fails for it.
+ */
+export async function signInTokens(
+  registry: ReturnType<typeof Registry.getInstance>,
+  user: { id: string; email: string },
+  c: Context,
+  fallback: { token: string; expiresAt: Date },
+): Promise<{ token: string; expiresAt: string; refreshToken?: string; refreshExpiresAt?: string }> {
+  const refresh = await issueSessionSafely(registry, user.id, c);
+  if (!refresh) return { token: fallback.token, expiresAt: fallback.expiresAt.toISOString() };
+  const ttlSeconds = Math.floor(SESSION_LIFETIMES.accessTtlMs / 1000);
+  // The token names its sign-in session (0187): a two-step verification counts for this session only.
+  const token = await registry.tokenSigner.sign({ subject: user.id, email: user.email, ttlSeconds, sessionId: refresh.familyId });
+  return { token, expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(), refreshToken: refresh.refreshToken, refreshExpiresAt: refresh.refreshExpiresAt };
+}
+
+/** Resolve the authenticated user from a bearer token, or null. */
+/**
+ * The caller behind a bearer token, or null.
+ *
+ * This used to stop at the signature, so /logout-all, /sessions and every
+ * /mfa/* route accepted a token belonging to a disabled account, a deleted user,
+ * or a session already revoked by a password reset. It now applies the same
+ * live-session rule as the admin and customer middleware.
+ */
+async function bearerUser(c: Context): Promise<{ id: string; email: string; sessionId: string | null } | null> {
+  const session = await resolveLiveSession(bearerTokenFrom(c.req.header('Authorization')));
+  return session.ok ? { id: session.user.id, email: session.user.email, sessionId: session.user.sessionId } : null;
+}
 
 routes.post('/login', async (c) => {
   let body: any;
@@ -39,19 +109,103 @@ routes.post('/login', async (c) => {
     return c.json(res, statusCode);
   }
 
+  const tokens = await signInTokens(registry, result.user, c, { token: result.token, expiresAt: result.expiresAt });
+  // 0155: link the account to its customer profile (never blocks the login).
+  stitchInBackground({ moment: 'SIGN_IN', accountUserId: result.user.id, fpClientId: fpClientIdFromCookieHeader(c.req.header('cookie')) ?? undefined });
+
   const res: ApiResponse<{
     token: string;
     expiresAt: string;
+    refreshToken?: string;
+    refreshExpiresAt?: string;
     user: { id: string; email: string; phone: string | null };
   }> = {
     success: true,
     data: {
-      token: result.token,
-      expiresAt: result.expiresAt.toISOString(),
+      ...tokens,
       user: result.user,
     },
   };
   return c.json(res);
+});
+
+routes.post('/register', async (c) => {
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    const res: ApiResponse<never> = { success: false, error: { code: 'BAD_JSON', message: 'Request body must be JSON.' } };
+    return c.json(res, 400);
+  }
+
+  const registry = Registry.getInstance();
+  const uc = new RegisterCustomerUseCase(registry.userRepo, registry.passwordHasher, registry.tokenSigner);
+  const result = await uc.execute({
+    email: String(body.email ?? ''),
+    phone: String(body.phone ?? ''),
+    password: String(body.password ?? ''),
+  });
+
+  if (!result.ok) {
+    const statusCode =
+      result.code === 'BAD_INPUT' ? 400 :
+      result.code === 'AUTH_NOT_CONFIGURED' ? 503 :
+      409; // ALREADY_REGISTERED
+    const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
+    return c.json(res, statusCode);
+  }
+
+  // Gamification (0087): an optional referral code links the new account to
+  // its referrer as a PENDING fact — nothing is paid until the referee's
+  // first order is delivered. A bad code never fails registration; the
+  // response says what happened so the UI can tell the customer.
+  let referral: { applied: boolean; reason?: string } | undefined;
+  if (typeof body.referralCode === 'string' && body.referralCode.trim()) {
+    const outcome = await registry.recordReferralUseCase
+      // 'link' when the code came from an invite link the browser remembered (the storefront says so), else typed.
+      .execute({ refereeUserId: result.user.id, code: String(body.referralCode), source: body.referralSource === 'link' ? 'link' : 'typed' })
+      .catch(() => null);
+    referral = outcome && 'status' in outcome ? { applied: true } : { applied: false, reason: outcome?.code ?? 'REFERRAL_FAILED' };
+  }
+
+  // 0210: the basket-reminders tick at sign-up is the customer's own consent, recorded as such (never fails registration).
+  let basketReminders: { applied: boolean } | undefined;
+  if (body.basketReminders === true) {
+    const r = await registry.basketReminderConsentUseCases.change({
+      // The version of the words the sign-up page showed (it echoes it): a page with other words is refused, not recorded
+      // as consent to these. A page from before the echo sends none and is taken as the current words.
+      userId: result.user.id, requested: 'granted', confirmationTicked: true, surface: 'registration',
+      copyVersionId: typeof body.basketRemindersCopyVersion === 'string' && body.basketRemindersCopyVersion ? body.basketRemindersCopyVersion : BASKET_REMINDERS_COPY_VERSION,
+      idempotencyKey: `register:${result.user.id}`, correlationId: c.req.header('x-correlation-id')?.trim().slice(0, 120) || `register:${result.user.id}`,
+      ipAddress: clientIp(c), userAgent: c.req.header('x-shopper-user-agent') ?? c.req.header('user-agent') ?? null,
+    }).catch(() => null);
+    basketReminders = { applied: !!r && r.ok };
+  }
+
+  // Registration IS a login: same durable session, same response shape, so the
+  // storefront handles both flows with one code path.
+  const tokens = await signInTokens(registry, result.user, c, { token: result.token, expiresAt: result.expiresAt });
+  // 0155: a new account gets its customer profile (never blocks registration).
+  stitchInBackground({ moment: 'REGISTRATION', accountUserId: result.user.id, fpClientId: fpClientIdFromCookieHeader(c.req.header('cookie')) ?? undefined });
+
+  const res: ApiResponse<{
+    token: string;
+    expiresAt: string;
+    refreshToken?: string;
+    refreshExpiresAt?: string;
+    user: { id: string; email: string; phone: string | null };
+    referral?: { applied: boolean; reason?: string };
+    basketReminders?: { applied: boolean };
+  }> = {
+    success: true,
+    data: {
+      ...tokens,
+      user: result.user,
+      ...(referral ? { referral } : {}),
+      ...(basketReminders ? { basketReminders } : {}),
+    },
+  };
+  return c.json(res, 201);
 });
 
 routes.post('/admin/login', async (c) => {
@@ -111,20 +265,404 @@ routes.post('/admin/login', async (c) => {
     newState: { email: result.user.email, permissionCount: permissions.length },
   });
 
+  const tokens = await signInTokens(registry, result.user, c, { token: result.token, expiresAt: result.expiresAt });
+
   const res: ApiResponse<{
     token: string;
     expiresAt: string;
+    refreshToken?: string;
+    refreshExpiresAt?: string;
     user: { id: string; email: string; permissions: string[] };
   }> = {
     success: true,
     data: {
-      token: result.token,
-      expiresAt: result.expiresAt.toISOString(),
+      ...tokens,
       user: { id: result.user.id, email: result.user.email, permissions },
     },
   };
   return c.json(res);
 });
 
-export default routes;
+/**
+ * Slice 3B — rotate a refresh credential for a new access token + a new refresh
+ * token. Reuse of a consumed credential is detected in the service and revokes
+ * the whole family; here it simply reads as a failed refresh.
+ */
+routes.post('/refresh', async (c) => {
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Request body must be JSON.' } }, 400);
+  }
+  const refreshToken = String(body.refreshToken ?? '');
+  if (!refreshToken) {
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'A refresh token is required.' } }, 400);
+  }
 
+  const registry = Registry.getInstance();
+  const result = await registry.sessionService.rotate({
+    refreshToken,
+    cutoffFor: async (userId) => (await registry.userRepo.findById(userId))?.sessionsInvalidatedAfter ?? null,
+  });
+  if (!result.ok) {
+    // One generic message: an attacker must not learn whether a token was
+    // expired, revoked or reused.
+    return c.json(
+      { success: false, error: { code: 'SESSION_INVALID', message: 'Please sign in again.' } },
+      401,
+    );
+  }
+
+  const user = await registry.userRepo.findById(result.session.userId);
+  if (!user || !user.isActive) {
+    await registry.sessionService.logoutAll(result.session.userId, 'account_disabled');
+    return c.json(
+      { success: false, error: { code: 'SESSION_INVALID', message: 'Please sign in again.' } },
+      401,
+    );
+  }
+
+  const token = await registry.tokenSigner.sign({
+    subject: user.id,
+    email: user.email,
+    ttlSeconds: Math.floor(SESSION_LIFETIMES.accessTtlMs / 1000),
+    // Same session family across rotations, so a verification made before a refresh still counts after it.
+    sessionId: result.session.familyId,
+  });
+
+  return c.json({
+    success: true,
+    data: 'grace' in result
+      // Concurrent refresh: an access token only; the caller keeps its refresh credential.
+      ? { token, expiresAt: result.session.accessExpiresAt.toISOString() }
+      : {
+          token,
+          expiresAt: result.session.accessExpiresAt.toISOString(),
+          refreshToken: result.session.refreshToken,
+          refreshExpiresAt: result.session.refreshExpiresAt.toISOString(),
+        },
+  });
+});
+
+/** Log out the current session (revoke the presented refresh token's family). */
+routes.post('/logout', async (c) => {
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    body = {};
+  }
+  const refreshToken = String(body?.refreshToken ?? '');
+  if (refreshToken) await Registry.getInstance().sessionService.logout(refreshToken);
+  // Idempotent: logging out an unknown/absent token still succeeds.
+  return c.json({ success: true, data: { loggedOut: true } });
+});
+
+/** Log out everywhere — revoke every session for the authenticated user. */
+routes.post('/logout-all', async (c) => {
+  const user = await bearerUser(c);
+  if (!user) {
+    return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'A valid session is required.' } }, 401);
+  }
+  const revoked = await Registry.getInstance().sessionService.logoutAll(user.id, 'logout_all');
+  return c.json({ success: true, data: { revoked } });
+});
+
+/** The authenticated user's active-session inventory. */
+routes.get('/sessions', async (c) => {
+  const user = await bearerUser(c);
+  if (!user) {
+    return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'A valid session is required.' } }, 401);
+  }
+  const items = await Registry.getInstance().sessionRepository.listActiveForUser(user.id, new Date());
+  return c.json({
+    success: true,
+    data: {
+      sessions: items.map((s) => ({
+        familyId: s.familyId,
+        createdAt: s.createdAt.toISOString(),
+        lastUsedAt: s.lastUsedAt.toISOString(),
+        refreshExpiresAt: s.refreshExpiresAt.toISOString(),
+      })),
+    },
+  });
+});
+
+// ---- Slice 3C: privileged MFA management ------------------------------------
+
+/** Begin TOTP enrolment — returns the secret + otpauth URI to show as a QR. */
+routes.post('/mfa/enrol', async (c) => {
+  const user = await bearerUser(c);
+  if (!user) {
+    return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'A valid session is required.' } }, 401);
+  }
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    body = {};
+  }
+  // Replacing an authenticator that is already live needs a code from the current one in THIS request (or a
+  // recovery code). A recent step-up is not enough: a stolen token could ride the real admin's.
+  const start = await Registry.getInstance().mfaService.beginEnrolment(user.id, user.email, {
+    code: String(body?.code ?? ''),
+    recovery: body?.recovery === true,
+  });
+  if ('currentCodeRequired' in start) {
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: 'MFA_CURRENT_CODE_REQUIRED',
+          message: 'Enter a code from your current authenticator (or a recovery code) to replace it.',
+        },
+      },
+      403,
+    );
+  }
+  if ('locked' in start) {
+    c.header('Retry-After', String(Math.ceil(MfaService.LOCK_WINDOW_MS / 1000)));
+    return c.json(
+      { success: false, error: { code: 'MFA_LOCKED', message: 'Too many wrong codes. Wait fifteen minutes and try again.' } },
+      429,
+    );
+  }
+  if ('currentCodeInvalid' in start) {
+    return c.json({ success: false, error: { code: 'MFA_CODE_INVALID', message: 'That code was not valid.' } }, 400);
+  }
+  const audit = new CreateAuditLogUseCase(Registry.getInstance().auditRepo);
+  await audit.execute({
+    actorId: user.id,
+    action: 'MFA_ENROLMENT_STARTED',
+    entity: 'user',
+    entityId: user.id,
+    newState: { replacingConfirmed: false },
+  });
+  return c.json({ success: true, data: { secret: start.secret, otpauthUri: start.otpauthUri } });
+});
+
+/** Confirm enrolment with the first code; returns one-time recovery codes. */
+routes.post('/mfa/confirm', async (c) => {
+  const user = await bearerUser(c);
+  if (!user) {
+    return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'A valid session is required.' } }, 401);
+  }
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    body = {};
+  }
+  const result = await Registry.getInstance().mfaService.confirmEnrolment(user.id, String(body?.code ?? ''), new Date(), user.sessionId);
+  if (result.locked) {
+    c.header('Retry-After', String(Math.ceil(MfaService.LOCK_WINDOW_MS / 1000)));
+    return c.json(
+      { success: false, error: { code: 'MFA_LOCKED', message: 'Too many wrong codes. Wait fifteen minutes and try again.' } },
+      429,
+    );
+  }
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: 'MFA_CODE_INVALID', message: 'That code was not valid.' } }, 400);
+  }
+  const audit = new CreateAuditLogUseCase(Registry.getInstance().auditRepo);
+  await audit.execute({ actorId: user.id, action: 'MFA_ENROLLED', entity: 'user', entityId: user.id, newState: { confirmed: true } });
+  return c.json({ success: true, data: { recoveryCodes: result.recoveryCodes } });
+});
+
+/** Step-up: prove a TOTP code (or a recovery code) to refresh assurance. */
+routes.post('/mfa/verify', async (c) => {
+  const user = await bearerUser(c);
+  if (!user) {
+    return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'A valid session is required.' } }, 401);
+  }
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    body = {};
+  }
+  const svc = Registry.getInstance().mfaService;
+  const code = String(body?.code ?? '');
+  const first = body?.recovery ? await svc.useRecoveryCode(user.id, code, new Date(), user.sessionId) : await svc.verify(user.id, code, new Date(), user.sessionId);
+  if (first === 'LOCKED') {
+    c.header('Retry-After', String(Math.ceil(MfaService.LOCK_WINDOW_MS / 1000)));
+    return c.json(
+      { success: false, error: { code: 'MFA_LOCKED', message: 'Too many wrong codes. Wait fifteen minutes and try again.' } },
+      429,
+    );
+  }
+  if (first !== true) {
+    return c.json({ success: false, error: { code: 'MFA_CODE_INVALID', message: 'That code was not valid.' } }, 400);
+  }
+  return c.json({ success: true, data: { verified: true } });
+});
+
+/** Whether the caller has MFA enrolled/confirmed (drives the UI). */
+routes.get('/mfa/status', async (c) => {
+  const user = await bearerUser(c);
+  if (!user) {
+    return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'A valid session is required.' } }, 401);
+  }
+  // This session's own verification time, never another session's (0187).
+  const status = await Registry.getInstance().mfaService.status(user.id, user.sessionId);
+  return c.json({ success: true, data: status });
+});
+
+/* ── Password reset (0106) ───────────────────────────────────────────────── */
+
+/**
+ * Request a reset link.
+ *
+ * ALWAYS answers the same thing. A different response for a registered and an
+ * unregistered address is a free customer list, and it is exactly what
+ * credential stuffing uses to pick targets. The interesting detail — whether
+ * an account exists, whether it was throttled, whether mail is configured —
+ * goes to the log and the operator, never to the caller.
+ */
+routes.post('/password/forgot', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const result = await registry.requestPasswordResetUseCase.execute({
+    email: String(body?.email ?? ''),
+    ip: clientIp(c),
+  });
+
+  logger.info(
+    {
+      delivery: result.internal.delivery,
+      deliveryDetail: result.internal.deliveryDetail,
+      userFound: result.internal.userFound,
+      throttled: result.internal.throttled,
+    },
+    'PASSWORD_RESET_REQUESTED',
+  );
+
+  const res: ApiResponse<{ message: string }> = { success: true, data: { message: result.message } };
+  return c.json(res);
+});
+
+/** Complete the reset. Revokes every existing session on success. */
+routes.post('/password/reset', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const result = await registry.resetPasswordUseCase.execute({
+    token: String(body?.token ?? ''),
+    newPassword: String(body?.password ?? ''),
+  });
+
+  if (!result.ok) {
+    const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
+    return c.json(res, result.code === 'WEAK_PASSWORD' ? 400 : 410);
+  }
+
+  // Belt and braces: the repository stamps sessions_invalidated_after inside
+  // the same transaction, and this revokes the durable refresh families too.
+  await registry.sessionService.logoutAll(result.userId, 'password_change').catch(() => undefined);
+  await registry.createAuditLogUseCase
+    .execute({
+      actorId: result.userId,
+      action: 'PASSWORD_RESET_COMPLETED',
+      entity: 'user',
+      entityId: result.userId,
+      previousState: null,
+      newState: { sessionsRevoked: true },
+    })
+    .catch(() => undefined);
+
+  const res: ApiResponse<{ message: string }> = {
+    success: true,
+    data: { message: 'Your password has been changed and you have been signed out everywhere. Sign in with your new password.' },
+  };
+  return c.json(res);
+});
+
+/**
+ * Request a reset CODE by SMS.
+ *
+ * The phone is the account for most customers and SMS is the channel that
+ * arrives. Same discipline as the email request: one answer for every input,
+ * and the interesting detail goes to the log, never to the caller.
+ */
+routes.post('/password/forgot-sms', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const result = await registry.requestSmsPasswordResetUseCase.execute({
+    phone: String(body?.phone ?? ''),
+    ip: clientIp(c),
+  });
+
+  logger.info(
+    {
+      delivery: result.internal.delivery,
+      deliveryDetail: result.internal.deliveryDetail,
+      userFound: result.internal.userFound,
+      throttled: result.internal.throttled,
+    },
+    'PASSWORD_RESET_SMS_REQUESTED',
+  );
+
+  const res: ApiResponse<{ message: string }> = { success: true, data: { message: result.message } };
+  return c.json(res);
+});
+
+/** Complete a reset with the SMS code. Revokes every existing session on success. */
+routes.post('/password/reset-sms', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const result = await registry.resetPasswordWithSmsCodeUseCase.execute({
+    phone: String(body?.phone ?? ''),
+    code: String(body?.code ?? ''),
+    newPassword: String(body?.password ?? ''),
+  });
+
+  if (!result.ok) {
+    const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
+    return c.json(res, result.code === 'TOO_MANY_ATTEMPTS' ? 429 : 400);
+  }
+
+  await registry.sessionService.logoutAll(result.userId, 'password_change').catch(() => undefined);
+  await registry.createAuditLogUseCase
+    .execute({
+      actorId: result.userId,
+      action: 'PASSWORD_RESET_COMPLETED',
+      entity: 'user',
+      entityId: result.userId,
+      previousState: null,
+      newState: { sessionsRevoked: true, method: 'sms_code' },
+    })
+    .catch(() => undefined);
+
+  const res: ApiResponse<{ message: string }> = {
+    success: true,
+    data: { message: 'Your password has been changed and you have been signed out everywhere. Sign in with your new password.' },
+  };
+  return c.json(res);
+});
+
+/**
+ * GET /auth/admin-session — does this token belong to an admin?
+ *
+ * The storefront and the admin console share ONE cookie, and the admin pages
+ * used to authenticate on the mere PRESENCE of it, so a signed-in customer
+ * could render the admin shell. No privileged data leaked, because every admin
+ * API enforces its own permission, but the console is not theirs to see.
+ *
+ * It lives here, not under /admin, because it is a question about an identity
+ * rather than an admin RESOURCE: every route under /admin must be gated by a
+ * specific permission, and this one deliberately asks only whether the holder
+ * has ANY admin permission at all. authMiddleware already refuses an account
+ * with none, so mounting it behind authMiddleware IS the check.
+ *
+ * Deliberately tiny: the web middleware calls it on every admin page request.
+ */
+routes.get('/admin-session', authMiddleware, (c) => {
+  const user = c.get('user') as { id: string; email: string; permissions: string[] } | undefined;
+  const res: ApiResponse<{ id: string; email: string; permissions: string[] }> = {
+    success: true,
+    data: { id: user?.id ?? '', email: user?.email ?? '', permissions: user?.permissions ?? [] },
+  };
+  return c.json(res, 200);
+});
+
+export default routes;

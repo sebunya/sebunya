@@ -3,62 +3,43 @@ import ReleaseSafetyNote from './ReleaseSafetyNote.astro';
 import ReleaseDecisionBanner from './ReleaseDecisionBanner.astro';
 import ReleaseRiskRegister from './ReleaseRiskRegister.astro';
 
-// Mock data to demonstrate the UI (in real life fetched from the summary endpoint)
-const summary = {
-  latestRun: {
-    id: 'run-123',
-    status: 'WARN',
-    startedAt: new Date().toISOString(),
-  },
-  decision: null,
-  gates: [
-    {
-      id: 'g-1',
-      gateId: 'CODE:TYPECHECK',
-      category: 'CODE',
-      name: 'TypeScript Typecheck',
-      status: 'PASS',
-      severity: 'CRITICAL',
-      evidence: { stdout: 'Found 0 errors.' }
-    },
-    {
-      id: 'g-2',
-      gateId: 'TEST:ARCHITECTURE',
-      category: 'TEST',
-      name: 'Architecture Boundary Tests',
-      status: 'PASS',
-      severity: 'CRITICAL',
-      evidence: { stdout: 'All tests passed.' }
-    },
-    {
-      id: 'g-3',
-      gateId: 'MEASUREMENT:GTM',
-      category: 'MEASUREMENT',
-      name: 'GTM Tag Dry-Run Validation',
-      status: 'WARN',
-      severity: 'HIGH',
-      evidence: { warnings: ['Duplicate tag found in dry-run'] }
-    }
-  ]
-};
+interface Props {
+  summary: { latestRun: any; gates: any[]; decision: any } | null;
+  loadError: string | null;
+}
+const { summary, loadError } = Astro.props;
+// No "run checks" button: the checks are source checks (typecheck, vitest) and
+// the production server carries no source, so a run started here could only
+// report NOT_CONFIGURED. They run in CI and on a developer machine.
 ---
 
 <div class="flex flex-col gap-6 w-full max-w-7xl mx-auto p-6">
-  <div class="flex justify-between items-center">
-    <div>
-      <h1 class="text-2xl font-bold text-gray-900">Release Readiness & QA Governance</h1>
-      <p class="text-sm text-gray-500">Slice 9 Control Plane</p>
-    </div>
-    <div>
-      <button class="px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm hover:bg-blue-700 font-medium">
-        Run Safe Checks
-      </button>
-    </div>
+  <div>
+    <h1 class="text-2xl font-bold text-gray-900">Release Readiness & QA Governance</h1>
+    <p class="text-sm text-gray-500">The latest recorded readiness run and its gate results.</p>
   </div>
 
   <ReleaseSafetyNote />
 
-  <ReleaseDecisionBanner decision={summary.decision} run={summary.latestRun} />
-
-  <ReleaseRiskRegister gates={summary.gates} />
+  {loadError ? (
+    <div class="p-4 rounded-lg border bg-red-50 border-red-200 text-red-800" role="alert">
+      <p class="font-bold">Could not load readiness</p>
+      <p class="text-sm mt-1">{loadError}</p>
+    </div>
+  ) : (
+    <>
+      <ReleaseDecisionBanner decision={summary?.decision ?? null} run={summary?.latestRun ?? null} />
+      {summary?.latestRun && (
+        <p class="text-xs text-gray-500">
+          Run {summary.latestRun.id} · started {new Date(summary.latestRun.startedAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' })}
+          {summary.latestRun.completedAt ? ` · completed ${new Date(summary.latestRun.completedAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' })}` : ' · not completed'}
+        </p>
+      )}
+      {summary && summary.gates.length > 0 ? (
+        <ReleaseRiskRegister gates={summary.gates} />
+      ) : (
+        <p class="text-sm text-gray-600">No gate results are recorded.</p>
+      )}
+    </>
+  )}
 </div>
