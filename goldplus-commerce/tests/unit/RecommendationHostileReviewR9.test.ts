@@ -112,6 +112,19 @@ describe("B1 — one admin can no longer arm a suppression through the side door
     expect(result.ok).toBe(true);
   });
 
+  it("an edit cannot rewrite createdBy, so the author cannot become the second admin", async () => {
+    const { ruleRepo, auditRepo } = ruleRepos(ruleFixture({ status: "DRAFT", type: "SUPPRESS", action: { type: "SUPPRESS" } } as never));
+    const useCase = new UpdateRecommendationRuleUseCase(
+      ruleRepo as never,
+      auditRepo as never,
+      new RecommendationRuleValidationService(),
+      new RecommendationRuleConflictService(),
+    );
+    const result = await useCase.execute({ id: "r1", updates: { name: "Renamed", createdBy: "admin-2" } as never, performedBy: "admin-1" });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.rule.createdBy).toBe("admin-1");
+  });
+
   it("vector 2 (PROVEN pre-fix): a SUPPRESS before-image can NEVER come back through rollback", async () => {
     const { ruleRepo, auditRepo } = ruleRepos(ruleFixture());
     const useCase = new RollbackRecommendationRuleUseCase(
