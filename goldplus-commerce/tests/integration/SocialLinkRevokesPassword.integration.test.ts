@@ -50,8 +50,8 @@ suite('social link revokes an unproven password (real PostgreSQL)', () => {
     expect(u.password_hash).toBeNull();
     const cutoff = new Date(u.sessions_invalidated_after);
     expect(isInvalidatedByCutoff(attackerTokenIat, cutoff)).toBe(true);
-    // A JWT iat is whole seconds: the token issued right after linking.
-    const freshIat = new Date(Math.floor(Date.now() / 1000) * 1000);
+    // Access tokens carry a millisecond iat_ms: the token issued right after linking is later than the exact cut-off.
+    const freshIat = new Date(Date.now() + 1);
     expect(isInvalidatedByCutoff(freshIat, cutoff)).toBe(false);
     expect((await raw`select count(*)::int as n from user_identities where user_id = ${id}`)[0].n).toBe(1);
   });
