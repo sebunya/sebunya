@@ -96,3 +96,19 @@ describe('loyalty and gift card pages', () => {
     expect(open).toContain("ctx.globalCompositeOperation = 'destination-in';");
   });
 });
+
+describe('finance CSV', async () => {
+  const { csvCell, csvDate } = await import('../../apps/api/src/interfaces/http/csv');
+  it('writes dates as ISO 8601 through the one CSV writer', () => {
+    expect(csvCell(new Date('2026-11-01T00:00:00Z'))).toBe('"2026-11-01T00:00:00.000Z"');
+    expect(csvDate(new Date('2026-11-01T00:00:00Z'))).toBe('"2026-11-01"');
+    expect(csvCell(new Date('nope'))).toBe('""');
+    expect(csvCell('=HYPERLINK("x")')).toBe(`"'=HYPERLINK(""x"")"`);
+  });
+  it('the loyalty finance export goes through csvCell/csvDate', () => {
+    const routes = read('apps/api/src/interfaces/http/routes/admin/loyalty.ts');
+    const block = routes.slice(routes.indexOf("routes.get('/finance-export.csv'"), routes.indexOf("routes.post('/accounts/merge'"));
+    expect(block).toContain('csvDate(v)');
+    expect(block).not.toContain("r[k] ?? ''");
+  });
+});

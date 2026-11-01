@@ -6,7 +6,7 @@ import { isRedemptionHalted } from '../../../../application/use-cases/loyalty/Lo
 import { Registry } from '../../../../infrastructure/Registry';
 import { CreateAuditLogUseCase } from '../../../../application/use-cases/audit/CreateAuditLogUseCase';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
-import { csvCell } from '../../csv';
+import { csvCell, csvDate } from '../../csv';
 
 // Audit entity ids are uuids; the loyalty config is a singleton, so it gets a
 // fixed, well-known uuid rather than a free-text marker.
@@ -523,7 +523,10 @@ routes.get('/liability', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), asyn
 routes.get('/finance-export.csv', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const rows = await Registry.getInstance().loyaltyCompletionRepo.liabilitySnapshotsForExport();
   const header = 'snapshot_date,points_outstanding,points_issued,points_redeemed,points_expired,points_clawed_back,pending_points,point_value_ugx,liability_ugx,breakage_estimate_bps,redemption_rate_bps';
-  const lines = rows.map((r) => header.split(',').map((k) => r[k] ?? '').join(','));
+  // bigint/numeric columns arrive as strings: written as numbers, so a negative figure is not mistaken for a formula.
+  const cell = (k: string, v: unknown) => k === 'snapshot_date' ? csvDate(v)
+    : csvCell(typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v);
+  const lines = rows.map((r) => header.split(',').map((k) => cell(k, r[k])).join(','));
   return c.text([header, ...lines].join('\n'), 200, { 'Content-Type': 'text/csv' });
 });
 
