@@ -1,7 +1,7 @@
 import { bodyLimit } from 'hono/body-limit';
 import { GIFT_CARD_PHOTO_MAX_BYTES } from '../../../../domain/credit/GiftCardPhoto';
 import { DELIVERY_PROOF_REFUSAL_WORDS } from '../../../../application/use-cases/fulfilment/DeliveryProofPhotoUseCases';
-import { Hono } from 'hono';
+import { Hono, type Context, type Next } from 'hono';
 import { z } from 'zod';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
@@ -137,6 +137,17 @@ routes.get('/teams', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) =>
 
 const TASK_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Every /:id route: a task id is a uuid, so anything else is simply not a task
+ * (404) rather than a Postgres uuid cast error surfacing as a 500.
+ */
+const requireTaskId = async (c: Context, next: Next) => {
+  if (!TASK_ID.test(String(c.req.param('id') ?? ''))) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Fulfilment task not found.' } } satisfies ApiResponse<never>, 404);
+  }
+  await next();
+};
+
 // The order page links dispatch/delivery to the order's fulfilment task —
 // the one place those moves are recorded (the governance fulfillment PATCH
 // deliberately refuses them).
@@ -150,7 +161,7 @@ routes.get('/by-order/:orderId', requirePermissions([PERMISSIONS.ORDERS_READ]), 
   return c.json(res);
 });
 
-routes.get('/:id',requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+routes.get('/:id', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   // A task id is a uuid; anything else is simply not a task (404), never a
   // Postgres cast error surfacing as a 500.
@@ -168,7 +179,7 @@ const transitionBodySchema = z.object({
   notes: z.string().trim().max(2000).nullish(),
 });
 
-routes.patch('/:id/status', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.patch('/:id/status', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const body = await c.req.json().catch(() => null);
   const parsed = transitionBodySchema.safeParse(body);
@@ -209,7 +220,7 @@ const reinstateBodySchema = z.object({
  * order_id, so without this an order still open to the customer could be
  * cancelled out of every operational surface with no way back but SQL.
  */
-routes.post('/:id/reinstate', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.post('/:id/reinstate', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const body = await c.req.json().catch(() => ({}));
   const parsed = reinstateBodySchema.safeParse(body ?? {});
@@ -237,7 +248,7 @@ const assignBodySchema = z.object({
   assignedTo: z.string().uuid().nullable(),
 });
 
-routes.patch('/:id/assign', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.patch('/:id/assign', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const parsed = assignBodySchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
@@ -262,7 +273,7 @@ const priorityBodySchema = z.object({
   priority: z.enum(FULFILMENT_PRIORITIES as unknown as [string, ...string[]]),
 });
 
-routes.patch('/:id/priority', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.patch('/:id/priority', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const parsed = priorityBodySchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
@@ -306,7 +317,7 @@ routes.post('/teams/:teamId/members', requirePermissions([PERMISSIONS.ORDERS_MAN
   return c.json({ success: true, data: { ok: true } } satisfies ApiResponse<{ ok: boolean }>);
 });
 
-routes.patch('/:id/claim', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.patch('/:id/claim', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const actorId = (c.get('user') as any).id as string;
   const result = await Registry.getInstance().assignFulfilmentTaskUseCase.execute({ taskId: id, assignedTo: actorId, actorId });
@@ -318,7 +329,7 @@ routes.patch('/:id/claim', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), asyn
 });
 
 const teamMoveBody = z.object({ teamId: z.string().uuid().nullable() });
-routes.patch('/:id/team', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.patch('/:id/team', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const parsed = teamMoveBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_BODY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
@@ -349,7 +360,7 @@ function packingErrStatus(code: string): 400 | 404 | 409 {
   return 400;
 }
 
-routes.get('/:id/packing', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+routes.get('/:id/packing', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const reg = Registry.getInstance();
   await reg.initialiseFulfilmentLinesUseCase.execute(id); // idempotent lazy init
@@ -358,7 +369,7 @@ routes.get('/:id/packing', requirePermissions([PERMISSIONS.ORDERS_READ]), async 
   return c.json({ success: true, data: result.detail } satisfies ApiResponse<typeof result.detail>);
 });
 
-routes.post('/:id/packing/start', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.post('/:id/packing/start', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const reg = Registry.getInstance();
   await reg.initialiseFulfilmentLinesUseCase.execute(id);
@@ -371,7 +382,7 @@ routes.post('/:id/packing/start', requirePermissions([PERMISSIONS.ORDERS_MANAGE]
 const packedBody = z.object({
   updates: z.array(z.object({ lineId: z.string().uuid(), packed: z.number().int().min(0), expectedVersion: z.number().int().min(0) })).min(1).max(200),
 });
-routes.patch('/:id/packing/packed', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.patch('/:id/packing/packed', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const parsed = packedBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_QUANTITY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
@@ -382,7 +393,7 @@ routes.patch('/:id/packing/packed', requirePermissions([PERMISSIONS.ORDERS_MANAG
 });
 
 const remainderBody = z.object({ lineId: z.string().uuid(), quantity: z.number().int().min(1), expectedVersion: z.number().int().min(0), reason: z.string().trim().max(500).optional() });
-routes.post('/:id/packing/backorder', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.post('/:id/packing/backorder', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const parsed = remainderBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_QUANTITY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
@@ -391,7 +402,7 @@ routes.post('/:id/packing/backorder', requirePermissions([PERMISSIONS.ORDERS_MAN
   if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, packingErrStatus(result.code));
   return c.json({ success: true, data: { ok: true } } satisfies ApiResponse<{ ok: boolean }>);
 });
-routes.post('/:id/packing/cancel-remainder', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.post('/:id/packing/cancel-remainder', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const parsed = remainderBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_QUANTITY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
@@ -402,7 +413,7 @@ routes.post('/:id/packing/cancel-remainder', requirePermissions([PERMISSIONS.ORD
 });
 
 const completeBody = z.object({ packageCount: z.number().int().min(0).optional(), packageReference: z.string().trim().max(120).optional(), notes: z.string().trim().max(2000).optional() });
-routes.post('/:id/packing/complete', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.post('/:id/packing/complete', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const parsed = completeBody.safeParse((await c.req.json().catch(() => ({}))) ?? {});
   if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_QUANTITY', message: 'Invalid body.' } } satisfies ApiResponse<never>, 400);
@@ -413,7 +424,7 @@ routes.post('/:id/packing/complete', requirePermissions([PERMISSIONS.ORDERS_MANA
 });
 
 const exceptionBody = z.object({ reason: z.string().trim().min(1).max(500), hold: z.boolean().optional() });
-routes.post('/:id/packing/exception', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.post('/:id/packing/exception', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const parsed = exceptionBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_QUANTITY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
@@ -431,7 +442,7 @@ function dispatchErrStatus(code: string): 400 | 404 | 409 {
   return 400;
 }
 
-routes.get('/:id/dispatch', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+routes.get('/:id/dispatch', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const result = await Registry.getInstance().getDispatchUseCase.execute(id);
   if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, dispatchErrStatus(result.code));
@@ -449,7 +460,7 @@ const recordDispatchBody = z.object({
   notes: z.string().trim().max(2000).optional(),
   allowCashOnDelivery: z.boolean().optional(),
 });
-routes.post('/:id/dispatch', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.post('/:id/dispatch', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const parsed = recordDispatchBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_INPUT', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
@@ -477,7 +488,7 @@ const dispatchTrackingBody = z.object({
   estimatedDeliveryAt: z.string().datetime().nullish(),
   notes: z.string().trim().max(2000).nullish(),
 });
-routes.patch('/:id/dispatch/tracking', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.patch('/:id/dispatch/tracking', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const parsed = dispatchTrackingBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_INPUT', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
@@ -500,7 +511,7 @@ function deliveryErrStatus(code: string): 400 | 404 {
   return code === 'NOT_FOUND' ? 404 : 400;
 }
 
-routes.get('/:id/delivery', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+routes.get('/:id/delivery', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const result = await Registry.getInstance().getDeliveryHistoryUseCase.execute(id);
   if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, deliveryErrStatus(result.code));
@@ -518,7 +529,7 @@ const recordDeliveryBody = z.object({
   rescheduledFor: z.string().datetime().optional(),
   notes: z.string().trim().max(2000).optional(),
 });
-routes.post('/:id/delivery', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+routes.post('/:id/delivery', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   const parsed = recordDeliveryBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_QUANTITY', message: parsed.error.issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400);
@@ -541,7 +552,7 @@ routes.post('/:id/delivery', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), as
 });
 
 // 0212: photos as proof of delivery, on the task's latest attempt. Staff-only: no public route serves them.
-routes.post('/:id/delivery/photos', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), bodyLimit({
+routes.post('/:id/delivery/photos', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_MANAGE]), bodyLimit({
   maxSize: GIFT_CARD_PHOTO_MAX_BYTES,
   onError: (c) => c.json({ success: false, error: { code: 'PHOTO_REFUSED', reason: 'too_large', message: DELIVERY_PROOF_REFUSAL_WORDS.too_large } }, 413),
 }), async (c) => {
@@ -551,7 +562,7 @@ routes.post('/:id/delivery/photos', requirePermissions([PERMISSIONS.ORDERS_MANAG
   if (!result.ok) return c.json({ success: false, error: { code: 'PHOTO_REFUSED', reason: result.reason, message: result.message } }, result.reason === 'unavailable' ? 503 : 400);
   return c.json({ success: true, data: { photoId: result.photoId, deliveryId: result.deliveryId } });
 });
-routes.get('/:id/delivery/photos', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+routes.get('/:id/delivery/photos', requireTaskId, requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   const photos = await Registry.getInstance().deliveryProofPhotoUseCases.list(String(c.req.param('id') ?? ''));
   return c.json({ success: true, data: { photos } });
 });

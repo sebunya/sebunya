@@ -61,6 +61,8 @@ export interface IFulfilmentRepository {
    * an order with no active task is one nobody will ever pick: invisible to the
    * queue, still open to the customer. Reported, never auto-corrected.
    */
+  /** How many orders findOrdersWithoutActiveTask would list, uncapped (count(*), for the admin badge). */
+  countOrdersWithoutActiveTask?(): Promise<number>;
   findOrdersWithoutActiveTask(limit: number): Promise<Array<{
     orderId: string; orderNumber: string | null; orderStatus: string; taskStatus: string | null;
   }>>;

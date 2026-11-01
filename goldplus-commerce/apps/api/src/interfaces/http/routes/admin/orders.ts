@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { Registry } from '../../../../infrastructure/Registry';
@@ -42,8 +42,13 @@ routes.get('/:id/place-memory', requirePermissions([PERMISSIONS.ORDERS_READ]), a
   return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
 });
 
+const ORDER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const notFound = (c: Context) => c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found.' } } satisfies ApiResponse<never>, 404);
+
 routes.post('/:id/transition', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const orderId = c.req.param('id') ?? '';
+  // An order id is a uuid: anything else is not an order (404), never a uuid cast error (500).
+  if (!ORDER_ID.test(orderId)) return notFound(c);
   const body = await c.req.json().catch(() => null);
   const toStatus = body?.toStatus as OrderStatus | undefined;
   const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
@@ -79,10 +84,13 @@ routes.post('/:id/transition', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), 
 
 routes.post('/:id/note', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const orderId = c.req.param('id') ?? '';
+  if (!ORDER_ID.test(orderId)) return notFound(c);
   const body = await c.req.json().catch(() => null);
   const note = typeof body?.note === 'string' ? body.note.trim().slice(0, 1000) : '';
   if (!note) return bad(c, 'BAD_INPUT', 'A non-empty note is required.');
   const registry = Registry.getInstance();
+  // A note is an audit row about an order: never for one that does not exist.
+  if (!(await registry.orderRepo.findById(orderId))) return notFound(c);
   await new CreateAuditLogUseCase(registry.auditRepo).execute({
     actorId: actor(c),
     action: 'ORDER_NOTE_ADDED',
