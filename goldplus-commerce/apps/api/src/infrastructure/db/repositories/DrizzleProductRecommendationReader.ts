@@ -1,12 +1,18 @@
-import { and, eq, inArray, notInArray, asc } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, notInArray, asc, sql } from "drizzle-orm";
 import type {
   IProductRecommendationReader,
   RecommendationProductRecord,
 } from "../../../application/ports/IProductRecommendationReader";
 import { db } from "../client";
 import { products, categories, productPrices } from "../schema/products";
+import { orders, orderItems } from "../schema/commerce";
+import { productCompatibilityMappings } from "../schema/compatibility";
+import { experienceProfiles } from "../schema/experience";
 import { productImages } from "../schema/phase11";
 import { recommendationMaterializedCache } from "../schema/recommendations";
+import { displayUrlMap } from '../mediaDisplayUrl';
+import { resolveGallery } from '@goldplus/shared';
+import { notRetiredByLifecycle } from '../LifecycleVisibilitySql';
 
 export class DrizzleProductRecommendationReader implements IProductRecommendationReader {
   async findProductById(productId: string): Promise<RecommendationProductRecord | null> {
@@ -46,6 +52,7 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
     productIds?: string[];
     excludeProductIds?: string[];
     limit?: number;
+    orderBy?: "stable" | "newest";
   }): Promise<RecommendationProductRecord[]> {
     
     let targetCategoryId = input?.categoryId;
@@ -80,6 +87,17 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       conditions.push(notInArray(products.id, input.excludeProductIds));
     }
 
+    // R3: canonical availability in SQL — available-to-promise means what
+    // RESERVE-1 says it means: stock minus active reservations, clamped at
+    // zero. The old in-memory check inferred stock from text and defaulted to
+    // "in stock" when it knew nothing.
+    conditions.push(gt(sql`${products.stockQuantity} - ${products.reservedQuantity}`, 0));
+    // The operator's lifecycle decision (410 / unpublish / 301) retires a
+    // product from rails too, as it already does from the feed and the
+    // sitemap: rails kept offering Buy now on products the PDP answered 410.
+    // The materialized-cache revalidation reads here, so it follows.
+    conditions.push(notRetiredByLifecycle(sql`${products.id}`));
+
     const rows = await db
       .select({
         product: products,
@@ -88,9 +106,82 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       .from(products)
       .leftJoin(categories, eq(products.categoryId, categories.id))
       .where(conditions.length ? and(...conditions) : undefined)
+      // Deterministic always: "whatever order the planner returned" was the
+      // entire ordering of the old fallback path.
+      .orderBy(
+        ...(input?.orderBy === "newest"
+          ? [desc(products.createdAt), asc(products.id)]
+          : [asc(products.name), asc(products.id)]),
+      )
       .limit(input?.limit ?? 200);
 
     return this.enrichProducts(rows);
+  }
+
+  async findBestsellerProductIds(input: {
+    categoryId?: string;
+    sinceDays?: number;
+    limit: number;
+  }): Promise<Array<{ productId: string; unitsSold: number }>> {
+    const conditions = [eq(orders.paymentStatus, "paid")];
+    if (input.sinceDays) {
+      conditions.push(gte(orders.createdAt, sql`now() - make_interval(days => ${input.sinceDays})`));
+    }
+    if (input.categoryId) {
+      conditions.push(eq(products.categoryId, input.categoryId));
+    }
+
+    const rows = await db
+      .select({
+        productId: orderItems.productId,
+        unitsSold: sql<number>`sum(${orderItems.quantity})::int`,
+      })
+      .from(orderItems)
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .innerJoin(products, eq(orderItems.productId, products.id))
+      .where(and(...conditions))
+      .groupBy(orderItems.productId)
+      .orderBy(desc(sql`sum(${orderItems.quantity})`), asc(orderItems.productId))
+      .limit(input.limit);
+
+    return rows;
+  }
+
+  async findCompatibilityTargetIds(productId: string, limit: number): Promise<string[]> {
+    const rows = await db
+      .select({ targetProductId: productCompatibilityMappings.targetProductId })
+      .from(productCompatibilityMappings)
+      // Same rule as the product finder and the mapping repository: only an
+      // ENABLED mapping with a positive verdict is a recommendation. Without
+      // this an operator disabling a pair, or recording it as incompatible,
+      // still saw it offered under "You may also need".
+      .where(
+        and(
+          eq(productCompatibilityMappings.productId, productId),
+          eq(productCompatibilityMappings.enabled, true),
+          inArray(productCompatibilityMappings.verdict, ["exact", "compatible", "conditional"]),
+        ),
+      )
+      .orderBy(asc(productCompatibilityMappings.targetProductId))
+      .limit(limit);
+    return rows.map((r) => r.targetProductId).filter((id): id is string => typeof id === "string");
+  }
+
+  async findRecentPaidProductIdsForProfile(profileId: string, sinceDays: number): Promise<string[]> {
+    const rows = await db
+      .select({ productId: orderItems.productId })
+      .from(experienceProfiles)
+      .innerJoin(orders, eq(orders.userId, experienceProfiles.customerId))
+      .innerJoin(orderItems, eq(orderItems.orderId, orders.id))
+      .where(
+        and(
+          eq(experienceProfiles.id, profileId),
+          eq(orders.paymentStatus, "paid"),
+          gte(orders.createdAt, sql`now() - make_interval(days => ${sinceDays})`),
+        ),
+      )
+      .limit(200);
+    return [...new Set(rows.map((r) => r.productId))];
   }
 
   private async enrichProducts(rows: any[]): Promise<RecommendationProductRecord[]> {
@@ -106,11 +197,19 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
     ]);
 
     const priceByProduct = new Map(priceRows.map((p) => [p.productId, p.retailPrice]));
-    const primaryImageByProduct = new Map<string, string>();
+    const floorByProduct = new Map(priceRows.map((p) => [p.productId, p.floorPrice ?? null]));
+    const display = await displayUrlMap(imageRows);
+    // Focus 4: the ONE cover resolver, per product (slot 1, else the legacy projection).
+    const rowsByProduct = new Map<string, typeof imageRows>();
     for (const img of imageRows) {
-      if (!primaryImageByProduct.has(img.productId) || img.isPrimary) {
-        primaryImageByProduct.set(img.productId, img.url);
-      }
+      const list = rowsByProduct.get(img.productId) ?? [];
+      list.push(img);
+      rowsByProduct.set(img.productId, list);
+    }
+    const primaryImageByProduct = new Map<string, string>();
+    for (const [productId, list] of rowsByProduct) {
+      const cover = resolveGallery(list.map((i) => ({ ...i, slot: i.slot ?? null }))).cover;
+      if (cover) primaryImageByProduct.set(productId, display.get(cover.url) ?? cover.url);
     }
 
     return rows.map((row) =>
@@ -118,7 +217,8 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
         row.product,
         row.category,
         priceByProduct.get(row.product.id),
-        primaryImageByProduct.get(row.product.id)
+        primaryImageByProduct.get(row.product.id),
+        floorByProduct.get(row.product.id) ?? null,
       )
     );
   }
@@ -127,7 +227,8 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
     product: any,
     category?: any,
     joinedPrice?: number,
-    joinedImageUrl?: string
+    joinedImageUrl?: string,
+    joinedFloor: number | null = null,
   ): RecommendationProductRecord {
     // Fallback securely if no joined value was recovered
     const finalPrice = typeof joinedPrice === 'number' ? joinedPrice : product.priceUgx;
@@ -143,6 +244,7 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       categoryName: category?.name,
       imageUrl: finalImageUrl,
       price: typeof finalPrice === 'number' ? finalPrice : undefined,
+      floorPriceUgx: joinedFloor,
       currency: "UGX",
       stockStatus: product.stockStatus,
       stockQuantity: product.stockQuantity,
@@ -157,17 +259,24 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
     };
   }
 
-  async findCachedRecommendations(placement: string, contextKey: string): Promise<any[] | null> {
+  async findCachedRecommendations(
+    placement: string,
+    contextKey: string,
+  ): Promise<{ items: unknown[]; updatedAt: Date } | null> {
     const row = await db.query.recommendationMaterializedCache.findFirst({
       where: and(
         eq(recommendationMaterializedCache.placement, placement),
         eq(recommendationMaterializedCache.contextKey, contextKey)
       )
     });
-    return row ? row.items : null;
+    if (!row) return null;
+    // The materializer historically wrapped items in a double-encoded JSON
+    // string; tolerate both shapes rather than serving nothing.
+    const items = typeof row.items === "string" ? JSON.parse(row.items) : row.items;
+    return Array.isArray(items) ? { items, updatedAt: row.updatedAt } : null;
   }
 
-  async saveCachedRecommendations(placement: string, contextKey: string, items: any[]): Promise<void> {
+  async saveCachedRecommendations(placement: string, contextKey: string, items: unknown[]): Promise<void> {
     const existing = await db.query.recommendationMaterializedCache.findFirst({
       where: and(
         eq(recommendationMaterializedCache.placement, placement),
@@ -175,11 +284,24 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       )
     });
 
+    // R3.1 (AC21): canonical JSONB, written exactly once.
+    //
+    // An ARRAY must be stringified and bound as TEXT before the cast. Binding a
+    // raw JS array lets postgres.js infer a Postgres ARRAY, and `::jsonb` on an
+    // array/record fails with "cannot cast type record to jsonb" — which is
+    // precisely what broke this cron hourly from 2026-08-06 and froze the cache.
+    //
+    // The object writer next door (`${event.metadata ?? {}}::jsonb`) is correct
+    // as-is: postgres.js serializes a plain OBJECT to json once. The two are
+    // not interchangeable, and that is the whole bug.
+    //
+    // The read path keeps its tolerance for historic string-typed rows (AC22).
+    const canonicalItems = sql`${JSON.stringify(items ?? [])}::text::jsonb`;
     if (existing) {
       await db
         .update(recommendationMaterializedCache)
         .set({
-          items,
+          items: canonicalItems as never,
           updatedAt: new Date()
         })
         .where(eq(recommendationMaterializedCache.id, existing.id));
@@ -187,7 +309,7 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
       await db.insert(recommendationMaterializedCache).values({
         placement,
         contextKey,
-        items,
+        items: canonicalItems as never,
         updatedAt: new Date()
       });
     }
