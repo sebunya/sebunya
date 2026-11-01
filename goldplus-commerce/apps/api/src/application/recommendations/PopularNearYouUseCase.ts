@@ -35,7 +35,9 @@ export class PopularNearYouUseCase {
   ) {}
 
   async execute(input: { areaSlug: string | null; areaName: string | null; district: string | null; limit?: number }): Promise<PopularNearYouResult> {
-    const limit = Math.min(Math.max(input.limit ?? 6, 1), 12);
+    // A non-numeric ?limit= arrives as NaN, and Math.max(NaN, 1) is NaN (SQL LIMIT NaN, a 500).
+    const asked = Number.isFinite(input.limit) ? Math.trunc(input.limit as number) : 6;
+    const limit = Math.min(Math.max(asked, 1), 12);
     const key = `${input.areaSlug ?? ''}|${(input.district ?? '').toLowerCase()}|${limit}`;
     const hit = this.cache.get(key);
     if (hit && this.now() - hit.at < CACHE_MS) return hit.result;

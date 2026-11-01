@@ -4,7 +4,7 @@ import { ApiResponse } from '@goldplus/shared';
 import { buildMerchantFeedXml, STOREFRONT_BASE_URL } from '../../../application/use-cases/seo-growth/MerchantFeedUseCase';
 import { resolveStorefrontDiscount } from '../../../application/pricing/StorefrontDiscountQuery';
 import { SearchBatteryFinderUseCase } from '../../../application/use-cases/seo-growth/BatteryCompatibilityUseCases';
-import { fallbackRobotsTxt } from '../../../application/use-cases/seo-growth/RobotsGovernanceUseCases';
+import { DEFAULT_ROBOTS_BASE, fallbackRobotsTxt, safeRobotsBase } from '../../../application/use-cases/seo-growth/RobotsGovernanceUseCases';
 import { lifecycleSeoOutcome } from '../../../application/use-cases/seo-growth/ProductLifecycleSeoUseCases';
 import { logger } from '../../../infrastructure/logging/logger';
 
@@ -119,7 +119,7 @@ routes.get('/indexnow-key', (c) => {
  * accidentally permissive file.
  */
 routes.get('/robots-published', async (c) => {
-  const base = String(c.req.query('base') ?? 'https://shopgoldplus.com');
+  const base = safeRobotsBase(c.req.query('base') ?? DEFAULT_ROBOTS_BASE);
   try {
     const row = await Registry.getInstance().seoTechnicalRepo.getPublishedRobots();
     c.header('Cache-Control', 'public, max-age=300');

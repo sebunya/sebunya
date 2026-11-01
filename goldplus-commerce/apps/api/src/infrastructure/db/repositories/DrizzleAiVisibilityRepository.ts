@@ -62,6 +62,9 @@ const off = (o: number) => Math.max(Math.trunc(o) || 0, 0);
 /** A project id or slug; ids are matched as uuid only when they look like one. */
 const projectKey = (idOrSlug: string): SQL => (UUID.test(idOrSlug) ? sql`(id = ${idOrSlug}::uuid or slug = ${idOrSlug})` : sql`slug = ${idOrSlug}`);
 
+const KAMPALA_DAY_START = sql`(date_trunc('day', now() at time zone 'Africa/Kampala') at time zone 'Africa/Kampala')`;
+const KAMPALA_MONTH_START = sql`(date_trunc('month', now() at time zone 'Africa/Kampala') at time zone 'Africa/Kampala')`;
+
 export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
   async listProjects() { return rowsOf(await db.execute(sql`select * from aiv_projects order by name`)).map(project); }
 
@@ -200,16 +203,18 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
   async spendToDate(projectId: string) {
     // Answers that succeeded, failures recorded as possibly billed (cost set),
     // and ledger entries (provider tests) — every cost, one sum.
+    // Day and month are the shop's (Africa/Kampala), not UTC: a budget day
+    // starts at 00:00 EAT, not 03:00 EAT.
     const rows = rowsOf(await db.execute(sql`
       select provider,
-        coalesce(sum(cost_usd) filter (where at >= date_trunc('day', now())), 0) as today,
+        coalesce(sum(cost_usd) filter (where at >= ${KAMPALA_DAY_START}), 0) as today,
         coalesce(sum(cost_usd), 0) as month
       from (
         select provider, cost_usd, executed_at as at from aiv_observations
-          where project_id = ${projectId}::uuid and cost_usd is not null and executed_at >= date_trunc('month', now())
+          where project_id = ${projectId}::uuid and cost_usd is not null and executed_at >= ${KAMPALA_MONTH_START}
         union all
         select provider, cost_usd, created_at as at from aiv_spend_ledger
-          where project_id = ${projectId}::uuid and created_at >= date_trunc('month', now())
+          where project_id = ${projectId}::uuid and created_at >= ${KAMPALA_MONTH_START}
       ) s group by provider`));
     const providerMonthUsd: Record<string, number> = {};
     let todayUsd = 0, monthUsd = 0;
