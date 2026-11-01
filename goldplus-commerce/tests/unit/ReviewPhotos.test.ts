@@ -88,7 +88,7 @@ describe('review photos', () => {
   it('the review submission attaches the photos it was given and still succeeds when attaching fails', async () => {
     const inserted: any[] = [];
     const reviews = {
-      async resolveOrderLine() { return { orderPhone: '+256700123456', orderStatus: 'delivered' }; },
+      async resolveOrderLine() { return { orderPhone: '+256700123456', orderStatus: 'delivered', productId: P1 }; },
       async insertReview(i: any) { inserted.push(i); return { id: 'rev-9' }; },
       async findOrderLineId() { return 'line-1'; },
     } as unknown as IReviewRepository;

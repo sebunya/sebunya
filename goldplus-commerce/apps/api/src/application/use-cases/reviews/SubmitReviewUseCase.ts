@@ -35,6 +35,9 @@ export class SubmitReviewUseCase {
     if (orderItemId) {
       const line = await this.reviews.resolveOrderLine(orderItemId);
       if (!line) return { ok: false, reason: 'ORDER_LINE_NOT_FOUND' };
+      // A line for a DIFFERENT product cannot vouch for this review: treat it as not found,
+      // so a buyer of a cheap charger cannot post a "verified" review on a battery.
+      if (line.productId !== input.productId) return { ok: false, reason: 'ORDER_LINE_NOT_FOUND' };
       // AC1 — an order line owned by a DIFFERENT customer is rejected outright.
       const orderIdentity = hashCustomerPhoneIdentity(line.orderPhone, this.pepper);
       if (orderIdentity !== identityHash) return { ok: false, reason: 'ORDER_NOT_OWNED' };
