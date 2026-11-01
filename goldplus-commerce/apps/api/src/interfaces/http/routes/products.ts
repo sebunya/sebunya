@@ -6,6 +6,8 @@ import { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 
 const routes = new Hono<{ Variables: { requestId: string } }>();
 
+const PRODUCT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 routes.get('/', async (c) => {
   const registry = Registry.getInstance();
   const useCase = new ListPublicProductsUseCase(registry.productRepo);
@@ -14,13 +16,22 @@ routes.get('/', async (c) => {
   const cat = c.req.query('category');
   const inStock = c.req.query('inStock') === 'true';
   const limitParam = c.req.query('limit');
+  const offsetParam = c.req.query('offset');
   const idsParam = c.req.query('ids');
 
   const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
-  const ids = idsParam ? idsParam.split(',').map((i) => i.trim()).filter(Boolean) : undefined;
+  const offset = offsetParam ? Number.parseInt(offsetParam, 10) : undefined;
+  // Product ids are UUIDs. Anything else reached a uuid-typed column and the
+  // database answered 500 (/compare?ids=abc). Asked for ids, none valid: an
+  // empty list, never the unfiltered catalogue.
+  const ids = idsParam ? idsParam.split(',').map((i) => i.trim()).filter((i) => PRODUCT_ID.test(i)) : undefined;
+  if (idsParam !== undefined && ids !== undefined && ids.length === 0) {
+    return c.json({ success: true, data: [], meta: { requestId: c.get('requestId') as string | undefined } } satisfies ApiResponse<ProductPublicDto[]>);
+  }
 
   const dtos = await useCase.execute({
     limit: Number.isFinite(limit) ? (limit as number) : undefined,
+    offset: Number.isFinite(offset) ? (offset as number) : undefined,
     search: q,
     category: cat,
     inStock,
@@ -91,13 +102,16 @@ routes.get('/:slug/compatibility', async (c) => {
 
 routes.get('/:slug', async (c) => {
   const registry = Registry.getInstance();
-  const useCase = new GetProductBySlugUseCase(registry.productRepo);
+  const useCase = new GetProductBySlugUseCase(registry.productRepo, registry.unlistedProductReader);
   const result = await useCase.execute(c.req.param('slug'));
 
   if (!result.ok) {
+    // Still a 404 (nothing to buy here), but a once-published product says what it was: the storefront renders a helpful page.
     const res: ApiResponse<never> = {
       success: false,
-      error: { code: 'PRODUCT_NOT_FOUND', message: 'Product not found' },
+      error: result.code === 'NOT_LISTED'
+        ? { code: 'PRODUCT_NOT_LISTED', message: 'This product is not listed right now', details: result.notice }
+        : { code: 'PRODUCT_NOT_FOUND', message: 'Product not found' },
       meta: { requestId: c.get('requestId') as string | undefined },
     };
     return c.json(res, 404);

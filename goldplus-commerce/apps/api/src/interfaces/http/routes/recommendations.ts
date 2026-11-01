@@ -1,23 +1,68 @@
 import { Hono } from 'hono';
+import { SYSTEM_EXPOSURE_EVENT_TYPES } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
+import { customerSessionMiddleware, optionalCustomerSessionMiddleware } from '../middleware/customerSession';
+import { botDetectionMiddleware } from '../middleware/botDetection';
 import type { ApiResponse, GetRecommendationsInput } from '@goldplus/shared';
-import { isRecommendationPlacement } from '../../../application/recommendations/RecommendationValidation';
+import { stitchInBackground } from '../../../infrastructure/first-party/stitchInBackground';
+import {
+  isRecommendationPlacement,
+  RecommendationEventValidationError,
+  toPublicRecommendationEventInput,
+} from '../../../application/recommendations/RecommendationValidation';
 
 const routes = new Hono();
 const registry = Registry.getInstance();
 
-routes.post('/events', async (c) => {
+// #4: the same bot/velocity/replay screen as /telemetry/collect. The /api/rec
+// relay forwards the browser's user agent (it used to send none, which this
+// screen reads as a bot), and the visitor's own address.
+routes.post('/events', botDetectionMiddleware, optionalCustomerSessionMiddleware, async (c) => {
   try {
-    const body = await c.req.json().catch(() => null);
-    if (!body) {
+    // botDetectionMiddleware has already parsed the body once.
+    const rawBody = (c as unknown as { _parsedBody?: unknown })._parsedBody ?? await c.req.json().catch(() => null);
+    if (!rawBody) {
       const res: ApiResponse<never> = {
         success: false,
         error: { code: 'BAD_JSON', message: 'Invalid JSON body.' },
       };
       return c.json(res, 400);
     }
+    // Public route: only browser-reportable event types and fields survive, and
+    // the customer is whoever the verified session says — never the body.
+    const body = toPublicRecommendationEventInput(rawBody, c.get('userId') ?? null);
 
-    await registry.trackRecommendationEventUseCase.execute(body);
+    // R2: the same-origin relay forwards the HttpOnly visit token as a
+    // header. When present and well-formed, the event is stamped with the
+    // server-side profile and the legacy client anonymous id is stitched to
+    // it in identity_links. Profile failure never loses the event.
+    const rawVisit = c.req.header('x-gp-visit');
+    let origin: { producer: string; profileId?: string } = { producer: 'public-api' };
+    if (rawVisit) {
+      try {
+        // A rail scrolling into view is OUR rendering: it may use a profile that
+        // exists, never create one. Only what the visitor did creates a profile.
+        const exposure = (SYSTEM_EXPOSURE_EVENT_TYPES as readonly string[]).includes(String((body as { eventType?: unknown }).eventType ?? ''));
+        const profile = await registry.resolveExperienceProfileUseCase.execute(rawVisit, exposure ? 'read' : 'behaviour');
+        if (profile) origin = { producer: 'web-relay', profileId: profile.id };
+      } catch {
+        // Profile resolution is continuity, not correctness — the event still lands.
+      }
+    }
+
+    await registry.trackRecommendationEventUseCase.execute(body, origin);
+
+    // R9 (M3): the identity stitch runs only AFTER the event validated and
+    // landed — a rejected request must never write into the identity graph —
+    // and the anonymous id is shape-checked before it touches identity_links.
+    if (origin.profileId) {
+      const anonymousId = (body as { anonymousId?: unknown }).anonymousId;
+      if (typeof anonymousId === 'string' && /^anon_[a-zA-Z0-9_-]{12,150}$/.test(anonymousId)) {
+        registry.experienceProfileRepo
+          .observeAnonymousId(origin.profileId, anonymousId)
+          .catch((e) => console.error('IDENTITY_STITCH_FAILED', e instanceof Error ? e.message : String(e)));
+      }
+    }
 
     const res: ApiResponse<{ success: true }> = {
       success: true,
@@ -25,15 +70,38 @@ routes.post('/events', async (c) => {
     };
     return c.json(res, 200);
   } catch (error) {
+    // Only a typed validation failure echoes its message — those strings are
+    // written for the caller. Anything else (DB down, bug) is a generic 500:
+    // infrastructure detail never leaves the process (ERRLEAK-1).
+    if (error instanceof RecommendationEventValidationError) {
+      const res: ApiResponse<never> = {
+        success: false,
+        error: { code: 'INVALID_RECOMMENDATION_EVENT', message: error.message },
+      };
+      return c.json(res, 400);
+    }
     const res: ApiResponse<never> = {
       success: false,
-      error: {
-        code: 'INVALID_RECOMMENDATION_EVENT',
-        message: error instanceof Error ? error.message : 'Invalid event input.',
-      },
+      error: { code: 'RECOMMENDATION_EVENT_WRITE_FAILED', message: 'The event could not be recorded.' },
     };
-    return c.json(res, 400);
+    return c.json(res, 500);
   }
+});
+
+/**
+ * "Popular in <area>" (0193): products customers in the visitor's "Deliver to" area actually bought (paid orders),
+ * widening to the district, then Greater Kampala. Area-level and the same for everyone there, so it is cached
+ * publicly per query. Nothing personal goes in or comes out.
+ */
+routes.get('/near-you', async (c) => {
+  const slug = String(c.req.query('areaSlug') ?? '');
+  const areaSlug = /^[a-z0-9-]{3,160}$/.test(slug) ? slug : null;
+  const district = String(c.req.query('district') ?? '').trim().slice(0, 60) || null;
+  const areaName = String(c.req.query('area') ?? '').replace(/[<>]/g, '').trim().slice(0, 60) || null;
+  if (!areaSlug && !district) return c.json({ success: true, data: { scope: null, scopeLabel: null, items: [] } });
+  const data = await Registry.getInstance().popularNearYouUseCase.execute({ areaSlug, areaName, district, limit: Number(c.req.query('limit') ?? 6) });
+  c.header('Cache-Control', 'public, max-age=300');
+  return c.json({ success: true, data });
 });
 
 routes.get('/', async (c) => {
@@ -51,62 +119,141 @@ routes.get('/', async (c) => {
       return c.json(res, 400);
     }
 
+    // R9: id parameters are UUID-validated here so garbage answers 400
+    // instead of surfacing as a Postgres cast failure dressed as a 500.
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    for (const [name, value] of [["productId", q.productId], ["categoryId", q.categoryId]] as const) {
+      if (value && !UUID.test(value)) {
+        const res: ApiResponse<never> = {
+          success: false,
+          error: { code: 'INVALID_RECOMMENDATION_CONTEXT', message: `${name} must be a UUID.` },
+        };
+        return c.json(res, 400);
+      }
+    }
+    const rawCartIds = q.cartProductIds ? q.cartProductIds.split(',').filter(Boolean) : undefined;
+    if (rawCartIds?.some((id) => !UUID.test(id))) {
+      const res: ApiResponse<never> = {
+        success: false,
+        error: { code: 'INVALID_RECOMMENDATION_CONTEXT', message: 'cartProductIds must be UUIDs.' },
+      };
+      return c.json(res, 400);
+    }
+
+    // R1: bounded inputs. `limit` used to accept NaN and any magnitude
+    // (feeding limit*10 over-fetch multipliers); cartProductIds was unbounded.
+    const parsedLimit = q.limit ? Number(q.limit) : undefined;
+    const limit =
+      parsedLimit !== undefined && Number.isInteger(parsedLimit)
+        ? Math.min(24, Math.max(1, parsedLimit))
+        : undefined;
+
     const input: GetRecommendationsInput = {
       placement: q.placement,
       productId: q.productId,
       categoryId: q.categoryId,
       categorySlug: q.categorySlug,
       anonymousId: q.anonymousId,
-      cartProductIds: q.cartProductIds ? q.cartProductIds.split(',').filter(Boolean) : undefined,
-      limit: q.limit ? Number(q.limit) : undefined,
+      cartProductIds: rawCartIds?.slice(0, 50),
+      limit,
     };
 
-    const data = await registry.getRecommendationsUseCase.execute(input);
+    // R2/R3: SSR forwards the visit token; the resolved profile feeds the
+    // repetition penalties and stamps the server-native response event.
+    // Resolution failure never affects the response.
+    const rawVisitToken = c.req.header('x-gp-visit');
+    let profileId: string | undefined;
+    if (rawVisitToken) {
+      try {
+        profileId = (await registry.resolveExperienceProfileUseCase.execute(rawVisitToken))?.id;
+      } catch {
+        // Continuity, not correctness.
+      }
+    }
 
-    const res: ApiResponse<typeof data> = {
-      success: true,
-      data,
-    };
-    return c.json(res);
-  } catch (error) {
-    const res: ApiResponse<never> = {
-      success: false,
-      error: {
-        code: 'RECOMMENDATION_GENERATION_FAILED',
-        message: error instanceof Error ? error.message : 'An unexpected server error occurred generating recommendations.',
-      },
-    };
-    return c.json(res, 500);
-  }
-});
+    // R8: server-side experiment assignment — only with a stable profile, only
+    // while a rec_ experiment is RUNNING, and never blocking the serve.
+    const experiment = profileId
+      ? await registry.assignRecommendationExperimentUseCase.execute(profileId)
+      : null;
 
-routes.get('/recently-viewed', async (c) => {
-  try {
-    const q = c.req.query();
-
-    const data = await registry.getRecentlyViewedUseCase.execute({
-      anonymousId: q.anonymousId,
-      limit: q.limit ? Number(q.limit) : undefined,
+    const data = await registry.getRecommendationsUseCase.execute(input, {
+      profileId,
+      emitResponseEvent: true,
+      ...(experiment ? { experiment } : {}),
     });
 
     const res: ApiResponse<typeof data> = {
       success: true,
       data,
     };
+    // Varies by visitor: never shared-cached (R0 F11).
+    c.header('Cache-Control', 'private, no-store');
     return c.json(res);
-  } catch {
-    // Suppress recently-viewed logic errors to fail closed/empty elegantly
-    const res: ApiResponse<any> = {
-      success: true,
-      data: {
-        placement: 'recently_viewed',
-        items: [],
-        generatedAt: new Date().toISOString(),
-        strategy: 'rule_based_v1',
+  } catch (error) {
+    const res: ApiResponse<never> = {
+      success: false,
+      error: {
+        code: 'RECOMMENDATION_GENERATION_FAILED',
+        // R1: internal error text is never echoed to the public (ERRLEAK-1).
+        message: 'An unexpected server error occurred generating recommendations.',
       },
     };
-    return c.json(res);
+    return c.json(res, 500);
   }
+});
+
+// GET /recently-viewed was removed (2026-09-25, #32). Nothing called it — the
+// storefront rail reads the browser's own history plus a server-rendered
+// fallback — and it answered any caller who held an anon id with that
+// visitor's product history. A public read of one visitor's history would
+// need the visitor's own signed credential; with no caller, no route is safer.
+
+/**
+ * Login merge (R2): after a successful sign-in the web server calls this with
+ * the customer's bearer token and the browser's HttpOnly visit token. The
+ * merge is transactional and idempotent; a profile already owned by a
+ * DIFFERENT verified customer is preserved, never overwritten — the response
+ * says which happened. Never called by browser JavaScript.
+ */
+routes.post('/profile/link', customerSessionMiddleware, async (c) => {
+  const rawToken = c.req.header('x-gp-visit');
+  if (!rawToken) {
+    const res: ApiResponse<never> = {
+      success: false,
+      error: { code: 'VISIT_TOKEN_REQUIRED', message: 'The visit token header is required.' },
+    };
+    return c.json(res, 400);
+  }
+
+  const result = await registry.linkExperienceProfileUseCase.execute({
+    rawToken,
+    customerId: c.get('userId'),
+  });
+
+  if (result.status === 'invalid_token') {
+    const res: ApiResponse<never> = {
+      success: false,
+      error: { code: 'VISIT_TOKEN_INVALID', message: 'The visit token is malformed.' },
+    };
+    return c.json(res, 400);
+  }
+
+  // 0155: the signed-in customer's visitor ids (this browser's experience
+  // profile and its `_fp_cid`) join their customer profile — only the profile
+  // this customer holds, and only within the personalisation consent rule.
+  if (result.status === 'linked' || result.status === 'already_linked') {
+    const profile = await registry.resolveExperienceProfileUseCase.execute(rawToken, 'read').catch(() => null);
+    stitchInBackground({
+      moment: 'VISITOR_LINK',
+      accountUserId: c.get('userId'),
+      experienceProfileId: profile?.customerId === c.get('userId') ? profile.id : null,
+      fpClientId: c.req.header('x-gp-fpcid') ?? null,
+    });
+  }
+
+  const res: ApiResponse<{ status: string }> = { success: true, data: { status: result.status } };
+  return c.json(res);
 });
 
 export default routes;
