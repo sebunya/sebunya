@@ -163,6 +163,10 @@ export function classifyPublicEndpoint(method: string, rawPath: string): RouteFa
   // Auth.
   if (post && path === '/auth/login') return 'auth-customer-login';
   if (post && path === '/auth/admin/login') return 'auth-admin-login';
+  // Registering hashes a password and writes a session, referral and consent rows; a social exchange makes an
+  // account too. Both had fallen into 'global' (1,000 a minute per client): bulk fake accounts and CPU burn.
+  if (post && path === '/auth/register') return 'auth-customer-login';
+  if (post && /^\/auth\/social\/[^/]+\/exchange$/.test(path)) return 'auth-customer-login';
   if (post && isUnder(path, '/auth/password')) return 'auth-recovery';
 
   // Telemetry beacons.
