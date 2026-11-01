@@ -66,20 +66,26 @@ export class DrizzleAbandonmentRepository implements IAbandonmentRepository, IBa
     return rows.map((r) => ({ ...r, subtotalUgx: Number(r.subtotalUgx) }));
   }
 
-  async createOpen(candidate: AbandonmentCandidate): Promise<AbandonmentRecord | null> {
-    const [row] = await db
-      .insert(cartAbandonments)
-      .values({
-        cartId: candidate.cartId,
-        ownerKind: candidate.ownerKind,
-        ownerId: candidate.ownerId,
-        itemCount: candidate.itemCount,
-        subtotalUgx: candidate.subtotalUgx,
-        lastActivityAt: candidate.lastActivityAt,
-      })
-      .onConflictDoNothing()
-      .returning();
-    return row ? toRecord(row) : null;
+  async createOpen(candidate: AbandonmentCandidate, announce?: (record: AbandonmentRecord) => Promise<void>): Promise<AbandonmentRecord | null> {
+    return db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(cartAbandonments)
+        .values({
+          cartId: candidate.cartId,
+          ownerKind: candidate.ownerKind,
+          ownerId: candidate.ownerId,
+          itemCount: candidate.itemCount,
+          subtotalUgx: candidate.subtotalUgx,
+          lastActivityAt: candidate.lastActivityAt,
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (!row) return null;
+      const record = toRecord(row);
+      // Throwing here rolls the insert back, so the cart is classified (and announced) on the next scan.
+      if (announce) await announce(record);
+      return record;
+    });
   }
 
   async expireOverdue(now: Date): Promise<number> {

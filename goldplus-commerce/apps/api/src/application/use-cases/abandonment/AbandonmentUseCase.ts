@@ -38,7 +38,11 @@ export interface AbandonmentRecord {
 export interface IAbandonmentRepository {
   /** Carts with items, stale beyond `staleBefore`, having NO open classification. */
   findNewlyAbandoned(staleBefore: Date, limit: number, now?: Date): Promise<AbandonmentCandidate[]>;
-  createOpen(candidate: AbandonmentCandidate): Promise<AbandonmentRecord | null>;
+  /**
+   * Insert the OPEN row and run `announce` in the SAME transaction: if announcing throws, the row is rolled back and
+   * the next scan finds the cart again. A row committed without its announcement was never re-announced.
+   */
+  createOpen(candidate: AbandonmentCandidate, announce?: (record: AbandonmentRecord) => Promise<void>): Promise<AbandonmentRecord | null>;
   /** OPEN rows whose cart has passed its expiry → EXPIRED. Returns count. */
   expireOverdue(now: Date): Promise<number>;
   /** OPEN rows whose cart changed after it was classified → RESUMED (the shopper came back). Returns count. */
@@ -62,7 +66,7 @@ export class AbandonmentUseCase {
   ) {}
 
   /** Hourly scan: classify new abandonments, expire overdue ones. */
-  async scan(): Promise<{ classified: number; expired: number; resumed: number }> {
+  async scan(): Promise<{ classified: number; expired: number; resumed: number; failed?: number }> {
     const now = this.now();
     // First, close the idle periods that ended: a basket touched since it was classified is no longer abandoned, and
     // its next idle period needs a row of its own (one OPEN row per cart).
@@ -70,16 +74,19 @@ export class AbandonmentUseCase {
     const staleBefore = new Date(now.getTime() - ABANDONMENT_STALE_HOURS * 3600_000);
     const candidates = await this.repo.findNewlyAbandoned(staleBefore, 500, now);
     let classified = 0;
+    let failed = 0;
     for (const candidate of candidates) {
       if (candidate.itemCount <= 0) continue; // an empty basket is not an abandonment
-      const record = await this.repo.createOpen(candidate);
-      if (record) {
-        classified += 1;
-        await this.sink.publish(record);
+      // One cart's failure (queue down, a bad row) must not abort the scan for the rest, nor skip expiry below.
+      try {
+        const record = await this.repo.createOpen(candidate, (r) => this.sink.publish(r));
+        if (record) classified += 1;
+      } catch {
+        failed += 1;
       }
     }
     const expired = await this.repo.expireOverdue(now);
-    return { classified, expired, resumed };
+    return { classified, expired, resumed, ...(failed ? { failed } : {}) };
   }
 
   async summary() {
