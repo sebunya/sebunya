@@ -37,6 +37,9 @@ backups:
   keep_daily: 7
   keep_weekly: 4
   min_keep_always: 3
+  # The numbers above apply to EACH class separately: database_dump,
+  # photo_archive, pre_migration_dump. A photo archive never takes a dump's
+  # slot. Override one class with e.g.  classes: {photo_archive: {keep_daily: 3}}
   # A local copy is not resilience. Until a verified remote exists, the Steward
   # refuses to expire the last good local recovery state.
   remote_configured: false

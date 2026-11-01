@@ -115,6 +115,52 @@ ${body}
     expect(py(`print(m.remote_verified({"backups": {"remote_configured": True}}))`)).toContain('(True,');
   });
 
+  it('retention keeps database dumps, photo archives and pre-migration dumps as separate classes', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gp-steward-'));
+    const nightly = join(dir, 'nightly');
+    mkdirSync(nightly);
+    writeFileSync(join(dir, '.offsite-verified-at'), 'fresh\n');
+    // 20 nightly runs: the dump, then the photo archive a few seconds later (the day's newest file).
+    const day = 86_400_000;
+    const base = Date.now() - 20 * day;
+    for (let i = 0; i < 20; i++) {
+      const stamp = String(i).padStart(2, '0');
+      for (const [name, offset] of [[`goldplus-prod-nightly-${stamp}.dump`, 0], [`goldplus-media-nightly-${stamp}.tar.gz`, 5000]] as const) {
+        const f = join(nightly, name);
+        writeFileSync(f, 'x');
+        const t = new Date(base + i * day + offset);
+        utimesSync(f, t, t);
+      }
+    }
+    for (let i = 0; i < 8; i++) {
+      const f = join(dir, `goldplus-prod-pre-m${i}-x.dump`);
+      writeFileSync(f, 'x');
+      const t = new Date(base + i * day + 1000);
+      utimesSync(f, t, t);
+    }
+    writeFileSync(join(dir, 'mystery.sql'), 'x');
+    const old = new Date(base - 100 * day);
+    utimesSync(join(dir, 'mystery.sql'), old, old);
+    const out = py(`
+class S:
+    def record_action(self, *a): pass
+cfg = {"directory": ${JSON.stringify(dir)}, "keep_recent": 5, "keep_daily": 7, "keep_weekly": 4, "min_keep_always": 3}
+print(m.backup_retention(S(), {"backups": cfg}, True))
+import os
+left = sorted(n for _r, _d, ns in os.walk(${JSON.stringify(dir)}) for n in ns)
+print("dumps", sum(n.endswith(".dump") and "nightly" in n for n in left))
+print("photos", sum(n.endswith(".tar.gz") for n in left))
+print("pre", sum("-pre-" in n for n in left))
+print("mystery", "mystery.sql" in left)`);
+    // Each class keeps at least its 7 daily points; a photo archive never takes a dump's slot.
+    const n = (k: string) => Number(out.match(new RegExp(`${k} (\\d+)`))![1]);
+    expect(n('dumps')).toBeGreaterThanOrEqual(7);
+    expect(n('photos')).toBeGreaterThanOrEqual(7);
+    expect(n('pre')).toBeGreaterThanOrEqual(7);
+    expect(n('dumps')).toBeLessThan(20);
+    expect(out).toContain('mystery True');
+  });
+
   it('record_alert reaches notify(), and notify() does nothing without a webhook URL', () => {
     const src = read('ops/storage-steward/goldplus-storage-steward');
     expect(src).toMatch(/def record_alert[\s\S]*?notify\(severity, cause, detail\)/);
