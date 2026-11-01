@@ -7,6 +7,7 @@ import InfoTooltip from "../../../../components/admin/InfoTooltip.astro";
 
 import { listRecommendationRules } from "../../../../lib/admin-recommendations";
 import { readSessionToken } from "../../../../lib/session";
+import { apiBase } from "../../../../lib/api";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -30,16 +31,29 @@ const hasActiveFilters = !!(query.placement || query.status || query.type || que
 function formatSchedule(starts?: string | null, ends?: string | null) {
   if (!starts && !ends) return 'No end date set';
   const parseD = (s: string) => {
-     try { return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return 'Invalid'; }
+     try { return new Date(s).toLocaleDateString('en-US', { timeZone: 'Africa/Kampala',  month: 'short', day: 'numeric' }); } catch { return 'Invalid'; }
   };
   if (starts && ends) return `${parseD(starts)} – ${parseD(ends)}`;
   if (starts) return `From ${parseD(starts)}`;
   return `Until ${parseD(ends)}`;
 }
 
+let productNameById = new Map<string, string>();
+try {
+  const productsRes = await fetch(`${apiBase}/products?limit=100`, { signal: AbortSignal.timeout(4000) });
+  const productsJson = await productsRes.json();
+  if (productsJson?.success && Array.isArray(productsJson.data)) {
+    productNameById = new Map(productsJson.data.map((p: { id: string; name: string }) => [p.id, p.name]));
+  }
+} catch {
+  // Name resolution is cosmetic; the list renders with raw values if the catalogue is unreachable.
+}
+
 function formatTarget(type: string, value?: string | null) {
   if (type === 'GLOBAL') return 'Applies to all products';
-  if (type === 'PRODUCT') return `Prod ID: ${value ? value.slice(0,8) + '…' : '—'}`;
+  // R5: products are shown by NAME — an operator should never need to
+  // recognise a UUID stub.
+  if (type === 'PRODUCT') return `Product: ${value ? (productNameById.get(value) ?? value.slice(0, 8) + '…') : '—'}`;
   if (type === 'CATEGORY') return `Category: ${value || '—'}`;
   return `${type}: ${value || '—'}`;
 }
@@ -75,7 +89,7 @@ const placementLabels: any = {
     <div class="bg-white border border-gray-200 rounded-2xl p-5 mb-8 shadow-sm flex flex-col md:flex-row items-center gap-4">
       <form method="GET" class="flex-grow grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full">
         <div>
-          <input type="text" name="search" value={query.search || ''} placeholder="Search rule name..." class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+          <input type="text" name="search" value={query.search || ''} placeholder="Search rule name..." class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
         </div>
         <div>
           <select name="placement" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none">
@@ -121,7 +135,7 @@ const placementLabels: any = {
         <p class="text-xs text-gray-500 max-w-md leading-relaxed mb-8">
           {hasActiveFilters 
             ? 'Your current filters are too restrictive. Clear your search or filters to see all rules.' 
-            : 'Start with one simple rule, such as boosting a featured product on the homepage.'}
+            : 'Recommendations are already running on safe defaults — every placement serves eligible products without any rule. Create a rule only when you need to influence that default ranking.'}
         </p>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-left max-w-3xl w-full bg-gray-50 p-6 rounded-2xl border border-gray-100 mb-8">
@@ -130,7 +144,7 @@ const placementLabels: any = {
             <p class="text-[10px] text-gray-500 mt-1 leading-relaxed">Raises matching products in a recommendation list. It does not make hidden products eligible.</p>
           </div>
           <div>
-            <h4 class="text-[10px] font-black uppercase tracking-widest text-amber-600">Pin</h4>
+            <h4 class="text-[10px] font-black uppercase tracking-widest text-amber-700">Pin</h4>
             <p class="text-[10px] text-gray-500 mt-1 leading-relaxed">Places a product in a preferred position if it is already eligible.</p>
           </div>
           <div>
@@ -159,7 +173,7 @@ const placementLabels: any = {
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
-              <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
+              <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-500 tracking-widest border-b border-gray-100">
                 <th class="p-5 pl-6">Rule & Type</th>
                 <th class="p-5">Placement</th>
                 <th class="p-5">Target Scope</th>
@@ -191,7 +205,7 @@ const placementLabels: any = {
                   <td class="p-5 text-center font-black text-brand-dark font-mono">
                     {rule.priority}
                   </td>
-                  <td class="p-5 text-center text-[10px] text-gray-400 font-bold">
+                  <td class="p-5 text-center text-[10px] text-gray-500 font-bold">
                     {formatSchedule(rule.startsAt, rule.endsAt)}
                   </td>
                   <td class="p-5 text-center">

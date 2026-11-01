@@ -18,6 +18,10 @@ export const CONSENT_PURPOSE_KEYS = [
   'utilisation_aware_offers',
   'research_feedback_surveys',
   'account_security_notifications',
+  // 0155: WhatsApp offers — its own purpose, never implied by any other.
+  'whatsapp_marketing',
+  // 0210: one text about a basket left behind. Its own purpose on the SMS channel, off by default.
+  'basket_reminders',
 ] as const;
 
 export const CONSENT_CHANNEL_KEYS = [
@@ -166,5 +170,19 @@ export interface ConsentOperatingRepository {
   queryAuditTimeline(customerIdentityRef: string, limit?: number): Promise<Array<Record<string, unknown>>>;
   listSupportAssistedRequests(limit?: number): Promise<Array<Record<string, unknown>>>;
   listChannelSuppressions(limit?: number): Promise<Array<Record<string, unknown>>>;
+  /**
+   * True when any of the endpoint refs has an active suppression for the channel
+   * (and purpose, or channel-wide). Optional so older fakes still compile; the
+   * WhatsApp marketing gate treats a missing method as "no suppression known".
+   */
+  hasActiveChannelSuppression?(endpointRefs: string[], channelKey: ConsentChannelKey, purposeKey: ConsentPurposeKey): Promise<boolean>;
+  /**
+   * Ends a suppression: every ACTIVE row for the same contact and channel as
+   * the row named (a contact may have several recorded STOPs), or null when
+   * that row does not exist or is no longer active. Rows are kept, not deleted,
+   * and each carries who lifted it, when and why (0164), written atomically
+   * with the deactivation.
+   */
+  liftChannelSuppression?(suppressionId: string, by: { actorId: string; reason: string }): Promise<{ endpoint_ref: string; channel_key: string; lifted: number } | null>;
   buildDryRunEligibilityInput(key: ConsentAggregateKey): Promise<ConsentProviderEligibilityPreviewInput>;
 }

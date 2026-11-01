@@ -1,0 +1,103 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import AiSearchNav from "../../../components/admin/AiSearchNav.astro";
+import { readSessionToken } from "../../../lib/session";
+import { aivGet, aivPost, aivDelete, rate, DEFAULT_PROJECT } from "../../../lib/adminAiVisibility";
+
+/**
+ * Competitor landscape. PINNED competitors are chosen by an operator.
+ * OBSERVED domains are sites answers cite that we have not classified.
+ * SOURCES (encyclopedias, forums, video, social…) are cited but are not
+ * commercial competitors, so they are shown apart and never pinned by default.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/ai-search/competitors", 303);
+const project = Astro.url.searchParams.get("project") ?? DEFAULT_PROJECT;
+const P = `/projects/${encodeURIComponent(project)}`;
+
+let notice: string | null = null;
+let formError: string | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const cid = String(form.get("competitorId") ?? "");
+  const pin = String(form.get("intent") ?? "") === "pin";
+  const r = pin ? await aivPost(token, `${P}/competitors/${encodeURIComponent(cid)}/pin`) : await aivDelete(token, `${P}/competitors/${encodeURIComponent(cid)}/pin`);
+  if (r.ok) notice = pin ? "Pinned." : "Unpinned. Its past answers are unchanged."; else formError = r.message;
+}
+
+const [land, regs] = await Promise.all([
+  aivGet<any>(token, `${P}/landscape`),
+  aivGet<{ pinned: any[]; available: any[] }>(token, `${P}/competitors`),
+]);
+---
+<AdminLayout title="Competitors · AI Search" description="Pinned competitors, observed domains and sources in AI answers.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-4">Competitors</h2>
+    <AiSearchNav current="competitors" project={project} />
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+    {!land.ok && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{land.message}</div>}
+
+    {land.ok && (
+      <>
+        <section aria-labelledby="pinned" class="mb-8">
+          <h3 id="pinned" class="text-sm font-black uppercase tracking-widest text-gray-500 mb-3">Pinned competitors · latest {land.data.answers} answers</h3>
+          <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+            <table class="w-full text-sm">
+              <thead><tr class="text-left text-xs font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200"><th class="p-3">Competitor</th><th class="p-3 text-right">Named</th><th class="p-3 text-right">Cited</th><th class="p-3">Most-cited pages</th><th class="p-3"></th></tr></thead>
+              <tbody>{land.data.pinned.length === 0 ? <tr><td colspan="5" class="p-4 text-gray-500">No competitors pinned yet — pin them below.</td></tr> : land.data.pinned.map((c: any) => (
+                <tr class="border-b border-gray-100 align-top">
+                  <td class="p-3"><span class="font-bold">{c.name}</span><br /><span class="text-xs font-mono text-gray-500">{c.domains.join(", ")}</span></td>
+                  <td class="p-3 text-right tabular-nums">{rate(c.mentionRate)}</td>
+                  <td class="p-3 text-right tabular-nums">{rate(c.citationRate)}</td>
+                  <td class="p-3 text-xs">{c.topPages.length ? c.topPages.map((p: any) => <div class="break-all">{p.url} ({p.citations})</div>) : "—"}</td>
+                  <td class="p-3"><form method="POST"><input type="hidden" name="intent" value="unpin" /><input type="hidden" name="competitorId" value={c.id} /><button class="text-xs font-bold underline">Unpin</button></form></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </section>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <section aria-labelledby="obs" class="rounded-2xl border border-gray-200 bg-white p-5">
+            <h3 id="obs" class="text-sm font-black uppercase tracking-widest text-gray-500">Observed sites (not classified)</h3>
+            <p class="text-xs text-gray-500 mt-1 mb-3">Cited in answers, not pinned and not a known source type. Some may be competitors; many will be publishers. Add a real competitor to the registry (SEO → Competitors) with its website, then pin it here.</p>
+            {land.data.observed.length === 0 ? <p class="text-sm text-gray-500">None yet.</p> : (
+              <table class="w-full text-sm"><tbody>{land.data.observed.slice(0, 25).map((h: any) => (
+                <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-xs">{h.host}</td><td class="py-1.5 text-right text-xs text-gray-600">{h.answers} answer{h.answers === 1 ? "" : "s"}</td></tr>
+              ))}</tbody></table>
+            )}
+          </section>
+          <section aria-labelledby="src" class="rounded-2xl border border-gray-200 bg-white p-5">
+            <h3 id="src" class="text-sm font-black uppercase tracking-widest text-gray-500">Sources</h3>
+            <p class="text-xs text-gray-500 mt-1 mb-3">Encyclopedias, forums, video, social and marketplaces answers rely on. Being present on these can matter as much as our own pages.</p>
+            {land.data.sources.length === 0 ? <p class="text-sm text-gray-500">None yet.</p> : (
+              <table class="w-full text-sm"><tbody>{land.data.sources.slice(0, 25).map((h: any) => (
+                <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-xs">{h.host}</td><td class="py-1.5 text-xs text-gray-500">{String(h.sourceKind).toLowerCase()}</td><td class="py-1.5 text-right text-xs text-gray-600">{h.answers}</td></tr>
+              ))}</tbody></table>
+            )}
+          </section>
+        </div>
+
+        {land.data.ownPages.length > 0 && (
+          <section class="mb-8 rounded-2xl border border-gray-200 bg-white p-5">
+            <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-3">Our pages that are cited</h3>
+            <ul class="text-sm space-y-1">{land.data.ownPages.map((p: any) => <li class="break-all">{p.url} <span class="text-gray-500">({p.citations})</span></li>)}</ul>
+          </section>
+        )}
+      </>
+    )}
+
+    {regs.ok && regs.data.available.length > 0 && (
+      <section class="mb-12">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-3">Registry competitors not pinned</h3>
+        <ul class="divide-y divide-gray-100 rounded-2xl border border-gray-200 bg-white">{regs.data.available.map((c) => (
+          <li class="flex items-center justify-between gap-3 p-3 text-sm">
+            <span><span class="font-bold">{c.name}</span> <span class="text-xs font-mono text-gray-500">{c.domains.join(", ")}</span></span>
+            <form method="POST"><input type="hidden" name="intent" value="pin" /><input type="hidden" name="competitorId" value={c.id} /><button class="rounded-full border border-gray-300 px-3 py-1 text-xs font-bold">Pin</button></form>
+          </li>
+        ))}</ul>
+      </section>
+    )}
+  </div>
+</AdminLayout>

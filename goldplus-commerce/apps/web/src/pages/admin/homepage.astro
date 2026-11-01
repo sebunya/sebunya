@@ -1,0 +1,214 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../lib/session';
+import { apiBase } from '../../lib/api';
+import { HOME_TRUST_ICON_KEYS, DEFAULT_HOMEPAGE_CONTENT } from '@goldplus/shared';
+
+/**
+ * Homepage marketing content editor (0114). The trust strip and the three
+ * business-pathway cards — the homepage reads these from the DB, so an edit here
+ * goes live with no deploy. Icons stay in code; the copy is editable.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/homepage', 303);
+
+const authed = (path: string, init?: RequestInit) =>
+  fetch(`${apiBase}${path}`, { ...init, headers: { ...init?.headers, Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+
+let notice: { kind: 'ok' | 'error'; message: string } | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  try {
+    const trustItems = [0, 1, 2].map((i) => ({
+      iconKey: String(form.get(`trust.${i}.iconKey`) ?? 'shield'),
+      title: String(form.get(`trust.${i}.title`) ?? '').trim(),
+      body: String(form.get(`trust.${i}.body`) ?? '').trim(),
+    })).filter((t) => t.title && t.body);
+    const pathwayCards = [0, 1, 2].map((i) => ({
+      title: String(form.get(`card.${i}.title`) ?? '').trim(),
+      body: String(form.get(`card.${i}.body`) ?? '').trim(),
+      ctaLabel: String(form.get(`card.${i}.ctaLabel`) ?? '').trim(),
+      href: String(form.get(`card.${i}.href`) ?? '').trim(),
+    })).filter((c) => c.title && c.body && c.ctaLabel && c.href);
+    const whatsappChannel = {
+      heading: String(form.get('whatsapp.heading') ?? '').trim(),
+      body: String(form.get('whatsapp.body') ?? '').trim(),
+    };
+    const FCOLS = 4, FLINKS = 8, FLEGAL = 8;
+    const footer = {
+      columns: Array.from({ length: FCOLS }, (_, ci) => ({
+        heading: String(form.get(`footer.col.${ci}.heading`) ?? '').trim(),
+        links: Array.from({ length: FLINKS }, (_, li) => ({
+          label: String(form.get(`footer.col.${ci}.link.${li}.label`) ?? '').trim(),
+          href: String(form.get(`footer.col.${ci}.link.${li}.href`) ?? '').trim(),
+        })).filter((l) => l.label && l.href),
+      })).filter((c) => c.heading && c.links.length > 0),
+      legalLinks: Array.from({ length: FLEGAL }, (_, i) => ({
+        label: String(form.get(`footer.legal.${i}.label`) ?? '').trim(),
+        href: String(form.get(`footer.legal.${i}.href`) ?? '').trim(),
+      })).filter((l) => l.label && l.href),
+      attribution: { label: String(form.get('footer.attribution.label') ?? '').trim(), href: String(form.get('footer.attribution.href') ?? '').trim() },
+      paymentHeading: String(form.get('footer.paymentHeading') ?? '').trim(),
+      copyrightNotice: String(form.get('footer.copyrightNotice') ?? '').trim(),
+      visitHeading: String(form.get('footer.visitHeading') ?? '').trim(),
+      openHeading: String(form.get('footer.openHeading') ?? '').trim(),
+    };
+    const res = await authed('/admin/homepage', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: { trustItems, pathwayCards, whatsappChannel, footer } }) });
+    const json: any = await res.json().catch(() => null);
+    notice = res.ok && json?.success
+      ? { kind: 'ok', message: `Saved (version ${json.data.version}). Live on the homepage within a minute.` }
+      : { kind: 'error', message: json?.error?.message ?? 'Could not save.' };
+  } catch (e) {
+    notice = { kind: 'error', message: e instanceof Error ? e.message : 'Could not save.' };
+  }
+}
+
+let cfg: any = null; let loadError = '';
+try {
+  const res = await authed('/admin/homepage');
+  if (res.status === 401) return Astro.redirect('/admin/login?returnTo=/admin/homepage', 303);
+  if (res.status === 403) return Astro.redirect(`/admin/not-permitted?from=${encodeURIComponent('/admin/homepage')}`, 303);
+  const json: any = await res.json().catch(() => null);
+  if (res.ok && json?.success) cfg = json.data.config;
+  else loadError = json?.error?.message ?? 'Could not load homepage content.';
+} catch { loadError = 'The service is unreachable right now.'; }
+
+const trust = (i: number) => cfg?.trustItems?.[i] ?? { iconKey: 'shield', title: '', body: '' };
+const card = (i: number) => cfg?.pathwayCards?.[i] ?? { title: '', body: '', ctaLabel: '', href: '' };
+const wa = cfg?.whatsappChannel ?? { heading: 'New at GoldPlus', body: 'New arrivals, restocks and offers — straight from GoldPlus.' };
+const ftr = cfg?.footer ?? DEFAULT_HOMEPAGE_CONTENT.footer;
+const FCOLS = 4, FLINKS = 8, FLEGAL = 8;
+const fcol = (ci: number) => ftr.columns?.[ci] ?? { heading: '', links: [] };
+const flink = (ci: number, li: number) => (ftr.columns?.[ci]?.links?.[li]) ?? { label: '', href: '' };
+const flegal = (i: number) => ftr.legalLinks?.[i] ?? { label: '', href: '' };
+const fattr = ftr.attribution ?? { label: '', href: '' };
+---
+<AdminLayout title="Homepage content">
+  <div class="mx-auto max-w-3xl px-4 py-8">
+    <h1 class="text-2xl font-black text-slate-900">Homepage content</h1>
+    <p class="mt-2 text-sm text-slate-600">The trust strip and the three business-pathway cards below the hero. Changes go live within a minute, no deploy.</p>
+
+    {notice && (
+      <div class:list={["mt-6 rounded-xl border p-4 text-sm", notice.kind === 'ok' ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-red-300 bg-red-50 text-red-900']}>
+        <p class="font-bold">{notice.message}</p>
+      </div>
+    )}
+    {loadError && <div class="mt-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{loadError}</div>}
+
+    {cfg && (
+      <form method="POST" class="mt-8 space-y-8">
+        <section>
+          <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Trust strip (three points)</h2>
+          <div class="mt-3 space-y-4">
+            {[0, 1, 2].map((i) => (
+              <div class="rounded-xl border border-slate-200 p-4 space-y-2">
+                <label class="text-xs block">Icon
+                  <select name={`trust.${i}.iconKey`} class="mt-1 block rounded border px-2 py-1 text-sm">
+                    {HOME_TRUST_ICON_KEYS.map((k) => (
+                      <option value={k} selected={trust(i).iconKey === k}>{k}</option>
+                    ))}
+                  </select>
+                </label>
+                <label class="text-xs block">Title
+                  <input name={`trust.${i}.title`} value={trust(i).title} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+                </label>
+                <label class="text-xs block">Body
+                  <textarea name={`trust.${i}.body`} rows="2" class="mt-1 w-full rounded border px-3 py-2 text-sm">{trust(i).body}</textarea>
+                </label>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Business-pathway cards (three)</h2>
+          <div class="mt-3 space-y-4">
+            {[0, 1, 2].map((i) => (
+              <div class="rounded-xl border border-slate-200 p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <label class="text-xs block sm:col-span-2">Title
+                  <input name={`card.${i}.title`} value={card(i).title} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+                </label>
+                <label class="text-xs block sm:col-span-2">Body
+                  <textarea name={`card.${i}.body`} rows="2" class="mt-1 w-full rounded border px-3 py-2 text-sm">{card(i).body}</textarea>
+                </label>
+                <label class="text-xs block">Button label
+                  <input name={`card.${i}.ctaLabel`} value={card(i).ctaLabel} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+                </label>
+                <label class="text-xs block">Button link
+                  <input name={`card.${i}.href`} value={card(i).href} class="mt-1 w-full rounded border px-3 py-2 text-sm font-mono" />
+                </label>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">WhatsApp channel block (footer)</h2>
+          <div class="mt-3 rounded-xl border border-slate-200 p-4 space-y-2">
+            <label class="text-xs block">Heading
+              <input name="whatsapp.heading" value={wa.heading} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+            </label>
+            <label class="text-xs block">Supporting copy
+              <textarea name="whatsapp.body" rows="2" class="mt-1 w-full rounded border px-3 py-2 text-sm">{wa.body}</textarea>
+            </label>
+          </div>
+        </section>
+
+        <section>
+          <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Footer link columns</h2>
+          <p class="mt-1 text-xs text-slate-500">Heading + links for each footer column. Leave a link row blank to remove it; fill a blank row to add one. Clear a whole column's heading and links to hide it.</p>
+          <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {Array.from({ length: FCOLS }).map((_, ci) => (
+              <div class="rounded-xl border border-slate-200 p-4 space-y-2">
+                <label class="text-xs block font-bold">Column heading
+                  <input name={`footer.col.${ci}.heading`} value={fcol(ci).heading} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+                </label>
+                {Array.from({ length: FLINKS }).map((_, li) => (
+                  <div class="grid grid-cols-2 gap-2">
+                    <input name={`footer.col.${ci}.link.${li}.label`} value={flink(ci, li).label} placeholder="Label" class="rounded border px-2 py-1.5 text-xs" />
+                    <input name={`footer.col.${ci}.link.${li}.href`} value={flink(ci, li).href} placeholder="/path" class="rounded border px-2 py-1.5 text-xs font-mono" />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Footer legal &amp; brand row</h2>
+          <div class="mt-3 rounded-xl border border-slate-200 p-4 space-y-2">
+            <p class="text-xs font-bold">Legal links</p>
+            {Array.from({ length: FLEGAL }).map((_, i) => (
+              <div class="grid grid-cols-2 gap-2">
+                <input name={`footer.legal.${i}.label`} value={flegal(i).label} placeholder="Label" class="rounded border px-2 py-1.5 text-xs" />
+                <input name={`footer.legal.${i}.href`} value={flegal(i).href} placeholder="/path" class="rounded border px-2 py-1.5 text-xs font-mono" />
+              </div>
+            ))}
+            <p class="text-xs font-bold pt-2">Attribution link</p>
+            <div class="grid grid-cols-2 gap-2">
+              <input name="footer.attribution.label" value={fattr.label} placeholder="Label" class="rounded border px-2 py-1.5 text-xs" />
+              <input name="footer.attribution.href" value={fattr.href} placeholder="https://…" class="rounded border px-2 py-1.5 text-xs font-mono" />
+            </div>
+            <label class="text-xs block pt-2">Payment heading
+              <input name="footer.paymentHeading" value={ftr.paymentHeading} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+            </label>
+            <label class="text-xs block">Copyright notice (year is added automatically)
+              <input name="footer.copyrightNotice" value={ftr.copyrightNotice} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+            </label>
+            <div class="grid grid-cols-2 gap-2">
+              <label class="text-xs block">"Visit" heading
+                <input name="footer.visitHeading" value={ftr.visitHeading} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+              </label>
+              <label class="text-xs block">"Open" heading
+                <input name="footer.openHeading" value={ftr.openHeading} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <button type="submit" class="rounded-full bg-slate-900 px-6 py-3 text-sm font-bold text-white">Save homepage content</button>
+      </form>
+    )}
+  </div>
+</AdminLayout>

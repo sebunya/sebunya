@@ -1,0 +1,29 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import ArticleEditor from '../../../components/admin/ArticleEditor.astro';
+import { readSessionToken } from '../../../lib/session';
+import { apiBase } from '../../../lib/api';
+
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/blog/new', 303);
+
+// The products an article may recommend. Approved and active only — the same
+// set the storefront will actually render.
+let products: Array<{ id: string; name: string }> = [];
+try {
+  const res = await fetch(`${apiBase}/products?limit=100`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(3000) });
+  const json: any = await res.json().catch(() => null);
+  if (res.ok && json?.success && Array.isArray(json.data)) {
+    products = json.data.map((p: any) => ({ id: p.id, name: p.name }));
+  }
+} catch {
+  // An unreachable catalogue costs the product picker, not the editor.
+}
+---
+<AdminLayout title="Write an article">
+  <div class="mx-auto max-w-3xl px-4 py-8">
+    <h1 class="text-2xl font-black text-slate-900">Write an article</h1>
+    <p class="mt-1 text-sm text-slate-600">Saved as a draft. Nothing is public until you publish it.</p>
+    <ArticleEditor products={products} />
+  </div>
+</AdminLayout>

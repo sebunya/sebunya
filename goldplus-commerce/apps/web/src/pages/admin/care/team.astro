@@ -1,0 +1,94 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+import { apiBase } from '../../../lib/api';
+
+/**
+ * Who Goldie alerts when a customer needs a person urgently: name, phone,
+ * email, which channels, and when they are on duty (Kampala time). Saving
+ * needs settings.manage (the API enforces and audits it). "Send a test alert"
+ * pages everyone active so the owner can see alerts arrive before a real
+ * customer needs one.
+ */
+export const prerender = false;
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/care/team', 303);
+
+const call = async <T,>(path: string, init?: RequestInit): Promise<{ ok: true; data: T } | { ok: false; message: string }> => {
+  try {
+    const res = await fetch(`${apiBase}/admin/care${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success) return { ok: false, message: json?.error?.message ?? `The system answered ${res.status}.` };
+    return { ok: true, data: json.data as T };
+  } catch { return { ok: false, message: 'The system could not be reached.' }; }
+};
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+let notice: { kind: 'success' | 'error'; text: string } | null = null;
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const action = String(f.get('action') ?? '');
+  if (action === 'save') {
+    const days = DAYS.map((_, i) => (f.get(`day${i}`) === 'on' ? i : -1)).filter((d) => d >= 0);
+    const from = String(f.get('from') ?? ''), to = String(f.get('to') ?? '');
+    const onDuty = f.get('always') === 'on' ? null : { days, ...(from ? { from } : {}), ...(to ? { to } : {}) };
+    const r = await call('/team', { method: 'PUT', body: JSON.stringify({
+      id: String(f.get('id') ?? '') || null, name: String(f.get('name') ?? ''), roleLabel: String(f.get('roleLabel') ?? '') || null,
+      phone: String(f.get('phone') ?? '') || null, email: String(f.get('email') ?? '') || null,
+      alertSms: f.get('alertSms') === 'on', alertEmail: f.get('alertEmail') === 'on', alertWhatsapp: f.get('alertWhatsapp') === 'on', onDuty, active: f.get('active') === 'on',
+    }) });
+    notice = r.ok ? { kind: 'success', text: 'Saved.' } : { kind: 'error', text: r.message };
+  } else if (action === 'remove') {
+    const r = await call(`/team/${String(f.get('id') ?? '')}`, { method: 'DELETE' });
+    notice = r.ok ? { kind: 'success', text: 'Removed.' } : { kind: 'error', text: r.message };
+  } else if (action === 'test') {
+    const r = await call<{ sent: string[] }>('/team/test-alert', { method: 'POST', body: '{}' });
+    notice = r.ok ? { kind: r.data.sent.length ? 'success' : 'error', text: r.data.sent.length ? `Test alert sent: ${r.data.sent.join(', ')}. It can take a minute to arrive.` : 'Nobody could be alerted. Add a phone or email and tick a channel.' } : { kind: 'error', text: r.message };
+  }
+}
+
+interface Member { id: string; name: string; roleLabel: string | null; phone: string | null; email: string | null; alertSms: boolean; alertEmail: boolean; alertWhatsapp: boolean; onDuty: { days?: number[]; from?: string; to?: string } | null; active: boolean }
+const team = await call<Member[]>('/team');
+const blank: Member = { id: '', name: '', roleLabel: '', phone: '', email: '', alertSms: true, alertEmail: true, alertWhatsapp: false, onDuty: { days: [1, 2, 3, 4, 5, 6], from: '08:00', to: '19:00' }, active: true };
+const rows = [...(team.ok ? team.data : []), blank];
+---
+<AdminLayout title="Care team and alerts" description="Who Goldie alerts when a customer needs a person, and when." activePath="/admin/care">
+  <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-4xl space-y-6">
+    <p class="text-sm"><a href="/admin/care" class="underline font-bold">Back to the Care Desk</a></p>
+    <p class="text-sm text-gray-700">When a customer is upset or stuck and needs a person now, Goldie alerts everyone on duty here, on the channels ticked. Outside everyone's hours, she alerts all active members so no urgent customer waits unseen. Normal tasks wait on the Care Desk without paging anyone.</p>
+    {notice && <div role="status" class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
+    {!team.ok && <div role="status" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{team.message}</div>}
+
+    {rows.map((m) => (
+      <form method="post" class="rounded-2xl border border-gray-200 bg-white p-4 grid gap-3 sm:grid-cols-2 text-sm">
+        <input type="hidden" name="action" value="save" /><input type="hidden" name="id" value={m.id} />
+        <h2 class="sm:col-span-2 font-black">{m.id ? m.name : 'Add a team member'}</h2>
+        <label class="grid gap-1"><span class="font-bold">Name</span><input name="name" value={m.name} required class="rounded-lg border border-gray-300 px-3 py-2" /></label>
+        <label class="grid gap-1"><span class="font-bold">Role</span><input name="roleLabel" value={m.roleLabel ?? ''} placeholder="e.g. Shop attendant" class="rounded-lg border border-gray-300 px-3 py-2" /></label>
+        <label class="grid gap-1"><span class="font-bold">Phone (for SMS and WhatsApp)</span><input name="phone" type="tel" value={m.phone ?? ''} class="rounded-lg border border-gray-300 px-3 py-2" /></label>
+        <label class="grid gap-1"><span class="font-bold">Email</span><input name="email" type="email" value={m.email ?? ''} class="rounded-lg border border-gray-300 px-3 py-2" /></label>
+        <fieldset class="sm:col-span-2 flex flex-wrap gap-4"><legend class="font-bold mb-1">Alert by</legend>
+          <label class="flex items-center gap-2"><input type="checkbox" name="alertSms" checked={m.alertSms} /> SMS</label>
+          <label class="flex items-center gap-2"><input type="checkbox" name="alertEmail" checked={m.alertEmail} /> Email</label>
+          <label class="flex items-center gap-2"><input type="checkbox" name="alertWhatsapp" checked={m.alertWhatsapp} /> WhatsApp</label>
+        </fieldset>
+        <fieldset class="sm:col-span-2 grid gap-2"><legend class="font-bold mb-1">On duty (Kampala time)</legend>
+          <label class="flex items-center gap-2"><input type="checkbox" name="always" checked={!m.onDuty} /> Always</label>
+          <div class="flex flex-wrap gap-3">{DAYS.map((d, i) => <label class="flex items-center gap-1"><input type="checkbox" name={`day${i}`} checked={!!m.onDuty?.days?.includes(i)} /> {d}</label>)}</div>
+          <div class="flex gap-3 items-center"><label class="flex items-center gap-2">From <input type="time" name="from" value={m.onDuty?.from ?? ''} class="rounded-lg border border-gray-300 px-2 py-1" /></label><label class="flex items-center gap-2">to <input type="time" name="to" value={m.onDuty?.to ?? ''} class="rounded-lg border border-gray-300 px-2 py-1" /></label></div>
+        </fieldset>
+        <label class="flex items-center gap-2 font-bold"><input type="checkbox" name="active" checked={m.active} /> Active</label>
+        <div class="flex gap-2 justify-end">
+          <button class="rounded-full bg-brand-dark text-white font-bold px-4 py-2">{m.id ? 'Save' : 'Add'}</button>
+        </div>
+      </form>
+    ))}
+    {team.ok && team.data.length > 0 && (
+      <div class="flex flex-wrap gap-2">
+        <form method="post"><input type="hidden" name="action" value="test" /><button class="rounded-full border-2 border-brand-dark font-bold px-4 py-2 text-sm">Send a test alert to everyone</button></form>
+        {team.data.map((m) => <form method="post"><input type="hidden" name="action" value="remove" /><input type="hidden" name="id" value={m.id} /><button class="rounded-full border border-gray-300 text-gray-600 px-3 py-2 text-sm">Remove {m.name}</button></form>)}
+      </div>
+    )}
+    <p class="text-xs text-gray-500">WhatsApp alerts need an approved WhatsApp template (GOLDIE_ALERT_TEMPLATE); until then SMS and email carry every alert.</p>
+  </div>
+</AdminLayout>

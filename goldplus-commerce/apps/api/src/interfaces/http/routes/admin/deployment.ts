@@ -3,8 +3,23 @@ import { deploymentService } from '../../../../infrastructure/deployment/Deploym
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { Registry } from '../../../../infrastructure/Registry';
 
-// audit-exempt: deployment mode updates are tracked via dedicated deployment logging in DeploymentService
+/** Who did it, on a site-wide operational change. */
+const audit = (c: { get(k: string): unknown }, action: string, newState: Record<string, unknown>) =>
+  Registry.getInstance().createAuditLogUseCase.execute({
+    actorId: (c.get('user') as { id?: string } | undefined)?.id ?? 'unknown',
+    action,
+    entity: 'deployment',
+    entityId: 'global',
+    newState,
+  }).catch(() => undefined);
+
+// Maintenance mode, health score and shadow traffic are site-wide operational
+// mutations. They used to carry an audit exemption that was not true:
+// DeploymentService logs the new VALUE without the actor, and logs nothing at
+// all for shadow traffic, so afterwards nobody could say who took the site
+// down. Each handler now records the actor, as the queue routes do.
 const routes = new Hono();
 
 // Enforce auth globally for all deployment admin actions
@@ -17,6 +32,8 @@ routes.use('*', authMiddleware);
 routes.get('/status', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const res: ApiResponse<{
     maintenanceMode: boolean;
+    /** 'all-replicas' when the shared flag store answered; otherwise this replica's last knowledge. */
+    scope: 'all-replicas' | 'this-replica-only';
     healthScore: number;
     shadowRatio: number;
     shadowUrl: string;
@@ -24,7 +41,8 @@ routes.get('/status', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (
   }> = {
     success: true,
     data: {
-      maintenanceMode: deploymentService.getMaintenanceMode(),
+      maintenanceMode: await deploymentService.refreshFlags({ force: true }),
+      scope: deploymentService.flagsAreShared() ? 'all-replicas' : 'this-replica-only',
       healthScore: deploymentService.getReleaseHealthScore(),
       shadowRatio: deploymentService.getShadowTrafficRatio(),
       shadowUrl: deploymentService.getShadowUrl(),
@@ -50,11 +68,18 @@ routes.post('/maintenance', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), a
     return c.json(res, 400);
   }
 
-  deploymentService.setMaintenanceMode(enabled);
+  const wasEnabled = await deploymentService.refreshFlags({ force: true });
+  const shared = await deploymentService.setMaintenanceMode(enabled);
+  // The audit says what actually happened: every replica, or only this one.
+  await audit(c, 'DEPLOYMENT_MAINTENANCE_MODE_SET', {
+    enabled,
+    previous: wasEnabled,
+    scope: shared ? 'all-replicas' : 'this-replica-only',
+  });
 
-  const res: ApiResponse<{ maintenanceMode: boolean }> = {
+  const res: ApiResponse<{ maintenanceMode: boolean; scope: 'all-replicas' | 'this-replica-only' }> = {
     success: true,
-    data: { maintenanceMode: deploymentService.getMaintenanceMode() },
+    data: { maintenanceMode: deploymentService.getMaintenanceMode(), scope: shared ? 'all-replicas' : 'this-replica-only' },
   };
   return c.json(res, 200);
 });
@@ -76,6 +101,7 @@ routes.post('/health-score', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), 
   }
 
   deploymentService.updateHealthScore(score);
+  await audit(c, 'DEPLOYMENT_HEALTH_SCORE_SET', { score });
 
   const res: ApiResponse<{ healthScore: number }> = {
     success: true,
@@ -104,7 +130,10 @@ routes.post('/shadow-traffic', requirePermissions([PERMISSIONS.SETTINGS_MANAGE])
   if (shadowUrl !== undefined && !deploymentService.setShadowUrl(shadowUrl || null)) {
     const res: ApiResponse<never> = {
       success: false,
-      error: { code: 'INVALID_SHADOW_URL', message: 'Shadow URL must be a valid http(s) URL.' },
+      error: {
+        code: 'INVALID_SHADOW_URL',
+        message: 'Shadow URL must be an http(s) URL on an internal host (a compose service name, loopback, or SHADOW_TRAFFIC_ALLOWED_HOSTS).',
+      },
     };
     return c.json(res, 400);
   }
@@ -120,7 +149,12 @@ routes.post('/shadow-traffic', requirePermissions([PERMISSIONS.SETTINGS_MANAGE])
     return c.json(res, 400);
   }
 
-  deploymentService.setShadowTrafficRatio(ratio);
+  const shared = await deploymentService.setShadowTrafficRatio(ratio);
+  await audit(c, 'DEPLOYMENT_SHADOW_TRAFFIC_SET', {
+    ratio,
+    shadowUrl: shadowUrl ?? null,
+    scope: shared ? 'all-replicas' : 'this-replica-only',
+  });
 
   const res: ApiResponse<{ shadowRatio: number; shadowUrl: string; shadowConfigured: boolean }> = {
     success: true,

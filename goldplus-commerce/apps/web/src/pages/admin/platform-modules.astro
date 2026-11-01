@@ -1,0 +1,290 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../lib/session";
+import { apiBase } from "../../lib/api";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/platform-modules", 303);
+}
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+let notice: { kind: "success" | "error"; text: string } | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") || "");
+  try {
+    if (intent === "moderate") {
+      const id = String(form.get("id") || "");
+      const status = String(form.get("status") || "");
+      const res = await fetch(`${apiBase}/admin/modules/reviews/${encodeURIComponent(id)}/moderate`, { method: "POST", headers, body: JSON.stringify({ status }) });
+      const json = await res.json().catch(() => null);
+      notice = json?.success ? { kind: "success", text: `Review ${status}.` } : { kind: "error", text: json?.error?.message || "Moderation failed." };
+    } else if (intent === "answer_question") {
+      const id = String(form.get("id") || "");
+      const res = await fetch(`${apiBase}/admin/modules/questions/${encodeURIComponent(id)}/answer`, { method: "POST", headers, body: JSON.stringify({ answer: String(form.get("answer") || "") }) });
+      const json = await res.json().catch(() => null);
+      // What became of the message to the asker, said plainly: "could not be queued" read the same as "no contact" (2026-10-29).
+      const said: Record<string, string> = {
+        queued: "Answer published and queued to the asker.",
+        no_contact: "Answer published on the product page. The asker left no contact, so nothing was sent.",
+        failed: "Answer published, but the message to the asker could not be queued. Use \"Send the answer to the asker\" under Answered.",
+      };
+      notice = json?.success ? { kind: json.data.notice === "failed" ? "error" : "success", text: said[json.data.notice] ?? (json.data.notified ? said.queued : said.no_contact) } : { kind: "error", text: json?.error?.message || "Answer failed." };
+    } else if (intent === "edit_answer") {
+      const id = String(form.get("id") || "");
+      const res = await fetch(`${apiBase}/admin/modules/questions/${encodeURIComponent(id)}/edit`, { method: "POST", headers, body: JSON.stringify({ answer: String(form.get("answer") || "") }) });
+      const json = await res.json().catch(() => null);
+      notice = json?.success ? { kind: "success", text: "Answer corrected on the product page (not sent to the asker again)." } : { kind: "error", text: json?.error?.message || "Correction failed." };
+    } else if (intent === "resend_answer") {
+      const id = String(form.get("id") || "");
+      const res = await fetch(`${apiBase}/admin/modules/questions/${encodeURIComponent(id)}/resend`, { method: "POST", headers, body: "{}" });
+      const json = await res.json().catch(() => null);
+      notice = json?.success && json.data.notice === "queued" ? { kind: "success", text: "Answer queued to the asker." } : { kind: "error", text: json?.error?.message || "The message could not be queued. Try again in a minute." };
+    } else if (intent === "reject_question") {
+      const id = String(form.get("id") || "");
+      const res = await fetch(`${apiBase}/admin/modules/questions/${encodeURIComponent(id)}/reject`, { method: "POST", headers, body: "{}" });
+      const json = await res.json().catch(() => null);
+      notice = json?.success ? { kind: "success", text: "Question hidden." } : { kind: "error", text: json?.error?.message || "Reject failed." };
+    } else if (intent === "coupon_batch") {
+      const res = await fetch(`${apiBase}/admin/modules/coupons/batch`, { method: "POST", headers, body: JSON.stringify({ promotionDefinitionId: String(form.get("promotionDefinitionId") || "").trim(), count: Number(form.get("count") || 0), maxRedemptions: Number(form.get("maxRedemptions") || 1), codeType: "bulk_batch", prefix: String(form.get("prefix") || "").trim() || undefined }) });
+      const json = await res.json().catch(() => null);
+      notice = json?.success ? { kind: "success", text: `Generated ${json.data.inserted}/${json.data.requested} codes (batch ${json.data.batchId.slice(0, 8)}…).` } : { kind: "error", text: json?.error?.message || "Batch generation failed." };
+    }
+  } catch {
+    notice = { kind: "error", text: "The modules service is unreachable right now." };
+  }
+}
+
+async function load(path: string) {
+  try {
+    const res = await fetch(`${apiBase}/admin/modules/${path}`, { headers, signal: AbortSignal.timeout(4000) });
+    const json = await res.json().catch(() => null);
+    return json?.success ? json.data : null;
+  } catch { return null; }
+}
+
+const reviewStatus = (Astro.url.searchParams.get("review_status") || "pending");
+const questionStatus = (Astro.url.searchParams.get("question_status") || "pending");
+const [coupons, devices, reviews, questions, creators, flashSales, seo] = await Promise.all([
+  load("coupons"),
+  load("devices"),
+  load(`reviews?status=${encodeURIComponent(reviewStatus)}`),
+  load(`questions?status=${encodeURIComponent(questionStatus)}`),
+  load("creators"),
+  load("flash-sales"),
+  load("seo"),
+]);
+const fmt = (n: number | null | undefined) => (n == null ? "—" : Number(n).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' }));
+
+// Wave 2D: capability hub — one honest snapshot (real row counts; -1 renders as
+// "unknown"; a schema-only capability says so instead of pretending).
+const hub = await load("hub");
+const hc = (n: number | undefined) => (n == null || n < 0 ? "unknown" : Number(n).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' }));
+const HUB_CARDS = hub?.counts
+  ? [
+      { title: "Catalogue", metric: `${hc(hub.counts.products)} products`, note: hub.counts.productsMissingImages > 0 ? `${hc(hub.counts.productsMissingImages)} missing images` : "images complete", href: "/admin/pim-imports", state: "WORKING" },
+      { title: "Media library", metric: `${hc(hub.counts.mediaAssets)} assets`, note: "upload · variants · usage graph", href: "/admin/media", state: "WORKING" },
+      { title: "Orders", metric: `${hc(hub.counts.orders)} orders`, note: "operations actions arrive in a later wave", href: "/admin/orders", state: "WORKING" },
+      { title: "Legal CMS", metric: `${hc(hub.counts.legalPublished)} published`, note: `${hc(hub.counts.legalDrafts)} in draft/review · maker/checker enforced`, href: "/admin/legal", state: "WORKING" },
+      { title: "Cart abandonment", metric: `${hc(hub.counts.abandonmentOpen)} open`, note: "hourly evaluator · campaign feed in a later wave", href: "/admin/carts", state: "WORKING" },
+      { title: "Reviews", metric: `${hc(hub.counts.reviewsPending)} pending`, note: "moderation below", href: "/admin/platform-modules", state: "WORKING" },
+      { title: "Product questions", metric: `${hc(hub.counts.questionsPending)} waiting`, note: "answer below; the answer is sent to the asker and published", href: "/admin/platform-modules#questions", state: "WORKING" },
+      { title: "Flash sales", metric: `${hc(hub.counts.flashSales)} defined`, note: "canonical pricing path", href: "/admin/platform-modules", state: "WORKING" },
+      { title: "SEO redirects", metric: `${hc(hub.counts.redirects)} rules`, note: "crawl policy · sitemap live", href: "/admin/platform-modules", state: "WORKING" },
+      { title: "Devices", metric: `${hc(hub.counts.devices)} devices`, note: "compatibility catalogue", href: "/admin/compatibility", state: "WORKING" },
+      { title: "Campaigns", metric: hub.counts.campaignsRows === 0 ? "not built" : hc(hub.counts.campaignsRows), note: "schema exists; engine is a later wave — nothing is pretended here", href: "/admin/campaigns", state: "INCOMPLETE_INTERNAL_GAP" },
+    ]
+  : null;
+---
+
+<AdminLayout title="Platform Modules" description="P0–U6 commerce modules: coupons, devices, reviews, creators, flash sales and SEO — live from the canonical backends.">
+  <div class="space-y-8">
+    {HUB_CARDS && (
+      <section class="rounded-2xl border border-slate-200 bg-white p-5">
+        <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Capability hub</h2>
+        <p class="mt-1 text-xs text-slate-500">Live counts from the canonical backends. A capability that is not built says so.</p>
+        <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {HUB_CARDS.map((card) => (
+            <a href={card.href} class={`block rounded-xl border p-3 transition hover:shadow-sm ${card.state === "INCOMPLETE_INTERNAL_GAP" ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-slate-50 hover:bg-white"}`}>
+              <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">{card.title}</p>
+              <p class="mt-1 text-sm font-black text-slate-800">{card.metric}</p>
+              <p class="mt-1 text-[11px] leading-snug text-slate-500">{card.note}</p>
+            </a>
+          ))}
+        </div>
+      </section>
+    )}
+    {notice && (
+      <div class={`rounded-xl px-4 py-3 text-sm font-semibold ${notice.kind === "success" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>{notice.text}</div>
+    )}
+
+    <!-- U3 Reviews moderation -->
+    <section class="rounded-2xl border border-slate-200 bg-white p-5">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-black text-slate-900">Reviews — moderation queue (U3)</h2>
+        <div class="flex gap-2 text-xs">
+          {["pending", "flagged", "published", "rejected"].map((s) => (
+            <a href={`/admin/platform-modules?review_status=${s}`} class={`rounded-lg px-2.5 py-1 font-bold ${reviewStatus === s ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"}`}>{s} {reviews?.counts?.[s] != null ? `(${reviews.counts[s]})` : ""}</a>
+          ))}
+        </div>
+      </div>
+      {reviews == null ? <p class="mt-3 text-sm text-slate-500">Reviews service unavailable.</p> : (
+        <table class="mt-3 w-full text-sm">
+          <thead><tr class="text-left text-slate-500"><th class="py-1">Rating</th><th>Product</th><th>Review</th><th>Verified</th><th>Flag</th><th>Action</th></tr></thead>
+          <tbody>
+            {(reviews.items || []).length === 0 && <tr><td colspan="6" class="py-3 text-slate-500">No {reviewStatus} reviews.</td></tr>}
+            {(reviews.items || []).map((r: any) => (
+              <tr class="border-t border-slate-100">
+                <td class="py-2 align-top whitespace-nowrap">{"★".repeat(r.rating)}</td>
+                <td class="align-top">{r.productSlug ? <a class="font-semibold underline" href={`/products/${r.productSlug}`} target="_blank" rel="noopener">{r.productName ?? r.productSlug}</a> : <span class="text-slate-600">{r.productName ?? "(product)"}</span>}</td>
+                <td class="align-top max-w-md">
+                  <p class="font-semibold">{r.title || <span class="text-slate-600">(no title)</span>}</p>
+                  {r.body && <p class="mt-1 whitespace-pre-line text-slate-700">{r.body}</p>}
+                  {Array.isArray(r.photoIds) && r.photoIds.length > 0 && <div class="mt-2 flex flex-wrap gap-2">{r.photoIds.map((pid: string) => <a href={`/admin/review-photo/${pid}`} target="_blank" rel="noopener"><img src={`/admin/review-photo/${pid}`} alt="Review photo" width="80" height="80" loading="lazy" class="h-20 w-20 rounded-lg border border-slate-200 object-cover" /></a>)}</div>}
+                  {r.createdAt && <p class="mt-1 text-xs text-slate-500">{new Date(r.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Kampala" })}</p>}
+                </td>
+                <td class="align-top">{r.isVerifiedPurchase ? "✓" : "—"}</td>
+                <td class="align-top text-rose-600">{r.flagReason || ""}</td>
+                <td class="align-top">
+                  <form method="POST" class="flex gap-1">
+                    <input type="hidden" name="intent" value="moderate" /><input type="hidden" name="id" value={r.id} />
+                    <button name="status" value="published" class="rounded bg-emerald-600 px-2 py-1 text-xs font-bold text-white">Publish</button>
+                    <button name="status" value="rejected" class="rounded bg-rose-600 px-2 py-1 text-xs font-bold text-white">Reject</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+
+    <!-- 0208 Product questions -->
+    <section id="questions" class="rounded-2xl border border-slate-200 bg-white p-5">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-black text-slate-900">Product questions — answer queue</h2>
+        <div class="flex gap-2 text-xs">
+          {["pending", "answered", "rejected"].map((s) => (
+            <a href={`/admin/platform-modules?question_status=${s}#questions`} class={`rounded-lg px-2.5 py-1 font-bold ${questionStatus === s ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"}`}>{s} {questions?.counts?.[s] != null ? `(${questions.counts[s]})` : ""}</a>
+          ))}
+        </div>
+      </div>
+      <p class="mt-1 text-sm text-slate-600">Asked on product pages. Your answer is published under the product for everyone and sent once to the asker's phone or email when they left one. Write it as you would say it on WhatsApp.</p>
+      {questions == null ? <p class="mt-3 text-sm text-slate-500">Questions service unavailable.</p> : (
+        <table class="mt-3 w-full text-sm">
+          <thead><tr class="text-left text-slate-500"><th class="py-1">Product</th><th>Question</th><th>Answer</th></tr></thead>
+          <tbody>
+            {(questions.items || []).length === 0 && <tr><td colspan="3" class="py-3 text-slate-500">No {questionStatus} questions.</td></tr>}
+            {(questions.items || []).map((q: any) => (
+              <tr class="border-t border-slate-100">
+                <td class="py-2 align-top">{q.productSlug ? <a class="font-semibold underline" href={`/products/${q.productSlug}#questions`} target="_blank" rel="noopener">{q.productName ?? q.productSlug}</a> : <span class="text-slate-500">(product)</span>}</td>
+                <td class="align-top max-w-md">
+                  <p class="whitespace-pre-line text-slate-800">{q.question}</p>
+                  <p class="mt-1 text-xs text-slate-500">{q.askerName}{q.askerPhone ? ` · ${q.askerPhone}` : ""}{q.askerEmail ? ` · ${q.askerEmail}` : ""}{q.createdAt ? ` · ${new Date(q.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Kampala" })}` : ""}</p>
+                </td>
+                <td class="align-top max-w-md">
+                  {q.status === "answered" ? (
+                    <div>
+                      <p class="whitespace-pre-line text-slate-700">{q.answer}</p>
+                      <p class="mt-1 text-xs text-slate-500">{q.askerPhone || q.askerEmail ? (q.notifiedAt ? "Sent to the asker." : "Not sent to the asker yet.") : "No contact left: published only."}</p>
+                      {(q.askerPhone || q.askerEmail) && !q.notifiedAt && (
+                        <form method="POST" class="mt-1"><input type="hidden" name="intent" value="resend_answer" /><input type="hidden" name="id" value={q.id} /><button class="rounded bg-emerald-600 px-2 py-1 text-xs font-bold text-white">Send the answer to the asker</button></form>
+                      )}
+                      <details class="mt-1">
+                        <summary class="cursor-pointer text-xs font-bold text-slate-600">Correct this answer</summary>
+                        <form method="POST" class="mt-1 grid gap-1">
+                          <input type="hidden" name="intent" value="edit_answer" /><input type="hidden" name="id" value={q.id} />
+                          <textarea name="answer" required minlength="2" maxlength="1500" rows="3" class="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm">{q.answer}</textarea>
+                          <button class="justify-self-start rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">Save the correction (not sent again)</button>
+                        </form>
+                      </details>
+                      <form method="POST" class="mt-1"><input type="hidden" name="intent" value="reject_question" /><input type="hidden" name="id" value={q.id} /><button class="rounded bg-slate-200 px-2 py-1 text-xs font-bold text-slate-700">Hide from the product page</button></form>
+                    </div>
+                  ) : q.status === "rejected" ? <p class="text-slate-500">Hidden.</p> : (
+                    <div>
+                      <form method="POST" class="grid gap-1">
+                        <input type="hidden" name="intent" value="answer_question" /><input type="hidden" name="id" value={q.id} />
+                        <textarea name="answer" required minlength="2" maxlength="1500" rows="3" class="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm" placeholder="Yes, it fits the Spark 10 (pack code BL-49FT)."></textarea>
+                        <p class="text-xs text-slate-500">Leave out price and stock: the page shows them live, and an answer stays published.</p>
+                        <button class="justify-self-start rounded bg-emerald-600 px-2 py-1 text-xs font-bold text-white">Publish answer{q.askerPhone || q.askerEmail ? " and send" : ""}</button>
+                      </form>
+                      <form method="POST" class="mt-1"><input type="hidden" name="intent" value="reject_question" /><input type="hidden" name="id" value={q.id} /><button class="rounded bg-slate-200 px-2 py-1 text-xs font-bold text-slate-700">Hide (spam or not about the product)</button></form>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+
+    <!-- U1 Coupons -->
+    <section class="rounded-2xl border border-slate-200 bg-white p-5">
+      <h2 class="text-lg font-black text-slate-900">Coupons & promotions (U1)</h2>
+      {coupons == null ? <p class="mt-3 text-sm text-slate-500">Coupon service unavailable.</p> : (
+        <div class="mt-2">
+          <p class="text-sm text-slate-600">Total codes: <b>{fmt(coupons.totalCodes)}</b> · Redemptions: <b>{fmt(coupons.totalRedemptions)}</b></p>
+          <form method="POST" class="mt-3 flex flex-wrap items-end gap-2">
+            <input type="hidden" name="intent" value="coupon_batch" />
+            <label class="text-xs font-bold text-slate-600">Promotion ID<br/><input name="promotionDefinitionId" class="mt-1 w-72 rounded border border-slate-300 px-2 py-1 text-sm" placeholder="promotion_definitions.id" /></label>
+            <label class="text-xs font-bold text-slate-600">Count<br/><input name="count" type="number" value="10" class="mt-1 w-20 rounded border border-slate-300 px-2 py-1 text-sm" /></label>
+            <label class="text-xs font-bold text-slate-600">Max/code<br/><input name="maxRedemptions" type="number" value="1" class="mt-1 w-20 rounded border border-slate-300 px-2 py-1 text-sm" /></label>
+            <label class="text-xs font-bold text-slate-600">Prefix<br/><input name="prefix" class="mt-1 w-24 rounded border border-slate-300 px-2 py-1 text-sm" placeholder="GP" /></label>
+            <button class="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-bold text-white">Generate batch</button>
+          </form>
+          <table class="mt-3 w-full text-sm"><thead><tr class="text-left text-slate-500"><th class="py-1">Code</th><th>Type</th><th>Redeemed</th><th>Active</th></tr></thead>
+            <tbody>{(coupons.recent || []).slice(0, 10).map((r: any) => (<tr class="border-t border-slate-100"><td class="py-1 font-mono">{r.code}</td><td>{r.codeType}</td><td>{r.redemptionCount}/{r.maxRedemptions ?? "∞"}</td><td>{r.isActive ? "✓" : "—"}</td></tr>))}</tbody>
+          </table>
+        </div>
+      )}
+    </section>
+
+    <div class="grid gap-6 md:grid-cols-2">
+      <!-- U2 Devices -->
+      <section class="rounded-2xl border border-slate-200 bg-white p-5">
+        <h2 class="text-lg font-black text-slate-900">Device catalogue (U2)</h2>
+        {devices == null ? <p class="mt-3 text-sm text-slate-500">Unavailable.</p> : (
+          <table class="mt-2 w-full text-sm"><thead><tr class="text-left text-slate-500"><th class="py-1">Device</th><th>Slug</th><th>Compatible</th></tr></thead>
+            <tbody>{devices.length === 0 && <tr><td colspan="3" class="py-2 text-slate-500">No devices (seed via import CLI).</td></tr>}
+            {devices.slice(0, 8).map((d: any) => (<tr class="border-t border-slate-100"><td class="py-1">{d.brand} {d.model}</td><td class="font-mono text-xs">{d.slug}</td><td>{d.compatibleCount}</td></tr>))}</tbody>
+          </table>
+        )}
+      </section>
+
+      <!-- U5 Flash sales -->
+      <section class="rounded-2xl border border-slate-200 bg-white p-5">
+        <h2 class="text-lg font-black text-slate-900">Flash sales (U5)</h2>
+        {flashSales == null ? <p class="mt-3 text-sm text-slate-500">Unavailable.</p> : (
+          <table class="mt-2 w-full text-sm"><thead><tr class="text-left text-slate-500"><th class="py-1">Sale</th><th>Status</th><th>Sold/Alloc</th></tr></thead>
+            <tbody>{flashSales.length === 0 && <tr><td colspan="3" class="py-2 text-slate-500">No flash sales yet.</td></tr>}
+            {flashSales.slice(0, 8).map((s: any) => (<tr class="border-t border-slate-100"><td class="py-1">{s.name}</td><td>{s.status}</td><td>{s.unitsSold}/{s.unitsAllocated}</td></tr>))}</tbody>
+          </table>
+        )}
+      </section>
+
+      <!-- U4 Creators -->
+      <section class="rounded-2xl border border-slate-200 bg-white p-5">
+        <h2 class="text-lg font-black text-slate-900">Creator platform (U4)</h2>
+        {creators == null ? <p class="mt-3 text-sm text-slate-500">Unavailable.</p> : (
+          <div class="mt-2 text-sm">
+            <p class="text-slate-600">Creators: <b>{creators.creators?.length ?? 0}</b> · Payouts: <b>{creators.payouts?.length ?? 0}</b></p>
+            <p class="mt-1 text-slate-600">Commissions: {Object.entries(creators.commissionsByStatus || {}).map(([k, v]: any) => `${k} ${v.count}`).join(" · ") || "none"}</p>
+          </div>
+        )}
+      </section>
+
+      <!-- U6 SEO -->
+      <section class="rounded-2xl border border-slate-200 bg-white p-5">
+        <h2 class="text-lg font-black text-slate-900">SEO & redirects (U6)</h2>
+        {seo == null ? <p class="mt-3 text-sm text-slate-500">Unavailable.</p> : (
+          <div class="mt-2 text-sm">
+            <p class="text-slate-600">Sitemap products: <b>{fmt(seo.sitemapProductCount)}</b> · Redirects: <b>{seo.redirects?.length ?? 0}</b> · GSC-tracked products: <b>{seo.gscClicksByProduct?.length ?? 0}</b></p>
+            <table class="mt-2 w-full text-xs"><tbody>{(seo.redirects || []).slice(0, 6).map((r: any) => (<tr class="border-t border-slate-100"><td class="py-1 font-mono">{r.fromPath}</td><td>→</td><td class="font-mono">{r.toPath}</td><td>{r.statusCode}</td></tr>))}</tbody></table>
+          </div>
+        )}
+      </section>
+    </div>
+  </div>
+</AdminLayout>

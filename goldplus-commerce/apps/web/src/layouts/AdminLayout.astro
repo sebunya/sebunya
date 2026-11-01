@@ -1,6 +1,9 @@
 ---
-import '../styles/global.css';
+import '../styles/admin.css';
 import { ADMIN_NAVIGATION } from '../lib/admin-navigation';
+import { readSessionToken } from '../lib/session';
+import { apiBase } from '../lib/api';
+import DeclarativeActions from '../components/DeclarativeActions.astro';
 
 interface Props {
   title: string;
@@ -15,6 +18,42 @@ const {
 } = Astro.props;
 
 const currentPath = activePath ?? Astro.url.pathname;
+
+/**
+ * Fulfilment alert bar.
+ *
+ * Orders that are paid and waiting, and orders past their promised time, are
+ * the two facts an admin must not have to go looking for — a paid order nobody
+ * picks up is a customer waiting for goods they have already bought. Read
+ * server-side from the same badge the fulfilment screens use, so it cannot
+ * disagree with them, and rendered on EVERY admin page.
+ *
+ * It fails quiet, not loud: if the API cannot be reached the bar is simply
+ * absent. A layout must never break the page it wraps, and a bar that shows
+ * "0" after a failed read would be a lie.
+ */
+let fulfilmentAlert: { newOrders: number; overdue: number; unworkable: number } | null = null;
+const alertToken = readSessionToken(Astro.request);
+if (alertToken && currentPath.startsWith('/admin') && !currentPath.startsWith('/admin/login')) {
+  try {
+    // Bounded: this runs on EVERY admin page, and a stalled API must cost the
+    // page a missing bar, not a render held open for minutes.
+    const res = await fetch(`${apiBase}/admin/fulfilment/badge`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${alertToken}` },
+      signal: AbortSignal.timeout(2000),
+    });
+    const json = await res.json().catch(() => null);
+    const d = json?.data ?? json;
+    if (res.ok && d && typeof d.newOrders === 'number') {
+      fulfilmentAlert = { newOrders: d.newOrders ?? 0, overdue: d.overdue ?? 0, unworkable: d.unworkable ?? 0 };
+    }
+  } catch {
+    // Unreachable API: show nothing rather than a reassuring zero.
+  }
+}
+const alertTotal = fulfilmentAlert
+  ? fulfilmentAlert.newOrders + fulfilmentAlert.overdue + fulfilmentAlert.unworkable
+  : 0;
 
 // Custom active indicator logic
 const isPathActive = (href: string) => {
@@ -43,13 +82,10 @@ const isPathActive = (href: string) => {
         
         {/* Sidebar Header / Brand */}
         <div class="flex items-center h-16 px-6 border-b border-gray-800 bg-black">
-          <a href="/admin" class="flex items-center gap-2 group outline-none">
-            <div class="w-5 h-5 rounded-md bg-brand-primary flex items-center justify-center">
-              <span class="text-brand-charcoal font-black text-xs leading-none">G</span>
-            </div>
-            <span class="text-base font-black tracking-wider text-white uppercase">
-              GP <span class="text-brand-primary font-medium">Control</span>
-            </span>
+          <a href="/admin" class="flex items-center gap-2.5 group outline-none" aria-label="GoldPlus admin home">
+            {/* The REAL GoldPlus mark — the same asset the storefront header wears. */}
+            <img src="/nav/gp-wordmark-cream-admin-168.webp" srcset="/nav/gp-wordmark-cream-admin-84.webp 84w, /nav/gp-wordmark-cream-admin-168.webp 168w" sizes="84px" width="168" height="48" alt="GoldPlus" class="h-6 w-auto transition-opacity group-hover:opacity-80" />
+            <span class="text-[10px] font-black tracking-[0.2em] uppercase text-brand-primary border-l border-gray-700 pl-2.5">Control</span>
           </a>
         </div>
 
@@ -57,7 +93,7 @@ const isPathActive = (href: string) => {
         <nav class="flex-1 px-4 py-6 space-y-8 overflow-y-auto no-scrollbar select-none">
           {ADMIN_NAVIGATION.map((group) => (
             <div class="space-y-2">
-              <h3 class="px-3 text-[10px] font-black text-gray-500 uppercase tracking-widest">
+              <h3 class="px-3 text-[10px] font-black text-gray-400 uppercase tracking-widest">
                 {group.title}
               </h3>
               <div class="space-y-1">
@@ -99,12 +135,12 @@ const isPathActive = (href: string) => {
         </nav>
 
         {/* Sidebar Footer / Quick Actions */}
-        <div class="p-4 border-t border-gray-800 bg-gray-950 flex items-center justify-between text-xs text-gray-500">
+        <div class="p-4 border-t border-gray-800 bg-gray-950 flex items-center justify-between text-xs text-gray-400">
           <div class="flex items-center gap-2">
             <div class="w-2 h-2 rounded-full bg-brand-green animate-pulse"></div>
             <span class="font-medium tracking-wide uppercase text-[9px]">System online</span>
           </div>
-          <a href="/" class="text-gray-500 hover:text-brand-primary transition-colors font-bold text-[10px] uppercase">
+          <a href="/" class="text-gray-400 hover:text-brand-primary transition-colors font-bold text-[10px] uppercase">
             View Store &rarr;
           </a>
         </div>
@@ -119,35 +155,68 @@ const isPathActive = (href: string) => {
       <header class="relative z-10 flex flex-shrink-0 h-16 bg-black border-b border-gray-800">
         
         {/* Left: Responsive Header Elements / Title */}
-        <div class="flex-1 flex items-center justify-between px-6 lg:px-8">
-          <div class="flex items-center gap-4">
-            <h1 class="text-lg font-black tracking-tight text-white">
+        <div class="flex-1 flex items-center justify-between gap-3 min-w-0 px-4 sm:px-6 lg:px-8">
+          <div class="flex items-center gap-3 sm:gap-4 min-w-0">
+            {/*
+              Below 1024px the sidebar is hidden, and there was no other way to
+              reach another section. A native disclosure: no script, so it works
+              under the strict CSP, and it lists exactly what the sidebar lists.
+            */}
+            <details class="lg:hidden relative flex-shrink-0">
+              <summary class="list-none cursor-pointer select-none inline-flex min-h-9 items-center rounded-lg border border-gray-700 px-3 text-xs font-bold text-gray-200 hover:border-brand-primary" aria-label="Admin menu">
+                Menu
+              </summary>
+              <nav class="absolute left-0 top-full mt-2 w-72 max-w-[calc(100vw-2rem)] max-h-[75vh] overflow-y-auto rounded-xl border border-gray-800 bg-black p-3 space-y-4 shadow-xl" aria-label="Admin sections">
+                <a href="/admin" class="block px-3 py-2 text-xs font-bold text-brand-primary">Admin home</a>
+                {ADMIN_NAVIGATION.map((group) => (
+                  <div class="space-y-1">
+                    <p class="px-3 text-[10px] font-black text-gray-400 uppercase tracking-widest">{group.title}</p>
+                    {group.items.map((item) => (
+                      <a
+                        href={item.href}
+                        aria-current={isPathActive(item.href) ? 'page' : undefined}
+                        class={`block px-3 py-2 text-xs font-bold rounded-lg ${isPathActive(item.href) ? 'bg-brand-primary text-brand-charcoal' : 'text-gray-300 hover:bg-gray-800/50'}`}
+                      >{item.label}</a>
+                    ))}
+                  </div>
+                ))}
+                <a href="/" class="block px-3 py-2 text-[10px] font-bold uppercase text-gray-400">View store &rarr;</a>
+              </nav>
+            </details>
+            <h1 class="text-base sm:text-lg font-black tracking-tight text-white truncate min-w-0" title={title}>
               {title}
             </h1>
             {description && (
-              <span class="hidden xl:inline-block text-xs font-medium text-gray-500 border-l border-gray-800 pl-4 py-1">
+              <span class="hidden xl:inline-block text-xs font-medium text-gray-400 border-l border-gray-800 pl-4 py-1">
                 {description}
               </span>
             )}
           </div>
 
           {/* Right: Session Status & Utilities */}
-          <div class="flex items-center gap-4">
+          <div class="flex items-center gap-4 flex-shrink-0">
             
-            <div class="flex items-center gap-2.5 bg-gray-900/80 px-3.5 py-1.5 rounded-full border border-gray-800 shadow-sm select-none">
+            <div class="hidden sm:flex items-center gap-2.5 bg-gray-900/80 px-3.5 py-1.5 rounded-full border border-gray-800 shadow-sm select-none">
               <div class="w-5 h-5 rounded-full bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-center text-brand-primary font-black text-[10px] uppercase tracking-wider">
                 A
               </div>
               <span class="text-xs font-bold text-gray-300">Administrator</span>
             </div>
 
-            <button
-              id="admin-logout-btn"
-              type="button"
-              class="text-xs font-bold text-gray-500 hover:text-red-400 transition-colors px-2 py-1 select-none"
-            >
-              Sign out
-            </button>
+            {/*
+              A real form POST to a real endpoint: the session cookie is
+              HttpOnly, so only the server can clear it, and only the API can
+              revoke the token behind it.
+            */}
+            <form method="POST" action="/admin/logout" class="inline">
+              <button
+                id="admin-logout-btn"
+                type="submit"
+                class="text-xs font-bold text-gray-400 hover:text-red-400 transition-colors px-2 py-1 select-none"
+              >
+                Sign out
+              </button>
+            </form>
           </div>
         </div>
 
@@ -155,6 +224,36 @@ const isPathActive = (href: string) => {
 
       {/* Scrolling Area for Specific Page Content */}
       <main class="flex-1 relative overflow-y-auto focus:outline-none bg-gray-50 text-brand-dark">
+        {fulfilmentAlert && alertTotal > 0 && (
+          <div
+            role="status"
+            aria-live="polite"
+            class={`border-b px-6 lg:px-8 py-3 ${fulfilmentAlert.overdue > 0 ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}
+          >
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span class={`text-sm font-black ${fulfilmentAlert.overdue > 0 ? 'text-red-900' : 'text-amber-900'}`}>
+                Fulfilment
+              </span>
+              <span class="text-sm text-gray-800">
+                {fulfilmentAlert.newOrders > 0 && (
+                  <span><strong>{fulfilmentAlert.newOrders}</strong> order{fulfilmentAlert.newOrders === 1 ? '' : 's'} waiting to be picked up</span>
+                )}
+                {fulfilmentAlert.newOrders > 0 && (fulfilmentAlert.overdue > 0 || fulfilmentAlert.unworkable > 0) && <span class="text-gray-400"> · </span>}
+                {fulfilmentAlert.overdue > 0 && (
+                  <span class="text-red-900"><strong>{fulfilmentAlert.overdue}</strong> past the time we promised</span>
+                )}
+                {fulfilmentAlert.overdue > 0 && fulfilmentAlert.unworkable > 0 && <span class="text-gray-400"> · </span>}
+                {fulfilmentAlert.unworkable > 0 && (
+                  <span><strong>{fulfilmentAlert.unworkable}</strong> open order{fulfilmentAlert.unworkable === 1 ? '' : 's'} not in the work queue</span>
+                )}
+              </span>
+              <a
+                href="/admin/fulfilment"
+                class="ml-auto inline-flex min-h-9 items-center rounded-full bg-brand-dark px-4 text-xs font-bold text-white hover:bg-black"
+              >Open fulfilment</a>
+            </div>
+          </div>
+        )}
         <div class="py-8">
           <slot />
         </div>
@@ -162,14 +261,6 @@ const isPathActive = (href: string) => {
 
     </div>
 
-    <script>
-      // Handle administrative logout directly client-side by clearing authentication cookie
-      document.getElementById('admin-logout-btn')?.addEventListener('click', () => {
-        if (confirm('Confirm action: Securely terminate administrative active session?')) {
-          document.cookie = "goldplus_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;";
-          window.location.href = '/admin/login';
-        }
-      });
-    </script>
+    <DeclarativeActions />
   </body>
 </html>

@@ -1,14 +1,52 @@
 ---
-import ActivationSafetyNotice from './ActivationSafetyNotice.astro';
-import ActivationRequestForm from './ActivationRequestForm.astro';
-import ActivationGatePanel from './ActivationGatePanel.astro';
-import ActivationDecisionBanner from './ActivationDecisionBanner.astro';
+/**
+ * The controlled-activation service has an API (/admin/controlled-activation)
+ * but this page never called it: its form inputs had no name, its buttons were
+ * type=button with no handler, and its status banner was empty. It now says
+ * what is true — not connected — and names the real endpoints.
+ */
+const endpoints = [
+  ['GET', '/summary', 'Activation summary'],
+  ['GET', '/requests', 'List activation requests'],
+  ['POST', '/requests', 'Create an activation request'],
+  ['GET', '/requests/:requestId', 'Read one request with its gates'],
+  ['POST', '/requests/:requestId/checks', 'Run the readiness checks'],
+  ['POST', '/requests/:requestId/approve', 'Approve a request'],
+  ['POST', '/requests/:requestId/reject', 'Reject a request'],
+  ['POST', '/requests/:requestId/cancel', 'Cancel a request'],
+  ['POST', '/requests/:requestId/blockers/:gateId/acknowledge', 'Acknowledge a blocker'],
+];
 ---
-<div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-6">
-  <ActivationSafetyNotice />
-  <ActivationDecisionBanner />
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-    <ActivationRequestForm />
-    <ActivationGatePanel />
+<div class="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-6">
+  <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5" role="status">
+    <p class="text-sm font-black text-amber-900">Not configured</p>
+    <p class="mt-1 text-sm text-amber-900">
+      This page is not connected to the controlled-activation service. It reads and creates no request, runs no check and
+      shows no gate status. Live activation stays blocked either way.
+    </p>
   </div>
+
+  <section class="bg-white border border-gray-200 rounded-2xl p-6">
+    <h2 class="text-sm font-black text-gray-900">What exists</h2>
+    <p class="mt-1 text-sm text-gray-600">
+      The API is deployed under <code class="font-mono text-xs">/admin/controlled-activation</code>. Reads need reports.read;
+      every change needs settings.manage.
+    </p>
+    <table class="mt-4 w-full text-left text-sm">
+      <thead>
+        <tr class="text-[10px] uppercase tracking-widest text-gray-500">
+          <th class="py-2 pr-3 font-black">Method</th><th class="py-2 pr-3 font-black">Path</th><th class="py-2 font-black">Does</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {endpoints.map(([method, path, does]) => (
+          <tr><td class="py-2 pr-3 font-mono text-xs">{method}</td><td class="py-2 pr-3 font-mono text-xs">{path}</td><td class="py-2 text-gray-700">{does}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </section>
+
+  <p class="text-xs text-gray-500">
+    Per-activation review lives under Measurement → Control tower → Controlled activation.
+  </p>
 </div>

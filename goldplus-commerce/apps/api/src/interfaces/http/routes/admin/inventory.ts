@@ -46,4 +46,37 @@ routes.get('/availability', requirePermissions([PERMISSIONS.INVENTORY_READ]), as
   return c.json(res);
 });
 
+// Wave 2E-2 — the first governed WRITE on this surface. Row-locked set-or-delta,
+// refused below zero or below reserved holds, audited with before/after.
+routes.post('/adjust', requirePermissions([PERMISSIONS.INVENTORY_ADJUST]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const productId = typeof body?.productId === 'string' ? body.productId.trim() : '';
+  const mode = body?.mode === 'delta' ? 'delta' : body?.mode === 'set' ? 'set' : null;
+  const value = Number(body?.value);
+  const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
+  if (!productId || !mode || !Number.isFinite(value)) {
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'productId, mode (set|delta) and integer value are required.' } } satisfies ApiResponse<never>, 400);
+  }
+  if (!reason) {
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'A reason is required for every stock adjustment.' } } satisfies ApiResponse<never>, 400);
+  }
+  const registry = Registry.getInstance();
+  const outcome = await registry.adjustStockUseCase.execute({ productId, mode, value });
+  if (!outcome.ok) {
+    const status = outcome.code === 'NOT_FOUND' ? 404 : outcome.code === 'BAD_INPUT' ? 400 : 409;
+    return c.json({ success: false, error: { code: outcome.code, message: outcome.message } } satisfies ApiResponse<never>, status);
+  }
+  const { CreateAuditLogUseCase } = await import('../../../../application/use-cases/audit/CreateAuditLogUseCase');
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: (c.get('user') as { id: string }).id,
+    action: 'STOCK_ADJUSTED',
+    entity: 'product',
+    entityId: productId,
+    previousState: { stockQuantity: outcome.adjustment.before },
+    newState: { stockQuantity: outcome.adjustment.after, reserved: outcome.adjustment.reserved, mode, value, reason },
+  });
+  const res: ApiResponse<typeof outcome.adjustment> = { success: true, data: outcome.adjustment };
+  return c.json(res);
+});
+
 export default routes;

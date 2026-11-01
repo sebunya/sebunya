@@ -24,7 +24,7 @@ const knownExposedRoutes = [
   ['apps/web/src/pages/admin/controlled-activation-dry-run.astro', '/admin/controlled-activation-dry-run', 'Controlled Activation Dry-Run Orchestrator'],
   ['apps/web/src/pages/admin/controlled-activation.astro', '/admin/controlled-activation', 'Controlled Activation Governance'],
   ['apps/web/src/pages/admin/controlled-live-canary.astro', '/admin/controlled-live-canary', 'Controlled Live Canary Activation'],
-  ['apps/web/src/pages/admin/measurement-handover.astro', '/admin/measurement-handover', 'Phase 2 Operational Handover'],
+  ['apps/web/src/pages/admin/measurement-handover.astro', '/admin/measurement-handover', 'Measurement Operations Handbook'],
   ['apps/web/src/pages/admin/release-readiness.astro', '/admin/release-readiness', 'Release Readiness - Measurement Control Tower'],
 ] as const;
 const measurementRoutes = [
@@ -41,8 +41,95 @@ const redirectIndex = (source: string) => source.indexOf('return Astro.redirect'
 
 describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
   it('discovers the complete current admin Astro inventory', () => {
-    expect(adminPages).toHaveLength(83);
-    expect(adminPages[0]).toBe('apps/web/src/pages/admin/audit/index.astro');
+    // 87 = 84 at slice 8-B1 + platform-modules (U-programme) + media (Wave 2B)
+    // + loyalty/gamification (§32 tail). The old flat admin/legal.astro was removed
+    // when the CMS workspace superseded it. 90 = 88 + the delivery Control Centre
+    // and its launch wizard (delivery brief v7); 91 adds the calibration surface;
+    // 92 adds product-costs (2026-08-07) — the cost-entry surface whose absence
+    // made "enter costs to activate profit" a promise with nowhere to keep it.
+    // 93 adds hero (2026-08-07) — the homepage hero editor.
+    // 94 adds nav (2026-08-07) — the header/navigation editor (Stage 2 CMS).
+    // 95 adds business-info (2026-08-08) — the contact/hours/socials editor
+    // whose values the footer reads from the DB (no deploy to change them).
+    // 96 adds homepage (2026-08-08) — the homepage trust/pathway content editor.
+    // 97 adds storefront-copy (2026-08-08) — support intro + payment-method copy.
+    // 98 adds media-costs (2026-08-09) — the spend-import surface whose absence
+    // made "ingest spend without code changes" still mean curl (R4 closure).
+    // 108 adds the ten seo/* pages (2026-08-10) — the Search Growth group of
+    // the Organic Growth OS (overview, competitors, queries, serp, market-share,
+    // opportunities, technical, integrations, content, aeo).
+    // 111 (2026-08-13): the flat seo/integrations.astro became the Search
+    // Integrations Control Plane — integrations/index.astro (marketplace),
+    // integrations/[provider].astro (detail), integrations/[provider]/connect.astro
+    // (wizard) and integrations/sync.astro (Sync Operations Center). Net +3.
+    // 114 adds the three catalogue-intelligence surfaces (2026-08-13):
+    // battery-compatibility, storage-tests and product-lifecycle.
+    // 120 adds the six Wave 3 technical-governance surfaces (2026-08-13):
+    // category-matrix, work-queue, robots, web-vitals, render-diff, crawler-logs.
+    // 121 adds the Organic Intelligence portfolio (2026-08-13).
+    // 122 adds the Organic Intelligence domains surface — query clusters,
+    // cannibalisation, content, gaps and proposed actions (2026-08-13).
+    // 132 adds the ten Batteries surfaces (2026-08-26): the operations
+    // dashboard, the catalogue list and one battery's detail, phones and
+    // brands, the compatibility review queue, stock, the demand queue, the
+    // finder wording editor, and the staged import list and detail. They are
+    // what makes the battery catalogue operable without a deploy.
+    // 135 adds the three Articles surfaces (2026-08-30): the article list, the
+    // editor for a new article and the editor for an existing one. They are what
+    // makes the blog writable without a deploy.
+    // 138 adds the listing-quality module (2026-09-01): the quality report,
+    // the per-product listing editor and the photos-by-code uploader.
+    // 139: +1 for the customer workspace (admin/customers/[id], 2026-09-12).
+    // 140: +1 for the Performance Audit view (admin/seo/performance-audit, 2026-09-13).
+    // 141: +1 for its Settings page (admin/seo/performance-audit/settings, 2026-09-13).
+    // 150: +9 for AI Search (admin/ai-search: overview, gaps, answers, competitors,
+    // questions, runs, actions, settings, report — 2026-09-18).
+    // 151: +1 for Advertising platforms (admin/advertising, 2026-09-19).
+    // 152: +1 for Measurement deliveries (admin/measurement/deliveries, 2026-09-20).
+    // 153: +1 for Attribution models (admin/measurement/attribution-models, 2026-09-20).
+    // 157 = 153 + Focus 4 (2026-09-21): products/[id]/media (gallery editor), media/gallery-queue,
+    // media/imports/index and media/imports/[id] (reviewed image import).
+    // 158: +1 for Ambassadors & models (admin/homepage/ambassadors, 2026-09-23).
+    // 160: +2 (2026-09-24): admin/not-permitted (where a 403 lands instead of a
+    // sign-out loop) and admin/security/mfa (two-step verification, which
+    // refunds and pricing approval require).
+    // 161: +1 for one quote request's detail page (admin/quotes/[id], bulk
+    // buying, docs/bulk-buying/DESIGN.md, 2026-09-25).
+    // 162: +1 for the weekly Channel report (admin/measurement/channel-report,
+    // attribution module, docs/measurement/ATTRIBUTION.md, 2026-09-25).
+    // 165: +3 for first-party data (admin/segments, admin/customer-value,
+    // admin/identity-conflicts, docs/first-party/README.md, 2026-09-25).
+    // 168: +3 for advertising operations (admin/advertising/audiences,
+    // admin/advertising/offline, admin/advertising/spend,
+    // docs/advertising/README.md, 2026-09-25).
+    // 170: +2 for first-party data part two (admin/customer-360/[id], the audited
+    // one-customer profile, and admin/privacy-requests, docs/first-party/README.md, 2026-09-25).
+    // 172: +2 for loyalty tiers and points liability (admin/loyalty/tiers,
+    // admin/loyalty/liability, 2026-09-27).
+    // 176: +4 for loyalty operations (admin/loyalty/referrals, draws, fraud,
+    // adjustments, 2026-09-27).
+    // 177: +1 for advertising activity (admin/advertising/activity, what reached
+    // each ad platform and why not, 2026-10-01).
+    // 179: +2 for TikTok's advertiser authorisation (admin/advertising/tiktok/connect
+    // and its redirect target admin/advertising/tiktok/callback, 2026-10-02).
+    // 180: +1 for the Spotify ad rotation preview (admin/advertising/spotify,
+    // read-only, docs/advertising/README.md, 2026-10-06).
+    // 182: +2 for Connect Spotify (admin/advertising/spotify/connect and its
+    // redirect target admin/advertising/spotify/callback, 2026-10-06).
+    // 183: +1 for the shop assistant operations page (admin/assistant: month
+    // spend, policy, kill switch; docs/ai-cx, 2026-10-12).
+    // 185: +2 for Goldie's conversation archive (admin/assistant/conversations
+    // list with the meeting summary, and conversations/[id] thread, 2026-10-13).
+    // 187: +2 for the Care Desk (admin/care and admin/care/team, 2026-10-13).
+    // 188: +1 for Teach Goldie (admin/assistant/answers: route mix, spend, answer memory, 2026-10-13).
+    // 189: +1 for the weekly quality review (admin/assistant/quality, 2026-10-13).
+    // 190: +1 for WhatsApp templates at Meta (admin/notifications/whatsapp-templates, 2026-10-14).
+    // 191: +1 for riders (admin/delivery/riders, 2026-10-16).
+    // 192: +1 for bus prices (admin/delivery/bus-rates, 2026-10-16).
+    // 194: +2 for bulk terms and bulk price leads (admin/quotes/bulk-terms, admin/quotes/price-leads, 2026-10-19).
+    // 195: +1 gift cards and store credit (2026-10-20).
+    expect(adminPages).toHaveLength(196); // +1 marketing mix and incrementality (admin/measurement/mmm, 2026-10-23)
+    expect(adminPages[0]).toBe('apps/web/src/pages/admin/advertising.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
 
@@ -53,12 +140,13 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
   it('keeps /admin/login public and preserves safe local return targets', () => {
     const login = read(publicAllowlist[0]);
     expect(login).not.toContain('readSessionToken(Astro.request)');
-    expect(login).toContain("returnTo.startsWith('/admin') && !returnTo.startsWith('//')");
+    // Replaced by the shared safeReturnTo helper, still scoped to /admin.
+    expect(login).toContain("safeReturnTo(returnTo, '/admin')");
   });
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(82);
+    expect(protectedPages).toHaveLength(195); // +1 marketing mix (2026-10-23); +1 gift cards and store credit (2026-10-20); +2 Goldie conversations list and thread (2026-10-13); +1 WhatsApp templates (2026-10-14); +1 riders, +1 bus prices (2026-10-16); +2 bulk terms and price leads (2026-10-19)
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');
@@ -98,7 +186,14 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('keeps every dynamic admin route explicitly guarded', () => {
     const dynamicPages = adminPages.filter((page) => page.includes('['));
-    expect(dynamicPages).toHaveLength(19);
+    // 21: +2 for the integration detail page and its connection wizard.
+    // 23: +2 for one battery's detail page and one staged import's detail page.
+    // 25: +1 for the product listing editor.
+    // 26: +1 for the customer workspace detail page.
+    // 29: +1 for one quote request's detail page (admin/quotes/[id]).
+    // 30: +1 for the Customer 360 (admin/customer-360/[id], first-party data).
+    // 31: +1 for one Goldie conversation (admin/assistant/conversations/[id]).
+    expect(dynamicPages).toHaveLength(31); // +2 Focus 4: products/[id]/media, media/imports/[id]
     for (const page of dynamicPages) {
       expect(read(page), `${page} requires source-level protection`).toContain('readSessionToken(Astro.request)');
     }
@@ -141,11 +236,63 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     }
   });
 
+  /**
+   * Non-Astro files under the admin page directory are endpoints, not pages,
+   * so the "redirect before you render" contract the rest of this suite
+   * enforces does not apply to them. Each one must therefore be named here
+   * with the reason it is safe. The default stays deny: anything that appears
+   * without being classified fails this test.
+   */
+  const classifiedAdminEndpoints = new Map<string, string>([
+    [
+      'ledger.csv.ts',
+      'Gift card and store credit movements for the accountant (admin/credit). Returns a CSV, not a page: ' +
+        'with no session it answers 401 and reads nothing; with one, the API applies payments.read, so a ' +
+        'staff member without it gets a refusal, never the file.',
+    ],
+    [
+      'logout.ts',
+      'Sign-out endpoint. Reads no admin data and renders nothing, so it has ' +
+        'no protected surface to leak; it revokes the token server-side and ' +
+        'clears the HttpOnly cookie with Set-Cookie, which page-level Astro ' +
+        'frontmatter cannot do. Unauthenticated calls are a no-op that ' +
+        'redirect to the login screen.',
+    ],
+    [
+      'report.json.ts',
+      'AI Search report download (admin/ai-search). Returns JSON, not a page: ' +
+        'with no session it answers 401 and reads nothing; with one, the API ' +
+        'enforces the AI Search view permission. Sent with Cache-Control: no-store.',
+    ],
+    [
+      '[id].ts',
+      'Review photo for the moderation queue (admin/review-photo, 0209). Returns a JPEG, not a page: ' +
+        'with no session it answers 404 and reads nothing; with one, the API enforces reviews.moderate ' +
+        'before serving an unpublished photo. Sent with Cache-Control: private, no-store and noindex.',
+    ],
+    [
+      '[segment].csv.ts',
+      'LinkedIn contact-list download (admin/advertising/linkedin-audience). Returns ' +
+        'a CSV of SHA-256 hashes, not a page: with no session it answers 401 and ' +
+        'reads nothing; with one, the API enforces settings.manage and the audience ' +
+        'consent gate. Sent with Cache-Control: no-store.',
+    ],
+  ]);
+
   it('contains no unclassified non-Astro page inside the admin page directory', () => {
     const allFiles = readdirSync(adminRoot, { recursive: true })
       .map((entry) => resolve(adminRoot, String(entry)))
       .filter((path) => statSync(path).isFile())
       .map((path) => basename(path));
-    expect(allFiles.every((file) => file.endsWith('.astro'))).toBe(true);
+    const unclassified = allFiles.filter(
+      (file) => !file.endsWith('.astro') && !classifiedAdminEndpoints.has(file),
+    );
+    expect(unclassified, `unclassified non-Astro admin files: ${unclassified.join(', ')}`).toEqual([]);
+  });
+
+  it('every classified admin endpoint carries the reason it is exempt', () => {
+    for (const [file, reason] of classifiedAdminEndpoints) {
+      expect(reason.length, `${file} needs a real justification`).toBeGreaterThan(80);
+    }
   });
 });

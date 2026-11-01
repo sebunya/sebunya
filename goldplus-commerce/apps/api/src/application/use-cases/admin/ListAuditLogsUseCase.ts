@@ -7,14 +7,46 @@ export interface AuditLogListItem {
   entity: string;
   entityId: string;
   createdAt: string;
+  /** Old/new values as recorded, so an operator can see what actually changed. */
+  previousState: unknown;
+  newState: unknown;
 }
+
+export interface ListAuditLogsOptions {
+  limit?: number;
+  /** Both together select one record's history (the repository's per-entity index). */
+  entity?: string;
+  entityId?: string;
+  actorId?: string;
+  action?: string;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * actor_id is a uuid column: anything else would be a Postgres cast error (a
+ * 500). The route refuses a non-uuid actor filter with a 400 before this runs.
+ */
+export const isAuditActorId = (value: string): boolean => UUID.test(value);
 
 export class ListAuditLogsUseCase {
   constructor(private readonly audit: IAuditRepository) {}
 
-  async execute(opts: { limit?: number } = {}): Promise<AuditLogListItem[]> {
+  async execute(opts: ListAuditLogsOptions = {}): Promise<AuditLogListItem[]> {
     const limit = Math.max(1, Math.min(opts.limit ?? 50, 200));
-    const rows = await this.audit.findAll({ limit });
+    const entity = opts.entity?.trim();
+    const entityId = opts.entityId?.trim();
+    const actorId = opts.actorId?.trim() || undefined;
+    const action = opts.action?.trim() || undefined;
+    // One record's history comes from the per-entity index (bounded by that
+    // record's own rows, narrowed here); the feed is narrowed IN THE QUERY, so a
+    // match older than the most recent page is never silently missed.
+    const rows = entity && entityId
+      ? (await this.audit.findByEntity(entity, entityId))
+          .filter((r) => (!actorId || r.actorId === actorId) && (!action || r.action.toUpperCase().includes(action.toUpperCase())))
+          .slice(0, limit)
+      // The entity alone narrows the feed too ("Role history" = entity=role):
+      // it used to be dropped, so the page showed every event under that label.
+      : await this.audit.findAll({ limit, actorId, action, entity: entity || undefined });
     return rows.map((r) => ({
       id: r.id,
       actorId: r.actorId,
@@ -22,6 +54,8 @@ export class ListAuditLogsUseCase {
       entity: r.entity,
       entityId: r.entityId,
       createdAt: r.createdAt.toISOString(),
+      previousState: r.previousState ?? null,
+      newState: r.newState ?? null,
     }));
   }
 }
