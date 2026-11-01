@@ -369,7 +369,7 @@ describe('a cash-on-delivery order follows its task to dispatched (COD mirror)',
       return { p, uc };
     };
     const refused = make('PAID');
-    expect(await refused.uc.execute({ orderId: 'o1', actorId: 'a' })).toMatchObject({ ok: false, code: 'REFUSED' });
+    expect(await refused.uc.execute({ orderId: 'o1', actorId: 'a' })).toMatchObject({ ok: false, code: 'REFUSED', message: expect.stringMatching(/Re-check its payment on the Payments page/) });
     expect(refused.p.state.hops).toEqual([]);
     const confirmed = make('CASH_ON_DELIVERY');
     expect(await confirmed.uc.execute({ orderId: 'o1', actorId: 'a' })).toMatchObject({ ok: true, changed: true });
