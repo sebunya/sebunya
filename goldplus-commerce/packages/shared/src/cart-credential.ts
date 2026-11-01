@@ -47,7 +47,13 @@ const TOKEN_VERSION = 'v1';
  * browsing, and a customer whose credential expires mid-session loses their basket.
  * Bounded rather than eternal so a credential captured from an old log stops working.
  */
-export const CART_CREDENTIAL_TTL_SECONDS = 60 * 60 * 24 * 30;
+/**
+ * Guest-basket retention (V4 §11): 180 days. ONE constant drives both the browser
+ * credential cookie Max-Age and the server cart row's expiry, so the cookie can never
+ * outlive the row it names (an orphaned credential looks like a vanished basket).
+ */
+export const CART_RETENTION_DAYS = 180;
+export const CART_CREDENTIAL_TTL_SECONDS = 60 * 60 * 24 * CART_RETENTION_DAYS;
 
 /** Header carrying the credential from the BFF to the API. */
 export const CART_CREDENTIAL_HEADER = 'x-goldplus-cart';

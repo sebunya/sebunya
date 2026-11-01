@@ -1,25 +1,54 @@
 ---
+import { onSitePaymentPath } from '../lib/payOnSite';
+import { gaSessionFromCookieHeader } from '../lib/gaSession';
+import { readGuestMemory, writeGuestMemory, hasGuestMemory } from '../lib/guestMemory';
+import { knownDeliveryPlace, placeFromPayload, writeChosenPlace } from '../lib/deliveryPlace';
+import { sendLocationSignal } from '../lib/locationSignals';
+import RememberedDetails from '../components/RememberedDetails.astro';
+import { HEARD_ABOUT_OPTIONS, parseHeardAbout } from '@goldplus/shared';
+import DeliveryQuote from "../components/DeliveryQuote.astro";
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Notice from '../components/Notice.astro';
 import FormField from '../components/FormField.astro';
 import FormFeedback from '../components/FormFeedback.astro';
 import UgandaLocationPicker from '../components/UgandaLocationPicker.astro';
 import { apiBase, postJson } from '../lib/api';
+import { formatUgx } from '../lib/money';
 import { readCartSessionId } from '../lib/cart-session';
-import { prepareCheckoutPayload, validateCheckoutPayload } from '../lib/checkout';
+import {
+  prepareCheckoutPayload,
+  validateCheckoutPayload,
+  normaliseCheckoutPhone,
+  looksLikeEmail,
+  PHONE_FORMAT_MESSAGE,
+  EMAIL_FORMAT_MESSAGE,
+  sameDayCutoffCopy,
+  sameDayLineFor,
+  maskPhone,
+  sealOrderReceipt,
+  orderReceiptSigner,
+  ORDER_NUMBER_PATTERN,
+  ORDER_RECEIPT_COOKIE,
+  ORDER_RECEIPT_PATH,
+  ORDER_RECEIPT_MAX_AGE_SECONDS,
+} from '../lib/checkout';
 import { parseLocalCartCookie } from '../lib/cart';
-import { resolveCheckoutIntent, clearCheckoutIntent } from '../lib/checkoutIntent';
-import { resolveAuthenticatedUserId } from '../lib/customerAuth';
+import { resolveCheckoutIntent, issueFreshCheckoutIntent, clearCheckoutIntent } from '../lib/checkoutIntent';
+import { requestSession } from '../lib/customerAuth';
 import { cartClient } from '../lib/cartClient';
 import { resolveCartCredential, clearCartCredential } from '../lib/cartCredential';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
 import {
   submitCheckout,
   customerMessageFor,
+  invalidCheckoutField,
   startPayment,
   paymentStartMessageFor,
 } from '../lib/checkoutClient';
-import { mayStartPayment } from '@goldplus/shared';
+import { mayStartPayment, kampalaCutoff } from '@goldplus/shared';
+import { getStorefrontDiscount, basketSavingUgx, basketSavingLabel } from '../lib/storefrontDiscount';
+import { getBusinessInfo } from '../lib/businessInfo';
+import { getStorefrontCopy } from '../lib/storefrontCopy';
 import type { ApiEnvelope } from '@goldplus/shared';
 
 interface CartItem {
@@ -38,12 +67,54 @@ interface CartResponse {
   subtotalUgx: number;
 }
 
+// Resolved ONCE for the whole render: the cart credential, the account-context
+// prefill and the POST branch all need the same answer, and this call costs a
+// round-trip to the API.
+// UNKNOWN (the check timed out or failed) is neither: a signed-in customer must
+// never be checked out as a guest, and their basket credential must not be
+// replaced, so on UNKNOWN nothing is placed and nothing is minted.
+const checkoutSession = await requestSession(Astro.locals, Astro.cookies);
+const sessionUnknown = checkoutSession.state === 'UNKNOWN';
+const authenticatedUserId = checkoutSession.state === 'USER' ? checkoutSession.userId : null;
+
 // The basket is read through the SIGNED CREDENTIAL, not a cart id in the URL. The
 // credential also names the owner, so a signed-in customer cannot be served a guest
 // basket and vice versa.
-const cartCredential = resolveCartCredential(Astro.cookies, await resolveAuthenticatedUserId(Astro.cookies));
+const cartCredential = resolveCartCredential(Astro.cookies, authenticatedUserId, { sessionUnknown });
 if (!cartCredential) {
   return Astro.redirect('/cart', 303);
+}
+
+
+// The basket has become an order. The COOKIE is only the offline fallback; the
+// server cart is the authority, and leaving it standing meant the customer came
+// back from paying to find their old basket still full, with the mini-cart
+// still counting items they had already bought. Best effort: a failure here
+// must never turn a placed order into an error.
+async function clearBasketAfterOrder() {
+  Astro.cookies.delete('goldplus_cart_data', { path: '/' });
+  try {
+    await cartClient.clear(
+      cartCredential!.token,
+      {},
+      Astro.cookies.get('goldplus_session')?.value ?? null,
+    );
+  } catch { /* the order stands either way */ }
+}
+
+/**
+ * The order a PesaPal handoff is for, remembered on this device for the
+ * cancellation page. PesaPal's cancellation URL is a fixed address that does
+ * not reliably name the order, and that page's "Pay for this order" used to
+ * send the customer to /checkout, whose basket had just been emptied.
+ */
+function rememberPaymentOrder(orderNumber: string | undefined | null) {
+  if (!orderNumber || !ORDER_NUMBER_PATTERN.test(orderNumber)) return;
+  try {
+    Astro.cookies.set('gp_pay_order', orderNumber, {
+      path: '/checkout/pesapal', maxAge: 60 * 60 * 6, httpOnly: true, sameSite: 'lax', secure: import.meta.env.PROD,
+    });
+  } catch { /* a convenience for the cancellation page */ }
 }
 
 let cart: CartResponse | null = null;
@@ -66,11 +137,17 @@ if (serverCart.ok) {
 }
 
 // Fallback to local cookie state if API failed or returned empty!
+// The order is ALWAYS priced server-side (the request carries productId and
+// quantity only), so this can never change what is charged. It can, however,
+// show a stale total from the device, so when it happens the customer is told
+// rather than being quietly shown figures we could not confirm.
+let pricedFromDevice = false;
 if (!cart || cart.items.length === 0) {
   const localDataCookie = Astro.cookies.get('goldplus_cart_data')?.value;
   const items = parseLocalCartCookie(localDataCookie) as any[];
   if (items.length > 0) {
     const subtotalUgx = items.reduce((acc, item) => acc + ((item.unitPriceUgx || item.priceUgx) * item.quantity), 0);
+    pricedFromDevice = true;
     cart = {
       // The credential's cart id, so the local fallback and the server basket refer to
       // the same basket rather than to whatever the browser last held.
@@ -89,9 +166,33 @@ if (!cart || cart.items.length === 0) {
 let status: 'success' | 'error' | 'received' | null = null;
 let message: string | undefined;
 let reference: string | undefined;
+let createdOrderId: string | undefined;
+/** Set only when a refusal has somewhere useful to send the customer. */
+let feedbackAction: { href: string; label: string } | undefined;
+/** The basket differs from the unpaid order this checkout already made: offer to place it as a new order. */
+let offerNewOrder = false;
+let receivedActionLabel = 'View & track this order';
 let values: Record<string, string> = {};
 let errors: Record<string, string> = {};
-let isOfflineDraft = false;
+// What the confirmation page recaps. Filled as the order is placed.
+let receiptTotalUgx: number | null = null;
+let receiptFeeConfirmed: boolean | null = null;
+let receiptPlace = '';
+// The promo code and the preview it was applied under, carried back into the
+// form when the page re-renders after a refusal. Without them a retry went
+// through without the code the customer had typed.
+let couponCodeValue = '';
+// 0196: a gift card or store credit code, kept on the form after a refusal like the promo code.
+let storeCreditCodeValue = '';
+// "How did you hear about us?" (optional), carried back the same way.
+let heardAboutValue = '';
+let previewQuoteIdValue = '';
+// The payment method and points the customer chose, carried back the same way.
+// The offline radio used to carry a literal `checked`, so any refusal quietly
+// turned "Pay securely now" into a pay-on-delivery order on the next submit.
+// Owner decision 2026-10-16: storefront orders are paid online; pay on delivery confused customers.
+let paymentMethodValue: 'offline' | 'pesapal' = 'pesapal';
+let redeemPointsValue = '';
 
 // The checkout intent is resolved on EVERY render, including the initial GET.
 //
@@ -104,7 +205,107 @@ let isOfflineDraft = false;
 // It is issued in this layer because the layer that owns the browser connection
 // is the only one that can own the cookie: the API's Set-Cookie lands on this
 // server's fetch response and never reaches the browser.
-const authenticatedUserId = await resolveAuthenticatedUserId(Astro.cookies);
+
+// ---------------------------------------------------------------------------
+// Account context: everything the platform already knows about this customer.
+// A returning customer should CONFIRM a checkout, not retype it. Every fetch
+// here is timeout-guarded and failure-tolerant — prefill going missing must
+// degrade to the blank form, never to a broken page.
+// ---------------------------------------------------------------------------
+interface SavedAddress {
+  id: string;
+  label: string;
+  recipientName: string;
+  phone: string;
+  district: string;
+  areaDetails: string;
+  /** The location key the quoting service prices by; null for older addresses. */
+  areaSlug?: string | null;
+  isDefault: boolean;
+}
+const sessionToken = Astro.cookies.get('goldplus_session')?.value ?? null;
+let savedAddresses: SavedAddress[] = [];
+let accountEmail = '';
+let accountPhone = '';
+if (authenticatedUserId && sessionToken) {
+  try {
+    const [addrRes, meRes] = await Promise.all([
+      fetch(`${apiBase}/account/addresses`, {
+        headers: { Authorization: `Bearer ${sessionToken}` },
+        signal: AbortSignal.timeout(3000),
+      }),
+      fetch(`${apiBase}/account/me`, {
+        headers: { Authorization: `Bearer ${sessionToken}` },
+        signal: AbortSignal.timeout(3000),
+      }),
+    ]);
+    const addrJson: any = addrRes.ok ? await addrRes.json().catch(() => null) : null;
+    const meJson: any = meRes.ok ? await meRes.json().catch(() => null) : null;
+    if (addrJson?.success && Array.isArray(addrJson.data)) savedAddresses = addrJson.data;
+    if (meJson?.success) {
+      accountEmail = meJson.data?.email ?? '';
+      accountPhone = meJson.data?.phone ?? '';
+    }
+  } catch {
+    /* prefill is a convenience, never a dependency */
+  }
+}
+const defaultAddress = savedAddresses.find((a) => a.isDefault) ?? savedAddresses[0] ?? null;
+
+// Live programme terms for the earn preview. Zero when inactive or unreachable —
+// the preview line simply does not render rather than promising points.
+let loyaltyProgramme: {
+  active: boolean;
+  earnRatePer1000Ugx: number;
+  redemption: { configured: boolean; pointValueUgx?: number; minPoints?: number; maxShareBps?: number };
+} = { active: false, earnRatePer1000Ugx: 0, redemption: { configured: false } };
+try {
+  const lpRes = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(2500) });
+  const lpJson: any = lpRes.ok ? await lpRes.json().catch(() => null) : null;
+  if (lpJson?.success && lpJson.data?.active) {
+    loyaltyProgramme = {
+      active: true,
+      earnRatePer1000Ugx: Number(lpJson.data.earnRatePer1000Ugx) || 0,
+      redemption: lpJson.data.redemption ?? { configured: false },
+    };
+  }
+} catch {
+  /* preview only */
+}
+
+// Available points for the redemption control (signed-in only, tolerant).
+let loyaltyAvailablePoints = 0;
+if (authenticatedUserId && sessionToken && loyaltyProgramme.active && loyaltyProgramme.redemption.configured) {
+  try {
+    const lbRes = await fetch(`${apiBase}/account/loyalty`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+      signal: AbortSignal.timeout(2500),
+    });
+    const lbJson: any = lbRes.ok ? await lbRes.json().catch(() => null) : null;
+    if (lbJson?.success) loyaltyAvailablePoints = Number(lbJson.data?.balance?.available ?? 0);
+  } catch {
+    /* redemption control simply hides */
+  }
+}
+
+// Active pickup points (PART G field 1) — collection is a first-class method.
+let pickupPoints: Array<{ id: string; name: string; operator: string; physicalAddress: string | null }> = [];
+try {
+  const ppRes = await fetch(`${apiBase}/locations/pickup-points`, { signal: AbortSignal.timeout(2500) });
+  const ppJson: any = ppRes.ok ? await ppRes.json().catch(() => null) : null;
+  if (ppJson?.success && Array.isArray(ppJson.data)) pickupPoints = ppJson.data;
+} catch {
+  /* door delivery remains the default */
+}
+
+// Guest memory: details from their last completed checkout, held in an
+// httpOnly cookie on their own device so a repeat guest confirms instead of
+// retyping. Signed-in customers use their address book instead.
+// The cookie and its reader live in lib/guestMemory.ts, shared with the other forms.
+let guestPrefill: Record<string, string> = {};
+if (!authenticatedUserId) {
+  guestPrefill = { ...readGuestMemory(Astro.cookies, Astro.request) } as Record<string, string>;
+}
 
 // Cross-site refusal comes BEFORE the intent is resolved, because resolving it can
 // MINT one. A cross-site POST arrives without the SameSite=Lax cookie, and the
@@ -123,16 +324,30 @@ if (!originDecision.allowed) {
 
 // Not resolved at all on a refused request: resolving MINTS, and a cross-site POST
 // has no business being issued a checkout identity.
-const checkoutIntent = originDecision.allowed
+// Nor on an UNKNOWN session: minting here would issue a GUEST intent to a
+// customer who may be signed in, and the POST below would place their order as a
+// guest. The page says so and the customer retries in a moment. Only on a POST:
+// a plain view places nothing, so an error there reads as a failed order.
+if (originDecision.allowed && sessionUnknown && Astro.request.method === 'POST') {
+  status = 'error';
+  message = 'We could not confirm your sign-in just now, so nothing has been placed. Please wait a moment and try again.';
+}
+const checkoutIntent = originDecision.allowed && !sessionUnknown
   ? resolveCheckoutIntent(Astro.cookies, authenticatedUserId)
   : null;
-if (originDecision.allowed && !checkoutIntent) {
+if (originDecision.allowed && !sessionUnknown && !checkoutIntent) {
   // Refuse rather than fall back to an unsigned identity, which would make every
   // retry a new operation and therefore a new order.
   throw new Error('CHECKOUT_INTENT_SECRET is not configured');
 }
 
 // Handle Form Submission (RESTORED FEATURE)
+// Back from /checkout/new-order: the intent was dropped on the customer's say-so.
+if (Astro.request.method === 'GET' && Astro.url.searchParams.get('new_order') === '1') {
+  status = 'success';
+  message = 'Ready for a new order. Check your details, then press Complete order to place this basket. Your earlier order is still saved.';
+}
+
 if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent) {
   const formData = await Astro.request.formData();
   
@@ -143,26 +358,96 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
     phone: String(formData.get('phone') || '').trim(),
     locationJson: String(formData.get('locationJson') || '').trim(),
     deliveryAddress: String(formData.get('deliveryAddress') || '').trim(),
+    deliveryMethod: String(formData.get('deliveryMethod') || 'door').trim() === 'pickup' ? 'pickup' : 'door',
+    pickupPointId: String(formData.get('pickupPointId') || '').trim(),
   };
+  couponCodeValue = String(formData.get('couponCode') || '').trim().slice(0, 40);
+  storeCreditCodeValue = String(formData.get('storeCreditCode') || '').trim().slice(0, 40);
+  heardAboutValue = parseHeardAbout(formData.get('heardAbout')) ?? '';
+  {
+    const q = String(formData.get('previewQuoteId') || '').trim();
+    previewQuoteIdValue = /^[0-9a-f-]{36}$/i.test(q) ? q : '';
+  }
+  paymentMethodValue = 'pesapal';
+  {
+    const rp = parseInt(String(formData.get('redeemPoints') || ''), 10);
+    redeemPointsValue = Number.isInteger(rp) && rp > 0 ? String(rp) : '';
+  }
+
+  // Collection from a pickup point (rendered only when pickup points exist).
+  // The point comes from OUR list, never from client text, and it is the
+  // delivery location: the picker and the landmark line are hidden for it, so
+  // they must not be required for it either (they were, and the error landed
+  // on a field the customer could not see).
+  const pickupPoint = values.deliveryMethod === 'pickup' && pickupPoints.length > 0
+    ? pickupPoints.find((p) => p.id === values.pickupPointId) ?? null
+    : null;
+  const collecting = values.deliveryMethod === 'pickup' && pickupPoints.length > 0;
+  if (collecting && pickupPoint) {
+    const pickupText = `Pickup point: ${pickupPoint.name}${pickupPoint.physicalAddress ? `, ${pickupPoint.physicalAddress}` : ''}`;
+    formData.set('locationJson', JSON.stringify({ manual: true, rawAddressText: pickupText }));
+    values.locationJson = String(formData.get('locationJson'));
+  }
+
+  // A saved-address id is only meaningful for a signed-in customer; the id is
+  // re-fetched server-side below, so a tampered value can select nothing but
+  // that customer's own addresses.
+  const selectedAddressId = authenticatedUserId ? String(formData.get('addressId') || '').trim() : '';
+  const selectedAddress = selectedAddressId
+    ? savedAddresses.find((a) => a.id === selectedAddressId) ?? null
+    : null;
 
   // Simple validation checks
   if (!values.name) errors.name = 'Full name is required.';
+  // The number is how the order is confirmed, so it is checked for shape, not
+  // just presence: '12345' used to create an order nobody could call.
   if (!values.phone) errors.phone = 'Contact phone number is required.';
-  if (!values.locationJson) errors.locationJson = 'Please select a delivery location.';
+  else if (!normaliseCheckoutPhone(values.phone)) errors.phone = PHONE_FORMAT_MESSAGE;
+  if (values.email && !looksLikeEmail(values.email)) errors.email = EMAIL_FORMAT_MESSAGE;
+  if (collecting && !pickupPoint) errors.pickupPointId = 'Choose the pickup point you will collect from.';
+  // A chosen saved address IS the delivery location; the picker is only
+  // required when delivering somewhere new.
+  if (!collecting && !selectedAddress && !values.locationJson) errors.locationJson = 'Please select a delivery location.';
+  // The landmark line is what the rider actually navigates by — required for a
+  // new address; a saved address already carries its area details.
+  if (!collecting && !selectedAddress && !values.deliveryAddress) errors.deliveryAddress = 'Add the estate, road, building or landmark our rider should look for.';
 
   if (Object.keys(errors).length === 0) {
      // Prepare mapped payload compatible with Commerce API
      // Map priceUgx field since interface varies slightly between cart api and checkout lib
      const normalizedItems = cart.items.map(i => ({ ...i, priceUgx: i.priceUgx || i.unitPriceUgx }));
      const payload = prepareCheckoutPayload(formData, normalizedItems as any);
-     const paymentMethod = String(formData.get('paymentMethod') || 'offline').trim();
+     // Collect from our shop: the server prices it at zero once it confirms the point is one of ours.
+     if (collecting && pickupPoint) payload.customerDetails = { ...payload.customerDetails, pickupPointId: pickupPoint.id };
+     if (selectedAddress) {
+       payload.customerDetails = {
+         name: values.name,
+         email: values.email || undefined,
+         phone: values.phone,
+         deliveryArea: `${selectedAddress.areaDetails}, ${selectedAddress.district}`,
+         deliveryAddress: [selectedAddress.areaDetails, values.deliveryAddress].filter(Boolean).join(' | '),
+         // The same key the page quoted by, so the charge resolves on it too.
+         deliveryLocation: { district: selectedAddress.district, areaSlug: selectedAddress.areaSlug ?? undefined },
+         // The API takes the address's own pin (the page never sees its coordinates).
+         savedAddressId: selectedAddress.id,
+       };
+     }
+     // Owner decision 2026-10-16: always online (the server refuses pay on delivery unless switched back on).
+     const paymentMethod = 'pesapal';
+     receiptPlace = payload.customerDetails.deliveryArea;
      
      // Typed BFF call. The generic postJson helper returned `data: unknown` and
      // dropped every response header, which is how the API's move to a minimal
      // DTO returning `orderId` went unnoticed while this page read `res.data.id`:
      // the value was simply undefined, the PesaPal branch was skipped, and the
      // customer saw the offline-review message instead of being sent to pay.
-     const result = await submitCheckout({
+     // Held in a variable because the intent can be re-minted below, and the
+     // payment handoff must then use the token the order was actually created under.
+     let activeIntentToken = checkoutIntent.token;
+     const checkoutArgs = {
+        // R3.1: SSR-only visit token so the API stamps the order's experience
+        // profile — the identity join for commercial attribution.
+        visitToken: Astro.locals.gpVisit ?? null,
         request: {
            customerDetails: payload.customerDetails,
            buyerType: payload.buyerType,
@@ -173,16 +458,121 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
            paymentMethod: paymentMethod === 'pesapal' ? 'pesapal' : 'offline',
            cartId: serverCart.ok ? serverCart.cart.id : null,
            cartVersion: serverCart.ok ? serverCart.cart.version : null,
+           // Loyalty redemption (PART G): points to convert to a discount.
+           // Server-validated and reserved — a bad value fails the checkout
+           // with a clear message rather than a silent trim.
+           ...( (() => { const rp = parseInt(String(formData.get('redeemPoints') || ''), 10); return Number.isInteger(rp) && rp > 0 ? { redeemPoints: rp } : {}; })() ),
+           // Promo code: server-validated by the SAME evaluator that priced the
+           // preview; an empty field is simply no code. previewQuoteId (set by
+           // the Apply button) arms the PRICE_CHANGED consistency gate.
+           ...( (() => { const cc = String(formData.get('couponCode') || '').trim(); return cc ? { couponCode: cc } : {}; })() ),
+           // 0196: a gift card / store credit pays part or all of the order. The API checks it inside the
+           // order's own transaction; only what is still due is sent to Pesapal.
+           ...(storeCreditCodeValue ? { storeCreditCode: storeCreditCodeValue } : {}),
+           // Optional, reporting only: an unknown value is simply not sent.
+           ...(heardAboutValue ? { heardAbout: heardAboutValue } : {}),
+           ...( (() => { const q = String(formData.get('previewQuoteId') || '').trim(); return /^[0-9a-f-]{36}$/i.test(q) ? { previewQuoteId: q } : {}; })() ),
+           // Marketing attribution captured client-side; recorded best-effort, never priced.
+           // Plus the visitor as the browser tag knows it (the `_fp_cid` cookie is
+           // GA's client_id) and the buyer's own IP and browser: payment is
+           // confirmed later, server to server, where no browser is present, and
+           // the purchase sent to GA4 then must join THIS visit, not invent one.
+           ...( (() => {
+             let a: Record<string, unknown> = {};
+             try { const p = JSON.parse(String(formData.get('attribution') || 'null')); if (p && typeof p === 'object') a = p; } catch { /* optional */ }
+             const fp = Astro.cookies.get('_fp_cid')?.value;
+             // Caddy's X-Real-IP is the shopper's address ({client_ip}: only
+             // believed from Cloudflare's ranges), unlike a raw CF header.
+             const ip = Astro.request.headers.get('x-real-ip');
+             const ua = Astro.request.headers.get('user-agent');
+             // GA4's own session for this visit, from its `_ga_<stream>` cookie
+             // (GS1.1.<sid>.<n>… or GS2.1.s<sid>$o<n>$…): the server-sent purchase
+             // must land in THIS session, or GA credits the sale to "direct".
+             const gaSession = gaSessionFromCookieHeader(Astro.request.headers.get('cookie')) ?? {};
+             return { attribution: { ...a, ...gaSession, ...(fp ? { fpClientId: fp.slice(0, 255) } : {}), ...(ip ? { clientIp: ip.slice(0, 64) } : {}), ...(ua ? { userAgent: ua.slice(0, 1024) } : {}) } };
+           })() ),
         },
-        intentToken: checkoutIntent.token,
+        intentToken: activeIntentToken,
         sessionToken: Astro.cookies.get('goldplus_session')?.value ?? null,
-     });
+     };
+
+     let result = await submitCheckout(checkoutArgs);
+
+     // The stored intent had already been spent AND produced no order, so there
+     // is nothing to duplicate. Mint a fresh one and submit once more.
+     //
+     // Without this, an ordinary journey was a dead end: a checkout refused for
+     // an unavailable item, or an online payment that failed, left an intent the
+     // customer could not clear. Anything they changed afterwards — removing the
+     // unavailable item, switching to pay on delivery — made the request differ
+     // from the stored fingerprint and was refused, for twelve hours, with
+     // "your basket changed since this checkout started".
+     //
+     // Bounded to ONE retry, and only on this code, which the API returns only
+     // when the spent intent left no order behind.
+     if (!result.ok && result.code === 'CHECKOUT_INTENT_SPENT') {
+        const freshIntent = issueFreshCheckoutIntent(Astro.cookies, authenticatedUserId);
+        if (freshIntent) {
+           activeIntentToken = freshIntent.token;
+           result = await submitCheckout({ ...checkoutArgs, intentToken: freshIntent.token });
+        }
+     }
+
+     // The preview is exactly what a price or offer refusal says has changed.
+     // Carrying it into the retry would refuse the retry the same way, for
+     // ever; the code stays, and the retry is priced (and charged) afresh.
+     if (!result.ok && (result.code === 'PRICE_CHANGED' || result.code === 'PROMOTION_CHANGED' || result.code === 'PROMOTION_LIMIT_REACHED')) {
+        previewQuoteIdValue = '';
+     }
 
      const outcome = customerMessageFor(result);
 
      if (result.ok) {
         const dto = result.data;
         reference = dto.orderNumber || dto.orderId;
+        createdOrderId = dto.orderId;
+        receiptTotalUgx = Number.isFinite(dto.totalAmount) ? dto.totalAmount : null;
+        receiptFeeConfirmed = typeof dto.deliveryFeeConfirmed === 'boolean' ? dto.deliveryFeeConfirmed : null;
+
+        // The order exists from this point on whatever the payment path does,
+        // so the "remember for next time" work happens here, before any
+        // redirect can end the render.
+        // The area just ordered to becomes this device's "Deliver to", so the next product page is priced for it.
+        // Area only (no pin, no address line); a collection is not a delivery area.
+        if (!payload.customerDetails.pickupPointId) {
+          const orderedTo = placeFromPayload(payload.customerDetails.deliveryLocation, 'chosen');
+          if (orderedTo) {
+            writeChosenPlace(Astro.cookies, orderedTo, import.meta.env.PROD);
+            await sendLocationSignal({ kind: 'deliver_to_set', surface: 'checkout', areaSlug: orderedTo.areaSlug, district: orderedTo.district, label: orderedTo.label }, (Astro.locals as { gpVisit?: string }).gpVisit, Astro.request);
+          }
+        }
+        if (!authenticatedUserId) {
+          writeGuestMemory(Astro.cookies, {
+            name: values.name, email: values.email, phone: values.phone,
+            locationJson: values.locationJson, deliveryAddress: values.deliveryAddress,
+          }, import.meta.env.PROD);
+        } else if (!selectedAddress && sessionToken && String(formData.get('saveAddress') || '') === 'true') {
+          // Best-effort: a failed save must never disturb an order that succeeded.
+          const district = payload.customerDetails.deliveryLocation?.district;
+          if (district) {
+            try {
+              await fetch(`${apiBase}/account/addresses`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },
+                signal: AbortSignal.timeout(3000),
+                body: JSON.stringify({
+                  // Named by the area ("Najjera"), not the district: "Wakiso" said nothing about which address it was.
+                  label: (payload.customerDetails.deliveryLocation?.displayLabel ?? '').split(',')[0].trim() || district,
+                  recipientName: values.name,
+                  phone: values.phone,
+                  district,
+                  areaDetails: payload.customerDetails.deliveryArea,
+                  makeDefault: savedAddresses.length === 0,
+                }),
+              });
+            } catch { /* best-effort */ }
+          }
+        }
 
         // Payment starts ONLY when the server says the order is payable. The
         // previous condition was just "we have an order id", which would start a
@@ -193,7 +583,7 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
            // own error text to the customer on failure.
            const payRes = await startPayment({
               orderId: dto.orderId,
-              intentToken: checkoutIntent.token,
+              intentToken: activeIntentToken,
               sessionToken: Astro.cookies.get('goldplus_session')?.value ?? null,
            });
 
@@ -215,209 +605,539 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
               //
               // The cart cookie IS cleared: the basket has become an order, and leaving
               // it would re-add the same items to the next checkout.
-              Astro.cookies.delete('goldplus_cart_data', { path: '/' });
-              return Astro.redirect(payRes.data.redirectUrl, 303);
+              await clearBasketAfterOrder();
+              rememberPaymentOrder(dto.orderNumber);
+              return Astro.redirect(onSitePaymentPath({ redirectUrl: payRes.data.redirectUrl, orderNumber: dto.orderNumber, phone: values.phone }), 303);
            }
 
            // The order EXISTS and is payable; only the handoff failed. The intent
            // is kept so the customer can retry onto the same order rather than
-           // creating a second one.
+           // creating a second one — and the order page has its own Pay button,
+           // so the customer is given that door rather than only a sentence.
            status = 'error';
            reference = dto.orderNumber || dto.orderId;
            message = paymentStartMessageFor(payRes.code);
+           feedbackAction = authenticatedUserId
+             ? { href: `/orders/${dto.orderId}`, label: 'Open your order and pay there' }
+             : { href: `/track-order?reference=${encodeURIComponent(dto.orderNumber || '')}`, label: 'Track this order' };
         } else if (outcome.status === 'awaiting_payment') {
-           // Payable, but the customer chose the offline path.
+           // Placed, but not payable yet: the team confirms the total (usually the delivery fee) first.
            status = 'received';
-           message = 'Order successfully created for review. Our logistics team will contact you with final pricing.';
+           message = 'Our team will call you to confirm the total. Then pay from your order page with Mobile Money or card.';
            clearCheckoutIntent(Astro.cookies);
-           Astro.cookies.delete('goldplus_cart_data', { path: '/' });
+           await clearBasketAfterOrder();
         } else {
            status = outcome.status === 'error' ? 'error' : 'received';
            message = outcome.message;
            if (outcome.status !== 'error') {
               clearCheckoutIntent(Astro.cookies);
-              Astro.cookies.delete('goldplus_cart_data', { path: '/' });
+              await clearBasketAfterOrder();
            }
+        }
+     } else if (result.code === 'CHECKOUT_ALREADY_ORDERED' && result.existingOrder && result.existingOrder.sameItems === false) {
+        // This checkout already produced an unpaid order, and the basket on screen holds DIFFERENT items: it was
+        // never ordered. It used to be treated as that order: "pay now" sent the customer to pay the OLD order's
+        // amount, and pay on delivery sealed a receipt listing the NEW items under the old order number while no
+        // order existed for them (2026-10-14 review). The API keeps the intent on the earlier order on purpose (a
+        // changed basket must not silently become a second order), so the customer chooses: pay the earlier order
+        // from its tracking page, or place this basket as a new order (/checkout/new-order). The basket is kept.
+        const existing = result.existingOrder;
+        status = 'error';
+        offerNewOrder = true;
+        feedbackAction = {
+          href: `/track-order?reference=${encodeURIComponent(existing.orderNumber)}`,
+          label: `Open order ${existing.orderNumber} to pay for it`,
+        };
+        message = `You have an unpaid order ${existing.orderNumber} from earlier. The basket below is different, so it has not been ordered yet and nothing has been charged for it. Open order ${existing.orderNumber} to pay for that one, or place this basket as a new order.`;
+     } else if (result.code === 'CHECKOUT_ALREADY_ORDERED' && result.existingOrder) {
+        // The SAME items as the order this checkout already made (only a detail such as the address or the payment
+        // method changed): this is that order, so it gets the screen a fresh order gets and, if they asked to pay
+        // now, the payment handoff for THAT order. The intent is kept (it is the authorisation to pay it).
+        const existing = result.existingOrder;
+        const paid = existing.paymentStatus === 'paid';
+        reference = existing.orderNumber;
+        createdOrderId = existing.orderId;
+        if (!paid && paymentMethod === 'pesapal') {
+           const payRes = await startPayment({
+              orderId: existing.orderId,
+              intentToken: activeIntentToken,
+              sessionToken: Astro.cookies.get('goldplus_session')?.value ?? null,
+           });
+           if (payRes.ok) {
+              rememberPaymentOrder(existing.orderNumber);
+              return Astro.redirect(onSitePaymentPath({ redirectUrl: payRes.data.redirectUrl, orderNumber: existing.orderNumber, phone: values.phone }), 303);
+           }
+           status = 'received';
+           receivedActionLabel = 'Track or pay for this order';
+           message = `${paymentStartMessageFor(payRes.code)} Nothing has been charged. Open the order below to try paying again.`;
+        } else {
+           status = 'received';
+           receivedActionLabel = paid ? 'Track this order' : 'Track or pay for this order';
+           message = paid
+             ? 'You have already paid for this order — there is nothing more to do, and we have not taken a second payment.'
+             : 'You placed this order a moment ago and it is saved for you. Nothing has been charged. Open the order below to pay now with Mobile Money or card.';
         }
      } else if (result.code === 'STOCK_NOT_RESERVED' && result.details) {
         // The order exists and is recorded truthfully; it simply cannot be paid.
         status = 'error';
         message = outcome.message;
         reference = result.details.orderNumber || result.details.orderId;
+        feedbackAction = { href: `/track-order?reference=${encodeURIComponent(result.details.orderNumber || '')}`, label: 'Track this order' };
      } else if (outcome.status === 'retry') {
+        feedbackAction = feedbackAction ?? outcome.action;
         // NETWORK or CHECKOUT_IN_PROGRESS: the intent cookie is deliberately
         // KEPT, so retrying reaches the same operation instead of creating a
         // second order.
         status = 'error';
         message = outcome.message;
+     } else if (result.code === 'INVALID_CHECKOUT' && invalidCheckoutField(result.message)) {
+        // The API named the field it refused. Highlight THAT field, in our
+        // words; the API's own text never reaches the customer.
+        const pinned = invalidCheckoutField(result.message)!;
+        errors[pinned.field] = pinned.message;
+        status = 'error';
+        message = 'One detail needs a second look. It is highlighted below. You have not been charged.';
      } else {
-        const allowDraft = String(formData.get('allowOfflineDraft') || '') === 'true';
-        if (allowDraft) {
-           status = 'received';
-           isOfflineDraft = true;
-           reference = `GP-DRAFT-${Math.floor(100000 + Math.random() * 900000)}`;
-           message = 'Offline draft saved on this device. Order was not submitted to the server.';
-           
-           // Clear browser cart cookie contents only when explicitly choosing a local draft
-           Astro.cookies.delete('goldplus_cart_data', { path: '/' });
-        } else {
-           status = 'error';
-           // `res` was a leftover from the untyped postJson call this branch used
-           // to make. It is scoped to the cart-fetch block far above, so reaching
-           // this line threw a ReferenceError and the customer got a 500 instead
-           // of a message — on the ONE path that exists to explain a failure.
-           // Found by the end-to-end harness; typecheck and build both passed.
-           message = outcome.message || 'Failed to submit order. The checkout service is temporarily offline. You may retry, or check "Save as offline draft on this device" below to proceed in local demonstration mode.';
-           // Preserve the cart cookie on failure so items are not lost!
-        }
+        // There used to be a "Save as offline draft on this device" checkbox
+        // here that, on any refusal, rendered a green "Order Received" with a
+        // random GP-DRAFT-###### reference — an order-shaped number that
+        // existed nowhere, could never be paid (every payment path refuses the
+        // prefix), and deleted the customer's cart cookie on the way out. It
+        // was demo scaffolding on a production money path. A refusal is now
+        // simply a refusal, with the basket kept so nothing is lost.
+        status = 'error';
+        message = outcome.message;
+        feedbackAction = feedbackAction ?? outcome.action;
      }
   } else {
      status = 'error';
-     message = 'Fix form errors before submitting.';
+     message = Object.keys(errors).length === 1
+       ? 'One detail needs a second look. It is highlighted below.'
+       : 'Some details need a second look. Each one is highlighted below.';
   }
 }
 
-const formatUgx = (n: number): string =>
-  new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(n);
+// Post/Redirect/Get. The confirmation used to be rendered in this POST's own
+// response: the basket is already empty by then, so a refresh re-POSTed into
+// the empty-cart redirect and the customer landed on "Your cart is empty" with
+// their order number gone. The confirmation is now its own page, and what it
+// recaps travels in a sealed, short-lived, httpOnly cookie on this device.
+if (status === 'received' && reference) {
+  const sign = orderReceiptSigner({
+    CHECKOUT_INTENT_SECRET: process.env.CHECKOUT_INTENT_SECRET || import.meta.env.CHECKOUT_INTENT_SECRET,
+    JWT_SECRET: process.env.JWT_SECRET || import.meta.env.JWT_SECRET,
+  });
+  if (sign) {
+    const sealed = sealOrderReceipt({
+      v: 1,
+      ref: reference,
+      orderId: createdOrderId ?? null,
+      message: message ?? '',
+      actionLabel: receivedActionLabel,
+      items: cart.items.map((i: any) => ({
+        name: String(i.name ?? ''),
+        quantity: Number(i.quantity) || 1,
+      })),
+      totalUgx: receiptTotalUgx,
+      deliveryFeeConfirmed: receiptFeeConfirmed,
+      deliveryPlace: receiptPlace,
+      phoneMasked: maskPhone(values.phone ?? ''),
+      issuedAt: Date.now(),
+    }, sign);
+    Astro.cookies.set(ORDER_RECEIPT_COOKIE, sealed, {
+      path: ORDER_RECEIPT_PATH, maxAge: ORDER_RECEIPT_MAX_AGE_SECONDS, httpOnly: true, sameSite: 'lax', secure: import.meta.env.PROD,
+    });
+    return Astro.redirect(`${ORDER_RECEIPT_PATH}?ref=${encodeURIComponent(reference)}`, 303);
+  }
+}
+
+/** Where each field error sends the customer, in the order the form asks. */
+const FIELD_TARGET: Record<string, { target: string; label: string }> = {
+  name: { target: 'name', label: 'Full name' },
+  email: { target: 'email', label: 'Email' },
+  phone: { target: 'phone', label: 'Phone' },
+  pickupPointId: { target: 'pickupPointSelect', label: 'Pickup point' },
+  locationJson: { target: 'deliveryLocation_input', label: 'Delivery location' },
+  deliveryAddress: { target: 'deliveryAddress', label: 'Exact address' },
+};
+const errorLinks = Object.keys(FIELD_TARGET)
+  .filter((k) => errors[k])
+  .map((k) => ({ href: `#${FIELD_TARGET[k].target}`, label: FIELD_TARGET[k].label, text: errors[k] }));
+
+// Initial GET: the form opens already filled with what the platform knows —
+// account holders from their address book, returning guests from their own
+// last checkout. Confirming beats retyping; everything stays editable.
+// The "Deliver to" area chosen on a product page or the cart opens checkout already chosen (area only, no pin).
+const deliverToAtLoad = Astro.locals.gpDeliverTo !== undefined ? Astro.locals.gpDeliverTo : knownDeliveryPlace(Astro.cookies, Astro.request);
+const deliverToJson = deliverToAtLoad
+  ? JSON.stringify({
+      district: deliverToAtLoad.district,
+      ...(deliverToAtLoad.label.includes(',') ? { area: deliverToAtLoad.label.split(',')[0].trim() } : {}),
+      ...(deliverToAtLoad.areaSlug ? { areaSlug: deliverToAtLoad.areaSlug } : {}),
+      displayLabel: deliverToAtLoad.label,
+    })
+  : '';
+if (Astro.request.method !== 'POST') {
+  if (authenticatedUserId) {
+    values = {
+      // The account has no name field: the default address's recipient, else this browser's last checkout.
+      name: defaultAddress?.recipientName || guestPrefill.name || '',
+      email: accountEmail,
+      phone: defaultAddress?.phone || accountPhone || guestPrefill.phone || '',
+      locationJson: savedAddresses.length === 0 ? deliverToJson : '',
+      deliveryAddress: '',
+    };
+  } else {
+    values = {
+      name: guestPrefill.name ?? '',
+      email: guestPrefill.email ?? '',
+      phone: guestPrefill.phone ?? '',
+      locationJson: guestPrefill.locationJson || deliverToJson,
+      deliveryAddress: guestPrefill.deliveryAddress ?? '',
+    };
+  }
+}
+
+
+// 2026-10-16: a customer we already know CONFIRMS who is buying in one line instead of re-reading three
+// filled fields. Shown only on the first view with name and phone known and nothing to correct; the fields
+// stay in the form (they submit as before) and open with Edit, or empty with "Buying for someone else?".
+const whoSummary =
+  Astro.request.method !== 'POST' && Boolean(values.name?.trim()) && Boolean(values.phone?.trim()) && !errors.name && !errors.phone && !errors.email;
+
+// Initial delivery estimate for the preselected saved address, so a returning
+// customer sees a delivery figure without touching anything. Guests get one
+// the moment they pick a location (client-side, same public endpoint).
+// CONFIRMED comes only from an operator zone and IS charged on the order;
+// ESTIMATED is advisory and never added to the total shown here.
+interface DeliveryEstimateView {
+  kind: 'CONFIRMED' | 'ESTIMATED' | 'UNAVAILABLE';
+  feeUgx: number | null;
+  km: number | null;
+}
+let initialDeliveryEstimate: DeliveryEstimateView | null = null;
+// The basket goes with the estimate, as `<productId>:<qty>`, so the page is
+// quoted by the one quoting service exactly what the order will be charged
+// (a bus parcel is priced per parcel and cannot be quoted without it).
+const estimateItemsParam = cart.items.map((i) => `${i.productId}:${i.quantity}`).join(',');
+if (defaultAddress) {
+  try {
+    const deRes = await fetch(
+      `${apiBase}/commerce/delivery-estimate?district=${encodeURIComponent(defaultAddress.district)}`
+        + `&area=${encodeURIComponent(defaultAddress.areaDetails ?? '')}`
+        + `&areaSlug=${encodeURIComponent(defaultAddress.areaSlug ?? '')}`
+        + `&items=${encodeURIComponent(estimateItemsParam)}`,
+      { signal: AbortSignal.timeout(2500) },
+    );
+    const deJson: any = deRes.ok ? await deRes.json().catch(() => null) : null;
+    if (deJson?.success) initialDeliveryEstimate = deJson.data.estimate;
+  } catch {
+    /* estimate is advisory */
+  }
+}
+
+// What the NEW quoting service needs: the saved address's area when there is
+// one, its district otherwise. Null on both means the customer has not chosen
+// a location yet, and the quote correctly stays at disclaimer stage 1.
+const initialAreaSlug: string | null = (defaultAddress as any)?.areaSlug ?? null;
+const initialDistrict: string | null = defaultAddress?.district ?? null;
+
+// Same-day deadline from the SAME operator-configured Kampala cutoff the header uses.
+const bizCheckout = await getBusinessInfo();
+// Payment-method display copy — operator-editable (admin/storefront-copy).
+const paymentCopy = (await getStorefrontCopy()).payment;
+const cut = kampalaCutoff(new Date(), { cutoffHour: bizCheckout.sameDayCutoffHour, closedDays: bizCheckout.closedDays });
+// Worked out for WHERE the order is going. "This arrives today" beside the
+// button used to be printed to a customer who had just chosen Arua; the line
+// now names Kampala & Wakiso until a district is known, and the page script
+// switches it when the customer picks one (data-* below).
+const sameDayCopy = sameDayCutoffCopy(cut, { now: new Date(), closedDays: bizCheckout.closedDays });
+const initialLineDistrict: string | null = (() => {
+  if (initialDistrict) return initialDistrict;
+  try {
+    const loc = JSON.parse(values.locationJson || '{}');
+    return typeof loc?.district === 'string' ? loc.district : null;
+  } catch {
+    return null;
+  }
+})();
+const initialLineArea: string | null = (() => {
+  try {
+    const loc = JSON.parse(values.locationJson || '{}');
+    return typeof loc?.displayLabel === 'string' ? loc.displayLabel : typeof loc?.area === 'string' ? loc.area : null;
+  } catch {
+    return null;
+  }
+})();
+const cutoffLine = sameDayLineFor(sameDayCopy, initialLineDistrict, initialLineArea);
+
+// The site-wide campaign, for the label only.
+const checkoutDiscount = await getStorefrontDiscount();
+// The evaluator's own saving, per-product floors included (0127); the order is
+// priced server-side by the same evaluator, so this is what it will charge.
+// Asked for EVERY basket: an automatic promotion that is not a simple
+// site-wide campaign (a minimum spend, a cap, an exclusion) is still charged,
+// and gating on the campaign showed the undiscounted total while PesaPal
+// asked for less.
+const checkoutSavings = await basketSavingUgx(
+  cart.items.map((i: any) => ({ productId: i.productId, quantity: i.quantity })),
+  cart.subtotalUgx,
+);
+const checkoutSaleSubtotal = cart.subtotalUgx - checkoutSavings;
+
+// Same deterministic rule the ledger applies (floor per 1,000 UGX × rate).
+// The ledger's basis is the ORDER TOTAL, which is the DISCOUNTED subtotal plus
+// the delivery fee. Previewing on the pre-discount subtotal was not the "lower
+// bound" the old comment claimed: once a campaign runs, subtotal can exceed
+// discounted-subtotal-plus-delivery, and the preview then promised points the
+// ledger does not award. Basing it on the discounted subtotal, which delivery
+// only ever adds to, makes it a true lower bound again — so the copy says
+// "at least". Points VEST ON DELIVERY (loyalty completion, PART F).
+const potentialPoints = loyaltyProgramme.active
+  ? Math.floor(checkoutSaleSubtotal / 1000) * loyaltyProgramme.earnRatePer1000Ugx
+  : 0;
+/**
+ * A running campaign is not the same thing as money off THIS basket. The
+ * evaluator will not discount below the per-unit price floor, so a basket of
+ * items already at the floor saves nothing, and the summary was announcing
+ * "10% discount ... -UGX 0": a claim the checkout does not honour. The row
+ * appears only when the customer actually saves something.
+ */
+const checkoutOnSale = checkoutSavings > 0;
+const checkoutSavingLabel = basketSavingLabel(
+  checkoutDiscount,
+  cart.items.map((i: any) => ({ unitPriceUgx: Number(i.unitPriceUgx ?? i.priceUgx) || 0, quantity: Number(i.quantity) || 0 })),
+  checkoutSavings,
+);
 ---
 
-<BaseLayout title="Checkout">
+<BaseLayout robotsMeta="noindex,follow" title="Checkout">
   <div class="bg-gradient-to-b from-slate-50 to-white py-10 border-b border-slate-100">
     <div class="container mx-auto px-4 lg:px-8">
       <h1 class="text-2xl md:text-3xl font-black tracking-tight text-gray-900 mb-2">Checkout</h1>
-      <p class="text-slate-500 max-w-2xl text-sm">Verify your delivery zone accurately to accelerate shipment processing time.</p>
+      {/* True in every state: the fee shows here when your area can be priced,
+          and is confirmed by phone when it cannot (it used to promise "your
+          exact delivery fee" on a page that could not always show one). */}
+      <p class="text-slate-600 max-w-2xl text-sm">Tell us where to deliver. You'll see the delivery fee here, or we confirm it by phone before dispatch.</p>
     </div>
   </div>
 
   <div class="container mx-auto px-4 lg:px-8 py-10">
     
     {status === 'received' ? (
-      <div class="max-w-2xl mx-auto text-center py-16 bg-white border border-slate-200/80 rounded-2xl shadow-xs px-6">
-         {isOfflineDraft ? (
-           <>
-              <div class="w-16 h-16 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6 border border-amber-100 shadow-xs">
-               <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-             </div>
-             <h2 class="text-2xl font-black text-gray-900 mb-2">Offline Draft Saved</h2>
-             <p class="text-[10px] font-black text-amber-800 bg-amber-50 border border-amber-200/60 px-3 py-1 rounded-full inline-block mb-6 uppercase tracking-wider">Local Demo Mode Only</p>
-             <p class="text-slate-550 text-base mb-6">Local Draft Reference: <strong class="font-mono bg-slate-50 px-2 py-0.5 rounded text-gray-900 border border-slate-200/40">{reference}</strong></p>
-             <p class="text-amber-700 font-semibold max-w-md mx-auto mb-10 leading-relaxed bg-amber-50/50 border border-amber-200/60 p-4 rounded-xl text-xs text-left shadow-xs">
-               Notice: The server is currently offline. This order has <strong>not</strong> been submitted to the GoldPlus distribution team. Please screenshot this reference page or retry when connection is restored.
-             </p>
-           </>
-         ) : (
-           <>
-              <div class="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-100 shadow-xs">
-               <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
-             </div>
-             <h2 class="text-2xl font-black text-gray-900 mb-2">Order Received</h2>
-             <p class="text-slate-550 text-base mb-6">Reference: <strong class="font-mono bg-slate-50 px-2 py-0.5 rounded text-gray-900 border border-slate-200/40">{reference}</strong></p>
-             <p class="text-slate-500 max-w-md mx-auto mb-10 leading-relaxed text-sm">Our distribution center will evaluate transit routing and contact you soon to confirm final delivery logistics.</p>
-           </>
-         )}
-         <a href="/shop" class="inline-block bg-slate-900 text-white px-8 py-2.5 rounded-full font-bold hover:bg-slate-950 transition-all text-xs tracking-wider uppercase cursor-pointer hover:scale-[1.01] active:scale-95">Continue shopping</a>
+      /* Reached only when the confirmation page could not be used (no signing
+         secret): the order still exists, so the number is never lost. */
+      <div class="max-w-2xl mx-auto bg-white border border-slate-200/80 rounded-2xl p-6">
+        <FormFeedback status="received" message={message} reference={reference} actionHref={createdOrderId ? (authenticatedUserId ? `/orders/${createdOrderId}` : `/track-order?reference=${encodeURIComponent(reference ?? '')}`) : undefined} actionLabel={receivedActionLabel} />
       </div>
     ) : (
-      <div class="flex flex-col lg:flex-row gap-10">
+      /* Grid, not two flex columns: below lg the summary (items, total, promo
+         code, points) now sits BETWEEN the form and the order button, so a
+         customer sees what they will pay, and can enter a code, before they
+         commit. On desktop the summary stays in the right-hand column. */
+      <div class="grid grid-cols-1 gap-x-10 gap-y-6 lg:grid-cols-3 lg:grid-rows-[auto_1fr]">
 
-        <div class="w-full lg:w-2/3">
-          <FormFeedback status={status} message={message} />
-          
-          <form method="POST" action="/checkout" novalidate class="space-y-6 mt-4">
+        <div class="min-w-0 lg:col-span-2 lg:row-start-1">
+          {/*
+            `reference` is passed through: on a payment-start failure the copy
+            says "quote your order number", and the page used to show the
+            sentence without the number.
+          */}
+          {errorLinks.length > 0 ? (
+            /* Field errors get a summary that LINKS to each field and takes
+               focus (the page script moves it here), instead of a sentence
+               about "highlighted fields" that left focus on the page body. */
+            <div id="checkout-error-summary" role="alert" tabindex="-1" class="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-900 outline-none focus-visible:ring-4 focus-visible:ring-red-300">
+              <p class="text-sm font-bold">{message}</p>
+              <ul class="mt-2 space-y-1.5 text-sm">
+                {errorLinks.map((e) => (
+                  <li><a href={e.href} class="font-semibold underline underline-offset-2 hover:text-red-950">{e.label}: {e.text}</a></li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            /* A refusal with no field to point at (price changed, service
+               unavailable) takes focus too, so the page script can move the
+               customer to it instead of leaving them at the top of the body. */
+            <div id="checkout-feedback" tabindex="-1" class="outline-none" data-error={status === 'error' ? 'true' : undefined}>
+            <FormFeedback status={status} message={message} reference={status === 'error' ? reference : undefined} actionHref={feedbackAction?.href} actionLabel={feedbackAction?.label} helpHref={bizCheckout.whatsappUrl ? `${bizCheckout.whatsappUrl}?text=${encodeURIComponent(`Hi GoldPlus, I need help with my checkout${reference ? ` (order ${reference})` : ''}.`)}` : undefined} helpPhone={bizCheckout.phoneDisplay} />
+            {offerNewOrder && (
+              <form method="POST" action="/checkout/new-order" class="mt-2">
+                <button type="submit" class="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-widest text-gray-900 hover:bg-slate-50 transition-colors">Place this basket as a new order</button>
+              </form>
+            )}
+            </div>
+          )}
+
+          <RememberedDetails show={Astro.request.method === 'GET' && hasGuestMemory(guestPrefill)} back="/checkout" class="mt-3" />
+          <form id="checkout-form" method="POST" action="/checkout" novalidate class="space-y-6 mt-4">
+            <input type="hidden" name="attribution" id="attribution-field" />
             <!-- Slice 3B: idempotency key — a resubmitted/double-clicked form returns the same order -->
             {/*
               No hidden order key. A hidden field is caller-controlled, so it can
-              never be the authoritative operation identity — a client could vary
+              never be the authoritative operation identity, a client could vary
               it to force a duplicate order, or reuse another customer's. The
               identity is derived server-side from the verified principal and the
               signed intent id.
             */}
-            <div class="bg-white p-6 md:p-8 rounded-2xl border border-slate-200/80 shadow-xs">
+            <div class="bg-white p-6 md:p-8 rounded-2xl border border-slate-200/80">
               <h2 class="text-base md:text-lg font-black text-gray-900 mb-6 flex items-center gap-2.5">
                 <span aria-hidden="true" class="w-6 h-6 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-black">1</span>
-                Customer details
+                {whoSummary ? 'You' : 'Customer details'}
               </h2>
-              
+
+              {whoSummary && (
+                <div id="who-summary" class="mb-6 flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                  <div class="min-w-0">
+                    <p class="font-bold text-gray-900 text-sm break-words">{values.name}</p>
+                    <p class="text-xs text-slate-600 mt-0.5 break-words">{values.phone}{values.email ? ` · ${values.email}` : ''}</p>
+                    <p class="text-xs text-slate-500 mt-1">Order updates come here on WhatsApp, or by SMS.</p>
+                    <button type="button" id="who-someone-else" class="mt-2 text-xs font-bold text-brand-charcoal underline underline-offset-4 decoration-brand-primary">Buying for someone else?</button>
+                  </div>
+                  <button type="button" id="who-edit" class="inline-flex min-h-11 flex-shrink-0 items-center rounded-lg border border-slate-300 px-4 text-xs font-black uppercase tracking-wider text-brand-charcoal hover:bg-white">Edit</button>
+                </div>
+              )}
+              <p id="who-gift-note" class="hidden mb-4 text-xs text-slate-600">Enter the details of the person receiving the order. The rider calls them, and the order stays in your account.</p>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div id="who-fields" class={`md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6${whoSummary ? ' hidden' : ''}`}>
                 <FormField id="name" name="name" label="Full name" required autocomplete="name" defaultValue={values.name} errorMessage={errors.name} />
-                <FormField id="email" name="email" label="Email" type="email" autocomplete="email" defaultValue={values.email} />
-                <FormField id="phone" name="phone" label="Phone (MTN / Airtel)" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" defaultValue={values.phone} errorMessage={errors.phone} />
+                <FormField id="email" name="email" label="Email" type="email" autocomplete="email" defaultValue={values.email} errorMessage={errors.email} />
+                <FormField id="phone" name="phone" label="Phone (mobile or landline)" type="tel" required inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" helperText="With a mobile number, your order updates come on WhatsApp, or by SMS. Reply STOP on WhatsApp to get them by SMS only." defaultValue={values.phone} errorMessage={errors.phone} />
+                </div>
                 <div class="md:col-span-2 space-y-4">
-                   <UgandaLocationPicker 
-                     name="locationJson" 
-                     label="Delivery location" 
-                     helperText="Search the parish, ward, town, or district where the order should be delivered."
-                     required={true} 
-                     defaultValue={values.locationJson} 
-                     errorMessage={errors.locationJson} 
-                   />
-                   <FormField 
-                     id="deliveryAddress" 
-                     name="deliveryAddress" 
-                     label="Additional address details" 
-                     placeholder="House, road, estate, building, shop, or nearby landmark"
-                     defaultValue={values.deliveryAddress}
-                   />
+                   {savedAddresses.length > 0 && (
+                     <fieldset class="space-y-2">
+                       <legend class="text-sm font-bold text-gray-900 mb-2">Deliver to</legend>
+                       {savedAddresses.map((a) => (
+                         <label class="flex items-start gap-3 p-3.5 border border-slate-200/70 rounded-xl hover:border-brand-primary cursor-pointer select-none bg-slate-50/30 transition-all has-[:checked]:border-brand-primary has-[:checked]:bg-brand-primary/5">
+                           <input
+                             type="radio"
+                             name="addressId"
+                             value={a.id}
+                             data-district={a.district}
+                             data-area={a.areaDetails}
+                             data-area-slug={a.areaSlug ?? ''}
+                             checked={a.id === defaultAddress?.id}
+                             class="mt-0.5 w-5 h-5 accent-[#456B00] cursor-pointer js-address-choice"
+                           />
+                           <span class="min-w-0">
+                             <span class="font-bold text-gray-900 text-sm">{a.label && a.label !== a.district ? a.label : (a.areaDetails || '').split(',')[0].trim() || a.label}</span>
+                             {a.isDefault && <span class="ml-2 text-[10px] font-black uppercase tracking-widest text-brand-primaryInk">Default</span>}
+                             <span class="block text-xs text-slate-500 mt-0.5">{a.recipientName} · {a.phone}</span>
+                             {/* "Najjera, Wakiso" already names the district: never "Najjera, Wakiso, Wakiso". */}
+                             <span class="block text-xs text-slate-500">{(a.areaDetails || '').toLowerCase().includes(String(a.district || '').toLowerCase()) ? a.areaDetails : `${a.areaDetails}, ${a.district}`}</span>
+                           </span>
+                         </label>
+                       ))}
+                       <label class="flex items-center gap-3 p-3.5 border border-dashed border-slate-300 rounded-xl hover:border-brand-primary cursor-pointer select-none transition-all has-[:checked]:border-brand-primary">
+                         <input type="radio" name="addressId" value="" class="w-5 h-5 accent-[#456B00] cursor-pointer js-address-choice" />
+                         <span class="font-bold text-gray-900 text-sm">Deliver somewhere else</span>
+                       </label>
+                     </fieldset>
+                   )}
+                   <div id="new-address-fields" class="space-y-4">
+                     {pickupPoints.length > 0 && (
+              <fieldset class="space-y-2" id="delivery-method-block">
+                <legend class="block text-sm font-bold text-brand-charcoal">How would you like to get this order?</legend>
+                <div class="flex flex-wrap gap-x-4 gap-y-2">
+                  <label class="flex min-h-11 items-center gap-2 text-sm font-semibold"><input type="radio" name="deliveryMethod" value="door" checked={values.deliveryMethod !== 'pickup'} class="js-method-radio w-5 h-5 accent-[#456B00]" /> Deliver to me</label>
+                  {/* Owner 2026-10-16: with one pickup point (our shop) it is simply "our GoldPlus shop" — no dropdown. */}
+                  <label class="flex min-h-11 items-center gap-2 text-sm font-semibold"><input type="radio" name="deliveryMethod" value="pickup" checked={values.deliveryMethod === 'pickup'} class="js-method-radio w-5 h-5 accent-[#456B00]" /> {pickupPoints.length === 1 ? 'I\'ll collect from our GoldPlus shop' : 'I\'ll collect from a pickup point'}</label>
+                </div>
+                {pickupPoints.length === 1 && (
+                  <p id="pickupPointInfo" class={`${values.deliveryMethod === 'pickup' ? '' : 'hidden '}rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700`}>
+                    <span class="font-bold text-gray-900">{pickupPoints[0].name}</span>{pickupPoints[0].physicalAddress ? `, ${pickupPoints[0].physicalAddress}` : ''}
+                  </p>
+                )}
+                <select id="pickupPointSelect" name="pickupPointId" data-single={pickupPoints.length === 1 ? '1' : undefined} class={`${values.deliveryMethod === 'pickup' && pickupPoints.length !== 1 ? '' : 'hidden '}w-full bg-white border ${errors.pickupPointId ? 'border-red-600' : 'border-brand-borderGrey'} px-3 py-2.5 rounded-lg text-base sm:text-sm font-medium outline-none focus:ring-2 focus:ring-brand-primaryInk`} aria-label="Choose a pickup point" aria-invalid={errors.pickupPointId ? 'true' : undefined} aria-describedby={errors.pickupPointId ? 'pickupPointSelect-error' : undefined}>
+                  {pickupPoints.length !== 1 && <option value="">Choose a pickup point…</option>}
+                  {pickupPoints.map((p) => (
+                    <option value={p.id} selected={pickupPoints.length === 1 || p.id === values.pickupPointId} data-name={p.name} data-address={p.physicalAddress ?? ''}>{p.name} ({p.operator.replace(/_/g, ' ')})</option>
+                  ))}
+                </select>
+                {errors.pickupPointId && <p id="pickupPointSelect-error" class="text-xs text-red-600 font-bold">{errors.pickupPointId}</p>}
+              </fieldset>
+            )}
+            <UgandaLocationPicker
+              id="deliveryLocation"
+              withPin={true}
+                       name="locationJson"
+                       label="Delivery location"
+                       helperText="Tap Locate me, or type your area. We price delivery as soon as we know where."
+                       required={savedAddresses.length === 0}
+                       defaultValue={values.locationJson}
+                       errorMessage={errors.locationJson}
+                     />
+                     {/* 2026-10-16: the fee, where the customer just answered. On a phone the order summary sits below
+                         the whole form, so the number they were waiting for appeared out of sight. */}
+                     <p id="location-fee-line" class="hidden -mt-1 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-900" role="status" aria-live="polite"></p>
+                     <FormField
+                       id="deliveryAddress"
+                       name="deliveryAddress"
+                       label="What should the rider look for?"
+                       placeholder="Building, gate colour, road or landmark, e.g. green gate after Capital Shoppers, Kigoowa Road"
+                       required
+                       defaultValue={values.deliveryAddress}
+                       errorMessage={errors.deliveryAddress}
+                     />
+                     {authenticatedUserId && (
+                       <label class="flex items-center gap-2.5 text-sm text-slate-600 cursor-pointer select-none">
+                         <input type="checkbox" name="saveAddress" value="true" checked class="w-4 h-4 rounded border-slate-300 text-brand-primary focus:ring-brand-primaryInk cursor-pointer" />
+                         <span>Save this address to my account for faster checkout next time</span>
+                       </label>
+                     )}
+                   </div>
                 </div>
               </div>
             </div>
 
-             <div class="bg-white p-6 md:p-8 rounded-2xl border border-slate-200/80 shadow-xs">
+             <div class="bg-white p-6 md:p-8 rounded-2xl border border-slate-200/80">
               <h2 class="text-base md:text-lg font-black text-gray-900 mb-6 flex items-center gap-2.5">
                 <span aria-hidden="true" class="w-6 h-6 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-black">2</span>
                 Payment method
               </h2>
-              <div class="space-y-4">
-                <label class="flex items-start gap-3 p-4 border border-slate-200/70 rounded-xl hover:border-brand-primary cursor-pointer select-none bg-slate-50/30 transition-all hover:shadow-xs">
-                  <input type="radio" name="paymentMethod" value="offline" checked class="mt-1 w-4 h-4 text-brand-primary border-slate-250 focus:ring-brand-primary cursor-pointer" />
+              {/* The chosen card is marked by more than a 13px browser-blue dot:
+                  the same checked treatment the saved-address cards use, and a
+                  radio in the accessible lime ink. */}
+              <fieldset class="space-y-4">
+                <legend class="sr-only">Choose how to pay</legend>
+                <label class="flex items-start gap-3 p-4 border border-slate-200/70 rounded-xl hover:border-brand-primary cursor-pointer select-none bg-slate-50/30 transition-all has-[:checked]:border-brand-primary has-[:checked]:bg-brand-primary/5 has-[:checked]:ring-1 has-[:checked]:ring-brand-primary">
+                  <input type="radio" name="paymentMethod" value="pesapal" checked class="mt-0.5 w-5 h-5 shrink-0 accent-[#456B00] cursor-pointer" />
                   <div>
-                    <span class="font-bold text-gray-900 text-sm">Cash / Manual Invoice</span>
-                    <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">Submit your order now, and our sales agents will manually verify delivery details and issue a final invoice.</p>
+                    <span class="font-bold text-gray-900 text-sm">{paymentCopy.pesapal.label}</span>
+                    <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">{paymentCopy.pesapal.description}</p>
                   </div>
                 </label>
-                <label class="flex items-start gap-3 p-4 border border-slate-200/70 rounded-xl hover:border-brand-primary cursor-pointer select-none bg-slate-50/30 transition-all hover:shadow-xs">
-                  <input type="radio" name="paymentMethod" value="pesapal" class="mt-1 w-4 h-4 text-brand-primary border-slate-250 focus:ring-brand-primary cursor-pointer" />
-                  <div>
-                    <span class="font-bold text-gray-900 text-sm">Mobile Money & Card via PesaPal</span>
-                    <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">Pay securely with MTN Mobile Money, Airtel Money, or credit/debit cards instantly via secure PesaPal redirection.</p>
-                  </div>
-                </label>
-              </div>
+              </fieldset>
             </div>
 
-            {status === 'error' && (
-              <div class="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-sm flex items-start gap-3">
-                <input type="checkbox" id="allowOfflineDraft" name="allowOfflineDraft" value="true" class="mt-1 rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4" />
-                <div>
-                  <label for="allowOfflineDraft" class="font-bold cursor-pointer select-none">Save as offline draft on this device</label>
-                  <p class="text-xs text-amber-700 mt-1">If the checkout service is unreachable, checking this lets you complete the transaction flow as a local demonstration. The draft reference will be stored on your device and labeled explicitly.</p>
-                </div>
-              </div>
-            )}
-
-            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <button
-                type="submit"
-                id="submitBtn"
-                onclick="this.innerText = 'Starting secure payment…'; this.classList.add('opacity-80', 'cursor-not-allowed')"
-                class="bg-brand-primary text-gray-955 px-8 py-2.5 rounded-full font-bold text-sm tracking-wider uppercase hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none cursor-pointer hover:scale-[1.005] active:scale-[0.985] shadow-sm"
-              >
-                Pay Online
-              </button>
-              <p class="text-xs text-slate-400 italic max-w-xs">Location verification safeguards delivery times.</p>
+            {/* One optional question, for attribution only: never required, no
+                default answer. A neutral first line; "prefer not to say" is the LAST
+                choice (owner 2026-10-16), and it and the first line both send nothing. */}
+            <div class="bg-white p-6 md:p-8 rounded-2xl border border-slate-200/80">
+              <label for="heardAbout" class="block text-sm font-bold text-gray-900">How did you hear about us? <span class="font-normal text-slate-500">(optional)</span></label>
+              <select id="heardAbout" name="heardAbout" class="mt-2 w-full min-h-11 bg-white border border-brand-borderGrey px-3 py-2.5 rounded-lg text-base sm:text-sm font-medium outline-none focus:ring-2 focus:ring-brand-primaryInk">
+                <option value="" selected={heardAboutValue === ''}>Choose an answer</option>
+                {HEARD_ABOUT_OPTIONS.map((o) => <option value={o.value} selected={heardAboutValue === o.value}>{o.label}</option>)}
+                <option value="">Prefer not to say</option>
+              </select>
             </div>
+
           </form>
         </div>
 
-        <aside class="w-full lg:w-1/3">
-          <div class="bg-white rounded-2xl border border-slate-200/80 p-6 sticky top-24 shadow-xs">
-            <h2 class="text-base font-black text-gray-900 mb-4">Order summary</h2>
+        <aside class="min-w-0 lg:col-start-3 lg:row-start-1 lg:row-span-2">
+          <div class="bg-white rounded-2xl border border-slate-200/80 p-6 sticky top-24">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-base font-black text-gray-900">Order summary</h2>
+              <a href="/cart" class="text-xs font-bold text-slate-500 hover:text-gray-900 underline outline-none focus-visible:ring-2 focus-visible:ring-brand-primaryInk rounded">Edit cart</a>
+            </div>
             <ul class="space-y-3 text-sm mb-4" aria-label="Order items">
               {cart.items.map((item) => (
                 <li class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
                     <p class="font-bold text-gray-900 truncate">{item.name}</p>
-                    <p class="text-xs text-slate-400 font-medium">Qty {item.quantity} × {formatUgx(item.unitPriceUgx || item.priceUgx)}</p>
+                    <p class="text-xs text-slate-600 font-medium">Qty {item.quantity} × {formatUgx(item.unitPriceUgx || item.priceUgx)}</p>
                   </div>
                   <p class="font-bold text-gray-900 whitespace-nowrap text-sm">{formatUgx((item.unitPriceUgx || item.priceUgx) * item.quantity)}</p>
                 </li>
@@ -425,20 +1145,181 @@ const formatUgx = (n: number): string =>
             </ul>
             <dl class="space-y-2 text-sm pt-3 border-t border-slate-100">
               <div class="flex items-center justify-between">
-                <dt class="text-slate-550">Subtotal</dt>
-                <dd class="font-bold text-gray-900">{formatUgx(cart.subtotalUgx)}</dd>
+                <dt class="text-slate-600">Subtotal</dt>
+                <dd class="font-bold text-gray-900 tabular-nums">{formatUgx(cart.subtotalUgx)}</dd>
               </div>
-              <div class="flex items-center justify-between">
-                <dt class="text-slate-550">Delivery estimate</dt>
-                <dd class="text-brand-primary font-black uppercase text-[10px] tracking-wider">Calculated post-zone</dd>
+              {checkoutOnSale && (
+                <div class="flex items-center justify-between">
+                  <dt class="font-medium" style="color:#456B00">{checkoutSavingLabel}</dt>
+                  <dd class="font-bold tabular-nums" style="color:#456B00">&minus;{formatUgx(checkoutSavings)}</dd>
+                </div>
+              )}
+              <div class="hidden flex items-center justify-between" id="promo-row">
+                <dt class="font-medium" style="color:#456B00">Promo code</dt>
+                <dd class="font-bold tabular-nums" style="color:#456B00" id="promo-row-value"></dd>
+              </div>
+              <div class="flex items-start justify-between gap-3" id="delivery-estimate-row">
+                <dt class="text-slate-600">Delivery</dt>
+                <dd class="text-right" id="delivery-estimate-value" data-state={initialDeliveryEstimate?.kind ?? 'NONE'}>
+                  {initialDeliveryEstimate?.kind === 'CONFIRMED' && initialDeliveryEstimate.feeUgx !== null ? (
+                    <span class="font-bold text-gray-900 tabular-nums">{formatUgx(initialDeliveryEstimate.feeUgx)}</span>
+                  ) : initialDeliveryEstimate?.kind === 'ESTIMATED' && initialDeliveryEstimate.feeUgx !== null ? (
+                    <span class="font-bold text-gray-900 tabular-nums">about {formatUgx(initialDeliveryEstimate.feeUgx)} <span class="block text-[10px] font-semibold text-slate-600">confirmed before the rider leaves</span></span>
+                  ) : initialDeliveryEstimate ? (
+                    <span class="text-[11px] font-bold text-slate-600">Confirmed by phone before dispatch</span>
+                  ) : (
+                    <span class="text-[11px] font-bold text-slate-600">Shown when you pick a location</span>
+                  )}
+                </dd>
+              </div>
+              {/* Stage 2: the FIXED commitment, plus the cut-off countdown,
+                  free-delivery progress, pickup and the proportionality
+                  interstitial. Every sentence resolved from the registry. */}
+              <div class="pt-3">
+                <dt class="sr-only">Delivery commitment</dt>
+                <dd id="checkout-delivery-quote" data-subtotal={cart.subtotalUgx} aria-live="polite">
+                  <DeliveryQuote
+                    stage={2}
+                    areaSlug={initialAreaSlug}
+                    district={initialDistrict}
+                    items={cart.items.map((i: any) => ({ productId: i.productId, quantity: i.quantity }))}
+                    subtotalUgx={cart.subtotalUgx}
+                  />
+                </dd>
               </div>
               <div class="flex items-center justify-between pt-3 border-t border-slate-100">
-                <dt class="font-bold text-gray-900 text-sm">Grand total</dt>
-                <dd class="font-black text-gray-900 text-lg">{formatUgx(cart.subtotalUgx)}</dd>
+                <dt class="font-bold text-gray-900 text-sm" id="grand-total-label">{initialDeliveryEstimate?.kind === 'CONFIRMED' ? 'Total to pay' : 'Estimated total'}</dt>
+                <dd class="font-black text-gray-900 text-lg tabular-nums" id="grand-total-value" data-subtotal={checkoutSaleSubtotal}>
+                  {formatUgx(checkoutSaleSubtotal + (initialDeliveryEstimate?.kind === 'CONFIRMED' ? (initialDeliveryEstimate.feeUgx ?? 0) : 0))}
+                </dd>
               </div>
             </dl>
+            {initialDeliveryEstimate?.kind === 'ESTIMATED' && (
+              <p class="text-[10px] text-slate-600 text-right mt-1">Delivery is added on top and confirmed before the rider leaves.</p>
+            )}
+            {loyaltyProgramme.active && loyaltyProgramme.redemption.configured && loyaltyAvailablePoints >= (loyaltyProgramme.redemption.minPoints ?? 1) && (
+              <div class="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-3 space-y-2">
+                <label for="redeemPoints" class="block text-xs font-black uppercase tracking-wider text-slate-600">
+                  Use your points. Balance {loyaltyAvailablePoints.toLocaleString('en-UG')} (worth {formatUgx(loyaltyAvailablePoints * (loyaltyProgramme.redemption.pointValueUgx ?? 0))})
+                </label>
+                <div class="flex items-center gap-2">
+                  <input
+                    type="number"
+                    id="redeemPoints"
+                    name="redeemPoints"
+                    form="checkout-form"
+                    min={loyaltyProgramme.redemption.minPoints}
+                    max={loyaltyAvailablePoints}
+                    step="1"
+                    inputmode="numeric"
+                    placeholder={`min ${loyaltyProgramme.redemption.minPoints}`}
+                    value={redeemPointsValue}
+                    class="w-32 px-3 py-2 bg-white border border-brand-borderGrey rounded-lg text-base sm:text-sm font-bold outline-none focus:ring-2 focus:ring-brand-primaryInk"
+                    data-point-value={loyaltyProgramme.redemption.pointValueUgx}
+                  />
+                  <span class="text-xs font-semibold text-slate-500" id="redeem-value-preview">We will show the discount before you pay</span>
+                </div>
+                <p class="text-[11px] text-slate-500">Points can cover up to {Math.floor((loyaltyProgramme.redemption.maxShareBps ?? 0) / 100)}% of the goods total, and never take an item below its lowest price. The exact discount is confirmed when you place the order.</p>
+              </div>
+            )}
+            <div
+              id="promo-code-block"
+              class="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-3 space-y-2"
+              data-items={JSON.stringify(cart.items.map((i: any) => ({ productId: i.productId, quantity: i.quantity })))}
+            >
+              <label for="couponCode" class="block text-xs font-black uppercase tracking-wider text-slate-600">Have a promo code?</label>
+              <div class="flex items-center gap-2">
+                <input
+                  type="text"
+                  id="couponCode"
+                  name="couponCode"
+                  form="checkout-form"
+                  maxlength="40"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                  placeholder="e.g. GOLD10"
+                  value={couponCodeValue}
+                  class="w-40 px-3 py-2 bg-white border border-brand-borderGrey rounded-lg text-base sm:text-sm font-bold uppercase tracking-wider outline-none focus:ring-2 focus:ring-brand-primaryInk"
+                />
+                <button
+                  type="button"
+                  id="promo-apply"
+                  class="inline-flex min-h-11 items-center rounded-full border-2 border-brand-primary px-4 text-xs font-black uppercase tracking-wider text-gray-900 outline-none hover:bg-brand-primary/10 focus-visible:ring-4 focus-visible:ring-brand-primaryInk disabled:opacity-50"
+                >Apply</button>
+              </div>
+              <p id="promo-message" class="text-[11px] font-semibold text-slate-500" aria-live="polite"></p>
+              <input type="hidden" id="previewQuoteId" name="previewQuoteId" form="checkout-form" value={previewQuoteIdValue} />
+            </div>
+            <div id="credit-code-block" class="mt-3 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-3 space-y-2" data-store-credit>
+              <label for="storeCreditCode" class="block text-xs font-black uppercase tracking-wider text-slate-600">Gift card or store credit</label>
+              <div class="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  id="storeCreditCode"
+                  name="storeCreditCode"
+                  form="checkout-form"
+                  maxlength="24"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                  placeholder="GPGC-XXXX-XXXX-XXXX"
+                  value={storeCreditCodeValue}
+                  class="w-56 px-3 py-2 bg-white border border-brand-borderGrey rounded-lg text-base sm:text-sm font-bold uppercase tracking-wider outline-none focus:ring-2 focus:ring-brand-primaryInk"
+                />
+                <button type="button" id="credit-check" class="inline-flex min-h-11 items-center rounded-full border-2 border-brand-primary px-4 text-xs font-black uppercase tracking-wider text-gray-900 hover:bg-brand-primary/10 disabled:opacity-50">Check</button>
+              </div>
+              <p id="credit-message" class="text-[11px] font-semibold text-slate-500" aria-live="polite">It pays first; you pay any rest with Mobile Money or card.</p>
+            </div>
+            {pricedFromDevice && (
+              <p class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs font-semibold text-amber-900">
+                We could not reach our pricing service just now, so these totals come from your device. We confirm the real total before you pay.
+              </p>
+            )}
+            {potentialPoints > 0 && (
+              authenticatedUserId ? (
+                <p class="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2.5 text-xs font-semibold text-slate-700">
+                  You'll earn at least <strong style="color:#456B00">{potentialPoints.toLocaleString('en-UG')} GoldPlus points</strong> when this order is delivered.
+                </p>
+              ) : (
+                <p class="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2.5 text-xs font-semibold text-slate-700">
+                  <a href="/login?returnTo=/checkout" class="underline font-bold">Sign in</a> or
+                  <a href="/register?returnTo=/checkout" class="underline font-bold">create an account</a> to earn at least
+                  <strong style="color:#456B00"> {potentialPoints.toLocaleString('en-UG')} GoldPlus points</strong> on this order.
+                </p>
+              )
+            )}
           </div>
         </aside>
+        {/* The order button, AFTER the summary in the document: below lg it
+            follows the total and the promo code; on desktop it sits under the
+            form. `form=` keeps it the form's submit button (Enter still
+            submits, and it carries its own value). */}
+        <div class="min-w-0 lg:col-span-2 lg:row-start-2 self-start">
+          <p class="lg:hidden mb-3 flex items-baseline justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
+            <span class="font-bold text-gray-900" id="submit-total-label">{initialDeliveryEstimate?.kind === 'CONFIRMED' ? 'Total to pay' : 'Estimated total'}</span>
+            <span class="font-black text-gray-900 tabular-nums" id="submit-total-value">{formatUgx(checkoutSaleSubtotal + (initialDeliveryEstimate?.kind === 'CONFIRMED' ? (initialDeliveryEstimate.feeUgx ?? 0) : 0))}</span>
+          </p>
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+            {/*
+              The button says what pressing it DOES. It used to read "Pay Online"
+              while the preselected method was the offline invoice, the wrong
+              promise at the most decisive moment of the whole funnel.
+            */}
+            <button
+              type="submit"
+              form="checkout-form"
+              id="submitBtn"
+              data-label-offline="Place order"
+              data-label-pesapal="Pay securely now"
+              class="w-full sm:w-auto px-8 h-[52px] rounded-full font-semibold text-[15px] hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk cursor-pointer hover:scale-[1.005] active:scale-[0.985] shadow-sm"
+              style="background:#93D500;color:#0A0A0A"
+            >
+              {paymentMethodValue === 'pesapal' ? 'Pay securely now' : 'Place order'}
+            </button>
+            <p id="cutoff-line" class="text-xs font-semibold" style="color:#456B00" data-scoped={sameDayCopy.scoped} data-in-area={sameDayCopy.inArea} data-outside={sameDayCopy.outside} data-in-area-named={sameDayCopy.inAreaNamed} data-outside-named={sameDayCopy.outsideNamed}>{cutoffLine}</p>
+          </div>
+        </div>
       </div>
     )}
   </div>
@@ -446,9 +1327,10 @@ const formatUgx = (n: number): string =>
   {/* Embed cart data for client-side telemetry — no sensitive data, prices are public */}
   <div
     id="checkout-telemetry-data"
-    data-subtotal={cart.subtotalUgx}
+    data-subtotal={checkoutSaleSubtotal}
     data-items={JSON.stringify(cart.items.map(i => ({
       item_id:   i.productId,
+      item_sku:  i.sku || undefined,
       item_name: i.name,
       price:     i.unitPriceUgx || i.priceUgx,
       quantity:  i.quantity,
@@ -460,7 +1342,15 @@ const formatUgx = (n: number): string =>
 </BaseLayout>
 
 <script>
+  // Explicit wiring (2026-08-06): the picker's behaviour used to reach this
+  // page only through Astro's implicit chunk-linking of component scripts,
+  // which no grep could audit. The page now names its dependency; init is
+  // idempotent, so double-import double-wires nothing.
+  import '../lib/locationPickerClient';
   import { track, captureClickIdsServerSide } from '../lib/telemetry';
+  import { getCheckoutAttribution } from '../lib/attribution';
+  import { publicApiBase } from '../lib/api';
+  import { buildDeliveryQuoteRequest, renderDeliveryQuotePanel, DELIVERY_QUOTE_UNREACHABLE_HTML, manualDeliveryAreaLine, escapeQuoteText } from '../lib/deliveryQuotePanel';
 
   document.addEventListener('DOMContentLoaded', () => {
     const dataEl  = document.getElementById('checkout-telemetry-data');
@@ -478,8 +1368,540 @@ const formatUgx = (n: number): string =>
       ecommerce: { value: subtotal, currency: 'UGX', items },
     });
 
+    // ── fast-checkout interactions (progressive enhancement only) ─────────────
+    // Without JS everything still works: the new-address block stays visible and
+    // the server decides between saved address and typed location.
+    const submitBtn = document.getElementById('submitBtn') as HTMLButtonElement | null;
+    const methodRadios = document.querySelectorAll<HTMLInputElement>('input[name="paymentMethod"]');
+    const syncSubmitLabel = () => {
+      if (!submitBtn) return;
+      const method = document.querySelector<HTMLInputElement>('input[name="paymentMethod"]:checked')?.value ?? 'pesapal';
+      submitBtn.textContent = (method === 'pesapal' ? submitBtn.dataset.labelPesapal : submitBtn.dataset.labelOffline) ?? 'Place order';
+    };
+    methodRadios.forEach((r) => r.addEventListener('change', syncSubmitLabel));
+    syncSubmitLabel();
+
+    const addressRadios = document.querySelectorAll<HTMLInputElement>('input.js-address-choice');
+    const newAddressBlock = document.getElementById('new-address-fields');
+    const syncAddressBlock = () => {
+      if (!newAddressBlock || addressRadios.length === 0) return;
+      const chosen = document.querySelector<HTMLInputElement>('input.js-address-choice:checked');
+      const usingSaved = Boolean(chosen && chosen.value !== '');
+      newAddressBlock.classList.toggle('hidden', usingSaved);
+    };
+    addressRadios.forEach((r) => r.addEventListener('change', syncAddressBlock));
+    syncAddressBlock();
+
+    // ── live delivery estimate ────────────────────────────────────────────────
+    // Re-quotes whenever the destination changes: a saved-address radio (its
+    // district travels on data-district) or a fresh picker selection. CONFIRMED
+    // fees (operator zones — actually charged) join the grand total; ESTIMATES
+    // stay advisory and never inflate the number the customer commits to.
+    const API_BASE = publicApiBase;
+    const estimateEl = document.getElementById('delivery-estimate-value');
+    const totalEl = document.getElementById('grand-total-value');
+    const totalLabelEl = document.getElementById('grand-total-label');
+    // The phone-width copy of the total beside the order button.
+    const submitTotalEl = document.getElementById('submit-total-value');
+    const submitTotalLabelEl = document.getElementById('submit-total-label');
+    // The same-day line follows the chosen district (three server-written
+    // variants; the page never composes a delivery promise of its own).
+    const cutoffEl = document.getElementById('cutoff-line');
+    const SAME_DAY = ['kampala', 'wakiso'];
+    // Names the area the customer just chose ("…goes out to Najjera today"); written directions fall back to the
+    // plain line. Copy rules: lib/locationCopy (area name only, service framing, real minutes).
+    function setCutoffFor(district: string | null, area: string | null = null) {
+      if (!cutoffEl) return;
+      const d = (district ?? '').trim().toLowerCase();
+      const name = (area ?? '').split(',')[0].trim().slice(0, 40);
+      const inArea = SAME_DAY.includes(d);
+      const named = name ? (inArea ? cutoffEl.dataset.inAreaNamed : cutoffEl.dataset.outsideNamed) : null;
+      const text = !d ? cutoffEl.dataset.scoped : named ? named.split('{area}').join(name) : inArea ? cutoffEl.dataset.inArea : cutoffEl.dataset.outside;
+      if (text) cutoffEl.textContent = text;
+    }
+    const ugx = (n: number) => `UGX ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Math.round(n))}`;
+
+    // Promo-code state: the applied discount lowers the GOODS total; the last
+    // delivery estimate is kept so applying a code re-renders the same view.
+    let promoDiscountUgx = 0;
+    let lastEstimate: { kind: string; feeUgx: number | null } | null = null;
+    // Whether the customer has told us where the order goes. A place we
+    // cannot price (UNAVAILABLE, or written directions) is still a place:
+    // the row used to fall back to "Shown when you pick a location" right
+    // after they had picked one.
+    let lastLocated = estimateEl?.dataset.state !== undefined && estimateEl.dataset.state !== 'NONE';
+    const goodsTotal = () => Math.max(0, subtotal - promoDiscountUgx);
+
+    function renderEstimate(est: { kind: string; feeUgx: number | null } | null, located: boolean = lastLocated) {
+      lastEstimate = est;
+      lastLocated = located;
+      if (!estimateEl || !totalEl || !totalLabelEl) return;
+      renderEstimateRow(est, located);
+      renderLocationFeeLine(est, located);
+      if (submitTotalEl) submitTotalEl.textContent = totalEl.textContent;
+      if (submitTotalLabelEl) submitTotalLabelEl.textContent = totalLabelEl.textContent;
+    }
+
+    let feeLineHome: { parent: HTMLElement | null; next: Element | null } | null = null;
+    function renderLocationFeeLine(est: { kind: string; feeUgx: number | null; paidAtCollectionUgx?: number | null } | null, located: boolean) {
+      const line = document.getElementById('location-fee-line');
+      if (!line) return;
+      let text = '';
+      if (est && est.kind === 'CONFIRMED' && est.feeUgx === 0 && est.paidAtCollectionUgx) text = `Shipping ${ugx(est.paidAtCollectionUgx)}, paid to the carrier when you collect`;
+      else if (est && est.kind === 'CONFIRMED' && est.feeUgx !== null) text = est.feeUgx === 0 ? 'No delivery fee' : `Delivery ${ugx(est.feeUgx)}`;
+      else if (est && est.kind === 'ESTIMATED' && est.feeUgx !== null) text = `Delivery about ${ugx(est.feeUgx)}, confirmed before the rider leaves`;
+      else if (located) text = 'Delivery fee confirmed by phone before dispatch';
+      // A saved address hides the new-address block the line sits in: then it shows under the saved choices.
+      const savedFieldset = document.querySelector('input.js-address-choice')?.closest('fieldset');
+      const usingSaved = Boolean(document.querySelector<HTMLInputElement>('input.js-address-choice:checked')?.value);
+      if (!feeLineHome) feeLineHome = { parent: line.parentElement, next: line.nextElementSibling };
+      if (usingSaved && savedFieldset) savedFieldset.after(line);
+      else if (feeLineHome.parent) feeLineHome.parent.insertBefore(line, feeLineHome.next);
+      line.textContent = text;
+      line.classList.toggle('hidden', !text);
+    }
+
+    function renderEstimateRow(est: { kind: string; feeUgx: number | null; paidAtCollectionUgx?: number | null } | null, located: boolean) {
+      if (!estimateEl || !totalEl || !totalLabelEl) return;
+      // A taxi/bus parcel paid to the conductor at collection: nothing is charged in the order, but it is not free.
+      if (est && est.kind === 'CONFIRMED' && est.feeUgx === 0 && est.paidAtCollectionUgx) {
+        estimateEl.innerHTML = `<span class="font-bold text-gray-900 tabular-nums">${ugx(est.paidAtCollectionUgx)} <span class="block text-[10px] font-semibold text-slate-600">paid to the carrier when you collect</span></span>`;
+        totalLabelEl.textContent = 'Total to pay now';
+        totalEl.textContent = ugx(goodsTotal());
+        return;
+      }
+      // The Total always includes every fee shown above it. A CONFIRMED fee is
+      // the amount to pay; an ESTIMATE is folded into an "Estimated total" so the
+      // customer never sees a total that excludes a fee the page just quoted.
+      if (est && est.kind === 'CONFIRMED' && est.feeUgx !== null) {
+        estimateEl.innerHTML = `<span class="font-bold text-gray-900 tabular-nums">${ugx(est.feeUgx)}</span>`;
+        totalLabelEl.textContent = 'Total to pay';
+        totalEl.textContent = ugx(goodsTotal() + est.feeUgx);
+      } else if (est && est.kind === 'ESTIMATED' && est.feeUgx !== null) {
+        // An estimate is not a commitment: it is shown, but only a CONFIRMED
+        // operator-zone fee joins the committed total (Slice 03 P0 contract).
+        estimateEl.innerHTML = `<span class="font-bold text-gray-900 tabular-nums">about ${ugx(est.feeUgx)} <span class="block text-[10px] font-semibold text-slate-600">confirmed before the rider leaves</span></span>`;
+        totalLabelEl.textContent = 'Estimated total';
+        totalEl.textContent = ugx(goodsTotal());
+      } else if (located) {
+        // UNAVAILABLE, written directions, or the estimate could not be
+        // reached: the same sentence the quote panel and the subtitle use.
+        estimateEl.innerHTML = '<span class="text-[11px] font-bold text-slate-600">Confirmed by phone before dispatch</span>';
+        totalLabelEl.textContent = 'Estimated total';
+        totalEl.textContent = ugx(goodsTotal());
+      } else {
+        estimateEl.innerHTML = '<span class="text-[11px] font-bold text-slate-600">Shown when you pick a location</span>';
+        totalLabelEl.textContent = 'Estimated total';
+        totalEl.textContent = ugx(goodsTotal());
+      }
+    }
+
+    let estimateSeq = 0;
+    // The basket travels with every estimate (`<productId>:<qty>`), so the
+    // quote is for what the order will be charged, not for an empty parcel.
+    const estimateItems = (() => {
+      try {
+        const list = JSON.parse(document.getElementById('promo-code-block')?.getAttribute('data-items') || '[]') as Array<{ productId: string; quantity: number }>;
+        return list.map((i) => `${i.productId}:${i.quantity}`).join(',');
+      } catch { return ''; }
+    })();
+    // ── the delivery commitment panel, re-quoted after a location pick ─────────
+    // The server rendered it for the saved address (or for no place at all).
+    // A guest who picks a location used to keep that first answer; now the
+    // panel is asked again from the SAME endpoint the server used (POST
+    // /delivery/quote, the one quoting service) and drawn by the SAME renderer,
+    // so it cannot disagree with the first paint or with the order's charge.
+    const quotePanelEl = document.getElementById('checkout-delivery-quote');
+    const quoteItems: Array<{ productId: string; quantity: number }> = (() => {
+      try { return JSON.parse(document.getElementById('promo-code-block')?.getAttribute('data-items') || '[]'); }
+      catch { return []; }
+    })();
+    let quoteSeq = 0;
+    async function refreshQuotePanel(district: string | null, area: string | null, areaSlug: string | null) {
+      if (!quotePanelEl || !API_BASE) return;
+      const seq = ++quoteSeq;
+      // 0190: the pin the picker holds (device GPS or a map link) goes with the quote: PIN tier, and the area when none was named.
+      let gps: { gpsLat?: number; gpsLng?: number } = {};
+      try {
+        const loc = JSON.parse(document.querySelector<HTMLInputElement>('form[action="/checkout"] .js-final-payload')?.value || 'null');
+        // A building picked from Google Places is for the rider only, never a pricing input (Maps Platform
+        // Terms §3.2.3(c)(iv)); the area the customer chose prices it, exactly as the order will be charged.
+        if (loc && typeof loc.gpsLat === 'number' && typeof loc.gpsLng === 'number' && loc.gpsSource !== 'map_place') gps = { gpsLat: loc.gpsLat, gpsLng: loc.gpsLng };
+      } catch { /* no payload yet */ }
+      const body = buildDeliveryQuoteRequest({
+        district,
+        areaSlug,
+        deliveryArea: area,
+        items: quoteItems,
+        subtotalUgx: Number(quotePanelEl.dataset.subtotal) || 0,
+        ...gps,
+      });
+      let html = DELIVERY_QUOTE_UNREACHABLE_HTML;
+      try {
+        const res = await fetch(`${API_BASE}/delivery/quote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(6000),
+        });
+        const json = await res.json().catch(() => null);
+        if (json?.success) html = renderDeliveryQuotePanel(json.data, { stage: 2 });
+      } catch { /* the unreachable line, as on the server */ }
+      if (seq !== quoteSeq) return; // a newer destination superseded this quote
+      quotePanelEl.innerHTML = html;
+    }
+
+    // copyArea: the area NAME the cut-off line may say ("…goes out to Najjera today"). Only a structured area the
+    // customer picked; never a saved address's free-text details or written directions.
+    async function refreshEstimate(district: string | null, area: string | null, areaSlug: string | null = null, copyArea: string | null = null) {
+      setCutoffFor(district, copyArea);
+      void refreshQuotePanel(district, area, areaSlug);
+      const seq = ++estimateSeq;
+      // A typed place with no district is still priced by the order (from its text), so it is asked too.
+      if (!district && !area) { renderEstimate(null, false); return; }
+      if (!API_BASE) { renderEstimate(null, true); return; }
+      try {
+        const qs = new URLSearchParams({
+          district: district ?? '',
+          ...(area ? { area } : {}),
+          ...(areaSlug ? { areaSlug } : {}),
+          ...(estimateItems ? { items: estimateItems } : {}),
+        });
+        const res = await fetch(`${API_BASE}/commerce/delivery-estimate?${qs}`, { signal: AbortSignal.timeout(4000) });
+        const json = await res.json().catch(() => null);
+        if (seq !== estimateSeq) return; // a newer destination superseded this quote
+        renderEstimate(json?.success ? json.data.estimate : null, true);
+      } catch {
+        if (seq === estimateSeq) renderEstimate(null, true);
+      }
+    }
+
+    addressRadios.forEach((r) =>
+      r.addEventListener('change', () => {
+        if (r.checked && r.value !== '') refreshEstimate(r.dataset.district ?? null, r.dataset.area || null, r.dataset.areaSlug || null);
+        else if (r.checked) onPickerChange();
+      }),
+    );
+    // "You" summary: Edit opens the filled fields; "Buying for someone else?" opens them empty for the recipient.
+    (() => {
+      const summary = document.getElementById('who-summary');
+      const fields = document.getElementById('who-fields');
+      if (!summary || !fields) return;
+      const open = (focusId: string) => {
+        summary.classList.add('hidden');
+        fields.classList.remove('hidden');
+        document.getElementById(focusId)?.focus();
+      };
+      document.getElementById('who-edit')?.addEventListener('click', () => open('name'));
+      document.getElementById('who-someone-else')?.addEventListener('click', () => {
+        for (const id of ['name', 'phone']) {
+          const f = document.getElementById(id) as HTMLInputElement | null;
+          if (f) f.value = '';
+        }
+        document.getElementById('who-gift-note')?.classList.remove('hidden');
+        open('name');
+      });
+    })();
+
+    const pickerPayload = document.querySelector<HTMLInputElement>('form[action="/checkout"] .js-final-payload');
+    function onPickerChange() {
+      const raw = pickerPayload?.value ?? '';
+      if (!raw) { ++estimateSeq; setCutoffFor(null); renderEstimate(null, false); void refreshQuotePanel(null, null, null); return; }
+      try {
+        const loc = JSON.parse(raw);
+        // Collecting from our shop: nothing travels, so there is no fee to quote and no rider to promise.
+        if (loc?.pickupPointId) {
+          ++estimateSeq;
+          ++quoteSeq;
+          setCutoffFor(null);
+          renderEstimate({ kind: 'CONFIRMED', feeUgx: 0 }, true);
+          if (quotePanelEl) {
+            quotePanelEl.innerHTML = `<p class="text-sm font-bold text-emerald-900">Collect free from ${escapeQuoteText(String(loc.rawAddressText || '').replace(/^Pickup point:\s*/, ''))}.</p><p class="text-xs text-gray-600 mt-1">No delivery fee. We message you when your order is ready to collect.</p>`;
+          }
+          return;
+        }
+        // A typed location: ask with the very area line the order is placed with, district or not.
+        if (loc?.manual && loc.rawAddressText) { refreshEstimate(loc.district ? String(loc.district) : null, manualDeliveryAreaLine(loc.rawAddressText, loc.district), null); return; }
+        if (loc?.district) { refreshEstimate(String(loc.district), loc.area ?? null, loc.areaSlug ? String(loc.areaSlug) : null, loc.area ? String(loc.area) : loc.displayLabel ? String(loc.displayLabel) : null); return; }
+        // Written directions or a pickup point: a place, with no district to price (a pin alone can still name the area).
+        ++estimateSeq;
+        setCutoffFor(null);
+        renderEstimate(null, true);
+        void refreshQuotePanel(null, null, null);
+      } catch {
+        ++estimateSeq;
+        setCutoffFor(null);
+        renderEstimate(null, false);
+      }
+    }
+    pickerPayload?.addEventListener('change', onPickerChange);
+    // A building picked from the deep layer: its name is exactly what the rider should look for. Filled only
+    // when the customer has not written anything there themselves.
+    // A place our map did not know ("Parliament"): the customer picked its area another way; the words they typed
+    // are exactly what the rider should look for. Filled only when they have not written anything there.
+    document.addEventListener('gp:place-typed', (e) => {
+      const d = (e as CustomEvent<{ text: string }>).detail;
+      const field = document.getElementById('deliveryAddress') as HTMLInputElement | null;
+      if (field && !field.value.trim() && d?.text) field.value = d.text.slice(0, 200);
+    });
+    document.addEventListener('gp:place-picked', (e) => {
+      const d = (e as CustomEvent<{ name: string; detail: string }>).detail;
+      const field = document.getElementById('deliveryAddress') as HTMLInputElement | null;
+      if (field && !field.value.trim() && d?.name) field.value = [d.name, d.detail].filter(Boolean).join(', ').slice(0, 200);
+    });
+    // A returning guest's form opens with their last place already chosen:
+    // price it now rather than showing "pick a location" beside a location.
+    // (Called directly: re-dispatching 'change' would also fire the funnel event.)
+    const savedChosenAtLoad = document.querySelector<HTMLInputElement>('input.js-address-choice:checked');
+    if (pickerPayload?.value && !(savedChosenAtLoad && savedChosenAtLoad.value !== '')) onPickerChange();
+    // A saved address chosen at load: price it here too, so its fee shows beside it, not only in the summary.
+    else if (savedChosenAtLoad && savedChosenAtLoad.value !== '') {
+      refreshEstimate(savedChosenAtLoad.dataset.district ?? null, savedChosenAtLoad.dataset.area || null, savedChosenAtLoad.dataset.areaSlug || null);
+    }
+
+    // ── promo code (Apply = live preview from the SAME evaluator that charges) ──
+    // 0196: what a gift card / store credit code is worth, before the order is placed. The order itself is the
+    // authority (it holds the money in its own transaction); this is only so the customer knows what to expect.
+    {
+      const creditInput = document.getElementById('storeCreditCode') as HTMLInputElement | null;
+      const creditCheck = document.getElementById('credit-check') as HTMLButtonElement | null;
+      const creditMsg = document.getElementById('credit-message');
+      const ugx = (n: number) => `UGX ${Math.round(n).toLocaleString('en-US')}`;
+      creditCheck?.addEventListener('click', async () => {
+        const code = (creditInput?.value ?? '').trim();
+        if (!creditMsg) return;
+        if (!code) { creditMsg.textContent = 'Type the code from your card or SMS.'; return; }
+        if (!API_BASE) { creditMsg.textContent = 'The card is checked when you place the order.'; return; }
+        creditCheck.disabled = true;
+        creditMsg.textContent = 'Checking\u2026';
+        try {
+          const res = await fetch(`${API_BASE}/commerce/credit/check`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }), signal: AbortSignal.timeout(5000) });
+          const json = await res.json().catch(() => null);
+          if (json?.success && json.data?.usable) {
+            // What it means for THIS order, from the total on screen (the order itself is the authority on placing).
+            const shown = Number((document.getElementById('grand-total-value')?.textContent ?? '').replace(/[^0-9]/g, ''));
+            const label = `${json.data.kind === 'gift_card' ? 'Gift card' : 'Store credit'} ${json.data.masked}: ${ugx(json.data.balanceUgx)} available.`;
+            if (shown > 0) {
+              const pays = Math.min(shown, json.data.balanceUgx);
+              const rest = shown - pays;
+              creditMsg.textContent = rest > 0
+                ? `${label} On this order it pays ${ugx(pays)}; you pay ${ugx(rest)} with Mobile Money or card. Applied when you place the order.`
+                : `${label} It covers this order in full; nothing to pay by Mobile Money or card. Applied when you place the order.`;
+            } else {
+              creditMsg.textContent = `${label} It is applied when you place the order.`;
+            }
+            creditMsg.className = 'text-[11px] font-semibold text-green-700';
+          } else {
+            creditMsg.textContent = json?.data?.reason ?? 'That code is not right. Check each character, or remove it to pay the full amount.';
+            creditMsg.className = 'text-[11px] font-semibold text-red-700';
+          }
+        } catch {
+          creditMsg.textContent = 'We could not check it just now. It is checked again when you place the order.';
+        } finally {
+          creditCheck.disabled = false;
+        }
+      });
+      // 0199: "Shop with it" on an opened gift card left its code for this tab: fill the box once, and check it.
+      try {
+        const handed = sessionStorage.getItem('gp_gift_code');
+        if (handed && creditInput && !creditInput.value.trim()) {
+          creditInput.value = handed;
+          sessionStorage.removeItem('gp_gift_code');
+          creditCheck?.click();
+        }
+      } catch { /* private mode: the customer types it */ }
+    }
+    const promoInput = document.getElementById('couponCode') as HTMLInputElement | null;
+    const promoApply = document.getElementById('promo-apply') as HTMLButtonElement | null;
+    const promoMsg = document.getElementById('promo-message');
+    const promoRow = document.getElementById('promo-row');
+    const promoRowValue = document.getElementById('promo-row-value');
+    const promoQuoteField = document.getElementById('previewQuoteId') as HTMLInputElement | null;
+    const promoItems: Array<{ productId: string; quantity: number }> = (() => {
+      try { return JSON.parse(document.getElementById('promo-code-block')?.getAttribute('data-items') || '[]'); }
+      catch { return []; }
+    })();
+
+    function setPromo(discount: number, message: string | null, tone: 'ok' | 'error' | 'muted') {
+      promoDiscountUgx = discount;
+      if (promoRow && promoRowValue) {
+        promoRow.classList.toggle('hidden', discount <= 0);
+        promoRowValue.textContent = '\u2212' + ugx(discount);
+      }
+      if (promoMsg) {
+        promoMsg.textContent = message ?? '';
+        promoMsg.className = 'text-[11px] font-semibold ' +
+          (tone === 'ok' ? 'text-emerald-700' : tone === 'error' ? 'text-red-600' : 'text-slate-600');
+      }
+      renderEstimate(lastEstimate);
+    }
+
+    promoApply?.addEventListener('click', async () => {
+      const code = (promoInput?.value ?? '').trim();
+      if (promoQuoteField) promoQuoteField.value = '';
+      if (!code) { setPromo(0, null, 'muted'); return; }
+      if (!API_BASE || promoItems.length === 0) { setPromo(0, 'The code will be applied when you place the order.', 'muted'); return; }
+      promoApply.disabled = true;
+      if (promoMsg) { promoMsg.textContent = 'Checking\u2026'; promoMsg.className = 'text-[11px] font-semibold text-slate-600'; }
+      try {
+        const res = await fetch(`${API_BASE}/commerce/pricing-preview`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: promoItems, couponCode: code }),
+          signal: AbortSignal.timeout(5000),
+        });
+        const json = await res.json().catch(() => null);
+        if (json?.success && json.data) {
+          if (json.data.couponApplied) {
+            if (promoQuoteField) promoQuoteField.value = String(json.data.quoteId || '');
+            setPromo(Number(json.data.couponDiscountUgx) || 0, `Code applied. You save ${ugx(Number(json.data.couponDiscountUgx) || 0)}.`, 'ok');
+          } else {
+            setPromo(0, json.data.couponMessage || 'This code cannot be applied to this basket.', 'error');
+          }
+        } else {
+          setPromo(0, json?.error?.message || 'Could not check the code right now. It will still be applied when you place the order if it is valid.', 'muted');
+        }
+      } catch {
+        setPromo(0, 'Could not check the code right now. It will still be applied when you place the order if it is valid.', 'muted');
+      } finally {
+        promoApply.disabled = false;
+      }
+    });
+    // Editing the code invalidates the previewed quote (the server re-prices anyway).
+    promoInput?.addEventListener('input', () => { if (promoQuoteField) promoQuoteField.value = ''; });
+    // A code carried back after a refusal is checked again, so the summary
+    // shows its discount and the retry carries a fresh preview.
+    if (promoInput?.value.trim()) promoApply?.click();
+
+    // ── offline draft persistence (brief F.5): a dropped connection must not
+    // eat a half-typed address. Saved locally, restored when fields are empty,
+    // cleared on successful submission (success page has no form).
+    const DRAFT_KEY = 'gp_checkout_draft_v1';
+    const draftFields = ['name', 'email', 'phone', 'deliveryAddress'] as const;
+    const formEl = document.getElementById('checkout-form') as HTMLFormElement | null;
+    function saveDraft() {
+      try {
+        const data: Record<string, string> = {};
+        for (const f of draftFields) {
+          const el = document.getElementById(f) as HTMLInputElement | null;
+          if (el?.value) data[f] = el.value;
+        }
+        const payloadEl = formEl?.querySelector('.js-final-payload') as HTMLInputElement | null;
+        if (payloadEl?.value) data.locationJson = payloadEl.value;
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+      } catch { /* storage full/blocked. Drafts are a convenience */ }
+    }
+    function restoreDraft() {
+      try {
+        const raw = localStorage.getItem(DRAFT_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw) as Record<string, string>;
+        for (const f of draftFields) {
+          const el = document.getElementById(f) as HTMLInputElement | null;
+          if (el && !el.value && data[f]) el.value = data[f];
+        }
+      } catch { /* corrupt draft = ignore */ }
+    }
+    restoreDraft();
+    formEl?.addEventListener('input', () => saveDraft());
+    formEl?.addEventListener('submit', () => {
+      // Stamp last-touch marketing attribution onto the order (best-effort).
+      try {
+        const attrEl = document.getElementById('attribution-field') as HTMLInputElement | null;
+        if (attrEl) attrEl.value = JSON.stringify(getCheckoutAttribution() ?? {});
+      } catch { /* attribution is optional */ }
+      try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+    });
+
+    // ── live redemption value preview (PART G: value shown WITH the points) ──
+    const redeemInput = document.getElementById('redeemPoints') as HTMLInputElement | null;
+    const redeemPreview = document.getElementById('redeem-value-preview');
+    redeemInput?.addEventListener('input', () => {
+      const pv = Number(redeemInput.dataset.pointValue ?? 0);
+      const pts = parseInt(redeemInput.value, 10);
+      if (redeemPreview) {
+        redeemPreview.textContent =
+          Number.isInteger(pts) && pts > 0 && pv > 0 ? `= ${ugx(pts * pv)} off this order` : 'We will show the discount before you pay';
+      }
+    });
+
+    // ── pickup point method toggle (PART G field 1) ──────────────────────────
+    const methodRadios2 = document.querySelectorAll<HTMLInputElement>('input.js-method-radio');
+    const pickupSelect = document.getElementById('pickupPointSelect') as HTMLSelectElement | null;
+    const pickerBlock = formEl?.querySelector('.js-uganda-location-picker') as HTMLElement | null;
+    const landmarkField = document.getElementById('deliveryAddress')?.closest('div');
+    function syncMethod() {
+      const pickup = document.querySelector<HTMLInputElement>('input.js-method-radio:checked')?.value === 'pickup';
+      // One pickup point (our shop): the select stays hidden with the shop chosen; its address shows instead.
+      const single = pickupSelect?.dataset.single === '1';
+      pickupSelect?.classList.toggle('hidden', single || !pickup);
+      document.getElementById('pickupPointInfo')?.classList.toggle('hidden', !pickup);
+      pickerBlock?.classList.toggle('hidden', pickup);
+      (landmarkField as HTMLElement | undefined)?.classList.toggle('hidden', pickup);
+      if (pickup) applyPickupSelection();
+    }
+    function applyPickupSelection() {
+      const opt = pickupSelect?.selectedOptions?.[0];
+      const payloadEl = formEl?.querySelector('.js-final-payload') as HTMLInputElement | null;
+      if (!payloadEl) return;
+      if (opt && opt.value) {
+        payloadEl.value = JSON.stringify({
+          manual: true,
+          pickupPointId: opt.value,
+          rawAddressText: `Pickup point: ${opt.dataset.name}${opt.dataset.address ? ', ' + opt.dataset.address : ''}`,
+        });
+        payloadEl.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+    methodRadios2.forEach((r) => r.addEventListener('change', syncMethod));
+    pickupSelect?.addEventListener('change', applyPickupSelection);
+    // A form that came back with "collect" chosen opens in that state.
+    if (methodRadios2.length > 0) syncMethod();
+
+    // ── add_shipping_info: the address step becomes visible in the funnel ────
+    let shippingTracked = false;
+    pickerPayload?.addEventListener('change', () => {
+      if (shippingTracked || !pickerPayload.value) return;
+      shippingTracked = true;
+      track('add_shipping_info', { ecommerce: { value: subtotal, currency: 'UGX', items } });
+    });
+
     // ── add_payment_info — fires when user submits the checkout form ──────────
     const form = document.querySelector<HTMLFormElement>('form[action="/checkout"]');
+    // The button is really disabled, not just styled as disabled: a second
+    // tap on a slow connection re-POSTed the form. The intent fingerprint made
+    // that idempotent server-side, but the customer then saw "already being
+    // processed" as a red error. Deferred one tick so the submit itself
+    // carries the button's value.
+    form?.addEventListener('submit', () => {
+      if (!submitBtn) return;
+      submitBtn.textContent = 'Sending your order…';
+      submitBtn.classList.add('opacity-80', 'cursor-not-allowed');
+      setTimeout(() => { submitBtn.disabled = true; }, 0);
+    });
+    // Browser Back from the PesaPal page restores this document from the
+    // back-forward cache with the button still frozen. Give it back. The label
+    // is worked out from the method that is CHECKED now: a label captured at
+    // load said "Place order" under a selected "Pay now". And the browser can
+    // restore a checked radio without firing 'change' (a plain Back that is not
+    // a bfcache restore), so the choices are re-read after this event as well.
+    const resyncChoices = () => {
+      syncSubmitLabel();
+      syncAddressBlock();
+      if (methodRadios2.length > 0) syncMethod();
+    };
+    window.addEventListener('pageshow', (ev) => {
+      if (ev.persisted && submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('opacity-80', 'cursor-not-allowed');
+      }
+      resyncChoices();
+      window.setTimeout(resyncChoices, 0);
+    });
+
+    // A form that came back with field errors: take the customer to the
+    // summary that links to each one (focus used to stay on the page body).
+    (document.getElementById('checkout-error-summary') ?? document.querySelector<HTMLElement>('#checkout-feedback[data-error]'))?.focus();
     form?.addEventListener('submit', () => {
       const paymentMethod = (
         form.querySelector<HTMLInputElement>('input[name="paymentMethod"]:checked')?.value ?? 'unknown'
