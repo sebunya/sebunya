@@ -195,3 +195,42 @@ describe('ops/backup/alert.sh reaches a person, and says honestly when it did no
     expect(r.stdout).toContain('SEND FAILED');
   });
 });
+
+describe('pg-backup.sh never leaves a half-written dump, and never expires anything itself', () => {
+  const script = join(root, 'ops/backup/pg-backup.sh');
+  const fake = (pgDumpExit: number) => {
+    const bin = mkdtempSync(join(tmpdir(), 'gp-pgb-'));
+    writeFileSync(join(bin, 'docker'), `#!/bin/sh
+case "$*" in
+  *pg_dump*) printf 'PGDMP-partial'; exit ${pgDumpExit};;
+  *pg_restore*) cat >/dev/null; exit 0;;
+  run*) exit 1;;
+esac
+`);
+    chmodSync(join(bin, 'docker'), 0o755);
+    return bin;
+  };
+  const { spawnSync } = require('node:child_process') as typeof import('node:child_process');
+  const { readdirSync } = require('node:fs') as typeof import('node:fs');
+
+  it('a pg_dump that dies part-way leaves nothing in nightly/', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gp-nightly-'));
+    const r = spawnSync('bash', [script], { env: { ...process.env, PATH: `${fake(1)}:/usr/bin:/bin`, BACKUP_NIGHTLY_DIR: dir }, encoding: 'utf8' });
+    expect(r.status).not.toBe(0);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it('a proved dump is renamed into place; a failed media archive leaves no partial file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gp-nightly-'));
+    const r = spawnSync('bash', [script], { env: { ...process.env, PATH: `${fake(0)}:/usr/bin:/bin`, BACKUP_NIGHTLY_DIR: dir }, encoding: 'utf8' });
+    expect(r.status).not.toBe(0);
+    const left = readdirSync(dir);
+    expect(left).toHaveLength(1);
+    expect(left[0]).toMatch(/^goldplus-prod-nightly-.*\.dump$/);
+  });
+
+  it('has no age-based delete: the Storage Steward is the only pruner (rule 4)', () => {
+    const s = read('ops/backup/pg-backup.sh');
+    expect(s).not.toMatch(/-delete|KEEP_DAYS|\brm -f "\$OUT"/);
+  });
+});
