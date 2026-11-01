@@ -40,7 +40,7 @@ const spokenPrice = saleUgx !== null ? `${formatUgx(saleUgx)}, reduced from ${fo
 // ProductCard and the recently-viewed rail.
 const availabilityLabel = item.availability?.kind === "in_stock"
   ? "In stock"
-  : item.availability?.kind === "out_of_stock" ? "Out of stock"
+  : item.availability?.kind === "out_of_stock" ? "Sold out"
   : item.availability?.kind === "pre_order" ? "Pre-order"
   : "Confirm availability";
 const displayReason = showReason ? supportedRecommendationReason(item.reasonCode) : undefined;
@@ -89,6 +89,11 @@ const productType = lowerName.includes("charger") ? "Charger"
            <span class="text-[11px] font-bold text-slate-600 tracking-wider uppercase">{productType}</span>
            <span class="text-[11px] font-bold text-slate-600 mt-1 uppercase tracking-tight">Image unavailable</span>
         </div>
+      )}
+      {item.availability?.kind === "out_of_stock" && (
+        <span class="absolute inset-0 flex items-center justify-center bg-slate-900/45 pointer-events-none" aria-hidden="true" data-sold-out-overlay>
+          <span class="text-white text-lg sm:text-xl font-black tracking-tight drop-shadow-md">Sold out</span>
+        </span>
       )}
     </a>
 
