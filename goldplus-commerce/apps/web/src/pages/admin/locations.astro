@@ -1,0 +1,496 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../lib/session";
+import { apiBase } from "../../lib/api";
+
+/**
+ * Admin Locations section (location-module brief PART J.1): the six views that
+ * make the module improve instead of decay. Server-rendered, POST intents,
+ * zero client framework — same shape as the delivery-zones cockpit.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/locations", 303);
+
+const authHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+let actionMessage = "";
+let actionError = "";
+
+if (Astro.request.method === "POST") {
+  try {
+    const form = await Astro.request.formData();
+    const intent = String(form.get("intent") || "");
+    if (intent === "places-probe") {
+      const res = await fetch(`${apiBase}/admin/locations/places-probe`, { method: "POST", headers: authHeaders, body: "{}", signal: AbortSignal.timeout(8000) });
+      const json: any = await res.json().catch(() => null);
+      const d = json?.data;
+      if (!res.ok || !json?.success) actionError = json?.error?.message ?? "Could not run the check.";
+      else if (d.status === "ok") actionMessage = `Google answered (${d.suggestions} suggestions for "acacia mall"). Building search is on at checkout.`;
+      else if (d.status === "refused") actionError = `Google refused: ${d.fault?.reason}${d.fault?.httpStatus ? ` (HTTP ${d.fault.httpStatus})` : ""}. See the card below for the fix.`;
+      else if (d.status === "too_soon") actionError = "Checked less than 20 seconds ago. Wait a moment and try again.";
+      else if (d.status === "budget_reached") actionError = "This month's Google allowance is used up, so no check was made.";
+      else actionError = "No Google key is set on the server.";
+    } else if (intent === "promote") {
+      const res = await fetch(`${apiBase}/admin/locations/misses/promote`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          query: String(form.get("query") || ""),
+          areaSlug: String(form.get("areaSlug") || ""),
+          confidence: String(form.get("confidence") || "strong"),
+        }),
+      });
+      const json: any = await res.json().catch(() => null);
+      if (res.ok && json?.success) actionMessage = `Alias created (${json.data.resolvedMisses} recorded searches now resolve).`;
+      else actionError = json?.error?.message ?? "Promotion refused.";
+    } else if (intent === "resolve") {
+      const res = await fetch(`${apiBase}/admin/locations/review-queue/${String(form.get("addressId"))}/resolve`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          areaSlug: String(form.get("areaSlug") || ""),
+          alsoCreateAlias: String(form.get("alsoCreateAlias") || "") === "true",
+          aliasQuery: String(form.get("aliasQuery") || "") || undefined,
+        }),
+      });
+      const json: any = await res.json().catch(() => null);
+      if (res.ok && json?.success) actionMessage = "Address resolved — it leaves the queue and becomes dispatchable.";
+      else actionError = json?.error?.message ?? "Resolution refused.";
+    } else if (intent === "landmark") {
+      const res = await fetch(`${apiBase}/admin/locations/landmarks`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({
+          areaSlug: String(form.get("areaSlug") || ""),
+          name: String(form.get("name") || ""),
+          landmarkType: String(form.get("landmarkType") || "other"),
+          verified: true,
+        }),
+      });
+      const json: any = await res.json().catch(() => null);
+      if (res.ok && json?.success) actionMessage = "Landmark saved.";
+      else actionError = json?.error?.message ?? "Landmark refused.";
+    } else if (intent === "landmark-verify") {
+      const res = await fetch(`${apiBase}/admin/locations/landmarks/${String(form.get("id"))}/verify`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ verified: String(form.get("verified")) === "true" }),
+      });
+      const json: any = await res.json().catch(() => null);
+      if (res.ok && json?.success) actionMessage = "Landmark updated.";
+      else actionError = json?.error?.message ?? "Update refused.";
+    } else if (intent === "pickup") {
+      const res = await fetch(`${apiBase}/admin/locations/pickup-points`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({
+          id: String(form.get("id") || "") || undefined,
+          name: String(form.get("name") || ""),
+          operator: String(form.get("operator") || "agent"),
+          areaSlug: String(form.get("areaSlug") || "") || null,
+          physicalAddress: String(form.get("physicalAddress") || "") || null,
+          landmarkText: String(form.get("landmarkText") || "") || null,
+          phone: String(form.get("phone") || "") || null,
+          servesDistricts: String(form.get("servesDistricts") || "")
+            .split(",")
+            .map((d) => d.trim())
+            .filter(Boolean),
+        }),
+      });
+      const json: any = await res.json().catch(() => null);
+      if (res.ok && json?.success) actionMessage = "Pickup point saved (created inactive — toggle it on when ready).";
+      else actionError = json?.error?.message ?? "Pickup point refused.";
+    } else if (intent === "pickup-active") {
+      const res = await fetch(`${apiBase}/admin/locations/pickup-points/${String(form.get("id"))}/active`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ active: String(form.get("active")) === "true" }),
+      });
+      const json: any = await res.json().catch(() => null);
+      if (res.ok && json?.success) actionMessage = "Pickup point toggled.";
+      else actionError = json?.error?.message ?? "Toggle refused.";
+    } else if (intent === "zone") {
+      const num = (v: FormDataEntryValue | null) => {
+        const s = String(v ?? "").trim();
+        return s === "" ? null : Number(s);
+      };
+      const res = await fetch(`${apiBase}/admin/locations/zones/${String(form.get("zoneCode"))}`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({
+          zoneName: String(form.get("zoneName") || ""),
+          slaHoursMin: num(form.get("slaHoursMin")),
+          slaHoursMax: num(form.get("slaHoursMax")),
+          fallbackFeeUgx: num(form.get("fallbackFeeUgx")),
+          freeDeliveryThresholdUgx: num(form.get("freeDeliveryThresholdUgx")),
+          codAllowed: String(form.get("codAllowed") || "") === "" ? null : String(form.get("codAllowed")) === "true",
+          codMaxOrderValueUgx: num(form.get("codMaxOrderValueUgx")),
+          prepayRequiredAboveUgx: num(form.get("prepayRequiredAboveUgx")),
+          carrier: String(form.get("carrier") || "") || null,
+          active: String(form.get("active") || "") === "true",
+        }),
+      });
+      const json: any = await res.json().catch(() => null);
+      if (res.ok && json?.success) actionMessage = `Zone ${json.data.zoneCode} saved${json.data.active ? " and ACTIVE" : ""}.`;
+      else actionError = json?.error?.message ?? "Zone refused — every value must be set before activation.";
+    }
+  } catch {
+    actionError = "Network error executing the action.";
+  }
+}
+
+async function fetchList<T>(path: string): Promise<T[]> {
+  try {
+    const res = await fetch(`${apiBase}${path}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(6000) });
+    const json: any = res.ok ? await res.json().catch(() => null) : null;
+    return json?.success && Array.isArray(json.data) ? json.data : [];
+  } catch {
+    return [];
+  }
+}
+
+const [misses, reviewQueue, landmarks, pickupPoints, zones, exceptions] = await Promise.all([
+  fetchList<any>("/admin/locations/misses?limit=50"),
+  fetchList<any>("/admin/locations/review-queue"),
+  fetchList<any>("/admin/locations/landmarks"),
+  fetchList<any>("/admin/locations/pickup-points"),
+  fetchList<any>("/admin/locations/zones"),
+  fetchList<any>("/admin/locations/data-exceptions"),
+]);
+const fmt = new Intl.NumberFormat("en-UG");
+
+// 0193: where customers want delivery — "Deliver to" choices, fees shown, orders, "Locate me" outcomes (no coordinates).
+let demand: null | {
+  days: number;
+  areas: Array<{ areaSlug: string | null; label: string; deliverToSets: number; feeViews: number; orders: number; medianFeeShownUgx: number | null; locateChosen: number; locateMissed: number; medianOfferKm: number | null }>;
+  feeShock: Array<{ label: string; feeViews: number; orders: number; conversion: number; medianFeeShownUgx: number | null }>;
+  areaPointFlags: Array<{ label: string; reason: string; suggestedPoint?: { lat: number; lng: number; pins: number } | null }>;
+} = null;
+try {
+  const res = await fetch(`${apiBase}/admin/locations/demand?days=30`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(6000) });
+  const json: any = res.ok ? await res.json().catch(() => null) : null;
+  if (json?.success) demand = json.data;
+} catch { /* the section says it could not be read */ }
+
+// Google Places spend for the checkout's deep place layer: this month, today, and today's paced allowance.
+let places: {
+  configured: boolean;
+  usage: null | { month: string; suggest: { used: number; cap: number; today: number; todayAllowance: number }; details: { used: number; cap: number; today: number; todayAllowance: number } };
+  health?: null | { lastOkAt: string | null; lastFault: null | { at: string; kind: string; httpStatus: number | null; reason: string; detail: string }; pausedUntil: string | null };
+} | null = null;
+// What a Google refusal means, in the words of the fix (reason codes from Google's ErrorInfo).
+const placesFix: Record<string, string> = {
+  BILLING_DISABLED: 'Billing is not active on the Google Cloud project. Pay the one-time $30 prepayment (Billing > Payment overview) or fix the card, then wait for Google to credit it.',
+  SERVICE_DISABLED: 'Places API (New) is switched off for the project. Enable it in APIs & Services > Library.',
+  API_KEY_INVALID: 'The key in GOOGLE_PLACES_API_KEY is wrong or deleted. Copy it again from APIs & Services > Credentials.',
+  API_KEY_IP_ADDRESS_BLOCKED: "The key's IP restriction does not include the server's address. Add the address Google names below.",
+  API_KEY_SERVICE_BLOCKED: "The key's API restriction leaves out Places API (New). Add it under the key's API restrictions.",
+  TIMEOUT: 'Google did not answer in time. One-off timeouts are normal; many in a row point at the server network.',
+};
+const kampala = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Africa/Kampala', dateStyle: 'medium', timeStyle: 'short' }) : 'never');
+try {
+  const res = await fetch(`${apiBase}/admin/locations/places-usage`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) });
+  const json: any = res.ok ? await res.json().catch(() => null) : null;
+  if (json?.success) places = json.data;
+} catch { /* the card says it could not be read */ }
+---
+
+<AdminLayout title="Locations" description="Gazetteer learning loop, address review, landmarks, pickup points, zones and known data defects.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl space-y-8">
+    <div class="pb-4 border-b border-gray-200">
+      <h1 class="text-2xl font-black text-brand-dark">Locations</h1>
+      <p class="text-xs text-gray-500 mt-1">The learning loop that keeps address capture improving instead of decaying.</p>
+    </div>
+
+    {actionMessage && <div class="rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-sm font-bold text-green-800">{actionMessage}</div>}
+    {actionError && <div class="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm font-bold text-red-800">{actionError}</div>}
+
+    {/* Where customers want delivery (0193 location signals) */}
+    <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+        <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Where customers want delivery (last {demand?.days ?? 30} days)</h2>
+      </div>
+      <div class="px-6 py-4 text-sm text-gray-700 space-y-4">
+        {!demand && <p>Could not read the location signals just now.</p>}
+        {demand && demand.areas.length === 0 && <p>No location signals yet. They start when customers choose "Deliver to", see a delivery fee, or use Locate me.</p>}
+        {demand && demand.areaPointFlags.length > 0 && (
+          <div class="rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p class="text-xs font-black uppercase tracking-widest text-amber-900">Area points to check</p>
+            <ul class="mt-1 list-disc pl-5 text-xs text-amber-900">{demand.areaPointFlags.map((f) => (
+              <li>
+                <b>{f.label}</b>: {f.reason}
+                {f.suggestedPoint && (
+                  <> Where {f.suggestedPoint.pins} customers who chose it really were: <a class="font-bold underline" href={`https://maps.google.com/?q=${f.suggestedPoint.lat},${f.suggestedPoint.lng}`} target="_blank" rel="noopener">{f.suggestedPoint.lat}, {f.suggestedPoint.lng}</a> (set it as a manual point if it looks right).</>
+                )}
+              </li>
+            ))}</ul>
+          </div>
+        )}
+        {demand && demand.feeShock.length > 0 && (
+          <div class="rounded-xl border border-slate-200 p-3">
+            <p class="text-xs font-black uppercase tracking-widest text-slate-700">Fee seen, few orders (10+ fee views)</p>
+            <ul class="mt-1 list-disc pl-5 text-xs">{demand.feeShock.map((r) => <li><b>{r.label}</b>: {fmt.format(r.orders)} orders from {fmt.format(r.feeViews)} fee views ({Math.round(r.conversion * 100)}%){r.medianFeeShownUgx !== null ? `, typical fee UGX ${fmt.format(r.medianFeeShownUgx)}` : ''}</li>)}</ul>
+          </div>
+        )}
+        {demand && demand.areas.length > 0 && (
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500"><th class="py-1 pr-3">Area</th><th class="pr-3">Deliver to set</th><th class="pr-3">Fee views</th><th class="pr-3">Orders</th><th class="pr-3">Typical fee</th><th class="pr-3">Locate me: chosen / typed</th><th>Median km</th></tr></thead>
+              <tbody>
+                {demand.areas.slice(0, 40).map((r) => (
+                  <tr class="border-t border-gray-100">
+                    <td class="py-1.5 pr-3 font-bold">{r.label}</td>
+                    <td class="pr-3">{fmt.format(r.deliverToSets)}</td>
+                    <td class="pr-3">{fmt.format(r.feeViews)}</td>
+                    <td class="pr-3">{fmt.format(r.orders)}</td>
+                    <td class="pr-3">{r.medianFeeShownUgx !== null ? `UGX ${fmt.format(r.medianFeeShownUgx)}` : '—'}</td>
+                    <td class="pr-3">{r.locateChosen} / {r.locateMissed}</td>
+                    <td>{r.medianOfferKm ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p class="text-xs text-gray-500">From "Deliver to" choices, delivery fees shown and Locate me. Linked to each visitor's profile for their experience; no IP addresses; Google Places points are never stored here.</p>
+      </div>
+    </section>
+
+    {/* 0. Google Places spend (deep place layer at checkout) */}
+    <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+        <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Google Places at checkout</h2>
+      </div>
+      <div class="px-6 py-4 text-sm text-gray-700 space-y-2">
+        {!places && <p>Could not read the usage counters just now.</p>}
+        {places && !places.configured && <p>Not configured. Checkout uses our own area search only. Set GOOGLE_PLACES_API_KEY on the server to add buildings and places.</p>}
+        {places?.configured && !places.usage && <p>Configured, but the usage counters are unreachable, so no Google request is being made (it fails closed).</p>}
+        {places?.configured && places.usage && (
+          <table class="w-full text-sm">
+            <thead><tr class="text-left text-[11px] uppercase tracking-widest text-gray-500"><th class="py-1">{places.usage.month}</th><th>This month</th><th>Monthly cap</th><th>Today</th><th>Today's allowance</th></tr></thead>
+            <tbody>
+              <tr class="border-t border-gray-100"><td class="py-1.5 font-bold">Suggestions</td><td>{fmt.format(places.usage.suggest.used)}</td><td>{fmt.format(places.usage.suggest.cap)}</td><td>{fmt.format(places.usage.suggest.today)}</td><td>{fmt.format(places.usage.suggest.todayAllowance)}</td></tr>
+              <tr class="border-t border-gray-100"><td class="py-1.5 font-bold">Place lookups</td><td>{fmt.format(places.usage.details.used)}</td><td>{fmt.format(places.usage.details.cap)}</td><td>{fmt.format(places.usage.details.today)}</td><td>{fmt.format(places.usage.details.todayAllowance)}</td></tr>
+            </tbody>
+          </table>
+        )}
+        {places?.configured && places.health && (
+          <div class="text-sm space-y-1" data-places-health>
+            <p>Google last answered: <strong>{kampala(places.health.lastOkAt)}</strong> (Kampala time).</p>
+            {places.health.pausedUntil && <p class="text-red-700 font-bold">Paused until {kampala(places.health.pausedUntil)}: Google refused the key, so checkout is not offering building search.</p>}
+            {places.health.lastFault && (!places.health.lastOkAt || places.health.lastFault.at > places.health.lastOkAt) && (
+              <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                <p class="font-bold text-red-800">Last refusal {kampala(places.health.lastFault.at)}: {places.health.lastFault.reason}{places.health.lastFault.httpStatus ? ` (HTTP ${places.health.lastFault.httpStatus})` : ''}</p>
+                {placesFix[places.health.lastFault.reason] && <p class="text-red-800">{placesFix[places.health.lastFault.reason]}</p>}
+                {places.health.lastFault.detail && <p class="text-xs text-red-700">Google said: {places.health.lastFault.detail}</p>}
+              </div>
+            )}
+          </div>
+        )}
+        {places?.configured && (
+          <form method="POST" class="flex items-center gap-3">
+            <input type="hidden" name="intent" value="places-probe" />
+            <button type="submit" class="px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-bold uppercase tracking-widest hover:bg-gray-50">Check Google now</button>
+            <span class="text-xs text-gray-500">Sends one real search to Google and shows its answer. Use it after fixing billing or the key.</span>
+          </form>
+        )}
+        <p class="text-xs text-gray-500">Google's free allowance is 10,000 a month for each line. A building already looked up in the last 30 days costs nothing.</p>
+      </div>
+    </section>
+
+    {/* 1. Unresolved searches */}
+    <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+        <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Unresolved searches ({misses.length} groups)</h2>
+        <p class="text-[10px] text-gray-500 mt-0.5">One click promotes a query into a living alias — this is how Kalerwe and Najjera entered the system properly.</p>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead><tr class="text-left text-[10px] font-black uppercase tracking-wider text-gray-500 border-b border-gray-100">
+            <th class="px-6 py-2">Query</th><th class="px-2 py-2">Seen</th><th class="px-2 py-2">Outcomes</th><th class="px-6 py-2">Promote to alias</th>
+          </tr></thead>
+          <tbody>
+            {misses.length === 0 && <tr><td colspan="4" class="px-6 py-6 text-xs text-gray-500">No unresolved searches recorded yet.</td></tr>}
+            {misses.map((m: any) => (
+              <tr class="border-b border-gray-50">
+                <td class="px-6 py-3 font-bold">{m.rawSamples?.[0] ?? m.normalisedQuery}<span class="block text-[10px] font-normal text-gray-500">{m.normalisedQuery}</span></td>
+                <td class="px-2 py-3">{fmt.format(m.frequency)}×</td>
+                <td class="px-2 py-3 text-[11px] text-gray-500">{Object.entries(m.resolvedVia ?? {}).map(([k, v]) => `${k}:${v}`).join(" ")}</td>
+                <td class="px-6 py-3">
+                  <form method="POST" class="flex items-center gap-2">
+                    <input type="hidden" name="intent" value="promote" />
+                    <input type="hidden" name="query" value={m.rawSamples?.[0] ?? m.normalisedQuery} />
+                    <input name="areaSlug" placeholder="anchor area-slug" required class="border border-gray-300 rounded px-2 py-1 text-xs w-44" />
+                    <select name="confidence" class="border border-gray-300 rounded px-1 py-1 text-xs">
+                      <option value="strong">strong</option><option value="exact">exact</option><option value="approximate">approximate</option>
+                    </select>
+                    <button class="bg-brand-charcoal text-white text-[10px] font-black uppercase px-3 py-1.5 rounded">Promote</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    {/* 2. Address review queue */}
+    <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+        <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Address review queue ({reviewQueue.length})</h2>
+        <p class="text-[10px] text-gray-500 mt-0.5">Manual-path addresses awaiting an area. The original text is preserved — resolution adds the link, never rewrites. Every view of this queue is audit-logged.</p>
+      </div>
+      <div class="divide-y divide-gray-50">
+        {reviewQueue.length === 0 && <p class="px-6 py-6 text-xs text-gray-500">Queue is empty — every address is resolved.</p>}
+        {reviewQueue.map((a: any) => (
+          <div class="px-6 py-4 flex flex-wrap items-start justify-between gap-4">
+            <div class="text-sm">
+              <p class="font-bold">{a.recipientName} · {a.phone}</p>
+              <p class="text-xs text-gray-600 mt-1">{a.rawAddressText ?? a.areaDetails}</p>
+              <p class="text-[10px] text-gray-500 mt-0.5">district: {a.district || "—"} {a.hasPin && <span class="text-green-700 font-bold">· 📍 pin: {a.gpsLat},{a.gpsLng}</span>}</p>
+            </div>
+            <form method="POST" class="flex items-center gap-2">
+              <input type="hidden" name="intent" value="resolve" />
+              <input type="hidden" name="addressId" value={a.id} />
+              <input name="areaSlug" placeholder="area-slug" required class="border border-gray-300 rounded px-2 py-1 text-xs w-44" />
+              <label class="flex items-center gap-1 text-[10px] text-gray-500"><input type="checkbox" name="alsoCreateAlias" value="true" /> alias</label>
+              <input name="aliasQuery" placeholder="alias text" class="border border-gray-300 rounded px-2 py-1 text-xs w-32" />
+              <button class="bg-brand-charcoal text-white text-[10px] font-black uppercase px-3 py-1.5 rounded">Resolve</button>
+            </form>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    {/* 3. Landmark manager */}
+    <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+        <div>
+          <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Landmarks ({landmarks.length})</h2>
+          <p class="text-[10px] text-gray-500 mt-0.5">Customer-entered landmarks arrive unverified; ops verification promotes them into suggestions.</p>
+        </div>
+        <form method="POST" class="flex items-center gap-2">
+          <input type="hidden" name="intent" value="landmark" />
+          <input name="areaSlug" placeholder="area-slug" required class="border border-gray-300 rounded px-2 py-1 text-xs w-36" />
+          <input name="name" placeholder="landmark name" required class="border border-gray-300 rounded px-2 py-1 text-xs w-40" />
+          <select name="landmarkType" class="border border-gray-300 rounded px-1 py-1 text-xs">
+            {["stage","school","church","mosque","hospital","clinic","fuel_station","supermarket","shop","market","bank","hotel","bar_restaurant","office_building","roundabout","bridge","other"].map((t) => <option value={t}>{t}</option>)}
+          </select>
+          <button class="bg-brand-charcoal text-white text-[10px] font-black uppercase px-3 py-1.5 rounded">Add</button>
+        </form>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <tbody>
+            {landmarks.length === 0 && <tr><td class="px-6 py-6 text-xs text-gray-500">No landmarks yet — they accumulate from real orders.</td></tr>}
+            {landmarks.slice(0, 50).map((l: any) => (
+              <tr class="border-b border-gray-50">
+                <td class="px-6 py-2 font-bold">{l.name}</td>
+                <td class="px-2 py-2 text-xs text-gray-500">{l.areaSlug}</td>
+                <td class="px-2 py-2 text-xs">{l.landmarkType} · used {l.usageCount}×</td>
+                <td class="px-2 py-2">{l.verified ? <span class="text-green-700 text-xs font-bold">verified</span> : <span class="text-amber-600 text-xs font-bold">unverified</span>}</td>
+                <td class="px-6 py-2">
+                  <form method="POST"><input type="hidden" name="intent" value="landmark-verify" /><input type="hidden" name="id" value={l.id} /><input type="hidden" name="verified" value={l.verified ? "false" : "true"} />
+                    <button class="text-[10px] font-black uppercase border border-gray-300 rounded px-2 py-1">{l.verified ? "Unverify" : "Verify"}</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    {/* 4. Pickup point manager */}
+    <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+        <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Pickup points ({pickupPoints.length})</h2>
+        <p class="text-[10px] text-gray-500 mt-0.5">Bus parcel offices and agents are how upcountry actually works. New points are created INACTIVE.</p>
+      </div>
+      <div class="p-6 space-y-4">
+        <form method="POST" class="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
+          <input type="hidden" name="intent" value="pickup" />
+          <input name="name" placeholder="Name *" required class="border border-gray-300 rounded px-2 py-1.5 text-xs" />
+          <select name="operator" class="border border-gray-300 rounded px-2 py-1.5 text-xs">
+            {["goldplus_shop","agent","bus_parcel_office","courier_branch","locker"].map((o) => <option value={o}>{o}</option>)}
+          </select>
+          <input name="areaSlug" placeholder="area-slug" class="border border-gray-300 rounded px-2 py-1.5 text-xs" />
+          <input name="phone" placeholder="phone" class="border border-gray-300 rounded px-2 py-1.5 text-xs" />
+          <input name="physicalAddress" placeholder="physical address" class="border border-gray-300 rounded px-2 py-1.5 text-xs col-span-2" />
+          <input name="servesDistricts" placeholder="serves districts (comma-sep)" class="border border-gray-300 rounded px-2 py-1.5 text-xs" />
+          <button class="bg-brand-charcoal text-white text-[10px] font-black uppercase px-3 py-2 rounded">Save point</button>
+        </form>
+        <div class="divide-y divide-gray-50">
+          {pickupPoints.map((p: any) => (
+            <div class="py-3 flex items-center justify-between gap-3">
+              <div class="text-sm"><span class="font-bold">{p.name}</span> <span class="text-xs text-gray-500">({p.operator}{p.areaSlug ? ` · ${p.areaSlug}` : ""})</span></div>
+              <form method="POST"><input type="hidden" name="intent" value="pickup-active" /><input type="hidden" name="id" value={p.id} /><input type="hidden" name="active" value={p.active ? "false" : "true"} />
+                <button class={`text-[10px] font-black uppercase rounded px-3 py-1.5 ${p.active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}`}>{p.active ? "Active — turn off" : "Inactive — turn on"}</button>
+              </form>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    {/* 5. Zone configuration */}
+    <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+        <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Zone policy (Z1–Z4)</h2>
+        <p class="text-[10px] text-gray-500 mt-0.5">SLA, COD and carrier policy per zone. FEES stay with the per-district delivery-zones cockpit (decision #7). A zone cannot activate until every value is set — unset means unset.</p>
+      </div>
+      <div class="p-6 grid gap-6 md:grid-cols-2">
+        {zones.map((z: any) => (
+          <form method="POST" class="border border-gray-200 rounded-xl p-4 space-y-2">
+            <input type="hidden" name="intent" value="zone" />
+            <input type="hidden" name="zoneCode" value={z.zoneCode} />
+            <p class="font-black text-sm">{z.zoneCode} {z.active ? <span class="text-green-700 text-[10px] uppercase">active</span> : <span class="text-gray-500 text-[10px] uppercase">inactive</span>}</p>
+            <input name="zoneName" value={z.zoneName} class="w-full border border-gray-300 rounded px-2 py-1 text-xs" placeholder="zone name" />
+            <div class="grid grid-cols-2 gap-2">
+              <input name="slaHoursMin" value={z.slaHoursMin ?? ""} placeholder="SLA min (h) — recorded only" title="Recorded policy — not used by delivery quoting. Customer windows come from the quoting engine's expected minutes." class="border border-gray-300 rounded px-2 py-1 text-xs" />
+              <input name="slaHoursMax" value={z.slaHoursMax ?? ""} placeholder="SLA max (h) — recorded only" title="Recorded policy — not used by delivery quoting. Customer windows come from the quoting engine's expected minutes." class="border border-gray-300 rounded px-2 py-1 text-xs" />
+              <input name="fallbackFeeUgx" value={z.fallbackFeeUgx ?? ""} placeholder="fallback fee UGX — recorded only" title="Recorded policy — not used by delivery quoting. Fees come from the quoting engine." class="border border-gray-300 rounded px-2 py-1 text-xs" />
+              <p class="col-span-2 text-[10px] text-amber-800">SLA hours and the fallback fee are recorded policy only — delivery quoting does not read them. Customers are charged and shown what the quoting engine computes.</p>
+              <input name="freeDeliveryThresholdUgx" value={z.freeDeliveryThresholdUgx ?? ""} placeholder="free-delivery ≥ UGX" title="Applies to orders delivered in this zone, and only while the zone is ACTIVE. Left blank, the shop-wide free-delivery threshold in the delivery configuration applies." class="border border-gray-300 rounded px-2 py-1 text-xs" />
+              <select name="codAllowed" class="border border-gray-300 rounded px-2 py-1 text-xs">
+                <option value="" selected={z.codAllowed === null}>COD: unset</option>
+                <option value="true" selected={z.codAllowed === true}>COD allowed</option>
+                <option value="false" selected={z.codAllowed === false}>COD not allowed</option>
+              </select>
+              <input name="codMaxOrderValueUgx" value={z.codMaxOrderValueUgx ?? ""} placeholder="COD max UGX" class="border border-gray-300 rounded px-2 py-1 text-xs" />
+              <input name="prepayRequiredAboveUgx" value={z.prepayRequiredAboveUgx ?? ""} placeholder="prepay above UGX" class="border border-gray-300 rounded px-2 py-1 text-xs" />
+              <select name="carrier" class="border border-gray-300 rounded px-2 py-1 text-xs">
+                <option value="" selected={!z.carrier}>carrier: unset</option>
+                {["own_rider","third_party_rider","bus_parcel","courier","pickup_only"].map((cr) => <option value={cr} selected={z.carrier === cr}>{cr}</option>)}
+              </select>
+            </div>
+            <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" name="active" value="true" checked={z.active} /> Active (blocked until every value above is set)</label>
+            <button class="bg-brand-charcoal text-white text-[10px] font-black uppercase px-4 py-2 rounded">Save {z.zoneCode}</button>
+          </form>
+        ))}
+      </div>
+    </section>
+
+    {/* 6. Known data defects */}
+    <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+        <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Known data defects ({exceptions.length})</h2>
+        <p class="text-[10px] text-gray-500 mt-0.5">Read-only: every defect documented in the source data, so ops sees what is already known instead of rediscovering it. Empty until the gazetteer import runs.</p>
+      </div>
+      <div class="overflow-x-auto max-h-80 overflow-y-auto">
+        <table class="w-full text-xs">
+          <tbody>
+            {exceptions.length === 0 && <tr><td class="px-6 py-6 text-gray-500">No exceptions loaded — the v1 data import populates this view.</td></tr>}
+            {exceptions.map((e: any) => (
+              <tr class="border-b border-gray-50">
+                <td class="px-6 py-2 font-bold whitespace-nowrap">{e.exceptionType}</td>
+                <td class="px-2 py-2">{e.district ?? "—"}</td>
+                <td class="px-2 py-2">{e.postcode ?? "—"}</td>
+                <td class="px-2 py-2 text-gray-500">{e.description ?? e.areaRef ?? ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</AdminLayout>
