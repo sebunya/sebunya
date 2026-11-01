@@ -65,3 +65,10 @@ describe('payment attempt updated_at (review 2026-11)', () => {
     expect(src).toMatch(/updatedAt: attemptWriteChangesAttempt\(current\?\.status, update\) \? new Date\(\) : undefined/);
   });
 });
+
+describe('refund resolve step-up (review 2026-11)', () => {
+  it('POST refunds/:refundId/resolve requires the payment_refund step-up', () => {
+    const src = api('interfaces/http/routes/admin/payments.ts');
+    expect(src).toMatch(/routes\.post\('\/orders\/:orderId\/refunds\/:refundId\/resolve', requirePermissions\(\[PERMISSIONS\.PAYMENTS_REFUND\]\), requireStepUp\('payment_refund'\)/);
+  });
+});
