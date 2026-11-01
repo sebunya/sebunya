@@ -2,6 +2,8 @@
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { apiBase } from '../../../lib/api';
 import { readSessionToken } from '../../../lib/session';
+import { kampalaWallTimeToIso } from '../../../lib/pricingVersionDraft';
+import { fetchApprovedCatalogueWithStatus } from '../../../lib/catalogue';
 
 const token = readSessionToken(Astro.request);
 if (!token) return Astro.redirect('/admin/login?returnTo=/admin/pricing', 303);
@@ -11,11 +13,25 @@ let notice: Notice | null = null;
 let simulation: any = null;
 
 const optionalInteger = (value: FormDataEntryValue | null) => value && String(value).trim() ? Number(value) : null;
-const versionFrom = (form: FormData) => ({
-  conditions: form.get('minimumSubtotal') ? [{ type: 'MIN_CART_SUBTOTAL', value: Number(form.get('minimumSubtotal')) }] : [],
-  benefits: [{ type: String(form.get('benefitType')), value: Number(form.get('benefitValue')), maximumDiscountUgx: optionalInteger(form.get('maximumDiscount')) }],
+// A bundle (gap analysis #9): SKUs typed by staff, resolved to live product ids. Each becomes a PRODUCT_INCLUDED
+// condition (all must be in the basket) and the benefit is aimed at those products; the storefront shows it on
+// each product's page once the promotion is approved and active. A bundle never carries a coupon code.
+const resolveBundle = async (raw: string): Promise<{ ids: string[]; unknown: string[] }> => {
+  const skus = [...new Set(raw.split(/[\s,]+/).map((v) => v.trim().toUpperCase()).filter(Boolean))].slice(0, 4);
+  if (skus.length === 0) return { ids: [], unknown: [] };
+  const list: Array<{ id: string; sku: string | null }> = (await fetchApprovedCatalogueWithStatus(apiBase)).products;
+  const bySku = new Map(list.filter((p) => p.sku).map((p) => [String(p.sku).toUpperCase(), p.id]));
+  return { ids: skus.map((k) => bySku.get(k)).filter((v): v is string => Boolean(v)), unknown: skus.filter((k) => !bySku.has(k)) };
+};
+const versionFrom = (form: FormData, bundleIds: string[] = []) => ({
+  conditions: [
+    ...(form.get('minimumSubtotal') ? [{ type: 'MIN_CART_SUBTOTAL', value: Number(form.get('minimumSubtotal')) }] : []),
+    ...bundleIds.map((id) => ({ type: 'PRODUCT_INCLUDED', value: id })),
+  ],
+  benefits: [{ type: String(form.get('benefitType')), value: Number(form.get('benefitValue')), maximumDiscountUgx: optionalInteger(form.get('maximumDiscount')), ...(bundleIds.length ? { targetProductIds: bundleIds } : {}) }],
   exclusions: form.get('excludedProductId') ? [{ type: 'PRODUCT', value: String(form.get('excludedProductId')) }] : [],
-  schedule: { startsAt: form.get('startsAt'), endsAt: form.get('endsAt') },
+  // Typed in Kampala time; sent with its offset so the API does not read it as UTC.
+  schedule: { startsAt: kampalaWallTimeToIso(String(form.get('startsAt') ?? '')), endsAt: kampalaWallTimeToIso(String(form.get('endsAt') ?? '')) },
   usagePolicy: { globalLimit: optionalInteger(form.get('globalLimit')), perCustomerLimit: optionalInteger(form.get('perCustomerLimit')), perCouponLimit: optionalInteger(form.get('perCouponLimit')), reservationTtlSeconds: Number(form.get('reservationTtlSeconds') || 900) },
   priority: Number(form.get('priority') || 0), stackable: form.get('stackable') === 'on', couponCode: form.get('couponCode') || null, priceFloorUgx: Number(form.get('priceFloorUgx') || 0),
 });
@@ -23,10 +39,14 @@ const versionFrom = (form: FormData) => ({
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const operation = String(form.get('operation'));
+  const bundle = operation === 'create' && String(form.get('bundleSkus') ?? '').trim() ? await resolveBundle(String(form.get('bundleSkus'))) : null;
+  if (bundle && (bundle.unknown.length > 0 || bundle.ids.length < 2 || String(form.get('couponCode') ?? '').trim())) {
+    notice = { kind: 'error', text: bundle.unknown.length ? `Not a live product SKU: ${bundle.unknown.join(', ')}. Nothing was created.` : String(form.get('couponCode') ?? '').trim() ? 'A bundle applies automatically, so it cannot have a coupon code. Nothing was created.' : 'A bundle needs at least two products. Nothing was created.' };
+  } else
   try {
     const response = operation === 'simulate'
       ? await fetch(`${apiBase}/admin/pricing/simulate`, { method: 'POST', headers, body: JSON.stringify({ items: [{ productId: form.get('productId'), quantity: Number(form.get('quantity')) }], couponCode: form.get('simulationCoupon') || null, shippingUgx: Number(form.get('shippingUgx') || 0), taxUgx: 0 }) })
-      : await fetch(`${apiBase}/admin/pricing/definitions`, { method: 'POST', headers, body: JSON.stringify({ key: form.get('key'), name: form.get('name'), description: form.get('description'), version: versionFrom(form) }) });
+      : await fetch(`${apiBase}/admin/pricing/definitions`, { method: 'POST', headers, body: JSON.stringify({ key: form.get('key'), name: form.get('name'), description: form.get('description'), version: versionFrom(form, bundle?.ids ?? []) }) });
     const body = await response.json().catch(() => null);
     if (response.status === 403) notice = { kind: 'error', text: `Permission denied: pricing.${operation === 'simulate' ? 'simulate' : 'create'} is required.` };
     else if (response.status === 409) notice = { kind: 'conflict', text: body?.error?.message || 'Stale conflict.' };
@@ -63,15 +83,20 @@ const tone = (state: string) => state === 'ACTIVE' || state === 'APPROVED' || st
     {!permissionDenied && <section class="grid xl:grid-cols-2 gap-6 mb-8">
       <form method="POST" class="bg-white border rounded-2xl p-5 space-y-3"><input type="hidden" name="operation" value="create"/><h3 class="font-black">Create governed draft</h3>
         <div class="grid md:grid-cols-2 gap-3"><input name="key" required pattern="[A-Za-z0-9_-]{2,80}" placeholder="promotion-key" class="border rounded-xl p-2"/><input name="name" required maxlength="160" placeholder="Name" class="border rounded-xl p-2"/></div><textarea name="description" required maxlength="4000" placeholder="Commercial purpose" class="w-full border rounded-xl p-2"></textarea>
-        <div class="grid md:grid-cols-2 gap-3"><input name="startsAt" type="datetime-local" required class="border rounded-xl p-2"/><input name="endsAt" type="datetime-local" required class="border rounded-xl p-2"/></div>
-        <div class="grid md:grid-cols-3 gap-3"><select name="benefitType" class="border rounded-xl p-2"><option>PERCENTAGE_OFF</option><option>FIXED_AMOUNT_OFF</option><option>FIXED_PRICE</option><option>FREE_SHIPPING</option></select><input name="benefitValue" type="number" min="0" required placeholder="Benefit integer" class="border rounded-xl p-2"/><input name="maximumDiscount" type="number" min="0" placeholder="Maximum discount" class="border rounded-xl p-2"/></div>
+        <div class="grid md:grid-cols-2 gap-3"><label class="text-xs flex flex-col gap-1"><span>Starts (Kampala time)</span><input name="startsAt" type="datetime-local" required class="border rounded-xl p-2"/></label><label class="text-xs flex flex-col gap-1"><span>Ends (Kampala time)</span><input name="endsAt" type="datetime-local" required class="border rounded-xl p-2"/></label></div>
+        <div class="grid md:grid-cols-3 gap-3"><select name="benefitType" class="border rounded-xl p-2"><option>PERCENTAGE_OFF</option><option>FIXED_AMOUNT_OFF</option><option>FIXED_PRICE</option><option>FREE_SHIPPING</option></select><input name="benefitValue" type="number" min="0" required placeholder="1000 = 10% off" class="border rounded-xl p-2"/><input name="maximumDiscount" type="number" min="0" placeholder="Max discount (UGX)" class="border rounded-xl p-2"/></div>
+        <p class="text-[11px] text-gray-500 -mt-1">Value units: <b>PERCENTAGE_OFF</b> is basis points, so <b>1000 = 10%</b> (500 = 5%). <b>FIXED_AMOUNT_OFF</b> / <b>FIXED_PRICE</b> are in UGX. Leave coupon empty for an automatic site-wide discount that shows on every product; set start/end for the countdown. After creating, approve &amp; activate it below to make it live.</p>
+        <label class="block text-xs font-bold text-gray-700">Bundle products (optional): SKUs of 2 to 4 products that must all be in the basket
+          <input name="bundleSkus" placeholder="e.g. GP-P06-PB, GP-L03" class="mt-1 w-full border rounded-xl p-2 font-normal" data-bundle-skus/>
+          <span class="block font-normal text-gray-500">The discount then applies to those products only, and each product page shows "Buy together and save". Leave the coupon empty.</span>
+        </label>
         <div class="grid md:grid-cols-3 gap-3"><input name="minimumSubtotal" type="number" min="0" placeholder="Minimum subtotal" class="border rounded-xl p-2"/><input name="excludedProductId" placeholder="Excluded product UUID" class="border rounded-xl p-2"/><input name="couponCode" placeholder="Optional coupon" class="border rounded-xl p-2"/></div>
         <div class="grid md:grid-cols-4 gap-3"><input name="globalLimit" type="number" min="1" placeholder="Global limit" class="border rounded-xl p-2"/><input name="perCustomerLimit" type="number" min="1" placeholder="Customer limit" class="border rounded-xl p-2"/><input name="perCouponLimit" type="number" min="1" placeholder="Coupon limit" class="border rounded-xl p-2"/><input name="reservationTtlSeconds" type="number" value="900" min="60" max="86400" class="border rounded-xl p-2"/></div>
-        <div class="grid md:grid-cols-3 gap-3"><input name="priority" type="number" value="0" min="0" max="10000" class="border rounded-xl p-2"/><input name="priceFloorUgx" type="number" value="0" min="0" class="border rounded-xl p-2"/><label class="text-xs flex items-center gap-2"><input name="stackable" type="checkbox"/> Stackable</label></div>
+        <div class="grid md:grid-cols-3 gap-3"><input name="priority" type="number" value="0" min="0" max="10000" class="border rounded-xl p-2"/><input name="priceFloorUgx" type="number" value="0" min="0" title="Optional EXTRA floor. Each product's own Price A always applies; 0 = product floors govern" class="border rounded-xl p-2"/><label class="text-xs flex items-center gap-2"><input name="stackable" type="checkbox"/> Stackable</label></div>
         <button class="bg-brand-gold text-brand-dark font-black rounded-xl px-4 py-2">Create draft</button><p class="text-[11px] text-gray-500">Requires pricing.create. Creation does not approve or activate the rule.</p>
       </form>
       <form method="POST" class="bg-white border rounded-2xl p-5 h-fit space-y-3"><input type="hidden" name="operation" value="simulate"/><h3 class="font-black">Safe pricing simulation</h3><p class="text-xs text-gray-500">Canonical product read and current eligibility trace. Creates no quote, reservation, redemption, order, payment or provider call.</p><input name="productId" required placeholder="Product UUID" class="w-full border rounded-xl p-2"/><div class="grid grid-cols-3 gap-3"><input name="quantity" type="number" value="1" min="1" max="99" class="border rounded-xl p-2"/><input name="simulationCoupon" placeholder="Coupon" class="border rounded-xl p-2"/><input name="shippingUgx" type="number" value="0" min="0" class="border rounded-xl p-2"/></div><button class="border border-brand-gold font-black rounded-xl px-4 py-2">Simulate only</button>
-        {simulation && <div class="bg-slate-50 border rounded-xl p-4 text-xs"><strong>UGX {simulation.finalTotalUgx.toLocaleString()}</strong><div>Base {simulation.baseSubtotalUgx.toLocaleString()} · discount {simulation.discountTotalUgx.toLocaleString()} · shipping {simulation.shippingUgx.toLocaleString()}</div><div class="mt-2">{simulation.decisionTrace.length ? simulation.decisionTrace.map((item: any) => `${item.outcome}: ${item.reason}`).join(' · ') : 'No promotion candidates.'}</div></div>}
+        {simulation && <div class="bg-slate-50 border rounded-xl p-4 text-xs"><strong>UGX {simulation.finalTotalUgx.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}</strong><div>Base {simulation.baseSubtotalUgx.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} · discount {simulation.discountTotalUgx.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} · shipping {simulation.shippingUgx.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}</div><div class="mt-2">{simulation.decisionTrace.length ? simulation.decisionTrace.map((item: any) => `${item.outcome}: ${item.reason}`).join(' · ') : 'No promotion candidates.'}</div></div>}
       </form>
     </section>}
     <section><h3 class="font-black mb-3">Definitions</h3>{definitions.length === 0 && !loadFailed && <div class="bg-white border rounded-2xl p-8 text-center text-gray-500">Empty — no promotion definitions exist.</div>}<div class="space-y-3">{definitions.map((definition) => <a href={`/admin/pricing/${definition.id}`} class="block bg-white border rounded-2xl p-5 hover:border-brand-gold"><div class="flex justify-between"><div><strong>{definition.name}</strong><div class="text-xs text-gray-500">{definition.key} · revision {definition.revision}</div></div><span class={`h-fit border rounded-lg px-2 py-1 text-[10px] font-bold ${tone(definition.status)}`}>{definition.status}</span></div></a>)}</div></section>

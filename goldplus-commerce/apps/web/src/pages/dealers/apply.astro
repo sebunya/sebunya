@@ -1,220 +1,150 @@
 ---
+/**
+ * Dealer application. Three fields (owner, 2026-10-19: "far too many fields"):
+ * your name, a phone we can call, and the shop's name and town in one line.
+ * The team asks everything else on the call. The location picker (built for
+ * delivery addresses), email, URA TIN and address detail are gone. The API
+ * still stores the line as both business name and location.
+ *
+ * Kept from 2026-10-13:
+ *  - no terms checkbox: there are no published dealer terms to agree to, and
+ *    the old one blocked the form with a pop-up. The one real commitment
+ *    (original products, recommended prices) is stated beside the button.
+ *  - a returning checkout guest finds their name and phone already filled
+ *    (lib/guestMemory.ts).
+ *  - only claims the shop can stand behind: buyer-checkable codes, wholesale
+ *    pricing as volumes grow, counter material.
+ */
+import { readClientAddress } from '../../lib/forwardClient';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import FormField from '../../components/FormField.astro';
 import FormFeedback from '../../components/FormFeedback.astro';
 import { postJson } from '../../lib/api';
-import UgandaLocationPicker from '../../components/UgandaLocationPicker.astro';
-import { formatLocationLabel } from '../../lib/location-utils';
-import { isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone } from '../../lib/formValidation';
+import { isValidUgandanPhone, normalizePhone } from '../../lib/formValidation';
+import { readGuestMemory, hasGuestMemory } from '../../lib/guestMemory';
+import RememberedDetails from '../../components/RememberedDetails.astro';
 
 let status: 'success' | 'error' | 'received' | null = null;
 let message: string | undefined;
 let reference: string | undefined;
 let values: Record<string, string> = {};
 let errors: Record<string, string> = {};
+let remembered = false;
+
+if (Astro.request.method === 'GET') {
+  const m = readGuestMemory(Astro.cookies, Astro.request);
+  remembered = hasGuestMemory(m);
+  values = { contactName: m.name ?? '', phone: m.phone ?? '' };
+}
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const businessName = String(form.get('businessName') ?? '').trim();
   const contactName = String(form.get('contactName') ?? '').trim();
-  const email = normalizeEmail(String(form.get('email') ?? ''));
   const phone = normalizePhone(String(form.get('phone') ?? ''));
-  const tinNumber = String(form.get('tinNumber') ?? '').trim();
-  const locationJson = String(form.get('locationJson') ?? '').trim();
-  const shopDetails = String(form.get('shopDetails') ?? '').trim();
-  const agree = form.get('agree') === 'on';
+  const shop = String(form.get('shop') ?? '').trim().slice(0, 200);
 
-  values = { businessName, contactName, email, phone, tinNumber, locationJson, shopDetails };
+  values = { contactName, phone, shop };
 
-  if (!businessName) errors.businessName = 'Business name is required.';
-  if (!contactName) errors.contactName = 'Contact person is required.';
-  if (!isValidEmail(email)) errors.email = 'Valid business email is required.';
-  if (!isValidUgandanPhone(phone)) errors.phone = 'Valid Ugandan phone required.';
-  if (!tinNumber) errors.tinNumber = 'TIN is required.';
-  if (!locationJson) errors.locationJson = 'Please select location.';
-  if (!agree) errors.agree = 'You must accept terms.';
+  if (!contactName) errors.contactName = 'Tell us who to ask for.';
+  if (!isValidUgandanPhone(phone)) errors.phone = 'Enter a Ugandan number we can call, for example 0772 123 456.';
+  if (!shop) errors.shop = 'For example: Namuli Phones, Kikuubo.';
 
   if (Object.keys(errors).length === 0) {
-    const formattedLoc = formatLocationLabel(locationJson);
-    const fullLocStr = `${formattedLoc} | DETAILS: ${shopDetails}`.trim();
     const result = await postJson('/governance/dealers/apply', {
-      businessName, contactName, email, phone, tinNumber, location: fullLocStr
-    });
+      businessName: shop, contactName, email: '', phone, tinNumber: '', location: shop,
+    }, null, readClientAddress(Astro));
     reference = result.ok ? result.reference : undefined;
     if (result.ok) {
       status = 'success';
-      message = 'Application received. A GoldPlus partnerships officer will review your details and contact you on the email and phone provided.';
+      message = `Thank you, ${contactName.split(' ')[0]}. We have your application and will call you on ${phone} to agree prices and your first order.`;
       values = {};
     } else {
       status = 'error';
       message = result.code === 'NETWORK'
-        ? 'Cannot reach the application service right now. Please try again shortly.'
-        : (result.message || 'Failed to apply.');
+        ? 'We could not send that just now. Please try again in a moment, or call us.'
+        : (result.message || 'We could not send that. Please try again.');
     }
   } else {
     status = 'error';
-    message = 'Please correct the errors below.';
+    message = 'A few details are missing. They are marked below.';
   }
 }
 ---
 
-<BaseLayout title="Apply to be a GoldPlus Dealer | GoldPlus">
-  <div class="bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 text-white py-14 border-b border-slate-950">
-    <div class="container mx-auto px-4 lg:px-8 text-center">
-      <span class="inline-flex items-center gap-1.5 py-1 px-3 rounded-full bg-brand-primary/10 text-brand-primary text-[10px] font-black tracking-widest uppercase mb-4 border border-brand-primary/15">
-        Authorised dealership
-      </span>
-      <h1 class="text-3xl md:text-4xl font-black tracking-tight mb-4">Become a GoldPlus dealer</h1>
-      <p class="text-slate-400 max-w-2xl mx-auto text-sm sm:text-base leading-relaxed font-medium">
-        Partner with a trusted electronics brand. Verified stock, marketing support and protected pricing.
-      </p>
+<BaseLayout title="Become a GoldPlus dealer | GoldPlus" description="Stock GoldPlus phone accessories and batteries in your shop. Apply in about a minute; we call you to agree wholesale prices and your first order.">
+  <div class="bg-slate-950 text-white py-10 sm:py-12">
+    <div class="container mx-auto px-4 lg:px-8 max-w-3xl">
+      <p class="text-[11px] font-black uppercase tracking-widest text-brand-primary">For shops and resellers</p>
+      <h1 class="mt-2 text-3xl md:text-4xl font-black tracking-tight" style="text-wrap:balance">Sell GoldPlus in your shop</h1>
+      <p class="mt-3 text-slate-300 text-sm sm:text-base leading-relaxed">Three details. We call you to agree prices and your first order.</p>
+      <p class="mt-2 text-sm text-slate-300">Already a GoldPlus dealer? <a href="/dealers/dashboard" class="font-bold text-white underline">Open your dealer page</a>.</p>
+      <ul class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+        <li class="rounded-xl bg-white/5 border border-white/10 p-3"><span class="font-bold text-white">Codes buyers can check.</span> <span class="text-slate-300">Every GoldPlus product carries a verification code.</span></li>
+        <li class="rounded-xl bg-white/5 border border-white/10 p-3"><span class="font-bold text-white">Wholesale prices.</span> <span class="text-slate-300">Better prices as your orders grow.</span></li>
+        <li class="rounded-xl bg-white/5 border border-white/10 p-3"><span class="font-bold text-white">Counter material.</span> <span class="text-slate-300">Posters and display material for your shop.</span></li>
+      </ul>
     </div>
   </div>
 
-  <div class="container mx-auto px-4 lg:px-8 py-14">
-    <div class="max-w-3xl mx-auto grid grid-cols-1 gap-10">
-      
-      <!-- Partnership Credibility Copy Box -->
-      <div class="bg-slate-50 border border-slate-200/70 rounded-2xl p-6 grid grid-cols-1 md:grid-cols-3 gap-6 shadow-xs">
-        <div class="space-y-2">
-          <h3 class="font-bold text-gray-900 text-sm">✓ Originality Verified</h3>
-          <p class="text-xs text-slate-500 leading-relaxed font-medium">Every product we distribute comes directly from our certified production, backed by anti-counterfeiting tracking.</p>
-        </div>
-        <div class="space-y-2">
-          <h3 class="font-bold text-gray-900 text-sm">✓ Marketing Support</h3>
-          <p class="text-xs text-slate-500 leading-relaxed font-medium">Get point-of-sale branding, customer referrals in your region, and access to promotional merchandise assets.</p>
-        </div>
-        <div class="space-y-2">
-          <h3 class="font-bold text-gray-900 text-sm">✓ Dynamic Pricing</h3>
-          <p class="text-xs text-slate-500 leading-relaxed font-medium">Unlock volume-based wholesale discounts, price protection policies, and guaranteed margins.</p>
-        </div>
-      </div>
+  <div class="container mx-auto px-4 lg:px-8 py-8 sm:py-10">
+    <div class="max-w-xl mx-auto space-y-5">
+      <FormFeedback status={status} message={message} reference={reference} />
 
-      <div>
-        <FormFeedback status={status} message={message} reference={reference} />
+      {status !== 'success' && <RememberedDetails show={remembered} back="/dealers/apply" />}
+      {status !== 'success' && (
+        <form method="POST" action="/dealers/apply" novalidate id="dealerForm" class="bg-white p-5 sm:p-8 rounded-2xl border border-slate-200 space-y-5">
+          <FormField id="contactName" name="contactName" label="Your name" required defaultValue={values.contactName} autocomplete="name" errorMessage={errors.contactName} />
+          <FormField id="phone" name="phone" label="Phone we can call" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="07XX XXX XXX" errorMessage={errors.phone} />
+          <FormField id="shop" name="shop" label="Shop name and town" required defaultValue={values.shop} autocomplete="organization" placeholder="e.g. Namuli Phones, Kikuubo" errorMessage={errors.shop} />
 
-        <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs">
-          <h2 class="text-lg md:text-xl font-bold text-gray-900 mb-8 pb-4 border-b border-slate-100">Application form</h2>
+          <p class="text-xs leading-relaxed text-slate-600">By applying you agree to sell only original GoldPlus products and to follow our recommended prices.</p>
+          <button type="submit" id="submitBtn" class="w-full min-h-12 bg-brand-primary text-gray-950 rounded-full font-black text-sm tracking-wider uppercase outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk active:scale-[0.99]">
+            Apply now
+          </button>
+          <p class="text-center text-xs text-slate-500">We call you on this number. Nothing is charged.</p>
+        </form>
+      )}
 
-          <form method="POST" action="/dealers/apply" novalidate id="dealerForm" class="space-y-8">
-            <fieldset class="space-y-5">
-              <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Business details</legend>
-              <FormField id="businessName" name="businessName" label="Business legal name" required defaultValue={values.businessName} autocomplete="organization" errorMessage={errors.businessName} />
-              <FormField id="tinNumber" name="tinNumber" label="TIN number (URA)" required defaultValue={values.tinNumber} placeholder="100XXXXXXXX" errorMessage={errors.tinNumber} />
-            </fieldset>
-
-            <fieldset class="space-y-5 pt-4 border-t border-slate-100">
-              <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Contact details</legend>
-              <FormField id="contactName" name="contactName" label="Contact person" required defaultValue={values.contactName} autocomplete="name" errorMessage={errors.contactName} />
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <FormField id="email" name="email" label="Business email" type="email" required defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
-                <FormField id="phone" name="phone" label="Business phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="+2567..." errorMessage={errors.phone} />
-              </div>
-            </fieldset>
-
-            <fieldset class="space-y-5 pt-4 border-t border-slate-100">
-              <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Business location</legend>
-              <div class="bg-slate-50 p-5 rounded-xl border border-slate-200/60 space-y-4">
-                <UgandaLocationPicker 
-                  name="locationJson" 
-                  label="Business location" 
-                  helperText="Search the parish, ward, town, or district where your business is located."
-                  required={true} 
-                  defaultValue={values.locationJson} 
-                  errorMessage={errors.locationJson} 
-                />
-                <FormField 
-                   id="shopDetails" 
-                   name="shopDetails" 
-                   label="Additional address details" 
-                   placeholder="Shop, mall, road, building, trading centre, or nearby landmark"
-                   defaultValue={values.shopDetails}
-                />
-              </div>
-            </fieldset>
-
-            <div class="bg-slate-50 p-5 rounded-xl border border-slate-200/60">
-              <h3 class="font-bold text-gray-900 mb-2 text-sm">Dealer commitment</h3>
-              <p class="text-xs text-slate-500 leading-relaxed mb-4 font-medium">
-                By applying, you commit to selling only original GoldPlus products and observing recommended pricing and service standards.
-              </p>
-              <label class="flex items-center gap-3 cursor-pointer group select-none">
-                <input type="checkbox" name="agree" required class="w-4 h-4 rounded border-slate-250 text-brand-primary focus:ring-brand-primary cursor-pointer" />
-                <span class="text-xs font-bold text-slate-700 group-hover:text-brand-primary transition-colors">I agree to the GoldPlus dealer terms</span>
-              </label>
-              {errors.agree && <p class="text-xs text-brand-error mt-2 font-bold">{errors.agree}</p>}
-            </div>
-
-            <button type="submit" id="submitBtn" class="w-full bg-brand-primary text-gray-955 py-3 rounded-full font-bold text-sm tracking-wider uppercase hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none cursor-pointer hover:scale-[1.005] active:scale-[0.985]">
-              Submit application
-            </button>
-          </form>
-        </div>
-
-        <p class="text-xs text-slate-400 text-center mt-2 leading-relaxed max-w-md mx-auto font-medium">
-          A dealer success team member will get in touch to finalize setup once the application passes initial operational review.
-        </p>
-      </div>
+      <p class="text-center text-sm text-slate-600">
+        Already know what you want to stock? <a href="/bulk?buyer=wholesale" class="font-bold underline">Build your first order</a> and send it with your application.
+      </p>
     </div>
   </div>
 </BaseLayout>
 
 <script>
-  import { isValidEmail, isValidUgandanPhone } from '../../lib/formValidation';
+  import { isValidUgandanPhone } from '../../lib/formValidation';
 
-  const form = document.getElementById('dealerForm') as HTMLFormElement;
-  const btn = document.getElementById('submitBtn') as HTMLButtonElement;
+  const form = document.getElementById('dealerForm') as HTMLFormElement | null;
+  const btn = document.getElementById('submitBtn') as HTMLButtonElement | null;
 
-  if (form) {
-    form.addEventListener('submit', (e) => {
-      let valid = true;
+  /** Inline messages under each field; never a pop-up. The server checks the same rules. */
+  const mark = (name: string, msg: string | null) => {
+    const field = form?.querySelector<HTMLElement>(`[name="${name}"]`);
+    if (!field) return false;
+    field.parentElement?.querySelectorAll('.js-error-msg').forEach((x) => x.remove());
+    field.removeAttribute('aria-invalid');
+    if (!msg) return true;
+    field.setAttribute('aria-invalid', 'true');
+    const p = document.createElement('p');
+    p.className = 'text-xs text-red-700 mt-1 font-bold js-error-msg';
+    p.textContent = msg;
+    field.insertAdjacentElement('afterend', p);
+    return false;
+  };
 
-      const setError = (id: string, msg: string | null) => {
-        const field = document.getElementById(id);
-        if (!field) return;
-        field.classList.remove('border-red-300', 'ring-2', 'ring-red-100');
-        field.removeAttribute('aria-invalid');
-        let next = field.nextElementSibling;
-        while (next && !next.classList.contains('text-red-600')) next = next.nextElementSibling;
-        if (next) next.remove();
-        if (msg) {
-          field.classList.add('border-red-300', 'ring-2', 'ring-red-100');
-          field.setAttribute('aria-invalid', 'true');
-          const p = document.createElement('p');
-          p.className = 'text-xs text-red-600 mt-1 font-bold js-error-msg';
-          p.textContent = msg;
-          field.parentNode?.insertBefore(p, field.nextSibling);
-          valid = false;
-        }
-      };
-
-      document.querySelectorAll('.js-error-msg').forEach(x => x.remove());
-
-      const bName = form.querySelector('[name="businessName"]') as HTMLInputElement;
-      const cName = form.querySelector('[name="contactName"]') as HTMLInputElement;
-      const tin = form.querySelector('[name="tinNumber"]') as HTMLInputElement;
-      const em = form.querySelector('[name="email"]') as HTMLInputElement;
-      const ph = form.querySelector('[name="phone"]') as HTMLInputElement;
-      const ag = form.querySelector('[name="agree"]') as HTMLInputElement;
-
-      if (!bName.value.trim()) setError('businessName', 'Required.');
-      if (!cName.value.trim()) setError('contactName', 'Required.');
-      if (!tin.value.trim()) setError('tinNumber', 'Required.');
-      if (!isValidEmail(em.value)) setError('email', 'Enter a valid email.');
-      if (!isValidUgandanPhone(ph.value)) setError('phone', 'Enter valid Ugandan phone.');
-      if (!ag.checked) {
-        valid = false;
-        alert('Please accept the dealer terms to continue.');
-      }
-
-      if (!valid) {
-        e.preventDefault();
-        const f = form.querySelector('[aria-invalid="true"]') as HTMLElement;
-        if (f) f.focus();
-      } else {
-        btn.disabled = true;
-        btn.textContent = 'Sending...';
-      }
-    });
-  }
+  form?.addEventListener('submit', (e) => {
+    const v = (n: string) => (form.querySelector<HTMLInputElement>(`[name="${n}"]`)?.value ?? '').trim();
+    const ok = [
+      mark('contactName', v('contactName') ? null : 'Tell us who to ask for.'),
+      mark('phone', isValidUgandanPhone(v('phone')) ? null : 'Enter a Ugandan number we can call.'),
+      mark('shop', v('shop') ? null : 'For example: Namuli Phones, Kikuubo.'),
+    ].every(Boolean);
+    if (!ok) {
+      e.preventDefault();
+      form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+      return;
+    }
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  });
 </script>
