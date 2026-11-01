@@ -522,8 +522,20 @@ const errClass = (name: string) => `mt-1 text-sm font-semibold text-red-700 ${er
       input?.focus({ preventScroll: true });
       return;
     }
-    form.querySelectorAll<HTMLButtonElement>('button[type="submit"]').forEach((b) => { b.disabled = true; b.textContent = 'Opening payment…'; });
+    form.querySelectorAll<HTMLButtonElement>('button[type="submit"]').forEach((b) => {
+      b.dataset.label ??= b.textContent ?? ''; b.disabled = true; b.textContent = 'Opening payment…';
+    });
     document.querySelector<HTMLButtonElement>('[data-pay-bar] button')?.setAttribute('disabled', '');
+  });
+  // Back from Pesapal restores this page from the back-forward cache exactly as it was left: buttons disabled and
+  // saying "Opening payment…". Give them back, so the buyer can change something and pay (2026-11 review).
+  window.addEventListener('pageshow', (e) => {
+    if (!e.persisted) return;
+    form?.querySelectorAll<HTMLButtonElement>('button[type="submit"]').forEach((b) => {
+      b.disabled = false;
+      if (b.dataset.label !== undefined) { b.textContent = b.dataset.label; delete b.dataset.label; }
+    });
+    document.querySelector<HTMLButtonElement>('[data-pay-bar] button')?.removeAttribute('disabled');
   });
   // The keyboard's Next goes to the next box (Enter in a phone form otherwise submits it from the first field);
   // only the last box (your number) sends the form.

@@ -64,3 +64,35 @@ describe('loyalty daily ticker', () => {
     vi.doUnmock('../../apps/api/src/infrastructure/Registry');
   });
 });
+
+describe('loyalty and gift card pages', () => {
+  const loyalty = read('apps/web/src/pages/loyalty.astro');
+  const terms = read('apps/web/src/pages/loyalty-terms.astro');
+  it('no streak is advertised when the engine has no streak window (streaks off)', () => {
+    expect(read('apps/api/src/interfaces/http/routes/commerce.ts')).toContain('streak: streakMission && programme.streakWindowDays !== null');
+    for (const page of [loyalty, terms]) {
+      expect(page).not.toContain('windowDays ?? 90');
+      expect(page).toContain('src.streak.windowDays != null');
+    }
+  });
+  it('the terms never print a bare 0 from a numeric && guard', () => {
+    expect(terms).not.toMatch(/\{\(src\?\.verificationScan[^}]*\) && \(/);
+    expect(terms).not.toMatch(/\{src\?\.(verificationScan|counterfeitReport|phoneVerification|birthday) && \(/);
+    expect(terms).toContain('{!!(src?.verificationScan');
+  });
+  it('/loyalty says signed-out orders on the verified phone earn too, as the terms do', () => {
+    expect(terms).toContain('signed out with the phone number verified on your account');
+    expect(loyalty).not.toMatch(/placed while signed in/i);
+    expect(loyalty).toContain('signed out with the phone number verified on your account');
+  });
+  it('the buy page gives the pay buttons back when Back restores it from the cache', () => {
+    const buy = read('apps/web/src/pages/gift-card/buy.astro');
+    expect(buy).toMatch(/addEventListener\('pageshow', \(e\) => \{\s*if \(!e\.persisted\) return;/);
+    expect(buy).toContain("removeAttribute('disabled')");
+  });
+  it('the scratch panel keeps what was scratched across a resize', () => {
+    const open = read('apps/web/src/pages/gift-card/open.astro');
+    expect(open).not.toContain("window.addEventListener('resize', () => { if (!revealed) paint(); });");
+    expect(open).toContain("ctx.globalCompositeOperation = 'destination-in';");
+  });
+});
