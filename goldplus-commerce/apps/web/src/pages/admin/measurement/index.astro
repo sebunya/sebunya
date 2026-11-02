@@ -570,10 +570,8 @@ if (!token) {
           await new Promise((r) => setTimeout(r, 1500));
         }
       };
-      const [overview, matchQuality] = await Promise.all([
-        getJson('/api/admin/measurement/overview'),
-        getJson('/api/admin/measurement/match-quality?days=7').catch(() => null),
-      ]);
+      // Match quality is read from the overview; the separate match-quality call was never used.
+      const overview = await getJson('/api/admin/measurement/overview');
 
       const d = overview.data;
 

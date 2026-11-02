@@ -26,16 +26,22 @@ const spotifyError = (url.searchParams.get("error") ?? "").trim();
 if (code || spotifyError) {
   const keptState = Astro.cookies.get(SPOTIFY_STATE_COOKIE)?.value ?? "";
   const verifier = Astro.cookies.get(SPOTIFY_VERIFIER_COOKIE)?.value ?? "";
+  // The state is checked first, error replies included: a forged ?error= link must not wipe a sign-in in progress.
+  const stateMatches = sameState(url.searchParams.get("state"), keptState);
   let result: string;
-  if (spotifyError) result = `refused:Spotify did not approve the app (${spotifyError.replace(/[^a-z_]/gi, "").slice(0, 40)}). Nothing was saved.`;
-  else if (!sameState(url.searchParams.get("state"), keptState) || !verifier || !isSpotifyCode(code)) result = "refused:This reply does not belong to a sign-in started in this browser, or it expired. Nothing was saved. Start again from Connect Spotify.";
+  if (!stateMatches) result = "refused:This reply does not belong to a sign-in started in this browser, or it expired. Nothing was saved. Start again from Connect Spotify.";
+  else if (spotifyError) result = `refused:Spotify did not approve the app (${spotifyError.replace(/[^a-z_]/gi, "").slice(0, 40)}). Nothing was saved.`;
+  else if (!verifier || !isSpotifyCode(code)) result = "refused:This reply does not belong to a sign-in started in this browser, or it expired. Nothing was saved. Start again from Connect Spotify.";
   else {
     const r = await advertisingApi(token, "POST", "/spotify/connect", { code, codeVerifier: verifier, redirectUri: `${SITE_ORIGIN}${SPOTIFY_REDIRECT_PATH}` });
     result = r.ok ? `ok:Connected to ad account ${r.data.adAccountName ? `"${r.data.adAccountName}" ` : ""}(${r.data.adAccountId}).` : `refused:${r.message}`;
   }
-  // One use: neither the state nor the verifier is good for anything now.
-  Astro.cookies.delete(SPOTIFY_STATE_COOKIE, { path: SPOTIFY_COOKIE_PATH });
-  Astro.cookies.delete(SPOTIFY_VERIFIER_COOKIE, { path: SPOTIFY_COOKIE_PATH });
+  // One use: neither the state nor the verifier is good for anything now. A reply that is not this browser's leaves
+  // the real sign-in's cookies alone.
+  if (stateMatches) {
+    Astro.cookies.delete(SPOTIFY_STATE_COOKIE, { path: SPOTIFY_COOKIE_PATH });
+    Astro.cookies.delete(SPOTIFY_VERIFIER_COOKIE, { path: SPOTIFY_COOKIE_PATH });
+  }
   Astro.cookies.set(SPOTIFY_RESULT_COOKIE, result.slice(0, 600), { ...opts, maxAge: 120 });
   return Astro.redirect(SPOTIFY_REDIRECT_PATH, 303);
 }

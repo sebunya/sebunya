@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { readSessionToken } from '../../../../lib/session';
+import { apiBase } from '../../../../lib/api';
 
 /**
  * Same-origin proxy for the Measurement Control Tower's interactive calls.
@@ -19,14 +20,8 @@ import { readSessionToken } from '../../../../lib/session';
  * method, so this cannot become an SSRF or a generic authenticated relay.
  */
 
-// This is a server-side proxy (always SSR): prefer the internal container origin,
-// treat empty as unset, and never emit a relative URL to Node fetch. Mirrors the
-// canonical resolution in lib/api.ts.
-const API_BASE = (
-  (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } })?.process?.env?.INTERNAL_API_ORIGIN
-  || (import.meta.env.PUBLIC_API_BASE_URL as string | undefined)
-  || 'http://localhost:3000'
-).replace(/\/+$/, '');
+// Server-side proxy: the one canonical API origin from lib/api.ts.
+const API_BASE = apiBase;
 
 interface AllowedRoute {
   method: 'GET' | 'POST';
