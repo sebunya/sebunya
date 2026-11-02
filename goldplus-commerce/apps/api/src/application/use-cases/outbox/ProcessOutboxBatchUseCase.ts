@@ -126,7 +126,8 @@ export class ProcessOutboxBatchUseCase {
         // is not sent to them again each time a second address fails.
         const { _sentTargets: priorSent, ...routedPayload } = (event.payload ?? {}) as Record<string, unknown> & { _sentTargets?: unknown };
         const alreadySent = new Set(Array.isArray(priorSent) ? priorSent.map(String) : []);
-        const targets = await this.router.route(event.eventType, routedPayload);
+        // The row's dry_run_only governs every event type, not only payloads that copied the flag (review 230).
+        const targets = await this.router.route(event.eventType, event.dryRunOnly === true ? { ...routedPayload, dryRunOnly: true } : routedPayload);
 
         if (targets.length === 0) {
           await this.outboxRepo.markProcessed(event.id, {
