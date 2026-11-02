@@ -25,3 +25,11 @@ describe('server purchase as a GA4 collection hit', () => {
     expect(ga4CollectHit({ ...base, user_data: {} } as any, 'G-X')).toBeNull();
   });
 });
+
+describe('a page URL the safety filter refuses is left out (review 231)', () => {
+  it('never sends dl=null', () => {
+    const p = ga4CollectHit({ ...base, page_location: 'not a url at all', page_referrer: 'javascript:alert(1)' } as any, 'G-X')!;
+    expect(p.get('dl')).not.toBe('null');
+    expect(p.get('dr')).not.toBe('null');
+  });
+});

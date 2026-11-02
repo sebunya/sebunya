@@ -43,8 +43,11 @@ export function ga4CollectHit(event: CanonicalTelemetryEvent, measurementId: str
   }
   if (event.user_data?.user_id) p.set('uid', event.user_data.user_id);
   // Order references, payment links, codes: their values never reach GA4 (shared/links/analyticsSafeUrl).
-  if (event.page_location) p.set('dl', analyticsSafeUrl(event.page_location)!);
-  if (event.page_referrer) p.set('dr', analyticsSafeUrl(event.page_referrer)!);
+  // A URL analyticsSafeUrl refuses is left out, never sent as the string "null" (review 231).
+  const dl = event.page_location ? analyticsSafeUrl(event.page_location) : null;
+  const dr = event.page_referrer ? analyticsSafeUrl(event.page_referrer) : null;
+  if (dl) p.set('dl', dl);
+  if (dr) p.set('dr', dr);
   if (event.page_title) p.set('dt', event.page_title);
   const e = event.ecommerce;
   if (e) {
