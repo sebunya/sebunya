@@ -56,6 +56,15 @@ describe('Clarity insights pull', () => {
     expect(flatten([{ metricName: 'Browser', information: [{ Browser: 'Chrome', sessionsCount: 'x' }] }] as any, 'total')).toEqual([]);
   });
 
+  it('an empty answer is marked done with one marker row, so the next run does not call it again (review 230)', async () => {
+    const fetchImpl = vi.fn(async () => json([]));
+    const r = await new ClarityInsightsPull('tok_test', fetchImpl as unknown as typeof fetch).run(NOW);
+    expect(r.calls).toEqual({ total: 0, URL: 0, Channel: 0 });
+    const ins = executed.filter((q) => q.includes('insert into measurement.clarity_insights'));
+    expect(ins).toHaveLength(3);
+    expect(ins.every((q) => q.includes('_answered_empty'))).toBe(true);
+  });
+
   it('makes three calls with the bearer token, files rows under the previous UTC day, and does nothing without a token', async () => {
     const urls: string[] = [];
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
