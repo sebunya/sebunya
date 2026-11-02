@@ -509,3 +509,17 @@ export function supportedRecommendationReason(reasonCode?: string): string | und
 export function shouldRenderRail<T>(items: T[], minItems = 1): boolean {
   return Array.isArray(items) && items.length >= minItems;
 }
+
+/**
+ * A recommended item's own subcategory: inferred from the item's name and, when
+ * the engine sends one, the item's own category. It never borrows the current
+ * product's category, which put a power bank and a battery shown on a charger
+ * page into the charger family.
+ */
+export function recommendedItemSubcategory(
+  item: { name: string; categoryName?: string | null },
+  taxonomy?: Parameters<typeof getProductSubcategory>[1],
+): string {
+  const own = typeof item.categoryName === "string" ? item.categoryName : undefined;
+  return getProductSubcategory({ name: item.name, categoryName: own } as Parameters<typeof getProductSubcategory>[0], taxonomy);
+}

@@ -1,4 +1,5 @@
 ---
+import { isOrderInTransit } from '../lib/orderInTransit';
 import { whatsappHref } from '../lib/whatsappPrefill';
 import { cartClient } from '../lib/cartClient';
 import { chunkIds, isCartProductId } from '../lib/cart';
@@ -122,7 +123,7 @@ if (signedIn) {
           const t = new Date(lastAt).getTime();
           if (Number.isFinite(t)) lastOrderDays = Math.max(0, Math.round((Date.now() - t) / 86400000));
         }
-        orderInTransit = orders.some((o) => /deliver|transit|dispatch|shipp?ed|out_for/i.test(String(o?.status ?? '')));
+        orderInTransit = orders.some((o) => isOrderInTransit(o?.status));
       }
     } catch {
       // A failed read leaves the header in its signed-in-but-unenriched state.
@@ -176,7 +177,11 @@ const navDeal = await getStorefrontDiscount();
 // hangs off it, so when no promotion is running the header says nothing about
 // a sale instead of inventing one.
 const saleEnds = navDeal.active ? (navDeal.endsIso ?? '') : '';
-const saleLive = saleEnds ? Date.now() < new Date(saleEnds).getTime() : false;
+// A running promotion with no end date is still a live sale (product cards and
+// the hero already show it). It gets the sale furniture without a countdown.
+const saleLive = navDeal.active
+  ? (saleEnds ? Date.now() < new Date(saleEnds).getTime() : true)
+  : false;
 /** The rail's "Flash sale — Live" chip is a claim; drop it when it is untrue. */
 const railItems = saleLive ? nav.rail : nav.rail.filter((c) => c.key !== 'flash');
 const featAt = (i: number) => navFeatured.length ? navFeatured[i % navFeatured.length] : null;
@@ -239,7 +244,7 @@ const navConfigJson = escNav(JSON.stringify({
 }));
 const nbaJson = escNav(JSON.stringify(nba));
 ---
-<header class="gp-nav" id="gpNav" data-sale-ends={saleEnds}
+<header class="gp-nav" id="gpNav" data-sale-ends={saleEnds} data-sale-live={saleLive ? '1' : '0'}
   data-cutoff-hour={String(biz.sameDayCutoffHour)}
   data-closed-days={biz.closedDays.join(",")}
   data-cutoff-label={cut.cutoffLabel}
@@ -483,6 +488,7 @@ const nbaJson = escNav(JSON.stringify(nba));
       {saleLive && (
       <div class="gp-nav__panel" data-panel="flash">
         <div>
+          {saleEnds ? (<>
           <h3>Ends in</h3>
           <div class="gp-nav__cd" id="gpNavCd" aria-live="off">
             <span><b data-cd="d">00</b><small>Days</small></span>
@@ -490,6 +496,7 @@ const nbaJson = escNav(JSON.stringify(nba));
             <span><b data-cd="m">00</b><small>Min</small></span>
             <span><b data-cd="s">00</b><small>Sec</small></span>
           </div>
+          </>) : <h3>On now</h3>}
           <p class="gp-nav__note" id="gpNavCdNote">{nav.flash.noteDefault}</p>
           {/*
             A stock meter used to sit here reading "14 left of 60 at this price"
@@ -544,7 +551,9 @@ const nbaJson = escNav(JSON.stringify(nba));
         </div>
         {saleLive && (
         <a class="gp-nav__mflash" href={nav.flash.cta.href}>
-          <span>{nav.mobile.mflashPrefix} <b id="gpNavMcd">…</b></span>
+          {saleEnds
+            ? <span>{nav.mobile.mflashPrefix} <b id="gpNavMcd">…</b></span>
+            : <span><b>Sale on now</b></span>}
           <span class="gp-nav__mflash-go">{nav.mobile.mflashGo}</span>
         </a>
         )}
@@ -1600,7 +1609,15 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         r.unshift(q); localStorage.setItem(RKEY, JSON.stringify(r.slice(0,5)));
       } catch(e){}
     }
-    function esc(s){ return s.replace(/[&<>"]/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]; }); }
+    function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]; }); }
+    // Suggestion links and images come from catalogue data. Only a site path
+    // ("/x", never "//host") or an http(s) URL may reach href/src; anything
+    // else (javascript:, data:, a stray quote) is dropped, then escaped.
+    function safeUrl(u){
+      u = String(u == null ? '' : u).trim();
+      if (/^\/(?![\/\\])/.test(u) || /^https?:\/\//i.test(u)) return esc(u);
+      return '';
+    }
     function mark(t,q){
       var i = t.toLowerCase().indexOf(q.toLowerCase());
       if (i < 0 || !q) return esc(t);
@@ -1623,7 +1640,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         }
         if (TREND.length){
           h += '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Trending in Kampala</p><div class="gp-nav__trend">';
-          h += TREND.map(function(t,i){ return '<a href="' + esc(t[1]) + '" data-opt><i>' + (i+1) + '</i>' + esc(t[0]) + '</a>'; }).join('');
+          h += TREND.map(function(t,i){ return '<a href="' + (safeUrl(t[1]) || '/shop') + '" data-opt><i>' + (i+1) + '</i>' + esc(t[0]) + '</a>'; }).join('');
           h += '</div></div>';
         } else if (!r.length){
           /* nothing searched yet and no trend list: plain ways in, no ranking claimed */
@@ -1659,9 +1676,10 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         }
         var h = '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Products</p><div class="gp-nav__sug">';
         h += hits.map(function(p){
-          var img = p.i ? '<span class="gp-nav__sug-img"><img src="' + p.i + '" alt="" loading="lazy"></span>'
+          var src = safeUrl(p.i);
+          var img = src ? '<span class="gp-nav__sug-img"><img src="' + src + '" alt="" loading="lazy"></span>'
                         : '<span class="gp-nav__sug-img"></span>';
-          return '<a href="' + p.u + '" data-opt data-sug="' + esc(p.t) + '">' + img +
+          return '<a href="' + (safeUrl(p.u) || '/shop?q=' + encodeURIComponent(q)) + '" data-opt data-sug="' + esc(p.t) + '">' + img +
             '<span class="gp-nav__sug-t"><b>' + mark(p.t,q) + '</b><span>' + esc(p.c) + '</span></span>' +
             '<span class="gp-nav__sug-p">' + esc(p.p) + '</span></a>';
         }).join('');
@@ -1938,7 +1956,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       beforeCutoff: !isClosedToday && hour < cutoffHour,
       minsToCutoff: minsToCutoff,
       sunday: isClosedToday,
-      saleLive: isFinite(saleEnd) ? Date.now() < saleEnd : false
+      saleLive: isFinite(saleEnd) ? Date.now() < saleEnd : nav.getAttribute('data-sale-live') === '1'
     };
 
     function money(n){ return 'UGX ' + n.toLocaleString(); }

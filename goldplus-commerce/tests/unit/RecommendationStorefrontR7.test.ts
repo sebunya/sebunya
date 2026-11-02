@@ -79,7 +79,7 @@ describe("recently-viewed events finally land (AC13)", () => {
   it("attribution ids are real UUIDs — the loc_ values failed the API's uuid columns silently", () => {
     // Precisely: no loc_-prefixed id is GENERATED (the retirement comment may name them).
     expect(rail).not.toMatch(/"loc_[a-z_]*"\s*\+/);
-    expect(rail).toContain("crypto.randomUUID()");
+    expect(rail).toContain("uuidV4()"); // v4 uuid with a fallback for browsers without randomUUID
   });
 
   it("the rail reports its own impressions after injecting cards", () => {
