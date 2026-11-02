@@ -53,8 +53,9 @@ const hints: ReadonlyArray<readonly [RegExp, TransactionalEmailFailureClassifica
   // Checked BEFORE the rate-limit hint: a credit failure arrives as a 429 and
   // some providers word it as a limit, so the more specific rule must win.
   [/(credit|balance).*(exhaust|deplet|insufficient|empty)|insufficient.*(credit|balance|fund)|out.of.credit|no.*credits?.*(left|remaining)/, 'credit_exhausted'],
-  [/resource.limit.exhausted|quota.*(exceed|exhaust)|le_102|tm_5001/, 'credit_exhausted'],
-  [/rate.*limit|too.many.requests/, 'rate_limited'],
+  [/le_102|tm_5001/, 'credit_exhausted'],
+  // An hourly or daily send quota resets by itself: retryable, never credit (review 228).
+  [/rate.*limit|too.many.requests|resource.limit.exhausted|quota.*(exceed|exhaust)/, 'rate_limited'],
   [/payload|validation|invalid.*request|bad.*request/, 'payload_validation'],
 ];
 

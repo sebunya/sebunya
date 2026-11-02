@@ -138,7 +138,9 @@ export class ProcessOutboxBatchUseCase {
         }
 
         let hasSent = false;
-        let hopeless = false;
+        // Per target (review 228): the event gives up only when EVERY failed target said retrying cannot help.
+        let hopelessFailures = 0;
+        let retryableFailures = 0;
         let hasFailed = false;
         let finalError: string | null = null;
         let allTerminalNonRetryable = true;
@@ -214,7 +216,7 @@ export class ProcessOutboxBatchUseCase {
             // The provider said retrying cannot help. Believe it: production
             // spent 244 attempts re-sending into "Credit exhausted", which both
             // burned the budget and made an account problem look temporary.
-            if (dispatchResult.retryable === false) hopeless = true;
+            if (dispatchResult.retryable === false) hopelessFailures++; else retryableFailures++;
           } else {
             // NOT_CONFIGURED or DISABLED
             if (!finalError) {
@@ -225,12 +227,13 @@ export class ProcessOutboxBatchUseCase {
 
         if (hasFailed) {
           const nextAttemptCount = event.attemptCount + 1;
+          const hopeless = hopelessFailures > 0 && retryableFailures === 0;
           if (hopeless) {
             // Dead-lettered on the first answer, with the provider's own reason,
             // so the queue shows what must be FIXED rather than what to wait for.
             const message = `Not retryable: ${finalError}`;
             if (this.outboxRepo.markDeadLettered) {
-              await this.outboxRepo.markDeadLettered(event.id, message);
+              await this.outboxRepo.markDeadLettered(event.id, message, { sentTargets: [...sentNow] });
             } else {
               await this.outboxRepo.markProcessed(event.id, { lastError: message });
             }
@@ -241,7 +244,7 @@ export class ProcessOutboxBatchUseCase {
             // success in every metric and query — the failures were invisible.
             const message = `Exhausted after ${MAX_ATTEMPTS} attempts. Last error: ${finalError}`;
             if (this.outboxRepo.markDeadLettered) {
-              await this.outboxRepo.markDeadLettered(event.id, message);
+              await this.outboxRepo.markDeadLettered(event.id, message, { sentTargets: [...sentNow] });
             } else {
               await this.outboxRepo.markProcessed(event.id, { lastError: message });
             }
@@ -274,7 +277,7 @@ export class ProcessOutboxBatchUseCase {
         if (event.attemptCount + 1 >= MAX_ATTEMPTS) {
           const final = `Exhausted after ${MAX_ATTEMPTS} attempts. Last error: ${message}`;
           if (this.outboxRepo.markDeadLettered) {
-            await this.outboxRepo.markDeadLettered(event.id, final);
+            await this.outboxRepo.markDeadLettered(event.id, final, sentNow ? { sentTargets: [...sentNow] } : undefined);
           } else {
             await this.outboxRepo.markProcessed(event.id, { lastError: final });
           }
