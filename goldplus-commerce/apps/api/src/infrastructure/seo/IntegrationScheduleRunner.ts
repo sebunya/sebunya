@@ -141,7 +141,14 @@ export async function enqueueScheduledSync(connectionId: string): Promise<{
 
   // The SAME persisted job the manual path creates. Only the trigger differs.
   const job = await repo.createSyncJob({ connectionId, jobType: 'SCHEDULED', requestedBy: null });
-  await queue.add('seo-integration-sync', { jobId: job.id, connectionId, providerId: connection.provider_id });
+  try {
+    await queue.add('seo-integration-sync', { jobId: job.id, connectionId, providerId: connection.provider_id });
+  } catch (err) {
+    // A QUEUED row nothing will pick up would block every later reconcile for this connection (the overlap guard has
+    // no cutoff for QUEUED): fail it, so the next hour tries again (review 231).
+    await repo.updateSyncJob(String(job.id), { status: 'FAILED', completedAt: new Date(), error: `Not queued: ${String((err as Error)?.message ?? err).slice(0, 200)}` }).catch(() => undefined);
+    return { enqueued: false, reason: 'Queue refused the job; marked failed so the next run retries.' };
+  }
 
   return { enqueued: true, reason: 'Scheduled sync enqueued.', jobId: job.id };
 }

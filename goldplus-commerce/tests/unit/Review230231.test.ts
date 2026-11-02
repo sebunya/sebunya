@@ -74,3 +74,20 @@ describe('231: email template values', () => {
     expect(src).toContain('d.resetExpiryMinutes ?? d.expiresInMinutes');
   });
 });
+
+describe('231: a scheduled sync the queue refused does not stay QUEUED forever', () => {
+  it('marks the job FAILED when queue.add throws', () => {
+    const src = readFileSync('apps/api/src/infrastructure/seo/IntegrationScheduleRunner.ts', 'utf8');
+    expect(src).toMatch(/catch \(err\) \{[\s\S]{0,300}updateSyncJob\(String\(job\.id\), \{ status: 'FAILED'/);
+  });
+});
+
+describe('231: a nightly run with a failed step is FAILED, so the window retries', () => {
+  it('COMPLETE only when it finished and no step failed', () => {
+    // Source pin: importing the ticker loads the whole Registry.
+    const src = readFileSync('apps/api/src/infrastructure/scheduler/MeasurementNightlyTicker.ts', 'utf8');
+    expect(src).toContain("return finished && failedSteps === 0 ? 'COMPLETE' : 'FAILED';");
+    expect(src).toContain('set state = ${nightlyRunState(finished, failedSteps)}');
+    expect(src).toContain('failedSteps += 1;');
+  });
+});

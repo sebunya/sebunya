@@ -32,6 +32,11 @@ export function inWindow(now: Date): boolean {
   return (kampala === 3 && minutes >= 30) || kampala === 4 || kampala === 5;
 }
 
+/** The nightly run's final state: COMPLETE only when it finished with every step answering. */
+export function nightlyRunState(finished: boolean, failedSteps: number): 'COMPLETE' | 'FAILED' {
+  return finished && failedSteps === 0 ? 'COMPLETE' : 'FAILED';
+}
+
 export async function runMeasurementNightlyOnce(now = new Date(), trigger: 'schedule' | 'admin' = 'schedule'): Promise<{ status: 'RAN' | 'SKIPPED_WINDOW' | 'SKIPPED_RECENT' | 'SKIPPED_LOCKED' | 'SKIPPED_BUSY'; stats?: Record<string, unknown> }> {
   if (running) return { status: 'SKIPPED_BUSY' };
   if (trigger === 'schedule' && !inWindow(now)) return { status: 'SKIPPED_WINDOW' };
@@ -48,12 +53,16 @@ export async function runMeasurementNightlyOnce(now = new Date(), trigger: 'sche
   const registry = Registry.getInstance();
   const stats: Record<string, unknown> = { trigger };
   let runId: string | undefined;
+  // A run where a step failed (or that never finished) is FAILED, not COMPLETE: only COMPLETE ends the day's window,
+  // so the next tick in 03:30–05:59 tries again (review 231). The BoU job below follows the same rule.
+  let failedSteps = 0;
+  let finished = false;
   // Everything after taking the lock sits inside the try: the run record's insert used to come first, so a database
   // blip there left `running` true and the lock held, and no nightly or Rebuild ran until a restart (2026-10-29 review).
   try {
     runId = rows(await db.execute(sql`insert into measurement.batch_run (run_id, job, state, started_at, stats) values (gen_random_uuid(), ${JOB}, 'RUNNING', now(), ${JSON.stringify({ trigger })}::jsonb) returning run_id`))[0]?.run_id;
     const step = async (name: string, fn: () => Promise<unknown>) => {
-      try { stats[name] = await fn(); } catch (err) { stats[name] = { error: String((err as Error).message ?? err).slice(0, 300) }; logger.error({ err: (err as Error).message, step: name }, '[measurement-nightly] step failed'); }
+      try { stats[name] = await fn(); } catch (err) { failedSteps += 1; stats[name] = { error: String((err as Error).message ?? err).slice(0, 300) }; logger.error({ err: (err as Error).message, step: name }, '[measurement-nightly] step failed'); }
     };
     await step('feeds', () => registry.controlFeeds.run(now));
     await step('ga4_series', () => registry.ga4DailyPull.run(now));
@@ -65,10 +74,11 @@ export async function runMeasurementNightlyOnce(now = new Date(), trigger: 'sche
     const reconciliation = new Ga4Reconciliation(registry.measurementConfig, new HttpGa4Reader(registry.ga4DataApi), careDeskAlarm(registry.careDeskUseCases));
     await step('ga4', () => reconciliation.run(now));
     logger.info(stats, '[measurement-nightly] run');
+    finished = true;
     return { status: 'RAN', stats };
   } finally {
     running = false;
-    if (runId) await db.execute(sql`update measurement.batch_run set state = 'COMPLETE', finished_at = now(), stats = ${JSON.stringify(stats)}::jsonb where run_id = ${runId}::uuid`).catch(() => undefined);
+    if (runId) await db.execute(sql`update measurement.batch_run set state = ${nightlyRunState(finished, failedSteps)}, finished_at = now(), stats = ${JSON.stringify(stats)}::jsonb where run_id = ${runId}::uuid`).catch(() => undefined);
     await lock.release().catch(() => undefined);
   }
 }
