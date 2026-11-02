@@ -82,6 +82,17 @@ export class DrizzleLocationPinRepository implements ILocationPinRepository {
     };
   }
 
+  async consumePending(wamid: string): Promise<boolean> {
+    const r = rows(await db.execute(sql`delete from whatsapp_pending_location where wamid = ${wamid} returning wamid`));
+    return r.length > 0;
+  }
+
+  async riderOwnsTask(riderId: string, taskId: string): Promise<boolean> {
+    const r = rows(await db.execute(sql`
+      select 1 from fulfilment_dispatches where rider_id = ${riderId} and fulfilment_task_id = ${taskId} limit 1`));
+    return r.length > 0;
+  }
+
   async attachPin(p: { orderId: string; lat: number; lng: number; source: 'whatsapp' | 'rider'; sourceRef: string; confirmedAt: Date | null; purgeAfter: Date }): Promise<void> {
     await db.execute(sql`
       insert into delivery_order_pin (order_id, lat, lng, source, source_ref, captured_at, confirmed_at, purge_after)
@@ -104,13 +115,11 @@ export class DrizzleLocationPinRepository implements ILocationPinRepository {
     if (!x) return 'no_pin';
     if (!x.user_id) return 'no_customer';
     if (x.lat === null || x.lat === undefined) return 'no_pin';
-    // The address for the order's area when the customer has one, else their default: never an address in another area.
+    // Only an address for the order's own area: never an address in another area, so an order with no area saves nothing.
     const slug = x.area_slug ? String(x.area_slug) : null;
-    const pick = slug
-      ? sql`select id from addresses where user_id = ${String(x.user_id)} and deleted_at is null and area_slug = ${slug}
-            order by is_default desc, updated_at desc limit 1`
-      : sql`select id from addresses where user_id = ${String(x.user_id)} and deleted_at is null
-            order by is_default desc, updated_at desc limit 1`;
+    if (!slug) return 'no_address';
+    const pick = sql`select id from addresses where user_id = ${String(x.user_id)} and deleted_at is null and area_slug = ${slug}
+            order by is_default desc, updated_at desc nulls last limit 1`;
     const updated = rows(await db.execute(sql`
       update addresses set gps_lat = ${Number(x.lat)}, gps_lng = ${Number(x.lng)}, gps_accuracy_m = null, gps_source = 'whatsapp',
              gps_captured_at = now(), resolution_status = 'resolved', updated_at = now()

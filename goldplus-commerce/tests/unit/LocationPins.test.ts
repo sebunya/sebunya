@@ -43,6 +43,8 @@ function repoWith(opts: { orders?: OpenOrderForPin[]; rider?: { id: string; name
       pending.set(p.wamid, p);
     },
     pending: async (w) => pending.get(w) ?? null,
+    consumePending: async (w) => pending.delete(w),
+    riderOwnsTask: async (riderId, taskId) => riderId === opts.rider?.id && (opts.stops ?? []).some((s) => s.taskId === taskId),
     attachPin: async (p) => {
       attached.push(p);
     },
