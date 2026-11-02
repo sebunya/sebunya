@@ -117,6 +117,8 @@ if (Astro.request.method === "POST") {
         if (intent === "draft") {
           const draft = await post("/admin/delivery/config/draft", {
             values: derivedValues,
+            // own_rider_max_band (question 8) comes back as a string; without it the draft can never publish.
+            stringValues: json.data.stringValues ?? {},
             reason: `Setup wizard: derived from a ${answers.roundTripMinutes} minute round trip to ${json.data.areaLabel}, rider paid ${answers.riderPayUgx} UGX.`,
           });
           if (!draft?.success) {

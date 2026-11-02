@@ -2,6 +2,9 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
 import { apiBase } from "../../../lib/api";
+import { parseAdminNumber } from "../../../lib/adminNumber";
+
+class EditRefused extends Error {}
 
 /**
  * Calibration: the proposal queue and the reports (brief PART 4).
@@ -34,10 +37,15 @@ if (Astro.request.method === "POST") {
         : { kind: "error", text: json?.error?.message || "Could not run the calibration." };
     } else if (intent === "accept" || intent === "edit") {
       const editedRaw = String(form.get("editedValue") || "").trim();
+      const edited = parseAdminNumber(editedRaw);
+      if (intent === "edit" && !edited.ok) {
+        // Never let a typo become "accept the fitted value": NaN would travel as null, which means "no edit".
+        throw new EditRefused();
+      }
       const res = await fetch(`${apiBase}/admin/delivery/calibration/proposals/${encodeURIComponent(id)}/accept`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ editedValue: intent === "edit" && editedRaw ? Number(editedRaw) : null }),
+        body: JSON.stringify({ editedValue: intent === "edit" && edited.ok ? edited.value : null }),
       });
       const json = await res.json().catch(() => null);
       notice = json?.success
@@ -54,8 +62,10 @@ if (Astro.request.method === "POST") {
         ? { kind: "success", text: "Rejected." }
         : { kind: "error", text: json?.error?.message || "Could not reject." };
     }
-  } catch {
-    notice = { kind: "error", text: "The delivery service is unreachable right now." };
+  } catch (e) {
+    notice = e instanceof EditRefused
+      ? { kind: "error", text: "Type the edited value as a number, for example 1200. Nothing was applied." }
+      : { kind: "error", text: "The delivery service is unreachable right now." };
   }
 }
 
