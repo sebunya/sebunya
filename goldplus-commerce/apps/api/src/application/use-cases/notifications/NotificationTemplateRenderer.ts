@@ -594,17 +594,20 @@ You are getting this because of order ${order.orderNumber}.`;
   public renderWhatsApp(order: any): string {
     const status = String(order.orderStatus ?? '').toLowerCase();
     const paymentStatus = String(order.paymentStatus ?? '').toLowerCase();
-    const template: NotificationTemplateKey | 'ORDER_DISPATCHED' | 'ORDER_CANCELLED_BY_SHOP' =
+    // Fulfilment state first (review 228): a delivered cash-on-delivery order is "delivered", not "payment
+    // pending"; an order out with the rider or failed at the door is never "being prepared".
+    const template: NotificationTemplateKey | 'ORDER_DISPATCHED' | 'ORDER_CANCELLED_BY_SHOP' | null =
       status === 'cancelled' ? 'ORDER_CANCELLED_BY_SHOP'
+      : ['delivered', 'completed'].includes(status) ? 'ORDER_FULFILLMENT_COMPLETED'
+      : ['dispatched', 'shipped', 'out_for_delivery'].includes(status) ? 'ORDER_DISPATCHED'
+      : status === 'delivery_failed' ? null
       : status === 'failed' || paymentStatus === 'failed' ? 'ORDER_PAYMENT_FAILED'
       : status === 'pending_payment' || paymentStatus === 'pending' ? 'ORDER_PAYMENT_PENDING'
-      : ['delivered', 'completed'].includes(status) ? 'ORDER_FULFILLMENT_COMPLETED'
-      : status === 'dispatched' ? 'ORDER_DISPATCHED'
       : status === 'processing' && paymentStatus === 'paid' ? 'ORDER_FULFILLMENT_PROCESSING'
       : paymentStatus === 'paid' ? 'ORDER_PAYMENT_SUCCESS'
       : 'ORDER_RECEIVED_UNPAID';
     return (
-      whatsappText(template, { customerName: order.customerName, orderNumber: order.orderNumber, totalUgx: Number(order.totalUgx || 0) })
+      (template ? whatsappText(template, { customerName: order.customerName, orderNumber: order.orderNumber, totalUgx: Number(order.totalUgx || 0) }) : null)
       ?? `Hello,\n\nThere is an update on your GoldPlus order ${order.orderNumber}. Track it here: ${tagShopUrl(trackOrderUrl(order.orderNumber), 'w')}`
     );
   }
