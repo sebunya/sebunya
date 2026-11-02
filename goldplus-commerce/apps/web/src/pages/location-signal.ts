@@ -1,14 +1,17 @@
 import type { APIRoute } from 'astro';
 import { sendLocationSignal } from '../lib/locationSignals';
+import { readBodyCapped } from '../lib/boundedBody';
 
 /**
  * Same-origin relay for the location picker's signals ("Locate me" offer chosen or missed): the browser cannot
- * read the httpOnly visit cookie, so this page adds the visitor's own token server-side. Small JSON only; the API
- * validates every field and stores no coordinates.
+ * read the httpOnly visit cookie, so this page adds the visitor's own token server-side. Small JSON only, read with a
+ * byte cap (never buffered whole); the API validates every field. A "Locate me" pin's coordinates are purged at the
+ * pin retention (privacy page: 180 days).
  */
 export const POST: APIRoute = async ({ request, locals }) => {
-  const text = await request.text().catch(() => '');
-  if (text.length > 1000) return new Response(null, { status: 413 });
+  const read = await readBodyCapped(request, 1000);
+  if (!read.ok) return new Response(null, { status: read.reason === 'TOO_LARGE' ? 413 : 400 });
+  const text = read.text;
   let body: unknown = null;
   try {
     body = JSON.parse(text);
