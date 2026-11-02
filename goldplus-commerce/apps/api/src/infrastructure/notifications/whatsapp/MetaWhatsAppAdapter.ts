@@ -176,7 +176,9 @@ export class FailoverWhatsAppProvider implements INotificationProvider {
       if (!secondaryCan) return this.primary.dispatch(payload);
       // Zoho alone still honours a WhatsApp STOP.
       const to = this.primary.normalizeNumber(payload.recipient);
-      const block = to && this.blockReason ? await this.blockReason(`+${to}`).catch(() => null) : null;
+      // Fails closed like the Meta path: a STOP list that could not be read is not "not blocked" (review 231).
+      const block = to && this.blockReason ? await this.blockReason(`+${to}`).catch(() => 'BLOCK_CHECK_FAILED') : null;
+      if (block === 'BLOCK_CHECK_FAILED') return { status: 'NOT_CONFIGURED', providerCode: block, providerMessage: 'WhatsApp not sent: the STOP list could not be checked just now; SMS instead.' };
       if (block) return { status: 'NOT_CONFIGURED', providerCode: block, providerMessage: 'WhatsApp not sent (STOP, or not reachable on WhatsApp); SMS instead.' };
       return this.secondary.dispatch(payload);
     }

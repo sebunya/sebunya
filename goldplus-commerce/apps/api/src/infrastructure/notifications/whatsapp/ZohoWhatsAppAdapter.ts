@@ -8,7 +8,7 @@ import {
   NotificationDispatchResult,
   NotificationStatus,
 } from '../../../application/ports/INotificationProvider';
-import { resilientFetch } from '../../http/HttpClient';
+import { resilientFetch, sendMayHaveReachedProvider } from '../../http/HttpClient';
 import { readFlag } from '../../../domain/notifications/OutboundGovernancePolicy';
 import { readZohoWhatsAppConfig, zohoTemplateKeyFor, type ZohoWhatsAppConfig } from '../../../config/zohoWhatsApp';
 import { fillWhatsAppVariables, whatsAppTemplateSpec } from './whatsAppTemplates';
@@ -253,16 +253,17 @@ export class ZohoWhatsAppAdapter implements INotificationProvider {
         ),
       };
     } catch (err: any) {
-      const isTimeout = err?.name === 'AbortError';
-      if (isTimeout) {
+      // A timeout, or a connection that broke after the request was written (ECONNRESET, socket hang-up): Zoho
+      // may have queued it (review 231; same rule as Pahappa and ZeptoMail).
+      if (sendMayHaveReachedProvider(err)) {
         // The request left us; Zoho may have queued it and only the reply was
-        // slow. The outcome is unknown, so neither re-send nor fall back to
+        // lost. The outcome is unknown, so neither re-send nor fall back to
         // SMS — either could put the same message on the phone twice.
         return {
           status: 'FAILED' as NotificationStatus,
           providerCode: OUTCOME_UNKNOWN_PROVIDER_CODE,
           retryable: false,
-          providerMessage: this.sanitize('Request timed out after sending; delivery outcome unknown. Not retried, no SMS fallback.'),
+          providerMessage: this.sanitize(`${err?.name === 'AbortError' ? 'Request timed out after sending' : 'Connection broke after sending'}; delivery outcome unknown. Not retried, no SMS fallback.`),
         };
       }
       return {
