@@ -48,3 +48,29 @@ describe('230: both attribution paths stitch the same visitor ids', () => {
     expect(readFileSync('apps/api/src/infrastructure/measurement/AttributionJob.ts', 'utf8')).toContain('.filter(isStitchableVisitorId)');
   });
 });
+
+describe('231: the admin attribution lookup takes an order id or a GP number', () => {
+  it('routes a UUID to getByOrderId and a reference to getByOrderNumber, upper-cased', () => {
+    const src = readFileSync('apps/api/src/interfaces/http/routes/admin/measurement.ts', 'utf8');
+    expect(src).toContain('ORDER_UUID.test(ref)');
+    expect(src).toContain('getByOrderId(ref.toLowerCase())');
+    expect(src).toContain('getByOrderNumber(ref.toUpperCase())');
+  });
+});
+
+describe('231: email template values', () => {
+  it('{{.}} in a loop over strings renders each item', async () => {
+    const { renderTemplate } = await import('../../apps/api/src/infrastructure/notifications/email/renderEmailTemplate');
+    expect(renderTemplate('{{#lines}}<li>{{.}}</li>{{/lines}}', { lines: ['Charger', 'Cable'] })).toBe('<li>Charger</li><li>Cable</li>');
+  });
+  it('a payment receipt without an amount is not "UGX 0": the value is left out so the strict renderer falls back', async () => {
+    const { customerEmailData } = await import('../../apps/api/src/infrastructure/notifications/email/emailTemplateData');
+    expect(customerEmailData('ORDER_PAYMENT_SUCCESS', { orderNumber: 'GP-1', totalUgx: null })).not.toHaveProperty('amount_received');
+    expect(customerEmailData('ORDER_PAYMENT_SUCCESS', { orderNumber: 'GP-1', totalUgx: 50000 }).amount_received).toContain('50,000');
+    expect(customerEmailData('PASSWORD_RESET', { resetUrl: 'https://x/r' })).not.toHaveProperty('reset_expiry_minutes');
+    expect(customerEmailData('PASSWORD_RESET', { resetUrl: 'https://x/r', resetExpiryMinutes: 60 }).reset_expiry_minutes).toBe('60');
+    const src = readFileSync('apps/api/src/infrastructure/notifications/zeptomail/ZeptoMailAdapter.ts', 'utf8');
+    expect(src).not.toContain('Number(d.totalUgx ?? 0)');
+    expect(src).toContain('d.resetExpiryMinutes ?? d.expiresInMinutes');
+  });
+});

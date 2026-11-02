@@ -121,6 +121,8 @@ const asDate = (v: Date | string | null | undefined) => (v ? new Date(v) : new D
  * which is how a half-filled email is caught before it is sent rather than
  * after a customer reads it.
  */
+const knownAmount = (v: unknown): boolean => v != null && v !== '' && Number.isFinite(Number(v)) && Number(v) > 0;
+
 export function customerEmailData(template: string, src: CustomerEmailSource): TemplateData {
   const items = (src.items ?? []).map((i) => ({
     name: i.name,
@@ -161,7 +163,8 @@ export function customerEmailData(template: string, src: CustomerEmailSource): T
 
   if (template === 'ORDER_PAYMENT_SUCCESS') {
     Object.assign(data, {
-      amount_received: ugx(Number(src.amountReceivedUgx ?? src.totalUgx) || 0),
+      // No amount is not "UGX 0": the value is left out, the renderer refuses, and the previous path is used (review 231).
+      ...(knownAmount(src.amountReceivedUgx ?? src.totalUgx) ? { amount_received: ugx(Number(src.amountReceivedUgx ?? src.totalUgx)) } : {}),
       payment_method: src.paymentMethod ?? 'Mobile money',
       payment_reference: src.paymentReference ?? src.orderNumber ?? '',
       payment_date: asDate(src.paymentDate).toLocaleString('en-GB', {
@@ -179,8 +182,8 @@ export function customerEmailData(template: string, src: CustomerEmailSource): T
 
   if (template === 'PASSWORD_RESET') {
     Object.assign(data, {
-      reset_url: src.resetUrl ?? '',
-      reset_expiry_minutes: String(src.resetExpiryMinutes ?? 30),
+      ...(src.resetUrl ? { reset_url: src.resetUrl } : {}),
+      ...(knownAmount(src.resetExpiryMinutes) ? { reset_expiry_minutes: String(src.resetExpiryMinutes) } : {}),
     });
   }
 

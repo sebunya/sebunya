@@ -15,7 +15,11 @@ const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;'
 const escapeHtml = (v: string) => v.replace(/[&<>"']/g, (c) => ESCAPES[c]);
 
 function lookup(stack: TemplateData[], path: string): TemplateValue {
-  if (path === '.') return stack[stack.length - 1] as TemplateValue;
+  if (path === '.') {
+    // A loop over primitives wraps each item as { '.': item }: {{.}} is the item, not the wrapper (review 231).
+    const top = stack[stack.length - 1];
+    return top && typeof top === 'object' && Object.prototype.hasOwnProperty.call(top, '.') ? top['.'] : top as TemplateValue;
+  }
   const [head, ...rest] = path.split('.');
   // A template path never reaches an object's prototype.
   if ([head, ...rest].some((p) => p === '__proto__' || p === 'constructor' || p === 'prototype')) return undefined;
