@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { apiBase } from '../lib/api';
-import { getBusinessInfo } from '../lib/businessInfo';
+import { getBusinessInfo, cutoffPhrase } from '../lib/businessInfo';
 import { fetchApprovedCatalogueWithStatus } from '../lib/catalogue';
 import { getStorefrontDiscount } from '../lib/storefrontDiscount';
 import { chargedPriceUgx } from '../lib/productStructuredData';
@@ -54,7 +54,7 @@ export const GET: APIRoute = async () => {
     `- Shop: ${esc(biz.addressLine1)}. ${esc(biz.addressLine2)}`,
     `- Opening hours: ${esc(biz.openDays)}, ${esc(biz.shopHours)}`,
     `- Phone and WhatsApp: ${esc(biz.phoneDisplay)}`,
-    `- Delivery: ${esc(biz.deliveryNote)} Delivery runs ${esc(biz.deliveryHours)}; order before ${biz.sameDayCutoffHour % 12 || 12}${biz.sameDayCutoffHour >= 12 ? 'pm' : 'am'} for the same-day run.`,
+    `- Delivery: ${esc(biz.deliveryNote)} Delivery runs ${esc(biz.deliveryHours)}; order before ${cutoffPhrase(biz.sameDayCutoffHour)} for the same-day run.`,
     '- Currency: Ugandan shilling (UGX). Prices on the site are what is charged.',
     '',
     ...(complete

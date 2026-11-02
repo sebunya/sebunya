@@ -31,9 +31,10 @@ describe('site copy agrees with itself', () => {
   it('hub parents redirect to their one child instead of a 404', () => {
     const pairs: Array<[string, string]> = [
       ['delivery', '/delivery/kampala-wakiso'],
-      ['locations', '/locations/zainab-aziza'],
       ['dealers', '/dealers/apply'],
     ];
+    // /locations: MOVED_PATHS in the middleware since review 2026-11.
+    expect(read('apps/web/src/middleware.ts')).toContain("'/locations': '/locations/zainab-aziza'");
     for (const [dir, target] of pairs) {
       expect(read(`apps/web/src/pages/${dir}/index.astro`)).toMatch(new RegExp(`Astro\\.redirect\\('${target}', 301\\)`));
     }
