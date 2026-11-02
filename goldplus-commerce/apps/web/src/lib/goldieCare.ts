@@ -36,6 +36,8 @@ export interface CareContext {
   customerName?: string | null;
   /** The customer's own newest message: an order action needs THEIR yes, never the model's word for it. */
   lastCustomerMessage?: string | null;
+  /** Goldie's own turn just before the customer's newest message (null when there is none, e.g. the first message). */
+  previousAssistantMessage?: string | null;
 }
 
 export interface CareAnswer { ok: boolean; text: string; links: Array<{ label: string; url: string }>; facts?: Record<string, unknown> }
@@ -269,6 +271,21 @@ export function customerSaidYes(message: string | null | undefined): boolean {
   return /\b(yes|yeah|yep|yup|sure|ok(ay)?|go ahead|please do|do it|confirm(ed)?|cancel it|yee|kale|ndiyo|sawa)\b/.test(m);
 }
 
+/**
+ * Goldie's turn just before the customer's newest message asked to confirm THIS change on THIS order
+ * ("Just to be sure: shall I cancel the order GP-… now? … Reply yes to confirm."). A first request ("cancel it",
+ * "ok") is never the yes: the question has to have been asked in an earlier turn, and the yes has to be the very
+ * next customer message. On the website the history is the customer's own; forging Goldie's question there is the
+ * customer confirming their own verified order, which is what the question asks anyway.
+ */
+export function confirmationWasAsked(previousAssistant: string | null | undefined, action: 'cancel' | 'refund_failed_delivery', reference: string): boolean {
+  const prev = String(previousAssistant ?? '').toLowerCase();
+  const ref = reference.trim().toLowerCase();
+  if (!prev || !ref || !prev.includes(ref) || !prev.includes('?')) return false;
+  if (!/\b(confirm|shall i|should i|do you want|reply yes)\b/.test(prev)) return false;
+  return action === 'cancel' ? /\bcancel/.test(prev) : /\brefund/.test(prev);
+}
+
 /** Goldie acts herself (2026-10-31): cancel before dispatch with the refund, refund a failed delivery, rider notes. */
 async function orderAction(action: 'cancel' | 'refund_failed_delivery' | 'delivery_instructions', input: { reference: string; contact: string; details?: string }, ctx: CareContext): Promise<CareAnswer | null> {
   const r = await api<{ ok: boolean; told: string; done?: string }>('POST', '/internal/assistant/order-action', ctx, {
@@ -290,7 +307,7 @@ export async function requestOrderChange(input: { reference: string; contact?: s
   const action = change === 'cancel' ? 'cancel' : change === 'refund_failed_delivery' ? 'refund_failed_delivery' : change === 'delivery_time' ? 'delivery_instructions' : null;
   if (action) {
     // Money and cancellations wait for the customer's own yes; a rider note is the customer's own words already.
-    if (action !== 'delivery_instructions' && !customerSaidYes(ctx.lastCustomerMessage)) {
+    if (action !== 'delivery_instructions' && !(confirmationWasAsked(ctx.previousAssistantMessage, action, ref) && customerSaidYes(ctx.lastCustomerMessage))) {
       return { ok: true, text: `Just to be sure: shall I ${CHANGE_LABEL[change]} ${ref} now?${v.summary.facts?.paymentStatus === 'paid' ? ' What you paid online goes back to the same account.' : ''} Reply yes to confirm.`, links: [] };
     }
     const contact = (input.contact || ownPhone(ctx)).trim();
