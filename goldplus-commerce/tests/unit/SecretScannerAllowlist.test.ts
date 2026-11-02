@@ -76,6 +76,19 @@ describe('secret scanner — the allowlist must not disarm the gate', () => {
   });
 });
 
+describe('every committed *.example template is scanned', () => {
+  it('a live-looking secret in a nested env template fails; a placeholder passes', () => {
+    const key = ['SGTM', 'API', 'SECRET'].join('_');
+    write('infra/measurement/.env.sgtm.example', `${key}=q8Zr3vL1pW9xK2mN7tB4yH6\n`);
+    const r = run();
+    expect(r.ok).toBe(false);
+    expect(r.out).toContain('infra/measurement/.env.sgtm.example');
+    write('infra/measurement/.env.sgtm.example', `${key}=changeme\n`);
+    expect(run().ok).toBe(true);
+    rmSync(join(repo, 'infra/measurement/.env.sgtm.example'));
+  });
+});
+
 describe('the real repository', () => {
   it('is green, and the two SEO fixtures are marked rather than pattern-suppressed', () => {
     const root = resolve(__dirname, '../..');

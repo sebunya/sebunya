@@ -34,10 +34,16 @@ describe('nonce stamping', () => {
     + '<script nonce="T">own()</script><script type="application/ld+json">{}</script></head><p>&lt;script src="/z.js"&gt; is text</p>';
   const out = nonceScriptTags(html, 'N');
 
-  it('stamps only same-site script FILES without a nonce', () => {
+  it('stamps only our /_astro/ bundles without a nonce', () => {
     expect(out).toContain('<script nonce="N" src="/_astro/hoisted.abc.js" type="module">');
-    expect(out).toContain('<script nonce="N" SRC=\'/x.js\'>');
-    expect(out.match(/nonce="N"/g)).toHaveLength(2);
+    expect(out).toContain('<SCRIPT SRC=\'/x.js\'>');
+    expect(out.match(/nonce="N"/g)).toHaveLength(1);
+  });
+
+  it('never stamps another same-site src (an injected tag pointing at an API route or upload)', () => {
+    for (const src of ['/api/x?cb=alert', '/uploads/evil.js', '/_astro/../api/x.js', '/_astro/sub/x.js?y=1']) {
+      expect(nonceScriptTags(`<script src="${src}"></script>`, 'N')).not.toContain('nonce=');
+    }
   });
 
   it('never hands the nonce to an inline or cross-site script (an injected one must stay blocked)', () => {

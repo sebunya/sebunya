@@ -2,6 +2,7 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
 import { seoGet, seoPost, rowsOf, emptyReason, str, num, pct, fmtWhen } from "../../../lib/adminSeo";
+import { kampalaLocalToIso } from "../../../lib/kampalaTime";
 
 /** AEO (Answer Engine Optimisation) — the prompt bank, manually recorded
  *  answer-engine observations, and per-engine coverage. Coverage counts only
@@ -46,9 +47,17 @@ if (Astro.request.method === "POST") {
       formError = "Write the question and pick at least one engine.";
     } else {
       const results = await Promise.all(engines.map((engine) => seoPost(token, "/admin/seo/aeo/prompts", { prompt, engine, category })));
-      const failed = results.find((r) => !r.ok);
-      if (failed && !failed.ok) formError = failed.message;
-      else notice = `Question added for ${engines.map(engineLabel).join(", ")}.`;
+      // One POST per engine: say exactly which were saved, so a resubmit does not duplicate them.
+      const saved = engines.filter((_, i) => results[i].ok);
+      const failedAt = engines.map((e, i) => [e, results[i]] as const).filter(([, r]) => !r.ok);
+      if (failedAt.length === 0) notice = `Question added for ${engines.map(engineLabel).join(", ")}.`;
+      else {
+        const first = failedAt[0][1];
+        const why = first.ok ? "" : ` (${first.message})`;
+        formError = saved.length > 0
+          ? `Added for ${saved.map(engineLabel).join(", ")}; NOT added for ${failedAt.map(([e]) => engineLabel(e)).join(", ")}${why}. Retry only the engines not added.`
+          : `Not added for ${failedAt.map(([e]) => engineLabel(e)).join(", ")}${why}.`;
+      }
     }
   } else if (intent === "observation") {
     const promptId = String(form.get("promptId") ?? "").trim();
@@ -66,7 +75,7 @@ if (Astro.request.method === "POST") {
         promptId,
         engine: chosen.engine,
         modelVersion: String(form.get("model") ?? "").trim() || undefined,
-        executedAt: observedAt ? new Date(observedAt).toISOString() : undefined,
+        executedAt: kampalaLocalToIso(observedAt) ?? undefined, // the operator typed Kampala time
         responseExcerpt: excerpt,
         weMentioned: String(form.get("mentioned") ?? "") === "on",
         weCited: String(form.get("cited") ?? "") === "on",

@@ -34,11 +34,16 @@ const rules = [
  * over — by SECRET_LIKE_FILE and by the root-config allowlist — and a real
  * administrative bootstrap password sat in it undetected.
  */
-const ALWAYS_SCAN = new Set(['.env.example']);
+/**
+ * Every committed template is covered, not only the root one: any file whose
+ * name ends in `.example` (infra/measurement/.env.sgtm.example was skipped the
+ * same way the root template once was).
+ */
+const isTemplate = (file) => basename(file).endsWith('.example');
 
 function shouldScan(file) {
   if (SKIP_PATH.test(file)) return false;
-  if (ALWAYS_SCAN.has(file)) return true;
+  if (isTemplate(file)) return true;
   if (SECRET_LIKE_FILE.test(file)) return false;
   if (!file.startsWith('apps/') && !file.startsWith('packages/') && !file.startsWith('scripts/') && !file.startsWith('tests/')) {
     return ROOT_CONFIGS.has(file);
@@ -54,7 +59,7 @@ const PLACEHOLDER = /^$|example|changeme|change-me|placeholder|your[-_]|replace|
 const SECRET_KEY = /(?:PASSWORD|SECRET|TOKEN|API_?KEY|PRIVATE_?KEY|CREDENTIAL|PASSPHRASE)/i;
 
 function committedEnvSecret(line, file) {
-  if (!ALWAYS_SCAN.has(file)) return false;
+  if (!isTemplate(file)) return false;
   const match = /^\s*([A-Z0-9_]+)\s*=\s*(.*)$/.exec(line);
   if (!match) return false;
   const [, key, rawValue] = match;

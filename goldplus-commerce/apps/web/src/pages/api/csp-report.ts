@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { summariseCspReports, CspViolationLog } from '../../lib/cspReports';
+import { readBodyCapped } from '../../lib/boundedBody';
 
 /**
  * Where browsers send what the report-only strict policy WOULD have blocked
@@ -16,8 +17,9 @@ const log = new CspViolationLog({ windowMs: 60 * 60 * 1000, maxKeys: 500, maxLin
 export const POST: APIRoute = async ({ request }) => {
   const length = Number(request.headers.get('content-length') ?? '0');
   if (length > MAX_BODY) return new Response(null, { status: 413 });
-  const text = await readBounded(request, MAX_BODY);
-  if (text === null) return new Response(null, { status: 413 });
+  const read = await readBodyCapped(request, MAX_BODY);
+  if (!read.ok) return new Response(null, { status: read.reason === 'TOO_LARGE' ? 413 : 400 });
+  const text = read.text;
   let body: unknown = null;
   try { body = JSON.parse(text); } catch { return new Response(null, { status: 400 }); }
   for (const violation of summariseCspReports(body)) {
@@ -27,19 +29,3 @@ export const POST: APIRoute = async ({ request }) => {
   }
   return new Response(null, { status: 204 });
 };
-
-/** The body as text, or null past `max` bytes — read in chunks, so an undeclared (chunked) upload cannot fill memory first. */
-async function readBounded(request: Request, max: number): Promise<string | null> {
-  if (!request.body) return '';
-  const reader = request.body.getReader();
-  const parts: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read().catch(() => ({ done: true, value: undefined }));
-    if (done || !value) break;
-    size += value.byteLength;
-    if (size > max) { await reader.cancel().catch(() => undefined); return null; }
-    parts.push(value);
-  }
-  return new TextDecoder().decode(Buffer.concat(parts));
-}

@@ -2,7 +2,7 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import AiSearchNav from "../../../components/admin/AiSearchNav.astro";
 import { readSessionToken } from "../../../lib/session";
-import { aivGet, aivPost, providerLabel, DEFAULT_PROJECT } from "../../../lib/adminAiVisibility";
+import { aivGet, aivPost, providerLabel, DEFAULT_PROJECT, parseRecField } from "../../../lib/adminAiVisibility";
 
 /** Citation gaps: where competitors or third parties are cited and we are not. */
 const token = readSessionToken(Astro.request);
@@ -14,14 +14,15 @@ const q = project !== DEFAULT_PROJECT ? `&project=${encodeURIComponent(project)}
 let formError: string | null = null;
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
-  const rec = JSON.parse(String(form.get("rec") ?? "{}"));
+  const rec = parseRecField(form.get("rec"));
   const CATEGORY: Record<string, string> = { IMPROVE_STRUCTURED_DATA: "SCHEMA_CHANGE", INVESTIGATE_LOST_CITATION: "OTHER", EARN_THIRD_PARTY_SOURCE: "OTHER" };
-  const r = await aivPost<{ id: string }>(token, `${P}/actions`, {
+  const r = !rec ? null : await aivPost<{ id: string }>(token, `${P}/actions`, {
     category: CATEGORY[rec.actionClass] ?? "CONTENT_CHANGE", title: rec.title, reason: rec.why, mechanism: rec.mechanism, targetPage: rec.targetPage,
     limitations: rec.limitations, confidence: rec.confidence, evidence: rec.evidence, expectedImpact: rec.verification,
   });
-  if (r.ok) return Astro.redirect(`/admin/ai-search/actions?id=${r.data.id}${q}`, 303);
-  formError = r.message;
+  if (!r) formError = "That recommendation could not be read. Reload the page and try again.";
+  else if (r.ok) return Astro.redirect(`/admin/ai-search/actions?id=${encodeURIComponent(r.data.id)}${q}`, 303);
+  else formError = r.message;
 }
 
 type Gap = { kind: string; severity: string; rule: string; observationIds: string[]; competitorNames: string[]; queryText: string; queryId: string | null; provider: string; citedHosts: string[] };

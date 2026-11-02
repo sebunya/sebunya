@@ -58,3 +58,17 @@ export const RUN_STATE: Record<string, string> = {
 };
 
 export const DEFAULT_PROJECT = "goldplus";
+
+/**
+ * The recommendation a form carried in its hidden `rec` field, or null when the
+ * field is missing, truncated or not a JSON object (a SyntaxError used to 500).
+ */
+export function parseRecField(value: FormDataEntryValue | null): Record<string, any> | null {
+  if (typeof value !== "string" || !value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}

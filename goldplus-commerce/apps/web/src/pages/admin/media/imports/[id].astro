@@ -3,6 +3,7 @@ import AdminLayout from '../../../../layouts/AdminLayout.astro';
 import FormFeedback from '../../../../components/FormFeedback.astro';
 import { apiBase } from '../../../../lib/api';
 import { readSessionToken } from '../../../../lib/session';
+import { adminFetchJson } from '../../../../lib/adminFetch';
 
 /** Focus 4 — one import session: the plan, its blockers, approval (second person), apply / resume, results. */
 const { id } = Astro.params;
@@ -22,17 +23,17 @@ if (Astro.request.method === 'POST') {
     const body = kind === 'approve' ? { expectedVersion, decision: 'APPROVED', reason: String(form.get('reason') ?? '') }
       : kind === 'reject' ? { expectedVersion, decision: 'REJECTED', reason: String(form.get('reason') ?? '') }
       : { expectedVersion, resume: kind === 'resume' };
-    const res = await fetch(`${apiBase}/admin/media-imports/${encodeURIComponent(id ?? '')}/${path}`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) });
-    const json = await res.json().catch(() => null);
+    const out = await adminFetchJson(`${apiBase}/admin/media-imports/${encodeURIComponent(id ?? '')}/${path}`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) }, 120_000);
+    const json = out.kind === 'answered' ? out.json : null;
     if (json?.success) return Astro.redirect(`${self}?done=${kind}`, 303);
-    status = 'error'; message = json?.error?.message ?? `The action failed (HTTP ${res.status}).`;
+    status = 'error'; message = out.kind === 'unreachable' ? 'The API did not answer, so it is not known whether that went through. Reload the page to check.' : json?.error?.message ?? `The action failed (HTTP ${out.status}).`;
   }
 }
 
 interface Row { id: string; rowNumber: number; filename: string; productSku: string | null; skuToken: string | null; slot: number | null; role: string | null; status: string; issues: string[]; source: string; expectedRevision: number | null; applyStatus: string | null; appliedRevision: number | null; error: string | null }
 interface Session { id: string; name: string; status: string; version: number; totals: Record<string, number>; blocking: boolean; planHash: string; importerVersion: string; manifestFilename: string | null; createdBy: string; approvedBy: string | null; approvedAt: string | null; rejectedReason: string | null; appliedAt: string | null; applySummary: Record<string, unknown> | null; createdAt: string }
-const res = await fetch(`${apiBase}/admin/media-imports/${encodeURIComponent(id ?? '')}`, { headers, signal: AbortSignal.timeout(15000) });
-const json = await res.json().catch(() => null);
+const loaded = await adminFetchJson(`${apiBase}/admin/media-imports/${encodeURIComponent(id ?? '')}`, { headers }, 15_000);
+const json = loaded.kind === 'answered' ? loaded.json : null;
 if (!json?.success) return Astro.redirect('/admin/media/imports', 303);
 const session: Session = json.data.session; const rows: Row[] = json.data.rows;
 const done = new URL(Astro.request.url).searchParams.get('done') ?? new URL(Astro.request.url).searchParams.get('staged');

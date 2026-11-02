@@ -2,6 +2,7 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
 import { seoGet, seoPost, rowsOf, emptyReason, str, fmtWhen } from "../../../lib/adminSeo";
+import { kampalaLocalToIso } from "../../../lib/kampalaTime";
 
 /** Content & Experiments — content gap records, the SEO change ledger, and
  *  controlled experiments, in three sections with list + create forms. */
@@ -38,7 +39,8 @@ if (Astro.request.method === "POST") {
       scope: String(form.get("scope") ?? "").trim(),
       target: String(form.get("target") ?? "").trim(),
       reason: String(form.get("reason") ?? "").trim(),
-      occurredAt: when ? new Date(when).toISOString() : undefined,
+      // A date-only input is that day in Kampala (midnight EAT), not midnight UTC.
+      occurredAt: kampalaLocalToIso(/^\d{4}-\d{2}-\d{2}$/.test(when) ? `${when}T00:00` : when) ?? undefined,
     });
     if (res.ok) notice = "Change recorded in the ledger."; else formError = res.message;
   } else if (intent === "experiment") {

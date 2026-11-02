@@ -2,6 +2,7 @@
 import AdminLayout from "../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../lib/session";
 import { apiBase } from "../../lib/api";
+import { readNotice, redirectWithNotice } from "../../lib/postRedirect";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -9,7 +10,7 @@ if (!token) {
 }
 const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
-let notice: { kind: "success" | "error"; text: string } | null = null;
+let notice: { kind: "success" | "error"; text: string } | null = readNotice(Astro.url);
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const intent = String(form.get("intent") || "");
@@ -54,6 +55,8 @@ if (Astro.request.method === "POST") {
   } catch {
     notice = { kind: "error", text: "The modules service is unreachable right now." };
   }
+  // Post/Redirect/Get: a refresh must not generate another coupon batch or text the asker again.
+  return Astro.redirect(redirectWithNotice(Astro.url, notice ?? { kind: "error", text: "Unknown action." }), 303);
 }
 
 async function load(path: string) {

@@ -22,13 +22,13 @@ if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const intent = String(form.get("intent") ?? "");
   if (intent === "sync") {
-    const res = await intPost(token, `${INTEGRATIONS_API}/connections/${String(form.get("connectionId") ?? "")}/sync`, {
+    const res = await intPost(token, `${INTEGRATIONS_API}/connections/${encodeURIComponent(String(form.get("connectionId") ?? ""))}/sync`, {
       jobType: String(form.get("jobType") ?? "MANUAL"),
     });
     if (res.ok) notice = "Sync queued.";
     else formError = res.message;
   } else if (intent === "cancel") {
-    const res = await intPost(token, `${INTEGRATIONS_API}/sync-jobs/${String(form.get("jobId") ?? "")}/cancel`, {});
+    const res = await intPost(token, `${INTEGRATIONS_API}/sync-jobs/${encodeURIComponent(String(form.get("jobId") ?? ""))}/cancel`, {});
     if (res.ok) notice = "Job cancelled.";
     else formError = res.message;
   }
