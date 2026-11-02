@@ -53,8 +53,11 @@ if (Astro.request.method === "POST") {
         }),
       });
       const json: any = await res.json().catch(() => null);
-      if (res.ok && json?.success) actionMessage = "Address resolved — it leaves the queue and becomes dispatchable.";
-      else actionError = json?.error?.message ?? "Resolution refused.";
+      if (res.ok && json?.success) {
+        actionMessage = "Address resolved — it leaves the queue and becomes dispatchable.";
+        if (json.data?.alias?.error) actionError = `The alias was not created: ${json.data.alias.error}`;
+        else if (json.data?.alias) actionMessage += " Alias created.";
+      } else actionError = json?.error?.message ?? "Resolution refused.";
     } else if (intent === "landmark") {
       const res = await fetch(`${apiBase}/admin/locations/landmarks`, {
         method: "PUT",
