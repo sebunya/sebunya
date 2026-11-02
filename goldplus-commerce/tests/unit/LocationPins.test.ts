@@ -92,10 +92,11 @@ describe('pin rules', () => {
     expect(matchNumberedReply(' 2 ', buttons)?.id).toBe('b');
     expect(matchNumberedReply('3', buttons)).toBeNull();
   });
-  it('purge date respects the 30–365 day bounds', () => {
+  it('purge date honours a stricter retention and caps at 365', () => {
     const t = new Date('2026-10-15T00:00:00Z');
     expect(purgeDate(t, 180).toISOString()).toBe('2027-04-13T00:00:00.000Z');
-    expect(purgeDate(t, 5).getTime() - t.getTime()).toBe(30 * 86_400_000);
+    expect(purgeDate(t, 5).getTime() - t.getTime()).toBe(5 * 86_400_000);
+    expect(purgeDate(t, 900).getTime() - t.getTime()).toBe(365 * 86_400_000);
     expect(purgeDate(t, Number.NaN).getTime() - t.getTime()).toBe(180 * 86_400_000);
   });
 });

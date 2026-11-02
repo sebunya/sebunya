@@ -9,6 +9,7 @@ import type {
 } from '../../../application/use-cases/delivery/LocationPinUseCases';
 import { DeliveryConfigReader } from '../../delivery/DeliveryConfigReader';
 import { pgInTextList, pgUuidArray } from '../PgParams';
+import { effectivePinRetentionDays } from '../../../domain/delivery/DeliveryPins';
 
 type Row = Record<string, unknown>;
 const rows = (r: unknown): Row[] => (Array.isArray(r) ? (r as Row[]) : ((r as { rows?: Row[] })?.rows ?? []));
@@ -160,7 +161,7 @@ export class DrizzleLocationPinRepository implements ILocationPinRepository {
 
   async retentionDays(): Promise<number> {
     const n = (await this.config.numericValues()).pin_retention_days;
-    return Number.isFinite(n) ? n : 180;
+    return effectivePinRetentionDays(n);
   }
 
   async flagDisagreement(input: { orderId: string; orderNumber: string; km: number }): Promise<void> {

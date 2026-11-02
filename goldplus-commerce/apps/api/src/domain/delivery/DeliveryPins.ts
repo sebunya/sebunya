@@ -120,7 +120,17 @@ export function matchNumberedReply(text: string, buttons: readonly ReplyButton[]
 }
 
 /** Retention: a pin on an order is deleted after this many days from capture (owner's registry value; 30–365). */
+/**
+ * The pin retention actually applied. A STRICTER setting is always honoured (down to one day); only a missing or
+ * broken value falls back to the 180 days the privacy page promises, and nothing is kept past 365.
+ */
+export function effectivePinRetentionDays(configured: number | null | undefined): number {
+  const n = Number(configured);
+  if (!Number.isFinite(n) || n < 1) return 180;
+  return Math.min(365, Math.round(n));
+}
+
 export function purgeDate(capturedAt: Date, retentionDays: number): Date {
-  const days = Number.isFinite(retentionDays) ? Math.min(365, Math.max(30, Math.round(retentionDays))) : 180;
+  const days = effectivePinRetentionDays(retentionDays);
   return new Date(capturedAt.getTime() + days * 86_400_000);
 }
