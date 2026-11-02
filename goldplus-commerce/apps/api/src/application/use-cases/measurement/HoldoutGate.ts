@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { normalizeUgandanPhone } from '@goldplus/shared';
 import { DEFAULT_HOLDOUT_SHARE, holdoutArm, waveKeyFor, type HoldoutArm } from '../../../domain/measurement/Incrementality';
 import { effectiveNumber } from '../../../domain/measurement/MeasurementConfig';
 import type { MeasurementConfigPort } from '../../ports/measurement/MeasurementConfigPort';
@@ -22,7 +23,11 @@ export interface HoldoutDecisionInput {
 
 /** sha256 of the digits of a phone: the same key the outcome job computes from orders.customer_phone. */
 export function phoneKey(phone: string): string {
-  const digits = phone.replace(/\D/g, '').replace(/^0/, '256');
+  // The one phone rule (review 228): +256 7XX…, 256 7XX… and 07XX… are one person. Digits of the E.164 form equal
+  // what DrizzleHoldoutStore's SQL derives from a stored phone, so both sides still agree; an unparseable number
+  // keeps the old digits rule.
+  const e164 = normalizeUgandanPhone(phone)?.e164;
+  const digits = e164 ? e164.slice(1) : phone.replace(/\D/g, '').replace(/^0/, '256');
   return `phone:${createHash('sha256').update(digits).digest('hex')}`;
 }
 export const userKey = (userId: string): string => `user:${userId}`;

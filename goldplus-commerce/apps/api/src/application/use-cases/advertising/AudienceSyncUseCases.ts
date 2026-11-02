@@ -215,7 +215,7 @@ export class AudienceSyncUseCases {
       const r = await once(`audience:${s.id}`, () => cs.source.advertisingAudience(s.id, { limit: CUSTOM_SEGMENT_LIMIT }));
       if (r.status !== 'OK') {
         const why = r.status === 'NOT_MATERIALISED' ? 'has not been computed yet (the nightly segment run fills it)' : 'cannot be read as a list';
-        out.push({ ...base, preview: empty, members: [], unavailable: { status: r.status === 'NOT_MATERIALISED' ? 'NOT_MATERIALISED' : 'SEGMENT_UNAVAILABLE', message: `The segment "${s.name}" ${why}.` } });
+        out.push({ ...base, preview: empty, members: [], unavailable: { status: r.status === 'NOT_MATERIALISED' ? 'NOT_MATERIALISED' : 'SEGMENT_UNREADABLE', message: `The segment "${s.name}" ${why}.` } });
         continue;
       }
       const members: HashedAudienceMember[] = [];
@@ -332,7 +332,10 @@ export class AudienceSyncUseCases {
     for (const slot of slots) {
       const { preview, members, segment } = slot;
       const counts = { eligibleCount: preview.eligible, excludedConsent: preview.excludedConsent, excludedNoIdentifier: preview.excludedNoIdentifier };
-      if (slot.unavailable && mode === 'DRY_RUN') { out.push(await this.log({ ...base, segment, status: slot.unavailable.status, ...counts, message: slot.unavailable.message })); continue; }
+      // A segment that could not be read is SKIPPED, never cleared: an unread segment is not "no buyers" (review 228).
+      // An ARCHIVED segment (SEGMENT_UNAVAILABLE) still has its list emptied below.
+      const unread = slot.unavailable && slot.unavailable.status !== 'SEGMENT_UNAVAILABLE';
+      if (slot.unavailable && (unread || mode === 'DRY_RUN')) { out.push(await this.log({ ...base, segment, status: slot.unavailable.status, ...counts, message: unread && mode !== 'DRY_RUN' ? `${slot.unavailable.message} The list on the platform was left as it is.` : slot.unavailable.message })); continue; }
       if (mode === 'DRY_RUN') { out.push(await this.log({ ...base, segment, status: 'DRY_RUN', ...counts, message: 'No platform was called.' })); continue; }
       const tooSmall = platform === 'tiktok' && members.length > 0 && members.length < TIKTOK_MIN_FILE_ENTRIES;
       if (members.length === 0 || tooSmall) {
