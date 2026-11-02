@@ -19,7 +19,7 @@ function rowsOf(result: unknown): any[] {
  *
  * Day bucketing converts created_at to Africa/Kampala before truncating, so a
  * 21:30 UTC order lands on the next Kampala day exactly as the shared period
- * service expects. Time windows are always closed [start, end] instants that
+ * service expects. Time windows are always half-open [start, end + 1ms) windows (no sub-millisecond gap at midnight) that
  * the use case derives from Kampala calendar days; queries are aggregates
  * over indexed columns and return no per-customer fields.
  */
@@ -40,7 +40,7 @@ export class DrizzleAnalyticsReadRepository implements IAnalyticsReadRepository 
           and not (status = 'cancelled' and payment_status not in ('paid', 'failed', 'rejected', 'cancelled')))::int as "prepaidOrders",
         count(*) filter (where payment_method = 'pesapal' and payment_status = 'paid')::int as "paidPrepaidOrders"
       from orders
-      where created_at >= ${start} and created_at <= ${end}
+      where created_at >= ${start} and created_at < ${new Date(end.getTime() + 1)}
     `);
     const row = rowsOf(result)[0] ?? {};
     return {
@@ -66,7 +66,7 @@ export class DrizzleAnalyticsReadRepository implements IAnalyticsReadRepository 
         count(*) filter (where payment_status = 'paid')::int as "paidOrders",
         coalesce(sum(total_amount) filter (where payment_status = 'paid'), 0)::bigint as "paidOrderValueUgx"
       from orders
-      where created_at >= ${start} and created_at <= ${end}
+      where created_at >= ${start} and created_at < ${new Date(end.getTime() + 1)}
       group by 1
       order by 1
     `);
@@ -132,14 +132,14 @@ export class DrizzleAnalyticsReadRepository implements IAnalyticsReadRepository 
         count(*) filter (where o.payment_status = 'paid')::int as "reconciled"
       from payment_attempts pa
       left join orders o on o.id = pa.order_id
-      where pa.created_at >= ${start} and pa.created_at <= ${end}
+      where pa.created_at >= ${start} and pa.created_at < ${new Date(end.getTime() + 1)}
     `);
     const row = rowsOf(totals)[0] ?? {};
 
     const statuses: any = await db.execute(sql`
       select lower(status) as "status", count(*)::int as "count"
       from payment_attempts
-      where created_at >= ${start} and created_at <= ${end}
+      where created_at >= ${start} and created_at < ${new Date(end.getTime() + 1)}
       group by 1
       order by 2 desc
       limit 50
@@ -151,7 +151,7 @@ export class DrizzleAnalyticsReadRepository implements IAnalyticsReadRepository 
         count(*)::int as "attempts",
         count(*) filter (where lower(status) in ('completed', 'paid', 'success'))::int as "confirmed"
       from payment_attempts
-      where created_at >= ${start} and created_at <= ${end}
+      where created_at >= ${start} and created_at < ${new Date(end.getTime() + 1)}
       group by 1
       order by 2 desc
       limit 20
@@ -190,7 +190,7 @@ export class DrizzleAnalyticsReadRepository implements IAnalyticsReadRepository 
         extract(epoch from (${now}::timestamptz - created_at)) / 3600 as "ageHours",
         total_amount as "totalAmount"
       from orders
-      where created_at >= ${start} and created_at <= ${end}
+      where created_at >= ${start} and created_at < ${new Date(end.getTime() + 1)}
         and payment_status = 'paid'
         and status in ('received', 'pending_payment', 'pending_owner_review')
       order by created_at asc
@@ -214,7 +214,7 @@ export class DrizzleAnalyticsReadRepository implements IAnalyticsReadRepository 
         count(*)::int as "orders",
         coalesce(sum(total_amount) filter (where payment_status = 'paid'), 0)::bigint as "paidOrderValueUgx"
       from orders
-      where created_at >= ${start} and created_at <= ${end}
+      where created_at >= ${start} and created_at < ${new Date(end.getTime() + 1)}
       group by 1
       order by 2 desc
       limit 50
