@@ -492,7 +492,6 @@ export class DrizzlePimImportRepository implements IPimImportRepository {
           if (
             !existing ||
             existing.id !== row.targetProductId ||
-            (slugOwner && slugOwner.id !== existing.id) ||
             !row.beforeSnapshot ||
             !sameCatalogueSnapshot(
               snapshot(existing, price?.retailPrice ?? null, price ?? null),
