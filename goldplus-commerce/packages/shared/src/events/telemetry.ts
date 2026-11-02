@@ -210,7 +210,9 @@ export function gaSessionFromCookieHeader(cookieHeader: string | null | undefine
   // cookie, so a browser that also carried another property's (an older stream on this domain) could file our
   // events and sales under that property's session (2026-10-23 audit).
   const stream = (measurementId ?? '').trim().replace(/^G-/, '');
-  const pick = (stream && all.find((c) => c.stream === stream)) || [...all].sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0) || Number(b.gaSessionId) - Number(a.gaSessionId))[0];
+  // Our stream is known but its cookie is absent: no session, never another property's.
+  if (stream) { const own = all.find((c) => c.stream === stream); return own ? { gaSessionId: own.gaSessionId, gaSessionNumber: own.gaSessionNumber } : null; }
+  const pick = [...all].sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0) || Number(b.gaSessionId) - Number(a.gaSessionId))[0];
   return { gaSessionId: pick.gaSessionId, gaSessionNumber: pick.gaSessionNumber };
 }
 
