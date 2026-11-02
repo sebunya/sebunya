@@ -23,7 +23,7 @@ describe('battery fit wording', () => {
 
   it('the seed data and the older rewording script cannot bring the bare promise back', () => {
     expect(read('apps/api/src/scripts/data/catalogue-copy-2026-09.json')).not.toMatch(UNCONDITIONAL_FIT_PROMISE);
-    expect(read('apps/api/src/scripts/strip-tested-claim.ts')).not.toContain("' Fit confirmed before you pay.'");
+    expect(read('apps/api/src/domain/products/TestedClaimWording.ts')).not.toContain("' Fit confirmed before you pay.'");
     const script = read('apps/api/src/scripts/reword-battery-fit-promise.ts');
     expect(script).toContain("const apply = process.env.APPLY === '1';"); // dry run unless told
     expect(script).toContain("action: 'PRODUCT_DESCRIPTIONS_EDITED'");

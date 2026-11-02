@@ -6,6 +6,7 @@ import { Registry } from '../infrastructure/Registry';
 import { db, endDbConnection } from '../infrastructure/db/client';
 import { UpdateProductListingUseCase } from '../application/use-cases/products/UpdateProductListingUseCase';
 import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
+import { rowsOf } from './lib/scriptHelpers';
 
 /**
  * Applies the maker's specifications transcribed from the supplier photo
@@ -17,7 +18,6 @@ import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAudi
  *   ACTOR_USER_ID=<uuid> DRY_RUN=1 npx tsx src/scripts/apply-supplier-specs.ts
  */
 interface SpecFile { products: Array<{ sku: string; title?: string; shortDescription?: string; longDescription?: string; specs: Array<{ name: string; value: string; unit?: string; isVerified?: boolean }> }> }
-const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 
 async function main(): Promise<void> {
   const actorId = String(process.env.ACTOR_USER_ID ?? '').trim();

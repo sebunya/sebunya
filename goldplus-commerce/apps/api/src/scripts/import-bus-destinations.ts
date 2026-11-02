@@ -24,6 +24,8 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { db } from '../infrastructure/db/client';
+import { rowsOf } from './lib/scriptHelpers';
+import { busDestinationChanged } from './lib/busDestinationChange';
 
 const DATA_VERSION = 1;
 const DATA_DIR = path.resolve(__dirname, '../../../../data/locations/v2');
@@ -134,10 +136,11 @@ async function main() {
   let changed = 0;
   let unchanged = 0;
   for (const r of rows) {
-    const before = (await db.execute(sql`
-      select matching_district, region, current_zone, areas_in_district
+    const before = rowsOf(await db.execute(sql`
+      select matching_district, region, current_zone, areas_in_district, notes
       from delivery_bus_destination
-      where route = ${r.route} and destination_town = ${r.destination_town}`)) as unknown as Array<Record<string, unknown>>;
+      where route = ${r.route} and destination_town = ${r.destination_town}`));
+    const next = { matching_district: r.matching_district, region: orNull(r.region), current_zone: orNull(r.current_zone), areas_in_district: intOrNull(r.areas_in_district), notes: orNull(r.notes) };
 
     await db.execute(sql`
       insert into delivery_bus_destination
@@ -154,11 +157,7 @@ async function main() {
         updated_at = now()`);
 
     if (before.length === 0) added++;
-    else if (
-      before[0].matching_district !== r.matching_district ||
-      String(before[0].region ?? '') !== String(orNull(r.region) ?? '') ||
-      String(before[0].current_zone ?? '') !== String(orNull(r.current_zone) ?? '')
-    ) changed++;
+    else if (busDestinationChanged(before[0] as never, next)) changed++;
     else unchanged++;
   }
 

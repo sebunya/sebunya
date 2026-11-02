@@ -5,6 +5,7 @@ import { Registry } from '../infrastructure/Registry';
 import { db, endDbConnection } from '../infrastructure/db/client';
 import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
 import { GP_C08_SKU, rewriteTwelveWatts, rewriteTwelveWattsDeep } from '../domain/products/ChargerWattageCorrection';
+import { rowsOf } from './lib/scriptHelpers';
 
 /**
  * Corrects GP-C08 from 12W to 10W (2026-10-29): its listed outputs, 5V⎓2A and 9V⎓1A, give at most 10W. The seed
@@ -21,7 +22,6 @@ const decoded = (v: unknown): unknown => {
   if (typeof v !== 'string') return v;
   try { return JSON.parse(v); } catch { return v; }
 };
-const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 
 async function main(): Promise<void> {
   const apply = process.env.APPLY === '1';

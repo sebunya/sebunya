@@ -27,9 +27,9 @@ import { db, endDbConnection } from '../infrastructure/db/client';
  *   ACTOR_USER_ID=<uuid> IMAGES_DIR=/import-images [DRY_RUN=1] npx tsx src/scripts/attach-images-by-code.ts
  */
 import { planPhotoAttachments } from '../domain/media/PhotoCodeMatcher';
+import { rowsOf } from './lib/scriptHelpers';
 
 const MIME: Record<string, string> = { '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.avif': 'image/avif' };
-const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 
 async function main(): Promise<void> {
   requireMediaVolume();
