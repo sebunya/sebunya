@@ -189,7 +189,7 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
       .select({
         totalEvents: count(),
         impressions: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_IMPRESSION' then 1 end)::int`,
-        clicks: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_CLICKED' then 1 end)::int`,
+        clicks: sql<number>`count(case when ${recommendationEvents.eventType} in ('RECOMMENDATION_CLICKED', 'RECOMMENDATION_CLICK') then 1 end)::int`,
         addToCart: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_ADD_TO_CART' then 1 end)::int`,
         attributedEvents: sql<number>`count(case when ${recommendationEvents.attributionId} is not null then 1 end)::int`,
         unattributedEvents: sql<number>`count(case when ${recommendationEvents.attributionId} is null then 1 end)::int`,
@@ -212,7 +212,7 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
       .select({
         placement: recommendationEvents.placement,
         impressions: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_IMPRESSION' then 1 end)::int`,
-        clicks: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_CLICKED' then 1 end)::int`,
+        clicks: sql<number>`count(case when ${recommendationEvents.eventType} in ('RECOMMENDATION_CLICKED', 'RECOMMENDATION_CLICK') then 1 end)::int`,
         addToCart: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_ADD_TO_CART' then 1 end)::int`,
         attributedEvents: sql<number>`count(case when ${recommendationEvents.attributionId} is not null then 1 end)::int`,
         organicEvents: sql<number>`count(case when ${recommendationEvents.ruleId} is null then 1 end)::int`,
@@ -233,7 +233,7 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
         ruleId: recommendationEvents.ruleId,
         ruleName: recommendationRules.name,
         impressions: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_IMPRESSION' then 1 end)::int`,
-        clicks: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_CLICKED' then 1 end)::int`,
+        clicks: sql<number>`count(case when ${recommendationEvents.eventType} in ('RECOMMENDATION_CLICKED', 'RECOMMENDATION_CLICK') then 1 end)::int`,
         addToCart: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_ADD_TO_CART' then 1 end)::int`,
         placementsTouched: sql<string[]>`array_agg(distinct ${recommendationEvents.placement})`,
         productsTouched: sql<number>`count(distinct ${recommendationEvents.recommendationProductId})::int`,
@@ -260,7 +260,7 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
         productName: products.name,
         sku: products.sku,
         impressions: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_IMPRESSION' then 1 end)::int`,
-        clicks: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_CLICKED' then 1 end)::int`,
+        clicks: sql<number>`count(case when ${recommendationEvents.eventType} in ('RECOMMENDATION_CLICKED', 'RECOMMENDATION_CLICK') then 1 end)::int`,
         addToCart: sql<number>`count(case when ${recommendationEvents.eventType} = 'RECOMMENDATION_ADD_TO_CART' then 1 end)::int`,
         placements: sql<string[]>`array_agg(distinct ${recommendationEvents.placement})`,
         ruleAssistedCount: sql<number>`count(case when ${recommendationEvents.ruleId} is not null then 1 end)::int`,
@@ -416,11 +416,14 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
   }
 
   async depthMetricsRaw(windowDays: number) {
-    const { sql } = await import('drizzle-orm');
-    const { recommendationEvents } = await import('../schema/recommendations');
-    const { products } = await import('../schema/products');
     const { isRecommendationPlacement } = await import('../../../application/recommendations/RecommendationValidation');
     const since = new Date(Date.now() - windowDays * 24 * 3600_000);
+    // Same population as the summary cards (review 230): human traffic only, no engine serving telemetry.
+    const inWindow = and(
+      sql`${recommendationEvents.createdAt} >= ${since}`,
+      humanTrafficOnly('recommendation_events', recommendationEvents.id),
+      sql`${recommendationEvents.eventType} not in ('RECOMMENDATION_RESPONSE', 'RECOMMENDATION_ERROR')`,
+    );
 
     const [totals] = await db
       .select({
@@ -432,12 +435,12 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
         nullPlacementEvents: sql<number>`count(*) filter (where placement is null and event_type in ('RECOMMENDATION_IMPRESSION','RECOMMENDATION_CLICKED','RECOMMENDATION_ADD_TO_CART','RECOMMENDATION_VIEWED'))::int`,
       })
       .from(recommendationEvents)
-      .where(sql`${recommendationEvents.createdAt} >= ${since}`);
+      .where(inWindow);
 
     const placements = await db
       .select({ placement: recommendationEvents.placement, events: sql<number>`count(*)::int` })
       .from(recommendationEvents)
-      .where(sql`${recommendationEvents.createdAt} >= ${since} and ${recommendationEvents.placement} is not null`)
+      .where(and(inWindow, sql`${recommendationEvents.placement} is not null`))
       .groupBy(recommendationEvents.placement);
     const invalidPlacementEvents = placements
       .filter((p) => !isRecommendationPlacement(p.placement))
@@ -452,7 +455,7 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
     const topProducts = await db
       .select({ productId: recommendationEvents.recommendationProductId, events: sql<number>`count(*)::int` })
       .from(recommendationEvents)
-      .where(sql`${recommendationEvents.createdAt} >= ${since} and ${recommendationEvents.recommendationProductId} is not null`)
+      .where(and(inWindow, sql`${recommendationEvents.recommendationProductId} is not null`))
       .groupBy(recommendationEvents.recommendationProductId)
       .orderBy(sql`count(*) desc`)
       .limit(5);
@@ -460,7 +463,7 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
     const sourceBreakdown = await db
       .select({ source: sql<string>`coalesce(${recommendationEvents.source}, 'unknown')`, events: sql<number>`count(*)::int` })
       .from(recommendationEvents)
-      .where(sql`${recommendationEvents.createdAt} >= ${since}`)
+      .where(inWindow)
       .groupBy(sql`coalesce(${recommendationEvents.source}, 'unknown')`)
       .orderBy(sql`count(*) desc`);
 
