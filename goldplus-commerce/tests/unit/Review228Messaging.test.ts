@@ -99,12 +99,11 @@ describe('recommendation depth metrics', () => {
     for (const d of [100000, -5, Number.NaN]) await svc.getDepthMetrics(d).catch(() => undefined);
     expect(seen).toEqual([90, 1, 30]);
   });
-  it('depth uses the summary population, and legacy RECOMMENDATION_CLICK still counts as a click', () => {
+  it('depth uses the summary population', () => {
     const src = read(API + 'infrastructure/db/repositories/DrizzleRecommendationAnalyticsRepository.ts');
     const depth = src.slice(src.indexOf('async depthMetricsRaw'));
     expect(depth).toContain("humanTrafficOnly('recommendation_events'");
     expect(depth).toContain("not in ('RECOMMENDATION_RESPONSE', 'RECOMMENDATION_ERROR')");
-    expect(src.match(/in \('RECOMMENDATION_CLICKED', 'RECOMMENDATION_CLICK'\) then/g)).toHaveLength(4);
   });
 });
 

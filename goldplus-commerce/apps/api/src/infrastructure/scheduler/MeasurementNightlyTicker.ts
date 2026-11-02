@@ -52,11 +52,11 @@ export async function runMeasurementNightlyOnce(now = new Date(), trigger: 'sche
   running = true;
   const registry = Registry.getInstance();
   const stats: Record<string, unknown> = { trigger };
-  let runId: string | undefined;
   // A run where a step failed (or that never finished) is FAILED, not COMPLETE: only COMPLETE ends the day's window,
   // so the next tick in 03:30–05:59 tries again (review 231). The BoU job below follows the same rule.
   let failedSteps = 0;
   let finished = false;
+  let runId: string | undefined;
   // Everything after taking the lock sits inside the try: the run record's insert used to come first, so a database
   // blip there left `running` true and the lock held, and no nightly or Rebuild ran until a restart (2026-10-29 review).
   try {
