@@ -23,6 +23,9 @@
  * parish/postcode dropdown is precision theatre on bad data.
  */
 
+import { DISTRICT_SPELLING_VARIANTS } from './districtVariants';
+import { DISTRICT_LINEAGE } from './districtLineage';
+
 /** All 136 district-level units (135 districts + Kampala Capital City), Title Case. */
 export const UGANDA_DISTRICTS: readonly string[] = [
   // Central
@@ -58,26 +61,6 @@ export const UGANDA_DISTRICTS: readonly string[] = [
  * Common spelling variants → canonical district. Includes the typos the old
  * dataset itself shipped, so anything it stored still normalises.
  */
-const DISTRICT_SPELLING_VARIANTS: Record<string, string> = {
-  LUWEERO: 'Luwero',
-  SSEMBABULE: 'Sembabule',
-  KATAWI: 'Katakwi',
-  NAKAPIRIPIT: 'Nakapiripirit',
-  NTUGAMO: 'Ntungamo',
-  'MADI OKOLLO': 'Madi-Okollo',
-  MADIOKOLLO: 'Madi-Okollo',
-  // The 2019 Ministry of ICT postcode source spells these two districts with a
-  // single consonant/vowel where the current official list doubles it. Same
-  // districts, different orthography — mapping them here keeps the district
-  // vocabulary closed while letting the gazetteer import resolve cleanly.
-  KASANDA: 'Kassanda',
-  KIKUBE: 'Kikuube',
-  LUBAGA: 'Kampala',
-  'FORT PORTAL': 'Kabarole',
-  'KAMPALA CITY': 'Kampala',
-  'KAMPALA CAPITAL CITY': 'Kampala',
-};
-
 /**
  * Well-known places customers actually type, each mapped to its verified
  * district. Curated and conservative: an alias earns its row only when the
@@ -159,10 +142,19 @@ export const UGANDA_PLACE_ALIASES: ReadonlyArray<{ area: string; district: strin
   { area: 'Bweyale', district: 'Kiryandongo' },
 ];
 
-const DISTRICT_LOOKUP: ReadonlyMap<string, string> = new Map([
-  ...UGANDA_DISTRICTS.map((d) => [d.toUpperCase(), d] as const),
-  ...Object.entries(DISTRICT_SPELLING_VARIANTS).map(([k, v]) => [k, v] as const),
-]);
+const DISTRICT_LOOKUP: ReadonlyMap<string, string> = (() => {
+  const m = new Map<string, string>(UGANDA_DISTRICTS.map((d) => [d.toUpperCase(), d] as const));
+  for (const [k, v] of Object.entries(DISTRICT_SPELLING_VARIANTS)) m.set(k, v);
+  // Districts and cities created after the shop's list (the 2020 cities, the 2025 approvals): a customer naming one
+  // resolves to the district it was carved from, which the shop prices and zones. Never overrides a listed district.
+  for (const row of DISTRICT_LINEAGE) {
+    const key = row.child.toUpperCase();
+    if (m.has(key)) continue;
+    const parent = m.get(row.parent.toUpperCase());
+    if (parent) m.set(key, parent);
+  }
+  return m;
+})();
 
 /**
  * Resolve free-form input to a canonical district name, or null.

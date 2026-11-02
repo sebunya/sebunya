@@ -19,6 +19,12 @@ export function areaNameFromLabel(label: string | null | undefined): string {
   return first.slice(0, 40);
 }
 
+/** "Najjera, Wakiso" → "Wakiso"; a district alone stays itself. */
+export function districtNameFromLabel(label: string | null | undefined): string {
+  const parts = String(label ?? '').split(',').map((p) => p.trim()).filter(Boolean);
+  return (parts[parts.length - 1] ?? '').slice(0, 40);
+}
+
 /** The "Deliver to" chip. */
 export function deliveringToLine(label: string): string {
   return `Delivering to ${areaNameFromLabel(label)}`;
@@ -26,6 +32,11 @@ export function deliveringToLine(label: string): string {
 
 /** The cut-off line for an area in the same-day dispatch zone, with the real minutes left. */
 export function sameDayAreaLine(areaName: string, minsToCutoff: number): string {
+  // Urgency only when true: a passed (or unknown) cut-off never shows "0 minutes left", and minutes are whole.
+  if (!Number.isFinite(minsToCutoff) || minsToCutoff < 1) {
+    return `Today's run to ${areaName} has left. This goes out on the next working day`;
+  }
+  minsToCutoff = Math.floor(minsToCutoff);
   if (minsToCutoff <= 60) return `Only ${minsToCutoff} minutes left for this to go out to ${areaName} today`;
   const h = Math.floor(minsToCutoff / 60);
   const m = minsToCutoff % 60;
@@ -49,7 +60,11 @@ export function upcountryNavLine(areaName: string): { text: string; short: strin
 export function popularNearYouCopy(scope: 'area' | 'district' | 'greater_kampala' | null, label: string): { title: string; subtitle: string } {
   const name = areaNameFromLabel(label);
   if (scope === 'area') return { title: `Popular in ${name}`, subtitle: `What ${name} customers have been buying lately.` };
-  if (scope === 'district') return { title: `Popular across ${name}`, subtitle: `What customers across ${name} have been buying lately.` };
+  if (scope === 'district') {
+    // The figures are district-wide, so the rail names the district ("Najjera, Wakiso" → Wakiso), never the area.
+    const district = districtNameFromLabel(label);
+    return { title: `Popular across ${district}`, subtitle: `What customers across ${district} have been buying lately.` };
+  }
   return { title: 'Popular around Kampala', subtitle: 'What customers across Greater Kampala have been buying lately.' };
 }
 

@@ -21,6 +21,8 @@
  * Reviewed in a pull request like any other data; the yearly administrative
  * drift report (spec §7.4) is what adds to it.
  */
+import { DISTRICT_SPELLING_VARIANTS } from './districtVariants';
+
 export interface DistrictLineageRow {
   /** Current district or city, Title Case as `normalizeUgandaDistrict` returns it. */
   child: string;
@@ -83,18 +85,13 @@ export const DISTRICT_LINEAGE: readonly DistrictLineageRow[] = [
  * cannot normalise it. Keys and values are upper case. Add a row the first
  * time a dataset's district fails to match, never a guess.
  */
-export const DISTRICT_NAME_VARIANTS: Readonly<Record<string, string>> = {
-  KABONG: 'KAABONG',
-  'MADI OKOLLO': 'MADI-OKOLLO',
-  KASANDA: 'KASSANDA',
-  SSEMBABULE: 'SEMBABULE',
-  LUWEERO: 'LUWERO',
-};
+export const DISTRICT_NAME_VARIANTS: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(DISTRICT_SPELLING_VARIANTS).map(([k, v]) => [k, v.toUpperCase()]),
+);
 
 /** Upper-cased, whitespace-collapsed, with known variant spellings mapped to the shop's. */
 export function canonicalDistrictKey(name: string): string {
-  const key = name.trim().replace(/\s+/g, ' ').toUpperCase();
-  return DISTRICT_NAME_VARIANTS[key] ?? key;
+  return DEFAULT_LINEAGE.canonical(name);
 }
 
 export interface Lineage {
