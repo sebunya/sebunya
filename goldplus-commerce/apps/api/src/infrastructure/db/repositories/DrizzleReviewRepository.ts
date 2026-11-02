@@ -9,6 +9,11 @@ import { RatingAggregate, computeRatingAggregate } from '../../../domain/reviews
 /** 0209: the review's attached photo ids, oldest first (an array column from a correlated subquery). */
 const PHOTO_IDS = sql<string[]>`coalesce((select array_agg(p.id::text order by p.created_at) from review_photos p where p.review_id = ${reviews.id}), '{}')`;
 
+/** The advisory-lock key that serialises one product's rating recompute. */
+export function reviewAggregateLockKey(productId: string): string {
+  return `review-aggregate:${productId}`;
+}
+
 export class DrizzleReviewRepository implements IReviewRepository {
   async resolveOrderLine(orderItemId: string): Promise<{ orderPhone: string; orderStatus: string; productId: string } | null> {
     const rows = await db
@@ -63,6 +68,10 @@ export class DrizzleReviewRepository implements IReviewRepository {
   }
 
   private async recomputeAggregate(tx: typeof db, productId: string, now: Date): Promise<void> {
+    // One recompute per product at a time. Without it two moderations of different reviews of the same
+    // product each read only their own change (READ COMMITTED) and the last commit lost the other's.
+    // The lock is taken after this transaction's own write, so the read below sees every committed change.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${reviewAggregateLockKey(productId)}))`);
     const rows = await tx.select({ rating: reviews.rating }).from(reviews).where(and(eq(reviews.productId, productId), eq(reviews.status, 'published')));
     const agg = computeRatingAggregate(rows.map((r) => r.rating));
     await tx
@@ -87,7 +96,6 @@ export class DrizzleReviewRepository implements IReviewRepository {
       });
   }
 
-  /** Admin moderation queue: recent reviews of a given status. */
   /** The moderation queue. Carries the product's name and slug so a moderator sees WHAT the review is about. */
   async listByStatus(status: ReviewStatus, limit = 100): Promise<Array<{ id: string; productId: string; productName: string | null; productSlug: string | null; photoIds: string[]; rating: number; title: string | null; body: string | null; status: string; isVerifiedPurchase: boolean; flagReason: string | null; createdAt: Date }>> {
     const rows = await db

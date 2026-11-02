@@ -86,7 +86,8 @@ export class LocalProductImageStorage implements IProductImageStorage {
     await fs.mkdir(targetDir, { recursive: true });
     const physicalPath = this.confined(safeDir, safeName);
     await fs.writeFile(physicalPath, buffer);
-    const storageKey = `${safeDir}/${safeName}`;
+    // A directory that cleans down to nothing gave the key '/name' and the protocol-relative url '//name'.
+    const storageKey = safeDir ? `${safeDir}/${safeName}` : safeName;
     return { url: `/${storageKey}`, storageKey, physicalPath };
   }
 

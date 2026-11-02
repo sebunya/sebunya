@@ -157,7 +157,7 @@ export class PlayDrawTokenUseCase {
     private readonly draws: ILoyaltyDrawRepository,
     private readonly loyalty: ILoyaltyRepository,
     private readonly randomInt: RandomInt,
-    private readonly notify: (input: { userId: string; points: number; label: string }) => Promise<unknown>,
+    private readonly notify: (input: { userId: string; points: number; label: string; tokenId: string }) => Promise<unknown>,
   ) {}
 
   async execute(input: {
@@ -263,7 +263,7 @@ export class PlayDrawTokenUseCase {
         return fail('TOKEN_REVOKED', 'This card was cancelled because the order it came with was refunded.');
       }
       await this.draws.incrementCampaignTotals(campaign.id, prize.pointsAwarded, 0);
-      await this.notify({ userId: input.userId, points: prize.pointsAwarded, label: prize.label }).catch(() => undefined);
+      await this.notify({ userId: input.userId, points: prize.pointsAwarded, label: prize.label, tokenId: input.tokenId }).catch(() => undefined);
 
       return { ok: true, label: prize.label, points: prize.pointsAwarded, replay: false };
     } catch (error) {

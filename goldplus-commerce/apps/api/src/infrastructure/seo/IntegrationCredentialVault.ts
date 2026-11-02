@@ -16,21 +16,42 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 
 const DERIVATION_LABEL = 'goldplus:seo-integration-credential-vault:v1';
 
+/** The first setting that is set AND non-empty: `KEY=` in compose must fall back, not win as ''. */
+function firstNonEmpty(...values: Array<string | undefined>): string {
+  for (const v of values) {
+    const t = (v ?? '').trim();
+    if (t) return t;
+  }
+  return '';
+}
+
+const derive = (material: string) => createHash('sha256').update(`${DERIVATION_LABEL}:${material}`).digest();
+
 export class IntegrationCredentialVault {
   private readonly key: Buffer;
+  /** Older keys tried on decrypt only: JWT_SECRET_PREVIOUS while the vault key comes from JWT_SECRET. */
+  private readonly fallbackKeys: Buffer[];
 
-  constructor(secret?: string, env: Record<string, string | undefined> = process.env) {
-    const material = (secret ?? env.SEO_CREDENTIAL_VAULT_KEY ?? env.JWT_SECRET ?? '').trim();
+  constructor(secret?: string, env: Record<string, string | undefined> = process.env, previousSecrets: string[] = []) {
+    const material = firstNonEmpty(secret, env.SEO_CREDENTIAL_VAULT_KEY, env.JWT_SECRET);
     if (material === '') {
       throw new Error('IntegrationCredentialVault requires SEO_CREDENTIAL_VAULT_KEY or JWT_SECRET.');
     }
-    this.key = createHash('sha256').update(`${DERIVATION_LABEL}:${material}`).digest();
+    this.key = derive(material);
+    this.fallbackKeys = previousSecrets.map((p) => p.trim()).filter((p) => p && p !== material).map(derive);
   }
 
-  /** Build from env; returns null when no secret material exists (honest no-op path). */
+  /**
+   * Build from env; returns null when no secret material exists (honest no-op path).
+   * When the key comes from JWT_SECRET, JWT_SECRET_PREVIOUS still decrypts, so a routine
+   * JWT rotation does not make every stored credential unreadable.
+   */
   static fromEnv(env: Record<string, string | undefined> = process.env): IntegrationCredentialVault | null {
-    const material = (env.SEO_CREDENTIAL_VAULT_KEY ?? env.JWT_SECRET ?? '').trim();
-    return material === '' ? null : new IntegrationCredentialVault(material);
+    const vaultKey = firstNonEmpty(env.SEO_CREDENTIAL_VAULT_KEY);
+    const material = firstNonEmpty(vaultKey, env.JWT_SECRET);
+    if (material === '') return null;
+    const previous = vaultKey ? [] : [firstNonEmpty(env.JWT_SECRET_PREVIOUS)].filter(Boolean);
+    return new IntegrationCredentialVault(material, env, previous);
   }
 
   /** Encrypt a JSON-serialisable secret payload. */
@@ -47,10 +68,18 @@ export class IntegrationCredentialVault {
     const parts = ciphertext.split('.');
     if (parts.length !== 3) throw new Error('Malformed vault ciphertext.');
     const [iv, tag, data] = parts.map((p) => Buffer.from(p, 'base64'));
-    const decipher = createDecipheriv('aes-256-gcm', this.key, iv, { authTagLength: 16 }); // a truncated tag is refused, not accepted
-    decipher.setAuthTag(tag);
-    const plain = Buffer.concat([decipher.update(data), decipher.final()]);
-    return JSON.parse(plain.toString('utf8')) as T;
+    let lastError: unknown;
+    for (const key of [this.key, ...this.fallbackKeys]) {
+      try {
+        const decipher = createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 }); // a truncated tag is refused, not accepted
+        decipher.setAuthTag(tag);
+        const plain = Buffer.concat([decipher.update(data), decipher.final()]);
+        return JSON.parse(plain.toString('utf8')) as T;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw lastError;
   }
 }
 

@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, inArray, notInArray, asc, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, notInArray, asc, sql } from "drizzle-orm";
 import type {
   IProductRecommendationReader,
   RecommendationProductRecord,
@@ -91,7 +91,8 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
     // RESERVE-1 says it means: stock minus active reservations, clamped at
     // zero. The old in-memory check inferred stock from text and defaulted to
     // "in stock" when it knew nothing.
-    conditions.push(gt(sql`${products.stockQuantity} - ${products.reservedQuantity}`, 0));
+    // A NON_STOCK_ITEM tracks no quantity, so it is always available.
+    conditions.push(sql`(${products.stockQuantity} - ${products.reservedQuantity} > 0 or ${products.inventoryPolicy} = 'NON_STOCK_ITEM')`);
     // The operator's lifecycle decision (410 / unpublish / 301) retires a
     // product from rails too, as it already does from the feed and the
     // sitemap: rails kept offering Buy now on products the PDP answered 410.

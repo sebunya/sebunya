@@ -62,6 +62,8 @@ export class DrizzleCustomerProfileRepository implements ICustomerProfileReposit
     // precision: a JS Date has no microseconds and the round trip does not
     // keep milliseconds stable either (the real-PostgreSQL test proves a
     // millisecond compare re-versions unchanged profiles).
+    // A linked account or changed contact preferences is a change too: the SET writes both, and an
+    // account link with nothing else new was never stored (account-scoped reads missed the customer).
     // Never go backwards: a snapshot built from OLDER data (lower sourceVersion)
     // than the stored one is dropped, whatever else differs, so a slow worker
     // finishing late cannot overwrite a newer projection.
@@ -75,7 +77,9 @@ export class DrizzleCustomerProfileRepository implements ICustomerProfileReposit
       or ${customerProfiles.identityConfidence} is distinct from ${s.identityConfidence}
       or ${customerProfiles.consentEligible} is distinct from ${consent}
       or ${ms(customerProfiles.firstSeen)} is distinct from ${ms(at(s.firstSeen))}
-      or ${ms(customerProfiles.lastSeen)} is distinct from ${ms(at(s.lastSeen))})`;
+      or ${ms(customerProfiles.lastSeen)} is distinct from ${ms(at(s.lastSeen))}
+      or ${customerProfiles.accountUserId} is distinct from ${s.accountUserId ?? null}::uuid
+      or ${asJson(customerProfiles.communicationPreferences)} is distinct from ${prefs == null ? null : JSON.stringify(prefs)}::text::jsonb)`;
     const res = await db.update(customerProfiles).set({
       sourceVersion: sql`greatest(${customerProfiles.sourceVersion}, ${s.sourceVersion})`,
       profileVersion: sql`${customerProfiles.profileVersion} + 1`,

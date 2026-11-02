@@ -155,7 +155,12 @@ export class Ga4Adapter implements SeoIntegrationAdapter {
       stages.push(stageFail('RESOURCE_ACCESS', 'No GA4 propertyId configured yet — set one or discover via the Admin API.'));
       return failedTest(stages, 'PROPERTY_NOT_FOUND', 'No property configured.');
     }
-    const res = await this.fetchImpl(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
+    // A GA4 property id is digits; anything else (say `123/../../v1alpha/...`) would rewrite the request path.
+    if (!/^\d{1,20}$/.test(propertyId)) {
+      stages.push(stageFail('RESOURCE_ACCESS', 'The GA4 propertyId must be the numeric property id (for example 123456789).'));
+      return failedTest(stages, 'PROPERTY_NOT_FOUND', 'The GA4 propertyId is not a numeric property id.');
+    }
+    const res = await this.fetchImpl(`https://analyticsdata.googleapis.com/v1beta/properties/${encodeURIComponent(propertyId)}:runReport`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
       body: JSON.stringify({ dateRanges: [{ startDate: '7daysAgo', endDate: 'yesterday' }], metrics: [{ name: 'sessions' }], limit: 1 }),

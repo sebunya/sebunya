@@ -80,27 +80,28 @@ export class HeroSignalsService {
       return { ...EMPTY, stockBySlug: await this.stockFor(productSlugs) };
     }
 
-    try {
-      const [affinity, ordered, loyalty, stock, visits, customer, place] = await Promise.all([
-        this.categoryAffinity(profileId),
-        this.hasOrdered(profileId),
-        this.loyaltyFor(profileId),
-        this.stockFor(productSlugs),
-        this.visitStrength(profileId),
-        this.customerIdentity(profileId),
-        this.deliverTo(profileId).catch(() => null),
-      ]);
-      const zone = place ? { label: place.label, district: place.district, sameDay: isSameDayDispatchDistrict(place.district) } : null;
-
-      const preferredProduct = affinity.length > 0 ? await this.preferredProduct(affinity[0].categorySlug) : null;
-
-      return { customer, visits, hasOrdered: ordered, categoryAffinity: affinity, preferredProduct, loyalty, stockBySlug: stock, zone };
-    } catch (error) {
-      // A signals failure must never break the hero: return the neutral payload.
-      // But never SILENTLY: a broken query here makes every visitor look new.
-      logger.error({ err: error instanceof Error ? error.message : String(error) }, 'HERO_SIGNALS_FAILED');
-      return EMPTY;
-    }
+    // Each signal falls back on its own: one failing query (say loyalty) used to return EMPTY for the
+    // lot, which also threw away the independently read stock, so every stock-gated slide lost its gate.
+    // Never silently: a broken query here makes every visitor look new.
+    const settle = <T,>(name: string, work: () => Promise<T>, fallback: T): Promise<T> =>
+      work().catch((error) => {
+        logger.error({ err: error instanceof Error ? error.message : String(error), signal: name }, 'HERO_SIGNALS_FAILED');
+        return fallback;
+      });
+    const [affinity, ordered, loyalty, stock, visits, customer, place] = await Promise.all([
+      settle('categoryAffinity', () => this.categoryAffinity(profileId), EMPTY.categoryAffinity),
+      settle('hasOrdered', () => this.hasOrdered(profileId), EMPTY.hasOrdered),
+      settle('loyalty', () => this.loyaltyFor(profileId), EMPTY.loyalty),
+      settle('stock', () => this.stockFor(productSlugs), EMPTY.stockBySlug),
+      settle('visits', () => this.visitStrength(profileId), EMPTY.visits),
+      settle('customer', () => this.customerIdentity(profileId), EMPTY.customer),
+      settle('deliverTo', () => this.deliverTo(profileId), null),
+    ]);
+    const zone = place ? { label: place.label, district: place.district, sameDay: isSameDayDispatchDistrict(place.district) } : null;
+    const preferredProduct = affinity.length > 0
+      ? await settle('preferredProduct', () => this.preferredProduct(affinity[0].categorySlug), EMPTY.preferredProduct)
+      : null;
+    return { customer, visits, hasOrdered: ordered, categoryAffinity: affinity, preferredProduct, loyalty, stockBySlug: stock, zone };
   }
 
   /**

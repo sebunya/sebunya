@@ -13,6 +13,13 @@ export type FlashReserveResult =
  * CONDITIONAL decrement on units_reserved; per-customer limits are enforced under
  * the same row lock so a second session cannot bypass them.
  */
+/** Reservable: scheduled or live, and now inside [startsAt, endsAt). */
+export function flashSaleIsLive(sale: { status: string; startsAt: Date; endsAt: Date }, now: Date): boolean {
+  return (sale.status === 'scheduled' || sale.status === 'live')
+    && sale.startsAt.getTime() <= now.getTime()
+    && now.getTime() < sale.endsAt.getTime();
+}
+
 export class DrizzleFlashSaleRepository {
   /** Admin overview: recent sales with allocation roll-up across their items. */
   async adminList(limit = 50): Promise<Array<{ id: string; name: string; status: string; startsAt: Date; endsAt: Date; unitsAllocated: number; unitsSold: number; unitsReserved: number }>> {
@@ -46,6 +53,17 @@ export class DrizzleFlashSaleRepository {
       // Idempotent replay.
       const existing = await tx.select({ token: flashSaleReservations.reservationToken }).from(flashSaleReservations).where(eq(flashSaleReservations.idempotencyKey, input.idempotencyKey)).limit(1);
       if (existing.length) return { ok: true, token: existing[0].token, duplicate: true };
+
+      // The sale must be live: scheduled/live status and inside its window. cancelSale leaves
+      // units_allocated alone, so without this a cancelled sale still handed out flash-price units.
+      const [sale] = await tx
+        .select({ status: flashSales.status, startsAt: flashSales.startsAt, endsAt: flashSales.endsAt })
+        .from(flashSaleItems)
+        .innerJoin(flashSales, eq(flashSales.id, flashSaleItems.flashSaleId))
+        .where(eq(flashSaleItems.id, input.flashSaleItemId))
+        .for('share', { of: flashSales })
+        .limit(1);
+      if (!sale || !flashSaleIsLive(sale, input.now)) throw new FlashGate('SALE_NOT_LIVE');
 
       // Atomic gate (AC2): admit only while sold+reserved+qty stays within allocation.
       // The UPDATE locks the item row until commit, serialising all racers.

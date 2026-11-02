@@ -403,7 +403,8 @@ describe('the maintenance freeze', () => {
     }
   });
   it('and still freezes ordinary writes', () => {
-    for (const p of ['/auth/register', '/commerce/checkout', '/admin/products/x', '/auth/mfa/enrol']) {
+    // /auth/mfa/enrol is exempt since the 2026-11 review: an admin who must enrol could not lift the freeze.
+    for (const p of ['/auth/register', '/commerce/checkout', '/admin/products/x', '/auth/mfa/disable']) {
       expect(isMaintenanceExempt(p), p).toBe(false);
     }
   });

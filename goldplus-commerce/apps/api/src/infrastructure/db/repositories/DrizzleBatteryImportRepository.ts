@@ -36,6 +36,28 @@ function template(r: typeof batteryImportMappingTemplates.$inferSelect): Mapping
   return { id: r.id, importType: r.importType as BatteryImportType, name: r.name, mapping: r.mapping as ImportMapping, createdAt: r.createdAt };
 }
 
+/**
+ * What an operator's resolution makes of a row. Include on a compound or
+ * conflicting row ('BL-5C/BL-4C') with no override cannot say which battery it
+ * is, so the row stays held (apply skips it) instead of becoming CREATE_BATTERY.
+ */
+export function resolveRowOutcome(input: {
+  resolution: 'INCLUDE' | 'EXCLUDE' | 'HOLD';
+  proposedAction: string;
+  hasErrors: boolean;
+  hasOverride: boolean;
+}): { status: 'EXCLUDED' | 'HELD' | 'INVALID' | 'VALID'; action: string } {
+  let action = input.proposedAction;
+  if (input.resolution === 'EXCLUDE') return { status: 'EXCLUDED', action };
+  if (input.resolution === 'HOLD') return { status: 'HELD', action };
+  if (action === 'HOLD_REVIEW') action = 'RECEIPT';
+  else if (action === 'HOLD_COMPOUND' || action === 'HOLD_CONFLICT') {
+    if (!input.hasOverride) return { status: 'HELD', action };
+    action = 'CREATE_BATTERY';
+  }
+  return { status: input.hasErrors ? 'INVALID' : 'VALID', action };
+}
+
 export class DrizzleBatteryImportRepository implements IBatteryImportRepository {
   async event(sessionId: string, actorId: string, action: string, reason: string, evidence: Record<string, unknown>) {
     await db.insert(batteryImportEvents).values({ sessionId, actorId, action, reason, evidence: jsonb(evidence) as never });
@@ -163,11 +185,13 @@ export class DrizzleBatteryImportRepository implements IBatteryImportRepository 
       if (!row) return null;
       const current = (row.normalizedData as Record<string, unknown> | null) ?? {};
       const merged = override ? { ...current, ...override, hold: undefined, overridden: true } : current;
-      const status: ImportRowRecord['status'] = resolution === 'EXCLUDE' ? 'EXCLUDED' : resolution === 'HOLD' ? 'HELD' : (row.validationErrors as string[]).length ? 'INVALID' : 'VALID';
-      let action = row.proposedAction;
-      if (resolution === 'INCLUDE' && (action === 'HOLD_COMPOUND' || action === 'HOLD_CONFLICT' || action === 'HOLD_REVIEW')) {
-        action = action === 'HOLD_REVIEW' ? 'RECEIPT' : 'CREATE_BATTERY';
-      }
+      const { status, action } = resolveRowOutcome({
+        resolution,
+        proposedAction: row.proposedAction,
+        hasErrors: (row.validationErrors as string[]).length > 0,
+        hasOverride: !!override,
+      });
+      const actionChanged = action !== row.proposedAction;
       const [updated] = await tx.update(batteryImportRows).set({
         resolution, resolutionNote: note, resolvedBy: actorId, resolvedAt: new Date(), status, proposedAction: action,
         normalizedData: jsonb(merged) as never,
@@ -182,7 +206,8 @@ export class DrizzleBatteryImportRepository implements IBatteryImportRepository 
         validRows: counts[0].valid, invalidRows: counts[0].invalid, heldRows: counts[0].held, excludedRows: counts[0].excluded,
         // An override changes what apply would write, so the stored preview no
         // longer describes the session: approval waits for a fresh dry run.
-        ...(override ? { status: 'MAPPED', previewDigest: null } : {}),
+        // The same holds when Include changed the row's action (a held row now writes something).
+        ...(override || actionChanged ? { status: 'MAPPED', previewDigest: null } : {}),
         version: sql`${batteryImportSessions.version} + 1`, updatedAt: new Date(),
       }).where(eq(batteryImportSessions.id, sessionId)).returning();
       await tx.insert(batteryImportEvents).values({ sessionId, actorId, action: 'ROW_RESOLVED', reason: note ?? resolution, evidence: jsonb({ rowNumber: row.rowNumber, resolution, override }) as never });

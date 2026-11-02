@@ -21,6 +21,11 @@ function toTicket(r: typeof supportIssues.$inferSelect): SupportTicket {
   );
 }
 
+/** metadata->>field, also when the driver stored the jsonb as an encoded string ('"{...}"'). */
+export function metadataField(field: 'email' | 'phone') {
+  return sql.raw(`coalesce(metadata->>'${field}', case when jsonb_typeof(metadata) = 'string' then (metadata #>> '{}')::jsonb->>'${field}' end)`);
+}
+
 export class DrizzleSupportRepository implements ISupportRepository {
   async save(ticket: SupportTicket): Promise<void> {
     await db.insert(supportIssues).values({
@@ -79,9 +84,16 @@ export class DrizzleSupportRepository implements ISupportRepository {
     const phone = (query.phone ?? '').trim();
     const byCustomer = eq(supportIssues.customerId, query.customerId);
     const matches = [byCustomer];
-    if (email) matches.push(sql`lower(${supportIssues.metadata}->>'email') = ${email}`);
+    // A guest ticket's email counts only once this customer has PROVED that email (a provider-verified
+    // sign-in identity): account emails are never verified, so anyone could register with a stranger's
+    // address and read that person's guest tickets.
+    if (email) {
+      matches.push(sql`(lower(${metadataField('email')}) = ${email} and exists (
+        select 1 from user_identities ui
+        where ui.user_id = ${query.customerId}::uuid and ui.email_verified and lower(ui.email) = ${email}))`);
+    }
     // Tickets store the phone normalised (+256...), the same form the caller passes.
-    if (phone) matches.push(sql`${supportIssues.metadata}->>'phone' = ${phone}`);
+    if (phone) matches.push(sql`${metadataField('phone')} = ${phone}`);
     const rows = await db
       .select()
       .from(supportIssues)
