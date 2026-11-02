@@ -8,6 +8,7 @@ import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { collapseConsecutive as collapse, RULE_METHODS, DEFAULT_RULE_POLICY, allocateInteger, ruleWeights, markovRemovalEffects, exactShapley, SHAPLEY_EXACT_LIMIT, type Journey, type Touch } from '../../domain/measurement/Attribution';
 import type { AttributionPort, AttributionRunView, BatchRunView } from '../../application/ports/MeasurementOperations';
 import { channelAttribution } from './createChannelAttribution';
+import { isStitchableVisitorId } from './DrizzleChannelAttributionStore';
 
 /**
  * Attribution batch (dossier §9, addendum 17 §2/§6). Single host: one bounded
@@ -57,7 +58,7 @@ async function loadInputs(env: string) {
       // Cross-device (2026-10-23): the order's own browser plus every browser the identity graph ties to the customer.
       const stitched: string[] = (typeof r.stitched === 'string' ? JSON.parse(r.stitched) : r.stitched) ?? [];
       const visitor = r.visitor ? String(r.visitor) : null;
-      return { orderId: String(r.order_id), visitor, visitors: [...new Set([visitor, ...stitched.map(String)].filter((v): v is string => !!v))], at: new Date(r.occurred_at), valueUGX: BigInt(r.value ?? '0') };
+      return { orderId: String(r.order_id), visitor, visitors: [...new Set([visitor, ...stitched.map(String).filter(isStitchableVisitorId)].filter((v): v is string => !!v))], at: new Date(r.occurred_at), valueUGX: BigInt(r.value ?? '0') };
     });
   const touches = rows(await db.execute(sql`
     select anonymous_id, channel, occurred_at from measurement.touchpoint

@@ -39,3 +39,12 @@ describe('230: care push alerts reach only staff who may read the Care Desk', ()
     expect(src).toContain('CARE_PUSH_RECIPIENT_HAS_PERMISSION}');
   });
 });
+
+describe('230: both attribution paths stitch the same visitor ids', () => {
+  it('AttributionJob filters stitched ids with the store\'s shared format check', async () => {
+    const { isStitchableVisitorId } = await import('../../apps/api/src/infrastructure/measurement/DrizzleChannelAttributionStore');
+    expect(isStitchableVisitorId('fp.1730000000000.123e4567-e89b-12d3-a456-426614174000')).toBe(true);
+    expect(isStitchableVisitorId('GA1.2.123.456')).toBe(false);
+    expect(readFileSync('apps/api/src/infrastructure/measurement/AttributionJob.ts', 'utf8')).toContain('.filter(isStitchableVisitorId)');
+  });
+});
