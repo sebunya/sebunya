@@ -166,6 +166,8 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
     if (admission.reservationId) void release({ reservationId: admission.reservationId, reason: 'replica concurrency cap' });
     return { kind: 'refused', status: 503, code: 'BUSY', message: 'Goldie is busy right now. Please try again in a minute.', retryAfter: '30' };
   }
+  // Taken here, in the same synchronous step as the check, so turns arriving together cannot all pass the cap.
+  if (route === 'ai') inFlight += 1;
   const meta: TurnMeta = { intent: clarify ? 'CLARIFY' : classified.intent, mood, route, tier: admission.tier, cacheId: remembered?.id ?? null };
   const seed = input.requestId ?? last;
   const team = { label: 'Email the team', url: `${input.care.site}${TEAM_HANDOVER_PATH}` };
@@ -204,7 +206,6 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
       return;
     }
 
-    inFlight += 1;
     const reservationId = admission.reservationId!;
     let settled = false;
     let usageSoFar: (() => import('./assistant').Usage) | null = null;

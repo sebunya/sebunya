@@ -43,14 +43,16 @@ export function resetAssistantState(): void { recentRequestIds.clear(); resetTur
 const json = (body: unknown, status: number, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...extra } });
 
-const seenRecently = (id: string | null): boolean => {
+/** Seen and admitted within the TTL. A refused request (BUSY, RATE_LIMITED) is never marked, so its retry goes through. */
+export const seenRecently = (id: string | null): boolean => {
   const now = Date.now();
-  if (recentRequestIds.size > 10_000) recentRequestIds.clear();
   for (const [k, t] of recentRequestIds) if (now - t > IDEMPOTENCY_TTL_MS) recentRequestIds.delete(k);
-  if (!id) return false;
-  if (recentRequestIds.has(id)) return true;
-  recentRequestIds.set(id, now);
-  return false;
+  return !!id && recentRequestIds.has(id);
+};
+export const markSeen = (id: string | null): void => {
+  if (!id) return;
+  if (recentRequestIds.size > 10_000) recentRequestIds.clear();
+  recentRequestIds.set(id, Date.now());
 };
 
 function isEvalCaller(header: string | null): boolean {
@@ -100,24 +102,31 @@ export const POST: APIRoute = async ({ request, clientAddress, cookies, locals }
   if (prepared.kind === 'refused') {
     return json({ success: false, error: { code: prepared.code, message: prepared.message } }, prepared.status, prepared.retryAfter ? { 'Retry-After': prepared.retryAfter } : {});
   }
+  markSeen(requestId);
 
   const encoder = new TextEncoder();
   const last = turns[turns.length - 1]!.content;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (ev: unknown) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(ev)}\n\n`));
+      // The shopper may close the chat mid-answer: a closed stream must not throw out of the loop, catch or finally.
+      let open = true;
+      const send = (ev: unknown) => {
+        if (!open) return;
+        try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(ev)}\n\n`)); } catch { open = false; }
+      };
       let answer = '';
       try {
         for await (const ev of prepared.run()) {
           if (ev.type === 'meta') continue; // operational, not for the browser
           if (ev.type === 'text') answer += ev.text;
           send(ev);
+          if (!open) break;
         }
       } catch (e) {
         console.error('[assistant] unexpected', e instanceof Error ? e.message : e);
         send({ type: 'error', code: 'FAILED', message: 'Something went wrong. Please ask again.', billed: false });
       } finally {
-        controller.close();
+        try { controller.close(); } catch { /* already closed by the reader */ }
         // Filed after the answer, off the customer's path: the archive never slows a reply.
         if (archiveKey && !evalRun) logTurn({ conversationId: archiveKey, userId, page, customer: last, goldie: answer || null, intent: prepared.meta.intent, mood: prepared.meta.mood.mood, route: prepared.meta.route, cacheId: prepared.meta.cacheId ?? null, nextAction: prepared.meta.nextAction ?? null, visitToken: who.visitToken, fpClientId: who.fpClientId });
       }
