@@ -29,8 +29,12 @@ export function parseUsdRow(csv) {
     const name = cells[1]?.trim() ?? '';
     if (!/^U\.S\. Dollar\/Uganda Shillings/i.test(name)) continue;
     const kind = (cells[2] ?? '').trim().toLowerCase();
-    const value = Number(cells.slice(3).join(',').replace(/[^0-9.]/g, ''));
-    if (!Number.isFinite(value)) continue;
+    // A blank or non-numeric cell (before BoU's daily refresh) is skipped, never
+    // read as Number('') === 0 and posted as a 0 UGX/USD rate.
+    const digits = cells.slice(3).join(',').replace(/[^0-9.]/g, '');
+    if (!/\d/.test(digits)) continue;
+    const value = Number(digits);
+    if (!Number.isFinite(value) || value <= 0) continue;
     if (kind.startsWith('cross')) out.mid = value;
     else if (kind.startsWith('buying')) out.buying = value;
     else if (kind.startsWith('selling')) out.selling = value;

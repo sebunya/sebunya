@@ -54,7 +54,8 @@ describe('media files outlive the container that stored them', () => {
     // repository, so without it git prints "goldplus-commerce/Caddyfile" and
     // the exact match never fires (a Caddyfile change rolled on 2026-09-13
     // without recreating Caddy).
-    expect(deploy).toMatch(/git diff --name-only --relative "\$PREV" HEAD \| grep -qx Caddyfile/);
+    expect(deploy).toMatch(/CHANGED_FILES="\$\(git diff --name-only --relative "\$PREV" HEAD\)"/);
+    expect(deploy).toMatch(/grep -qx Caddyfile <<<"\$CHANGED_FILES"/);
     expect(deploy).toMatch(/up -d --force-recreate --no-deps caddy/);
     const executed = deploy.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
     expect(executed).not.toMatch(/caddy reload/);

@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
 import { apiBase } from '../../lib/api';
 import { readBodyCapped } from '../../lib/boundedBody';
 
@@ -16,7 +17,9 @@ const MAX: Record<(typeof FIELDS)[number], number> = {
 /** Every field at its cap is well under this; anything larger is not a request from the finder. */
 const MAX_BODY_BYTES = 8 * 1024;
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async (context) => {
+  const { request } = context;
+  const clientAddress = readClientAddress(context);
   // Read with a streaming cap: request.json() buffered any size of body, and a
   // chunked upload declares no length for a header check to refuse.
   const read = await readBodyCapped(request, MAX_BODY_BYTES);
@@ -39,7 +42,8 @@ export const POST: APIRoute = async ({ request }) => {
       headers: {
         'Content-Type': 'application/json',
         ...(request.headers.get('x-gp-finder-session') ? { 'x-gp-finder-session': request.headers.get('x-gp-finder-session') as string } : {}),
-        ...(request.headers.get('x-forwarded-for') ? { 'x-forwarded-for': request.headers.get('x-forwarded-for') as string } : {}),
+        // The visitor's address as Astro saw it, never the client's own X-Forwarded-For claim.
+        ...apiHeaders({}, clientAddress),
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(8000),

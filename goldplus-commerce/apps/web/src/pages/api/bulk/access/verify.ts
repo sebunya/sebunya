@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { apiHeaders, readClientAddress } from '../../../../lib/forwardClient';
 import { apiBase } from '../../../../lib/api';
 import { readBodyCapped } from '../../../../lib/boundedBody';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../../../../lib/requestOrigin';
@@ -12,7 +13,9 @@ import { BULK_ACCESS_COOKIE, readAccessCookie } from '../../../../lib/bulkAccess
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
-export const POST: APIRoute = async ({ request, cookies }) => {
+export const POST: APIRoute = async (context) => {
+  const { request, cookies } = context;
+  const clientAddress = readClientAddress(context);
   const origin = checkRequestOrigin(request, import.meta.env as unknown as Record<string, string | undefined>);
   if (!origin.allowed) return json(403, { success: false, error: { code: 'CROSS_SITE', message: CROSS_SITE_MESSAGE } });
   const read = await readBodyCapped(request, 1024);
@@ -24,7 +27,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(request.headers.get('x-forwarded-for') ? { 'x-forwarded-for': request.headers.get('x-forwarded-for') as string } : {}),
+        // The visitor's address as Astro saw it, never the client's own X-Forwarded-For claim.
+        ...apiHeaders({}, clientAddress),
       },
       body: JSON.stringify({ phone: String(body.phone ?? '').trim().slice(0, 32), code: String(body.code ?? '').trim().slice(0, 12) }),
       signal: AbortSignal.timeout(10_000),

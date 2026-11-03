@@ -21,8 +21,9 @@ export const NAV_LIMITS = {
 
 export interface NavConfigError { path: string; message: string; }
 
-/** The fields rendered via set:html / innerHTML — the XSS boundary. Sanitised on
- * write (sanitiseNavConfig) AND, where a sink builds markup by hand, at render. */
+/** The fields rendered via set:html / innerHTML — the XSS boundary. Sanitised when
+ * the config is READ (NavContentService runs sanitiseNavConfig on read, not on
+ * write) and, where a sink builds markup by hand, again at render. */
 const HTML_FIELD_PATHS = [
   'search.zeroResultCopy',
   'miniCart.cutoffSunday', 'miniCart.cutoffAfter', 'miniCart.cutoffBefore',
@@ -55,16 +56,21 @@ export function sanitiseNavHtml(v: string): string {
     .replace(/&lt;\/b&gt;/gi, '</b>');
 }
 
-const isRealHref = (h: unknown): boolean =>
-  typeof h === 'string' && h.trim() !== '' && h !== '#' && (h.startsWith('/') || /^https?:\/\//i.test(h) || h.startsWith('tel:'));
+/** A site path ("/x") but never a protocol-relative "//host" or "/\host", which a browser sends off-site. */
+export const isSitePath = (h: string): boolean => /^\/(?![/\\])/.test(h) || h === '/';
 
-const balancedTags = (v: string): boolean => {
-  for (const tag of ['em', 'b']) {
-    const open = (v.match(new RegExp(`<${tag}>`, 'gi')) || []).length;
-    const close = (v.match(new RegExp(`</${tag}>`, 'gi')) || []).length;
-    if (open !== close) return false;
+export const isRealHref = (h: unknown): boolean =>
+  typeof h === 'string' && h.trim() !== '' && h !== '#' && (isSitePath(h) || /^https?:\/\//i.test(h) || h.startsWith('tel:'));
+
+/** Every <em>/<b> closed, in order: a close before its open ("</em>x<em>") is refused too. */
+export const balancedTags = (v: string): boolean => {
+  const stack: string[] = [];
+  for (const m of v.matchAll(/<(\/?)(em|b)>/gi)) {
+    const tag = m[2].toLowerCase();
+    if (!m[1]) stack.push(tag);
+    else if (stack.pop() !== tag) return false;
   }
-  return true;
+  return stack.length === 0;
 };
 
 /** Returns [] when the config is safe to store and render; otherwise every problem. */
@@ -136,17 +142,11 @@ export function validateNavConfig(cfg: NavConfig): NavConfigError[] {
   }
 
   // XSS-boundary strings: balanced tags only (the sanitiser strips the rest at render)
-  const htmlFields: Array<[string, string | undefined]> = [
-    ['search.zeroResultCopy', cfg.search?.zeroResultCopy],
-    ['miniCart.cutoffSunday', cfg.miniCart?.cutoffSunday],
-    ['miniCart.cutoffAfter', cfg.miniCart?.cutoffAfter],
-    ['miniCart.cutoffBefore', cfg.miniCart?.cutoffBefore],
-    ['popover.signedIn.subTemplate', cfg.popover?.signedIn?.subTemplate],
-    ['popover.returning.mobileSub', cfg.popover?.returning?.mobileSub],
-    ['popover.firstTime.holdSub', cfg.popover?.firstTime?.holdSub],
-    ['popover.firstTime.mobileSub', cfg.popover?.firstTime?.mobileSub],
-  ];
-  htmlFields.forEach(([path, v]) => { if (v != null && !balancedTags(v)) push(path, 'Unbalanced <em>/<b> tag — close every tag you open.'); });
+  // Every HTML-rendered field (one list, HTML_FIELD_PATHS), so none is skipped.
+  for (const path of HTML_FIELD_PATHS) {
+    const v = getPath(cfg, path);
+    if (typeof v === 'string' && !balancedTags(v)) push(path, 'Unbalanced <em>/<b> tag — close every tag you open.');
+  }
 
   return errs;
 }
@@ -182,8 +182,8 @@ function setPath(obj: any, path: string, value: unknown): void {
 
 /**
  * Returns a deep copy of the config with every set:html/innerHTML-bound field run
- * through sanitiseNavHtml — the "sanitised on write" half of the XSS boundary the
- * module docstring promises. Escapes everything, restores only <em>/<b>. Idempotent.
+ * through sanitiseNavHtml. Escapes everything, restores only <em>/<b>. NOT idempotent:
+ * a second pass turns "&amp;" into "&amp;amp;", so run it once, on read (NavContentService).
  */
 export function sanitiseNavConfig(cfg: NavConfig): NavConfig {
   const copy: NavConfig = JSON.parse(JSON.stringify(cfg));

@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
-import { VISIT_COOKIE_NAME } from "../../../middleware";
+import { apiBase } from "../../../lib/api";
+import { relayHeaders } from "../../../lib/relayHeaders";
 
 /**
  * Same-origin relay for per-visitor hero signals (Task 3, 2026-08-07).
@@ -9,28 +10,16 @@ import { VISIT_COOKIE_NAME } from "../../../middleware";
  * hold. The response is per-visitor, so it is returned no-store — an edge cache
  * must never share one visitor's signals with another.
  */
-const API_BASE = (
-  (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } })?.process?.env?.INTERNAL_API_ORIGIN
-  || (import.meta.env.PUBLIC_API_BASE_URL as string | undefined)
-  || "http://localhost:3000"
-).replace(/\/+$/, "");
 
-const VISIT_TOKEN_SHAPE = /^[A-Za-z0-9_-]{44}$/;
 const noStore = { "Content-Type": "application/json", "Cache-Control": "private, no-store" };
 
-export const GET: APIRoute = async ({ cookies, clientAddress }) => {
-  const headers: Record<string, string> = { Accept: "application/json" };
-  const visit = cookies.get(VISIT_COOKIE_NAME)?.value;
-  if (visit && VISIT_TOKEN_SHAPE.test(visit)) headers["x-gp-visit"] = visit;
+export const GET: APIRoute = async (context) => {
+  // Signed visit token (locals.gpVisit) and the visitor's address, via lib/relayHeaders.
+  const headers = relayHeaders(context, { Accept: "application/json" });
   // Without a client address the API treats this as an internal call and
   // applies no abuse budget at all; forward the visitor's, as the rec relay does.
   try {
-    if (clientAddress) headers["X-Forwarded-For"] = clientAddress;
-  } catch {
-    // clientAddress can throw in prerender contexts; the relay works without it.
-  }
-  try {
-    const res = await fetch(`${API_BASE}/hero/signals`, { headers, signal: AbortSignal.timeout(4000) });
+    const res = await fetch(`${apiBase}/hero/signals`, { headers, signal: AbortSignal.timeout(4000) });
     const body = await res.text();
     return new Response(body, { status: res.status, headers: noStore });
   } catch {

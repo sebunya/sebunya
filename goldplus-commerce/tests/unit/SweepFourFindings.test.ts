@@ -179,7 +179,8 @@ describe('a failure says what it is', () => {
 
 describe('a redirect stays on this site', () => {
   it('every redirect target goes through the hardened helper', () => {
-    expect(read('apps/web/src/pages/404.astro')).toMatch(/safeReturnTo\(to, ''\)/);
+    expect(read('apps/web/src/pages/404.astro')).toContain('findRecordedRedirect(');
+    expect(read('apps/web/src/lib/recordedRedirect.ts')).toMatch(/safeReturnTo\(to, ''\)/);
     expect(read('apps/web/src/pages/account/behavioural-interventions.astro')).toMatch(/safeReturnTo\(body\.data\.ctaPath, ''\)/);
     expect(read('apps/web/src/pages/admin/login.astro')).toMatch(/safeReturnTo\(returnTo, '\/admin'\)/);
   });

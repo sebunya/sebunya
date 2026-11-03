@@ -161,7 +161,15 @@ const availabilityBadgeClass = (() => {
           <input type="hidden" name="slug" value={product.slug} />
           <input type="hidden" name="name" value={product.name} />
           <input type="hidden" name="categoryName" value={product.categoryName ?? ''} />
+          {/* The LIST price on purpose: cart lines (server and device copy) hold
+              list prices and the running sale is taken off the basket as one
+              saving (basketSavingUgx), as at checkout. Posting the sale price
+              would discount the device copy twice. */}
           <input type="hidden" name="priceUgx" value={product.retailPriceUgx ?? 0} />
+          {searchQuery && searchRank > 0 && (<>
+            <input type="hidden" name="searchQuery" value={searchQuery} />
+            <input type="hidden" name="searchRank" value={searchRank} />
+          </>)}
           {/* Same hierarchy as the PDP buy box: Add to cart is the lime primary,
               Buy now the secondary. flex-wrap + nowrap: two labels that cannot
               share a narrow (2-up phone) card stack instead of breaking. */}

@@ -2,9 +2,8 @@
  * Ugandan phone normalisation (location-module brief PART G, field 3).
  *
  * Accepts 07XXXXXXXX, +2567XXXXXXXX, 2567XXXXXXXX and the same with spaces or
- * hyphens; normalises to E.164 (+256…). Validates SHAPE strictly; an
- * unrecognised operator prefix WARNS but never blocks — operator allocations
- * change and a hard allowlist rots.
+ * hyphens; normalises to E.164 (+256…). Validates SHAPE strictly. There is
+ * no operator-prefix check (see below).
  */
 
 export interface NormalisedUgandanPhone {
@@ -12,12 +11,6 @@ export interface NormalisedUgandanPhone {
   /** set when the shape is valid but the operator prefix is not a known allocation */
   warning: string | null;
 }
-
-// Known mobile prefixes (informational only — drives the warning, never a block).
-const KNOWN_PREFIXES = new Set([
-  '70', '74', '75', '76', '77', '78', '79', // MTN / Airtel / Lyca / Smile eras
-  '71', '72', '73',
-]);
 
 export function normalizeUgandanPhone(raw: string | null | undefined): NormalisedUgandanPhone | null {
   if (!raw) return null;
@@ -30,14 +23,10 @@ export function normalizeUgandanPhone(raw: string | null | undefined): Normalise
   else return null;
 
   if (!/^\d{9}$/.test(national)) return null;
-  // Mobile numbers are 7XXXXXXXX; landlines (4XX, 3XX…) are accepted too — a
-  // rider can be called on either — but only mobiles get prefix intelligence.
-  const isMobile = national.startsWith('7');
-  const prefix = national.slice(0, 2);
-  const warning =
-    isMobile && !KNOWN_PREFIXES.has(prefix)
-      ? `Prefix 0${prefix} is not a recognised Ugandan mobile allocation. Please double-check the number.`
-      : null;
+  // No operator-prefix warning: every 07X prefix (70-79) was on the "known"
+  // list, so the warning could never fire. It was dead code, not a check. The
+  // field stays for callers; it is null until a real allocation list exists.
+  const warning: string | null = null;
   return { e164: `+256${national}`, warning };
 }
 

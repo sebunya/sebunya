@@ -1,8 +1,8 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
-import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
-import { getProductSubcategory, subcategoryNameForSlug } from "../../lib/product-discovery";
+import { filterDisplayableRecommendations, recommendedItemSubcategory } from "../../lib/recommendation-display";
+import { subcategoryNameForSlug } from "../../lib/product-discovery";
 import { getTaxonomy } from "../../lib/taxonomy";
 
 /**
@@ -42,7 +42,8 @@ const taxonomy = await getTaxonomy();
 // category), so both sides of the comparison speak one vocabulary.
 const withSubcategory = response.items.map((item) => ({
   ...item,
-  subcategoryName: getProductSubcategory({ name: item.name, categoryName } as Parameters<typeof getProductSubcategory>[0], taxonomy),
+  // The item's OWN category (when sent), never the current product's.
+  subcategoryName: recommendedItemSubcategory(item as { name: string; categoryName?: string | null }, taxonomy),
 }));
 
 const finalItems = filterDisplayableRecommendations(withSubcategory, {

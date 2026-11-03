@@ -332,7 +332,7 @@ describe('the server-set visitor id reaches the collector on api.', () => {
     expect(visitorCookieDomain('www.shopgoldplus.com')).toBe('shopgoldplus.com');
     expect(visitorCookieDomain('localhost')).toBeUndefined();
     expect(visitorCookieDomain('evilshopgoldplus.com')).toBeUndefined();
-    expect(read('apps/web/src/middleware.ts')).toContain('domain: visitorCookieDomain(context.url.hostname)');
+    expect(read('apps/web/src/middleware.ts')).toContain('const fpDomain = visitorCookieDomain(context.url.hostname);');
   });
 });
 

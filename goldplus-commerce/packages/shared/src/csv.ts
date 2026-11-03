@@ -3,18 +3,31 @@
  * fields, doubled quotes, CRLF). Six importers each carried their own split-
  * on-comma reader and the Control Centre's export quoted every cell while its
  * dry run split on bare commas, so the shop's own export could not be read
- * back (review board, 2026-10-15). A header row names the columns; lines
- * beginning with `#` are comments (data files carry their provenance there).
+ * back (review board, 2026-10-15). A header row names the columns.
+ *
+ * Two behaviours are OPT-IN, because on a file someone else wrote they lose data
+ * silently:
+ *  - `comments`: lines beginning with `#` are dropped. Only for the shop's own
+ *    data files in the repo (data/geo carries provenance there). A supplier row
+ *    such as "#12 Burton St,..." would otherwise vanish from an import.
+ *  - `unguardFormulas`: a leading apostrophe before - + = @ is removed. Only for
+ *    a file the shop itself exported with that formula guard; a supplier's
+ *    "'-5" must stay as written.
  */
-export function parseCsv(content: string): Array<Record<string, string>> {
-  const rows = parseCsvRows(content);
+export interface CsvReadOptions {
+  comments?: boolean;
+  unguardFormulas?: boolean;
+}
+
+export function parseCsv(content: string, opts: CsvReadOptions = {}): Array<Record<string, string>> {
+  const rows = parseCsvRows(content, opts);
   if (rows.length === 0) return [];
   const header = rows[0].map((h) => h.trim());
   return rows.slice(1).map((r) => Object.fromEntries(header.map((h, i) => [h, (r[i] ?? '').trim()])));
 }
 
-/** The raw rows, comment lines and blank lines removed, quotes resolved. */
-export function parseCsvRows(content: string): string[][] {
+/** The raw rows, blank lines (and, when asked, comment lines) removed, quotes resolved. */
+export function parseCsvRows(content: string, opts: CsvReadOptions = {}): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = '';
@@ -31,7 +44,7 @@ export function parseCsvRows(content: string): string[][] {
       } else field += ch;
       continue;
     }
-    if (atLineStart && ch === '#' && row.length === 0 && field === '') {
+    if (opts.comments && atLineStart && ch === '#' && row.length === 0 && field === '') {
       while (i < content.length && content[i] !== '\n') i++;
       continue;
     }
@@ -53,8 +66,9 @@ export function parseCsvRows(content: string): string[][] {
     row.push(field);
     if (row.some((f) => f.trim().length > 0)) rows.push(row);
   }
-  // A cell that came out of the export with the formula guard (a leading apostrophe) loses it on the way back.
-  return rows.map((r) => r.map((c) => (c.startsWith("'") && /^'[-+=@]/.test(c) ? c.slice(1) : c)));
+  // A cell that came out of OUR export with the formula guard (a leading apostrophe) loses it on the way back.
+  if (!opts.unguardFormulas) return rows;
+  return rows.map((r) => r.map((c) => (/^'[-+=@]/.test(c) ? c.slice(1) : c)));
 }
 
 /** A cell for a CSV we write: quoted when it needs to be, so it reads back through parseCsv. */

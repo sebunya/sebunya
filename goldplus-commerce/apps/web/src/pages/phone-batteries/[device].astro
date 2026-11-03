@@ -39,7 +39,7 @@ const [deviceRes, indexRes, biz] = await Promise.all([
 
 if (!deviceRes.ok && deviceRes.status === 404) return notFound();
 // A merged or renamed phone answers under its new slug: one address, a permanent move (not a duplicate page).
-if (deviceRes.ok && deviceRes.data.device.slug !== slug) return Astro.redirect(phoneBatteryPath(deviceRes.data.device.slug), 301);
+if (deviceRes.ok && deviceRes.data.device.slug !== slug) return Astro.redirect(carryQuery(phoneBatteryPath(deviceRes.data.device.slug), Astro.url.search), 301);
 const unavailable = !deviceRes.ok;
 const device = deviceRes.ok ? deviceRes.data.device : null;
 const results = deviceRes.ok ? deviceRes.data.results : [];

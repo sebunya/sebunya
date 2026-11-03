@@ -72,6 +72,7 @@ const railDiscount = await getStorefrontDiscount();
 <script>
   import { shouldShowPickUpWhereYouLeftOff, getRecentlyViewedHistory } from "../../lib/returning-user";
   import { composeRecentlyViewedItems } from "./recentlyViewedItems";
+  import { uuidV4 } from "../../lib/uuid";
 
   document.addEventListener("DOMContentLoaded", async () => {
     const rail = document.querySelector("[data-recently-viewed-rail]") as HTMLElement | null;
@@ -160,7 +161,7 @@ const railDiscount = await getStorefrontDiscount();
     // evaluator's exact per-line formula, INCLUDING the product's floor (Price
     // A), which never reaches the browser. No live sale = full price.
 
-    const sharedRailRenderId = crypto.randomUUID();
+    const sharedRailRenderId = uuidV4();
     list.innerHTML = composed
       .map(({ item, source }) => {
         const priceLabel = (typeof item.price === "number" && item.price > 0) 
@@ -217,7 +218,7 @@ const railDiscount = await getStorefrontDiscount();
 
         // R7: real UUIDs — the old "loc_"-prefixed values failed the API's
         // uuid columns, so every event from this rail was silently rejected.
-        const attributionId = crypto.randomUUID();
+        const attributionId = uuidV4();
         const railRenderId = sharedRailRenderId;
 
         // The SAME server-handled add/buy the PDP and every other card use.

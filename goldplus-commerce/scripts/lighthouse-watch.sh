@@ -37,7 +37,8 @@ if [ "$REASON" != "manual" ] && [ -f "$STAMP" ]; then
   fi
 fi
 echo "=== $(date -u +%FT%TZ) lighthouse-watch start reason=$REASON"
-date +%s > "$STAMP"
+# The last-run stamp is written only after a successful run (end of script): a
+# crashed run must not count as the week's run and block the retry.
 
 TOKEN="$(grep -E '^LIGHTHOUSE_WATCH_TOKEN=' .env.production | cut -d= -f2- | tr -d '"' || true)"
 if [ "${#TOKEN}" -lt 32 ]; then echo "STOP: LIGHTHOUSE_WATCH_TOKEN missing from .env.production"; exit 1; fi
@@ -65,6 +66,7 @@ docker run --rm --cpus=1.5 --memory=1500m --shm-size=512m --network "$NET" \
     UA_DESKTOP="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 GoldPlusSyntheticProbe"
     export CHROME_PATH="$CHROME"   # chrome-launcher reads the env var; the CLI flag is not enough
     cd /work
+    FAILED=0
     for URL in $URLS; do
       SLUG="$(echo "$URL" | sed -E "s#https?://##; s#[^A-Za-z0-9]+#_#g")"
       for FF in mobile desktop; do
@@ -79,10 +81,13 @@ docker run --rm --cpus=1.5 --memory=1500m --shm-size=512m --network "$NET" \
         UA="$UA_MOBILE"; [ "$FF" = desktop ] && UA="$UA_DESKTOP"
         for N in $(seq 1 "$RUNS"); do
           npx -y lighthouse@12 "$URL" $FLAGS --emulatedUserAgent="$UA" --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage" \
-            --output=json --output-path="/work/$SLUG.$FF.$N.json" --quiet || echo "lighthouse failed for $URL $FF run $N"
+            --output=json --output-path="/work/$SLUG.$FF.$N.json" --quiet || { echo "lighthouse failed for $URL $FF run $N"; FAILED=$((FAILED+1)); }
         done
       done
     done
     node /work/run.mjs
+    # What did run is posted above; any failed run still fails the unit, so goldplus-alert@ fires.
+    if [ "$FAILED" -gt 0 ]; then echo "STOP: $FAILED lighthouse run(s) failed"; exit 1; fi
   '
+date +%s > "$STAMP"
 echo "=== $(date -u +%FT%TZ) lighthouse-watch end"

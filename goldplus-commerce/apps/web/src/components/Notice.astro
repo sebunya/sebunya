@@ -28,7 +28,9 @@ const config = {
     // once credentials are supplied." — was written for whoever deploys the
     // system and reached six customer pages. A shopper needs the consequence
     // and a way forward, not the cause.
-    title: title ?? 'Temporarily unavailable',
+    // CLAUDE.md: a disabled integration says "Not configured". The message
+    // under it stays written for the shopper.
+    title: title ?? 'Not configured',
     message: message ?? 'This part of the site is not available right now. Please try again shortly, or contact us and we will help.',
     bg: 'bg-gray-50',
     border: 'border-gray-200',

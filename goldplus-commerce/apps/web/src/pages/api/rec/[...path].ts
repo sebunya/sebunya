@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { isDeclaredAutomation } from "../../../lib/declaredAutomation";
-import { VISIT_COOKIE_NAME } from "../../../middleware";
+import { apiBase } from "../../../lib/api";
+import { relayHeaders } from "../../../lib/relayHeaders";
 import { readBodyCapped } from "../../../lib/boundedBody";
 
 /**
@@ -17,20 +18,15 @@ import { readBodyCapped } from "../../../lib/boundedBody";
  * capped. It cannot become an SSRF or a generic relay.
  */
 
-const API_BASE = (
-  (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } })?.process?.env?.INTERNAL_API_ORIGIN
-  || (import.meta.env.PUBLIC_API_BASE_URL as string | undefined)
-  || "http://localhost:3000"
-).replace(/\/+$/, "");
 
 const MAX_BODY_BYTES = 8 * 1024;
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-const VISIT_TOKEN_SHAPE = /^[A-Za-z0-9_-]{44}$/;
 
-export const POST: APIRoute = async ({ request, params, cookies, clientAddress }) => {
+export const POST: APIRoute = async (context) => {
+  const { request, params } = context;
   // Declared automation runs our scripts; what it "does" is not shopping.
   if (isDeclaredAutomation(request.headers)) return new Response(null, { status: 204 });
   if ((params.path ?? "") !== "events") {
@@ -46,11 +42,8 @@ export const POST: APIRoute = async ({ request, params, cookies, clientAddress }
   }
   const raw = read.text;
 
-  const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
-  // Shape-checked before forwarding: junk cookies never ride into an upstream
-  // header, and the API's signature check does the real verification.
-  const visit = cookies.get(VISIT_COOKIE_NAME)?.value;
-  if (visit && VISIT_TOKEN_SHAPE.test(visit)) headers["x-gp-visit"] = visit;
+  // Signed visit token (locals.gpVisit) and the visitor's address, via lib/relayHeaders.
+  const headers = relayHeaders(context, { "Content-Type": "application/json", Accept: "application/json" });
   // The browser's user agent travels too (#4): the API screens these events
   // with botDetectionMiddleware, which reads a missing user agent as a bot, so
   // a relay that sent none had every real event dropped. Length-capped; the
@@ -59,14 +52,9 @@ export const POST: APIRoute = async ({ request, params, cookies, clientAddress }
   if (ua) headers["User-Agent"] = ua.slice(0, 512);
   // The real client address travels with the request so abuse control can
   // attribute per-visitor rather than per-web-container.
-  try {
-    if (clientAddress) headers["X-Forwarded-For"] = clientAddress;
-  } catch {
-    // clientAddress can throw in prerender contexts; the relay works without it.
-  }
 
   try {
-    const response = await fetch(`${API_BASE}/recommendations/events`, {
+    const response = await fetch(`${apiBase}/recommendations/events`, {
       method: "POST",
       headers,
       body: raw,

@@ -169,7 +169,8 @@ describe("the browser holds ONLY an opaque locator (AC48/AC49)", () => {
     const relay = read("apps/web/src/pages/api/rec/[...path].ts");
     expect(relay).toContain('!== "events"');
     expect(relay).toContain("MAX_BODY_BYTES");
-    expect(relay).toContain('headers["x-gp-visit"] = visit');
+    expect(relay).toContain("relayHeaders(context,");
+    expect(read("apps/web/src/lib/relayHeaders.ts")).toContain("headers['x-gp-visit'] = visit");
     expect(relay).toContain("METHOD_NOT_ALLOWED");
   });
 

@@ -1,38 +1,13 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { apiBase } from '../lib/api';
-import { safeReturnTo } from '../lib/safeReturnTo';
+import { findRecordedRedirect } from '../lib/recordedRedirect';
 import { carryQuery } from '../lib/carryQuery';
 
 // U6 AC6 — before giving up with a 404, ask the API whether this path has a
-// recorded redirect (product slug changes create 301s). Only the 404 path pays
-// this cost — healthy pages never hit the endpoint. Fail-open with a short
-// timeout: any error or miss renders the normal 404.
-const requestPath = Astro.url.pathname;
-if (requestPath && requestPath !== '/404') {
-  try {
-    const res = await fetch(`${apiBase}/seo/resolve-redirect?path=${encodeURIComponent(requestPath)}`, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(400),
-    });
-    if (res.ok) {
-      const json: any = await res.json().catch(() => null);
-      const to = json?.data?.to;
-      const statusCode = json?.data?.statusCode;
-      // startsWith('/') alone still admits "//evil.example" and "/\evil.example",
-      // both of which a browser resolves to another origin. This is the exact
-      // check safeReturnTo was written to replace, so use it: a redirect target
-      // that is not same-origin falls through to the 404 rather than leaving
-      // the site. An admin-configured redirect is still data, not a licence.
-      if (json?.success && typeof to === 'string' && to.startsWith('/')) {
-        const target = safeReturnTo(to, '');
-        if (target) return Astro.redirect(carryQuery(target, Astro.url.search), statusCode === 302 ? 302 : 301);
-      }
-    }
-  } catch {
-    /* fail open — render the 404 */
-  }
-}
+// recorded redirect. One shared lookup (lib/recordedRedirect): same-origin
+// targets only, and a row pointing at this very path is ignored (no loop).
+const recorded = await findRecordedRedirect(Astro.url.pathname);
+if (recorded) return Astro.redirect(carryQuery(recorded.target, Astro.url.search), recorded.status);
 
 Astro.response.status = 404;
 Astro.response.headers.set('Cache-Control', 'no-store');

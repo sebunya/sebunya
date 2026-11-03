@@ -141,7 +141,7 @@ describe('surfaces agree', () => {
   });
   it('edge cases answer correctly: a merged phone moves, an outage is temporary, an old finder link moves', () => {
     const page = read('apps/web/src/pages/phone-batteries/[device].astro');
-    expect(page).toContain("if (deviceRes.ok && deviceRes.data.device.slug !== slug) return Astro.redirect(phoneBatteryPath(deviceRes.data.device.slug), 301);");
+    expect(page).toContain("if (deviceRes.ok && deviceRes.data.device.slug !== slug) return Astro.redirect(carryQuery(phoneBatteryPath(deviceRes.data.device.slug), Astro.url.search), 301);");
     expect(page).toContain("Astro.response.headers.set('Retry-After', '300');");
     expect(page).not.toMatch(/Astro\.cookies\.set\(DEVICE_COOKIE/); // browsing a phone page never replaces the chosen phone
     const finder = read('apps/web/src/pages/battery-finder.astro');
