@@ -118,21 +118,18 @@ export class OutboundGovernanceService {
       // Consent, when the caller knows it. When it does not, the fallback is derived
       // from the message class rather than assumed either way:
       //
-      //   MARKETING            -> blocked. Marketing to someone whose consent nobody
-      //                           recorded is precisely the failure consent exists to
-      //                           prevent, and there is no lawful basis to infer it.
+      //   MARKETING            -> permitted (owner decision 2026-11-03: this is an online
+      //                           shop and markets to its customers without a consent
+      //                           step). A recorded STOP / unsubscribe still outranks it:
+      //                           see decideWithSuppression.
       //   TRANSACTIONAL        -> permitted. An order confirmation to the customer who
       //                           just placed that order has its basis in the
       //                           transaction, not in a marketing opt-in.
       //   OPERATIONAL          -> permitted. Internal staff, governed by employment.
       //
-      // Stated plainly because it IS a policy choice: this platform has no consent
-      // repository wired yet. Defaulting every customer to "no consent" would block
-      // every order confirmation — a functional break dressed as safety — and defaulting
-      // to "granted" would be fake safety. When a consent source exists, callers pass
-      // `consentGranted` and this fallback stops being reached.
-      consentGranted:
-        request.consentGranted ?? request.messageClass !== 'MARKETING',
+      // Until 2026-11-03 MARKETING fell back to blocked. The opt-out model replaced it:
+      // every class is permitted unless the caller says otherwise or a suppression is read.
+      consentGranted: request.consentGranted ?? true,
       suppressed: request.suppressed ?? false,
       frequencyCapReached: request.frequencyCapReached ?? false,
     };

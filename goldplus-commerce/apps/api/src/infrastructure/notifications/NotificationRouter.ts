@@ -379,9 +379,9 @@ export class DefaultNotificationRouter implements INotificationRouter {
         let recheckFailed = false;
         if (!refusal && this.basketReminderRecheck) {
           const userId = typeof payload.userId === 'string' ? payload.userId : '';
-          // Reminders are queued only for signed-in customers (consent lives on the account). One without a userId has
-          // no consent to read again: it is refused, saying so, not reported as a STOP or a changed number.
-          if (!userId) refusal = 'Not sent: the reminder names no customer account, so its consent cannot be checked again.';
+          // 0214: a guest reminder (guest: true) names no account; its recheck is the STOP against the number only.
+          // One with neither an account nor the guest mark has nothing to read again: refused, saying so.
+          if (!userId && payload.guest !== true) refusal = 'Not sent: the reminder names no customer account, so its consent cannot be checked again.';
           else {
             const still = await this.basketReminderRecheck(userId, customerPhone).catch(() => { recheckFailed = true; return false; });
             if (!still && !recheckFailed) refusal = 'Not sent: basket reminders no longer cover this customer and number (switched off, number changed or STOP since it was queued).';

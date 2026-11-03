@@ -1683,4 +1683,38 @@ routes.get('/payments/pesapal/return-state', async (c) => {
 routes.post('/payments/pesapal/ipn', handleIpn);
 routes.get('/payments/pesapal/ipn', handleIpn);
 
+/**
+ * 0214 (owner decision 2026-11-03): basket reminders reach guests too. The storefront posts the number a guest typed
+ * at checkout, under the guest's own cart credential, so the basket they leave can be texted once. A USER credential
+ * is accepted and ignored (the account's number is used). Nothing is answered about the number.
+ */
+const guestContactSchema = z.object({ phone: z.string().min(9).max(32), name: z.string().max(120).optional() });
+routes.post('/cart/contact', async (c) => {
+  const resolved = resolveCartCredential(c);
+  if (!resolved.ok) return c.json({ success: false, error: { code: resolved.code, message: 'Basket not recognised.' } }, cartRefusalStatus(resolved.code));
+  const parsed = guestContactSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ success: false, error: { code: 'INVALID_CONTACT', message: 'A phone number is needed.' } }, 400);
+  if (resolved.claims.ownerKind !== 'GUEST') return c.json({ success: true, data: { recorded: false } });
+  try {
+    const r = await registry.guestBasketContactUseCases.record({ ownerId: resolved.claims.ownerId, phone: parsed.data.phone, name: parsed.data.name ?? null });
+    return c.json({ success: true, data: r });
+  } catch (err) {
+    logger.warn({ err }, 'GUEST_BASKET_CONTACT_FAILED');
+    return c.json({ success: true, data: { recorded: false } });
+  }
+});
+
+/** The stop link in a guest's basket reminder: GET describes the token (masked number), POST records the STOP. */
+routes.get('/basket-reminders/stop', async (c) => {
+  const d = registry.guestBasketContactUseCases.describeStopToken(c.req.query('t') ?? '');
+  if (!d) return c.json({ success: false, error: { code: 'BAD_TOKEN', message: 'This stop link is not valid.' } }, 404);
+  return c.json({ success: true, data: d });
+});
+routes.post('/basket-reminders/stop', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as { token?: unknown };
+  const r = await registry.guestBasketContactUseCases.stop({ token: typeof body.token === 'string' ? body.token : '', correlationId: crypto.randomUUID() });
+  if (!r.ok) return c.json({ success: false, error: { code: r.code, message: 'This stop link is not valid.' } }, 404);
+  return c.json({ success: true, data: r });
+});
+
 export default routes;

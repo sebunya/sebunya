@@ -37,3 +37,15 @@ export const cartAbandonments = pgTable(
     classifiedIdx: index('cart_abandonments_classified_idx').on(t.classifiedAt),
   }),
 );
+
+/**
+ * 0214: the phone a GUEST typed at checkout, kept against the guest cart owner id (the signed cart credential's
+ * owner) so a basket they left behind can be texted once. Replaced on every capture; nothing else about them is kept.
+ */
+export const guestBasketContacts = pgTable('guest_basket_contacts', {
+  ownerId: varchar('owner_id', { length: 128 }).primaryKey(),
+  phoneE164: varchar('phone_e164', { length: 20 }).notNull(),
+  name: varchar('name', { length: 120 }),
+  capturedAt: timestamp('captured_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ phoneIdx: index('guest_basket_contacts_phone_idx').on(t.phoneE164) }));

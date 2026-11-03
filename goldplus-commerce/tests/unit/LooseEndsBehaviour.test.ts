@@ -68,11 +68,19 @@ describe('a recorded STOP blocks marketing at the shared outbound decision', () 
     expect(reader).not.toHaveBeenCalled();
   });
 
-  it('marketing that is already refused keeps its own reason and costs no read', async () => {
+  it('marketing with no recorded consent is permitted by default (opt-out shop, 2026-11-03), so the STOP IS read and wins', async () => {
     const gov = new OutboundGovernanceService();
     const reader = vi.fn(async () => true);
     gov.setMarketingSuppressionReader(reader);
     const d = await gov.decideForRecipient(marketing({ consentGranted: undefined }), 'phone:+256772123456', LIVE_ENV);
+    expect(d.kind).toBe('BLOCK_SUPPRESSION');
+    expect(reader).toHaveBeenCalledTimes(1);
+  });
+  it('marketing refused explicitly keeps its own reason and costs no read', async () => {
+    const gov = new OutboundGovernanceService();
+    const reader = vi.fn(async () => true);
+    gov.setMarketingSuppressionReader(reader);
+    const d = await gov.decideForRecipient(marketing({ consentGranted: false }), 'phone:+256772123456', LIVE_ENV);
     expect(d.kind).toBe('BLOCK_CONSENT');
     expect(reader).not.toHaveBeenCalled();
   });

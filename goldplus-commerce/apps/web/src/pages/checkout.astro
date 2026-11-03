@@ -40,6 +40,7 @@ import { resolveCheckoutIntent, issueFreshCheckoutIntent, clearCheckoutIntent } 
 import { requestSession } from '../lib/customerAuth';
 import { cartClient } from '../lib/cartClient';
 import { resolveCartCredential, clearCartCredential } from '../lib/cartCredential';
+import { CART_CREDENTIAL_HEADER } from '@goldplus/shared';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
 import {
   submitCheckout,
@@ -79,6 +80,20 @@ interface CartResponse {
 const checkoutSession = await requestSession(Astro.locals, Astro.cookies);
 const sessionUnknown = checkoutSession.state === 'UNKNOWN';
 const authenticatedUserId = checkoutSession.state === 'USER' ? checkoutSession.userId : null;
+/**
+ * 0214 (owner 2026-11-03): basket reminders reach guests too. The number a guest types here is kept against their
+ * basket the moment it is posted, refused or not, so the basket they leave can be texted once. Fire-and-forget: the
+ * checkout never waits on it. A signed-in customer's account number is used instead, so nothing is sent for them.
+ */
+const rememberGuestBasketContact = (phone: string, name: string, token: string | undefined): void => {
+  if (authenticatedUserId || !token || !normaliseCheckoutPhone(phone)) return;
+  void fetch(`${apiBase}/commerce/cart/contact`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', [CART_CREDENTIAL_HEADER]: token },
+    body: JSON.stringify({ phone, name: name || undefined }),
+    signal: AbortSignal.timeout(2500),
+  }).catch(() => undefined);
+};
 
 // The basket is read through the SIGNED CREDENTIAL, not a cart id in the URL. The
 // credential also names the owner, so a signed-in customer cannot be served a guest
@@ -375,6 +390,7 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
   
   // Extract raw strings for re-populating inputs on errors
   values = valuesFromForm(formData);
+  rememberGuestBasketContact(values.phone, values.name, cartCredential?.token);
   if (formData.has('addressId')) postedAddressId = String(formData.get('addressId') || '').trim();
   couponCodeValue = String(formData.get('couponCode') || '').trim().slice(0, 40);
   storeCreditCodeValue = String(formData.get('storeCreditCode') || '').trim().slice(0, 40);
@@ -1371,6 +1387,27 @@ const checkoutSavingLabel = basketSavingLabel(
     aria-hidden="true"
     style="display:none"
   ></div>
+{/* 0214: a guest who types their number and walks away is captured on leaving the field (a beacon survives the tab
+    closing); the server-side capture on submit covers the rest. Nothing is read back. */}
+{!authenticatedUserId && (
+  <script is:inline nonce={Astro.locals.cspNonce}>
+    (function () {
+      var sent = '';
+      function send() {
+        var p = document.getElementById('phone'); var n = document.getElementById('name');
+        var phone = p && p.value ? p.value.trim() : '';
+        if (phone.length < 9 || phone === sent) return;
+        sent = phone;
+        var body = new URLSearchParams({ phone: phone, name: n && n.value ? n.value.trim() : '' });
+        if (navigator.sendBeacon) navigator.sendBeacon('/api/basket-contact', body);
+        else fetch('/api/basket-contact', { method: 'POST', body: body, keepalive: true }).catch(function () {});
+      }
+      var el = document.getElementById('phone');
+      if (el) { el.addEventListener('change', send); el.addEventListener('blur', send); }
+      document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') send(); });
+    })();
+  </script>
+)}
 </BaseLayout>
 
 <script>

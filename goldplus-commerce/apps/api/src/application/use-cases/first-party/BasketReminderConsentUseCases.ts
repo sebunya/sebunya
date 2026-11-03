@@ -71,19 +71,14 @@ export class BasketReminderConsentUseCases implements IBasketReminderGate {
     });
     if (!plan.ok) {
       const message: Record<string, string> = {
-        CONFIRMATION_REQUIRED: 'Tick the box to confirm you want basket reminders by text.',
         PHONE_REQUIRED: 'Add a Ugandan phone number to your account first.',
         SIGNED_IN_ACCOUNT_REQUIRED: 'Sign in to change this.',
         BLOCKED_BY_POLICY: 'This choice cannot be changed online. Please contact support.',
-        COPY_VERSION_MISMATCH: 'The wording changed while the page was open. Reload the page and try again.',
       };
       return { ok: false, code: plan.reason, message: message[plan.reason] ?? 'That choice was not saved.' };
     }
-    // Ticking again while "On" used to do nothing, even when the grant covered nothing: its evidence never landed (it is
-    // written after the commit) or it names a number the account no longer has, so every reminder was refused while the
-    // switch read "On" (2026-10-29 review). Such a tick now records a fresh confirmation for today's number.
-    const reconfirm = plan.noOp && plan.next === 'granted' && !!phone && (await this.grantNeedsReconfirming(current?.last_consent_event_id ?? null, phone));
-    if (plan.noOp && !reconfirm) return { ok: true, status: basketReminderStatus(plan.next), alreadyApplied: true };
+    const reconfirm = false;
+    if (plan.noOp) return { ok: true, status: basketReminderStatus(plan.next), alreadyApplied: true };
 
     const surface = BASKET_REMINDERS_SURFACES[input.surface];
     const consentEventId = eventIdFor(input.userId, input.idempotencyKey);
@@ -100,8 +95,7 @@ export class BasketReminderConsentUseCases implements IBasketReminderGate {
       actor_id: input.userId,
       copy_version_id: BASKET_REMINDERS_COPY_VERSION,
       reason: input.requested === 'granted'
-        ? (reconfirm ? 'customer ticked the basket reminders box again, for the number now on the account'
-          : input.surface === 'registration' ? 'customer ticked the basket reminders box when creating the account' : 'customer ticked the basket reminders box in the preference centre')
+        ? (input.surface === 'registration' ? 'customer switched basket reminders on when creating the account' : 'customer switched basket reminders on in the preference centre')
         : 'customer switched basket reminders off in the preference centre',
       correlation_id: input.correlationId,
       idempotency_key: input.idempotencyKey,
@@ -120,7 +114,7 @@ export class BasketReminderConsentUseCases implements IBasketReminderGate {
         endpointMasked: phone ? maskE164(phone) : null,
         copyVersionId: BASKET_REMINDERS_COPY_VERSION,
         copyTextHash: basketRemindersCopyHash(),
-        confirmation: input.requested === 'granted' ? 'CHECKBOX_TICKED' : 'WITHDRAW_BUTTON',
+        confirmation: input.requested === 'granted' ? 'SWITCH_ON_BUTTON' : 'WITHDRAW_BUTTON',
         ipHash: hashOrNull(input.ipAddress?.trim() || null),
         userAgentHash: hashOrNull(input.userAgent?.trim().slice(0, 512) || null),
         sourceSurface: surface,
@@ -129,26 +123,15 @@ export class BasketReminderConsentUseCases implements IBasketReminderGate {
     return { ok: true, status: basketReminderStatus(receipt.state), alreadyApplied: receipt.already_applied };
   }
 
-  /** A grant with no evidence, or evidence for another number, covers nothing until the customer confirms again. */
-  private async grantNeedsReconfirming(lastConsentEventId: string | null, phoneE164: string): Promise<boolean> {
-    if (!lastConsentEventId) return true;
-    const evidence = await this.evidence.latestFor(lastConsentEventId);
-    return !evidence?.endpointHash || evidence.endpointHash !== this.hasher.hash(phoneE164);
-  }
-
-  /** The gate the reminder reads: a grant that covers today's number, and no STOP against it. */
+  /** The gate the reminder reads: on unless switched off or blocked, a number on the account, and no STOP against it. */
   async mayRemind(userId: string): Promise<{ allowed: boolean; reason: string; phoneE164: string | null }> {
     const account = await this.accounts.findAccount(userId);
     const phone = normalisePhoneE164(account?.phone);
     const row = await this.consent.getLatestConsentState(keyFor(userId));
-    const consentedPhoneHash = row?.state === 'granted' && row.last_consent_event_id
-      ? (await this.evidence.latestFor(row.last_consent_event_id))?.endpointHash ?? null
-      : null;
-    const gate = mayReceiveBasketReminder({ state: row?.state ?? null, consentedPhoneHash, currentPhoneHash: phone ? this.hasher.hash(phone) : null });
+    const gate = mayReceiveBasketReminder({ state: row?.state ?? null, currentPhoneHash: phone ? this.hasher.hash(phone) : null });
     if (!gate.allowed || !account || !phone) return { ...gate, phoneE164: null };
-    // Only a number known to reach its owner, on an account still open (checked after the consent, so a customer who
-    // never ticked the box reads "not opted in", not "unverified"). The box can be ticked at sign-up, where the number
-    // is only typed: a mistyped or borrowed one would be texted a stranger's basket every week (2026-10-29 review).
+    // Only a number known to reach its owner, on an account still open. Reminders are on by default (2026-11-03) and
+    // the number is only typed at sign-up: a mistyped or borrowed one would be texted a stranger's basket every week.
     // Known = verified by code, or an order of this account was delivered to it (the rider reached them there). Phone
     // verification is offered only while the loyalty programme pays for it, so a code alone would have stopped every
     // reminder. The tick is kept either way; the texts start once the number is known.
