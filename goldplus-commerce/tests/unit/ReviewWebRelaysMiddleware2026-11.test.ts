@@ -40,7 +40,7 @@ describe('form relays use the address Astro saw, not the client XFF', () => {
     it(f, () => {
       const src = web(f);
       expect(src).not.toContain("request.headers.get('x-forwarded-for')");
-      expect(src).toContain('readClientAddress(context)');
+      expect(src).toMatch(/readClientAddress\((context|ctx)\)/);
       expect(src).toContain('apiHeaders(');
     });
   }
