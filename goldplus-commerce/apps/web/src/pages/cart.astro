@@ -18,6 +18,7 @@ import DeliverTo from '../components/DeliverTo.astro';
 import { resolveDeliveryPlace } from '../lib/locationSignals';
 import { isLikelyHuman } from '../lib/humanTraffic';
 import { cartClient, cartMessageFor } from '../lib/cartClient';
+import { isDeclaredAutomation } from '../lib/declaredAutomation';
 import { resolveCartCredential } from '../lib/cartCredential';
 import { requestSession } from '../lib/customerAuth';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
@@ -159,6 +160,7 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
             cartCredential.token,
             { productId, quantity: 1 },
             Astro.cookies.get('goldplus_session')?.value ?? null,
+            { probe: isDeclaredAutomation(Astro.request.headers) },
           );
           if (!result.ok) cartNotice = cartMessageFor(result.code, result.available);
         }
@@ -239,6 +241,7 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
               cartCredential.token,
               { productId, quantity: restoreQty },
               Astro.cookies.get('goldplus_session')?.value ?? null,
+              { probe: isDeclaredAutomation(Astro.request.headers) },
             );
             if (!result.ok) cartNotice = cartMessageFor(result.code, result.available);
           }

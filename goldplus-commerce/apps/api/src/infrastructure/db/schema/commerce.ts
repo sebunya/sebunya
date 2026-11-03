@@ -34,6 +34,8 @@ export const carts = pgTable('carts', {
   version: integer('version').default(1).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
+  /** Created by declared automation (migration 0217): never a customer, never counted, purged after an hour. */
+  isProbe: boolean('is_probe').default(false).notNull(),
 }, (table) => ({
   sessionIdx: index('carts_session_idx').on(table.sessionId),
   anonymousIdx: index('carts_anonymous_idx').on(table.anonymousId),

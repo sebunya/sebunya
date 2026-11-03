@@ -24,7 +24,7 @@ export class DrizzleOutcomeSuggestionReader implements IOutcomeSuggestionReader 
   async facts(now = new Date()): Promise<OutcomeSuggestionFacts> {
     const [carts, checkouts, orders, ga4, econ, micro] = await Promise.all([
       db.execute(sql`select ${KD('c.updated_at')} as day, count(*)::int as n from carts c
-        where c.updated_at >= ${now}::timestamptz - interval '180 days' and exists (select 1 from cart_items i where i.cart_id = c.id) group by 1`),
+        where c.updated_at >= ${now}::timestamptz - interval '180 days' and not c.is_probe and exists (select 1 from cart_items i where i.cart_id = c.id) group by 1`),
       db.execute(sql`select ${KD('o.created_at')} as day, count(distinct coalesce(${EV}->'user_data'->>'fp_client_id', o.id::text))::int as n from outbox_events o
         where o.event_type = 'TELEMETRY_DISPATCH' and ${EV}->>'event_name' = 'begin_checkout' and o.created_at >= ${now}::timestamptz - interval '180 days' group by 1`),
       db.execute(sql`select ${KD('o.created_at')} as day, count(*)::int as n from orders o where o.created_at >= ${now}::timestamptz - interval '180 days' group by 1`),

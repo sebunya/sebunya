@@ -59,6 +59,15 @@ Analysis) and the shop's own data before anything was built.
 
 ## Known limits (read before trusting a number)
 
+- **Probe carts are excluded (0217, 2026-11-03).** Before this, 238 of 245 weekly "carts with items" and most of
+  the 198 "abandoned baskets" a week were our own automation: the five-minute synthetic monitor and the post-deploy
+  compatibility smoke each left a guest cart holding the first catalogue product. A cart created by declared
+  automation (its user agent, or the audits' `gp_probe` cookie forwarded by the storefront as `x-goldplus-probe`)
+  is now marked `is_probe`, left out of this page, the suggestions, the sales funnel, the abandonment sweep and
+  the reminders, and deleted by the hourly scan an hour after creation. Carts from before 0217 were cleaned up by
+  hand (cron-aligned monitor carts deleted; audit-shaped carts listed for the owner). Numbers before 2026-11-03
+  are not comparable.
+
 - Checkout starts come from the telemetry outbox (`begin_checkout`, one per browser). The outbox is not pruned
   today, so history is complete; if a retention job is ever added, this count shortens with it.
 - "New" share per segment sums GA4's daily new and total users, so a user seen on two days counts twice.
