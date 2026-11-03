@@ -119,7 +119,7 @@ export const validateHeroSlide = (slide: Partial<HeroSlideSeed>): HeroSlideField
     // A dead CTA is hidden at render (§2.5); flag it here so the operator knows why.
     const url = (slide.ctaUrl ?? '').trim();
     // "//host" and "/\host" start with "/" but leave the site: not a real path.
-    if (url && (url === '#' || (!/^\/(?![\/\\])/.test(url) && !/^https?:\/\//i.test(url)))) {
+    if (url && (url === '#' || (!/^\/(?![/\\])/.test(url) && !/^https?:\/\//i.test(url)))) {
       add('ctaUrl', 'The link must be a real path (starts with /) or a full URL. "#" is not a link.');
     }
     // A bleed slide with no photo is a black rectangle.

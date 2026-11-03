@@ -57,7 +57,7 @@ export function sanitiseNavHtml(v: string): string {
 }
 
 /** A site path ("/x") but never a protocol-relative "//host" or "/\host", which a browser sends off-site. */
-export const isSitePath = (h: string): boolean => /^\/(?![\/\\])/.test(h) || h === '/';
+export const isSitePath = (h: string): boolean => /^\/(?![/\\])/.test(h) || h === '/';
 
 export const isRealHref = (h: unknown): boolean =>
   typeof h === 'string' && h.trim() !== '' && h !== '#' && (isSitePath(h) || /^https?:\/\//i.test(h) || h.startsWith('tel:'));
