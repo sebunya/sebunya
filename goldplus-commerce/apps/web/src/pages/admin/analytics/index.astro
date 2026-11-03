@@ -219,6 +219,7 @@ const maxTrendValue = Math.max(1, ...(analytics?.trend ?? []).map((point) => poi
           <div class="flex items-end justify-between gap-4">
             <div>
               <h2 id="analytics-scorecard" class="text-xl font-black text-brand-dark">Business scorecard</h2>
+              <p class="mt-1 text-xs"><a href={`/admin/analytics/outcomes?days=${period.days}`} class="font-bold text-brand-primaryInk underline">Outcomes: the critical few with goals, abandonment split in two, whales, journeys, micro conversions →</a></p>
               <p class="mt-1 text-sm text-slate-500">Every metric includes a precise definition, period comparison, evidence state and operational drill-through.</p>
             </div>
           </div>

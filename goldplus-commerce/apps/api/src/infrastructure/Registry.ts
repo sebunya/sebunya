@@ -96,6 +96,8 @@ import { ReviewPhotoUseCases } from '../application/use-cases/reviews/ReviewPhot
 import { DrizzleReviewPhotoRepository } from './reviews/DrizzleReviewPhotoRepository';
 import { GetSalesFunnelUseCase } from '../application/use-cases/analytics/GetSalesFunnelUseCase';
 import { DrizzleSalesFunnelReader } from './db/repositories/DrizzleSalesFunnelReader';
+import { GetOutcomesUseCase } from '../application/use-cases/analytics/GetOutcomesUseCase';
+import { DrizzleOutcomesReader } from './db/repositories/DrizzleOutcomesReader';
 import { RequestReturnUseCase } from '../application/use-cases/commerce/RequestReturnUseCase';
 import { publicBaseUrl } from '../application/notifications/CustomerMessages';
 import { BasketReminderConsentUseCases } from '../application/use-cases/first-party/BasketReminderConsentUseCases';
@@ -1726,6 +1728,8 @@ export class Registry {
   public readonly getPaymentIntelligenceUseCase = new GetPaymentIntelligenceUseCase(this.analyticsReadRepo);
   /** Gap analysis #3: product page to paid order, with the money that stopped at each step. */
   public readonly getSalesFunnelUseCase = new GetSalesFunnelUseCase(new DrizzleSalesFunnelReader());
+  /** Outcomes (2026-11-03): split abandonment, session conversion, whales, journeys, micro conversions with value. */
+  public readonly getOutcomesUseCase = new GetOutcomesUseCase(new DrizzleOutcomesReader(), this.measurementConfig);
   public readonly getAnalyticsBreakdownUseCase = new GetAnalyticsBreakdownUseCase(this.analyticsReadRepo);
   public readonly getAnalyticsExceptionDrilldownUseCase = new GetAnalyticsExceptionDrilldownUseCase(this.analyticsReadRepo);
 

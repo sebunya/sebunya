@@ -1,0 +1,264 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { getOutcomes } from "../../../lib/admin-commerce-analytics";
+import { resolveAnalyticsPeriod } from "../../../lib/commerce-analytics";
+import { formatUgx } from "../../../lib/money";
+
+/**
+ * Outcomes (2026-11-03): the measures Web Analytics 2.0 puts first for a shop, each with its rule, its goal and
+ * the days it rests on. The critical few at the top (Kaushik: never more than six, each with a target), then the
+ * split abandonment, whales, days and visits to purchase as distributions, micro conversions in shillings,
+ * conversion by segment, and the direct-traffic hygiene check. Nothing here is averaged away or invented: a
+ * measure without enough evidence says so.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/analytics/outcomes", 303);
+
+const startDate = Astro.url.searchParams.get("startDate");
+const endDate = Astro.url.searchParams.get("endDate");
+const daysParam = Number(Astro.url.searchParams.get("days") ?? 30);
+let period;
+let periodError = "";
+try {
+  period = resolveAnalyticsPeriod({ startDate, endDate, days: Number.isFinite(daysParam) ? daysParam : 30 });
+} catch (error) {
+  periodError = error instanceof Error && error.message === "PERIOD_TOO_LONG" ? "The requested period exceeds the 366-day maximum." : "The end date cannot be earlier than the start date.";
+  period = resolveAnalyticsPeriod({ days: 30 });
+}
+const result = await getOutcomes(token, { startDate: period.startDay, endDate: period.endDay, days: period.days });
+const data = result.data;
+const permissionDenied = result.status === 403;
+
+const fmtNumber = (v: number) => new Intl.NumberFormat("en-UG", { maximumFractionDigits: 0 }).format(v);
+const fmtMoney = (v: number) => formatUgx(v);
+const fmtRate = (v: number) => new Intl.NumberFormat("en-UG", { style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(v);
+const fmtValue = (unit: "rate" | "UGX", v: number | null) => (v === null ? "—" : unit === "rate" ? fmtRate(v) : fmtMoney(v));
+const STATE: Record<string, string> = {
+  VALUE: "", NO_DATA: "No data in period", INSUFFICIENT_EVIDENCE: "Too few to say", NOT_COMPARABLE: "Steps not comparable (different sources)",
+  NO_SPEND: "No media spend recorded", NO_ORDERS: "No orders in period",
+};
+const verdictTone = (v: string) => v === "MET" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : v === "MISSED" ? "border-red-300 bg-red-50 text-red-800" : "border-slate-200 bg-slate-50 text-slate-600";
+const verdictWords = (v: string) => v === "MET" ? "Goal met" : v === "MISSED" ? "Goal missed" : v === "NO_VALUE" ? "No value to compare" : "No goal set";
+const change = (now: number | null, before: number | null, lowerIsBetter: boolean) => {
+  if (now === null || before === null) return null;
+  const better = lowerIsBetter ? now < before : now > before;
+  return { better, same: now === before };
+};
+const barWidth = (share: number | null) => `width:${share ? Math.max(2, Math.round(share * 100)) : 0}%`;
+---
+
+<AdminLayout title="Outcomes" description="The critical few measures with goals, split abandonment, whales, journeys and micro conversions in shillings." activePath="/admin/analytics">
+  <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <header class="border-b border-slate-200 pb-7">
+      <p class="text-[10px] font-black uppercase tracking-[0.2em] text-brand-primaryInk">Commerce intelligence</p>
+      <h1 class="mt-2 text-3xl font-black tracking-tight text-brand-dark">Outcomes</h1>
+      <p class="mt-3 max-w-3xl text-sm leading-relaxed text-slate-600">
+        What the shop got out of its visits in this period, measured the way Web Analytics 2.0 asks: the critical few against a goal, abandonment split into the two leaks it really is, the whales,
+        how long and how many visits a purchase takes, and the small outcomes with a value in shillings. Goals and values are set under <a href="/admin/measurement/mmm" class="font-bold underline">Measurement settings</a>.
+      </p>
+      <form method="GET" class="mt-6 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div>
+          <label for="outcomes-start" class="block text-[10px] font-black uppercase tracking-wider text-slate-500">Start date</label>
+          <input id="outcomes-start" type="date" name="startDate" value={period.startDay} class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label for="outcomes-end" class="block text-[10px] font-black uppercase tracking-wider text-slate-500">End date</label>
+          <input id="outcomes-end" type="date" name="endDate" value={period.endDay} class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <span class="block text-[10px] font-black uppercase tracking-wider text-slate-500">Quick range</span>
+          <nav aria-label="Quick range" class="mt-1 flex flex-wrap gap-1">
+            {[7, 30, 90, 180, 365].map((days) => (
+              <a href={`/admin/analytics/outcomes?days=${days}`} aria-current={period.days === days && !startDate ? "page" : undefined} class={`rounded-lg border px-2 py-1.5 text-xs font-black ${period.days === days && !startDate ? "border-brand-dark bg-brand-dark text-white" : "border-slate-300 text-slate-700"}`}>{days}d</a>
+            ))}
+          </nav>
+        </div>
+        <div class="flex items-end"><button class="w-full rounded-lg bg-brand-dark px-4 py-2.5 text-xs font-black text-white">Apply period</button></div>
+        <div class="flex items-end"><a href="/admin/analytics" class="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-center text-xs font-black text-slate-700">Back to analytics</a></div>
+      </form>
+      {periodError && <p class="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">{periodError}</p>}
+      <p class="mt-3 text-xs text-slate-500">Current: {period.startDay}–{period.endDay} · comparison: {period.previousStartDay}–{period.previousEndDay} · Kampala days.</p>
+    </header>
+
+    {permissionDenied && (
+      <section class="mt-10 rounded-2xl border border-amber-300 bg-amber-50 p-8" role="alert">
+        <h2 class="text-lg font-black text-amber-900">You do not have analytics access</h2>
+        <p class="mt-2 text-sm text-amber-800">Viewing Outcomes requires the <code>analytics.read</code> permission.</p>
+      </section>
+    )}
+    {!permissionDenied && !data && (
+      <section class="mt-10 rounded-2xl border border-red-300 bg-red-50 p-8" role="alert">
+        <h2 class="text-lg font-black text-red-900">The analytics API is unavailable</h2>
+        <p class="mt-2 text-sm text-red-800">No figures are shown because no trustworthy numbers exist right now.</p>
+      </section>
+    )}
+
+    {data && (
+      <>
+        <section class="mt-8" aria-labelledby="outcomes-critical">
+          <h2 id="outcomes-critical" class="text-xl font-black text-brand-dark">The critical few</h2>
+          <p class="mt-1 text-sm text-slate-500">Four measures, each with its rule and its goal. A measure without enough evidence says so rather than showing a percentage.</p>
+          <div class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {data.critical.map((m) => {
+              const c = change(m.value, m.previousValue, m.lowerIsBetter);
+              return (
+                <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <p class="text-[10px] font-black uppercase tracking-wider text-slate-500">{m.label}</p>
+                  <p class="mt-2 text-3xl font-black tabular-nums text-brand-dark">{fmtValue(m.unit, m.value)}</p>
+                  <p class="mt-1 text-xs text-slate-500">{m.state === "VALUE" ? `Before: ${fmtValue(m.unit, m.previousValue)}` : STATE[m.state] ?? m.state}</p>
+                  {c && !c.same && <p class={`mt-1 text-xs font-bold ${c.better ? "text-emerald-700" : "text-red-700"}`}>{c.better ? "Better than the period before" : "Worse than the period before"}</p>}
+                  <p class={`mt-3 inline-block rounded-lg border px-2 py-1 text-[11px] font-black ${verdictTone(m.verdict)}`}>{verdictWords(m.verdict)}{m.goal !== null ? ` · goal ${m.lowerIsBetter ? "≤" : "≥"} ${fmtValue(m.unit, m.goal)}` : ""}</p>
+                  <p class="mt-3 text-[11px] text-slate-500">Rule: {m.rule}</p>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
+        <section class="mt-10 grid gap-6 lg:grid-cols-2">
+          <article class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="outcomes-abandon">
+            <h2 id="outcomes-abandon" class="text-lg font-black text-brand-dark">Two leaks, not one</h2>
+            <p class="mt-1 text-sm text-slate-600">Carts that never reach checkout need a different fix (price, delivery fee, trust) from checkouts that never become orders (form, payment, phone code).</p>
+            <ol class="mt-5 space-y-3">
+              {[
+                { label: "Carts with items", now: data.funnel.cartsWithItems, before: data.funnel.previous.cartsWithItems },
+                { label: "Checkouts started", now: data.funnel.checkoutsStarted, before: data.funnel.previous.checkoutsStarted },
+                { label: "Orders placed", now: data.funnel.ordersPlaced, before: data.funnel.previous.ordersPlaced },
+              ].map((s, i, all) => (
+                <li class="grid items-center gap-2 sm:grid-cols-[11rem_1fr_8rem]">
+                  <p class="text-sm font-bold text-brand-dark">{s.label}</p>
+                  <div class="h-3 rounded bg-slate-100" aria-hidden="true"><div class="h-3 rounded bg-brand-primary" style={`width:${Math.max(1, Math.round((s.now / Math.max(1, all[0].now)) * 100))}%`}></div></div>
+                  <p class="text-sm tabular-nums text-brand-dark sm:text-right"><strong>{fmtNumber(s.now)}</strong> <span class="text-xs text-slate-500">(before {fmtNumber(s.before)})</span></p>
+                </li>
+              ))}
+            </ol>
+            <p class="mt-4 text-xs text-slate-500">Checkouts started are browsers that opened the checkout page in the period (begin_checkout). Carts are server carts touched in the period, so a checkout from last week's cart can make the first rate not comparable.</p>
+          </article>
+
+          <article class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="outcomes-whales">
+            <h2 id="outcomes-whales" class="text-lg font-black text-brand-dark">Whales</h2>
+            <p class="mt-1 text-sm text-slate-600">Paid orders at or above twice the period's average. The average hides them; these are the customers to know by name.</p>
+            {data.whales.thresholdUgx === null ? (
+              <p class="mt-4 text-sm text-slate-600">No paid orders in this period.</p>
+            ) : (
+              <dl class="mt-5 grid grid-cols-2 gap-4">
+                <div><dt class="text-[10px] font-black uppercase tracking-wider text-slate-500">Whale orders</dt><dd class="mt-1 text-2xl font-black tabular-nums text-brand-dark">{fmtNumber(data.whales.whaleOrders)} <span class="text-sm font-bold text-slate-500">of {fmtNumber(data.whales.paidOrders)}</span></dd></div>
+                <div><dt class="text-[10px] font-black uppercase tracking-wider text-slate-500">Share of paid revenue</dt><dd class="mt-1 text-2xl font-black tabular-nums text-brand-dark">{data.whales.revenueShare === null ? "—" : fmtRate(data.whales.revenueShare)}</dd></div>
+                <div><dt class="text-[10px] font-black uppercase tracking-wider text-slate-500">Whale threshold</dt><dd class="mt-1 text-lg font-black tabular-nums text-brand-dark">{fmtMoney(data.whales.thresholdUgx)}</dd></div>
+                <div><dt class="text-[10px] font-black uppercase tracking-wider text-slate-500">Average paid order</dt><dd class="mt-1 text-lg font-black tabular-nums text-brand-dark">{fmtMoney(data.whales.averageUgx ?? 0)}</dd></div>
+              </dl>
+            )}
+            <p class="mt-4 text-xs text-slate-500">Whale revenue: {fmtMoney(data.whales.whaleRevenueUgx)} of {fmtMoney(data.whales.paidRevenueUgx)} paid. Open <a href="/admin/orders" class="font-bold underline">Orders</a> sorted by value to see them.</p>
+          </article>
+        </section>
+
+        <section class="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="outcomes-journeys">
+          <h2 id="outcomes-journeys" class="text-lg font-black text-brand-dark">How long, and how many visits, a purchase takes</h2>
+          <p class="mt-1 text-sm text-slate-600">
+            Distributions, not averages: {fmtNumber(data.journeys.linkedOrders)} of {fmtNumber(data.journeys.ordersPlaced)} orders in the period have a recorded first visit
+            ({data.journeys.coverage === null ? "no orders" : fmtRate(data.journeys.coverage)} coverage; orders placed by staff or from a browser without the measurement script have none).
+          </p>
+          <div class="mt-5 grid gap-8 md:grid-cols-2">
+            {[{ title: "Days from first visit to order", d: data.journeys.daysToPurchase }, { title: "Visits before the order", d: data.journeys.touchesToPurchase }].map((block) => (
+              <div>
+                <h3 class="text-sm font-black text-brand-dark">{block.title}</h3>
+                {block.d.orders === 0 ? <p class="mt-2 text-sm text-slate-500">No linked orders in this period.</p> : (
+                  <ol class="mt-3 space-y-2">
+                    {block.d.buckets.map((b) => (
+                      <li class="grid items-center gap-2 sm:grid-cols-[7rem_1fr_6rem]">
+                        <p class="text-xs font-bold text-slate-700">{b.bucket}</p>
+                        <div class="h-2.5 rounded bg-slate-100" aria-hidden="true"><div class="h-2.5 rounded bg-brand-dark" style={barWidth(b.share)}></div></div>
+                        <p class="text-xs tabular-nums text-slate-700 sm:text-right">{fmtNumber(b.orders)} · {b.share === null ? "—" : fmtRate(b.share)}</p>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            ))}
+          </div>
+          <p class="mt-4 text-xs text-slate-500">If most orders come on the same day and first visit, spend goes to bringing people in; if they take a week and four visits, the basket reminder, the saved list and remarketing earn their keep.</p>
+        </section>
+
+        <section class="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="outcomes-micro">
+          <div class="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 id="outcomes-micro" class="text-lg font-black text-brand-dark">Micro conversions, in shillings</h2>
+              <p class="mt-1 text-sm text-slate-600">The smaller outcomes a visit can end in. Each needs a value the owner sets once; until then it is a count, not an outcome.</p>
+            </div>
+            <p class="text-sm font-black text-brand-dark">Economic value: {fmtMoney(data.micro.totalEconomicValueUgx)} <span class="text-xs font-bold text-slate-500">({data.micro.valued} valued, {data.micro.unvalued} without a value)</span></p>
+          </div>
+          <div class="mt-4 overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead><tr class="text-left text-[10px] font-black uppercase tracking-wider text-slate-500"><th class="py-2 pr-3">Outcome</th><th class="py-2 pr-3 text-right">This period</th><th class="py-2 pr-3 text-right">Before</th><th class="py-2 pr-3 text-right">Value each</th><th class="py-2 text-right">Economic value</th></tr></thead>
+              <tbody>
+                {data.micro.rows.map((r) => (
+                  <tr class="border-t border-slate-100">
+                    <td class="py-2 pr-3"><span class="font-bold text-brand-dark">{r.label}</span><span class="block text-xs text-slate-500">{r.help}</span></td>
+                    <td class="py-2 pr-3 text-right tabular-nums">{fmtNumber(r.count)}</td>
+                    <td class="py-2 pr-3 text-right tabular-nums text-slate-500">{fmtNumber(r.previousCount)}</td>
+                    <td class="py-2 pr-3 text-right tabular-nums">{r.valueUgx === null ? <a href="/admin/measurement/mmm" class="text-xs font-bold text-amber-700 underline">Set a value</a> : fmtMoney(r.valueUgx)}</td>
+                    <td class="py-2 text-right tabular-nums font-bold">{r.economicValueUgx === null ? "—" : fmtMoney(r.economicValueUgx)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="outcomes-segments">
+          <h2 id="outcomes-segments" class="text-lg font-black text-brand-dark">Conversion by segment (GA4)</h2>
+          <p class="mt-1 text-sm text-slate-600">An average conversion rate is a lie of omission; by channel and by device it says where to work. From the shop's own copy of the GA4 daily series, which covers {data.segments.daysCovered} of {period.days} days in this period (GA4 fills a day in up to two days late).</p>
+          <div class="mt-4 grid gap-8 lg:grid-cols-2">
+            {[{ title: "By channel", rows: data.segments.byChannel }, { title: "By device", rows: data.segments.byDevice }].map((block) => (
+              <div>
+                <h3 class="text-sm font-black text-brand-dark">{block.title}</h3>
+                {block.rows.length === 0 ? <p class="mt-2 text-sm text-slate-500">No GA4 rows for this period yet.</p> : (
+                  <table class="mt-2 w-full text-sm">
+                    <thead><tr class="text-left text-[10px] font-black uppercase tracking-wider text-slate-500"><th class="py-1.5 pr-2">Segment</th><th class="py-1.5 pr-2 text-right">Sessions</th><th class="py-1.5 pr-2 text-right">New</th><th class="py-1.5 pr-2 text-right">Purchases</th><th class="py-1.5 text-right">Conversion</th></tr></thead>
+                    <tbody>
+                      {block.rows.map((r) => (
+                        <tr class="border-t border-slate-100">
+                          <td class="py-1.5 pr-2 font-bold text-brand-dark">{r.segment}</td>
+                          <td class="py-1.5 pr-2 text-right tabular-nums">{fmtNumber(r.sessions)}</td>
+                          <td class="py-1.5 pr-2 text-right tabular-nums text-slate-600">{r.newShare === null ? "—" : fmtRate(r.newShare)}</td>
+                          <td class="py-1.5 pr-2 text-right tabular-nums">{fmtNumber(r.purchases)}</td>
+                          <td class="py-1.5 text-right tabular-nums font-bold">{r.conversion.value === null ? <span class="text-xs font-normal text-slate-500">{STATE[r.conversion.state]}</span> : fmtRate(r.conversion.value)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section class={`mt-10 rounded-2xl border p-6 shadow-sm ${data.directTraffic.state === "HIGH" ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white"}`} aria-labelledby="outcomes-direct">
+          <h2 id="outcomes-direct" class="text-lg font-black text-brand-dark">Direct traffic check</h2>
+          {data.directTraffic.state === "NO_DATA" ? (
+            <p class="mt-2 text-sm text-slate-600">No GA4 source/medium rows for this period yet.</p>
+          ) : (
+            <p class="mt-2 text-sm text-slate-700">
+              <strong>{fmtRate(data.directTraffic.share ?? 0)}</strong> of {fmtNumber(data.directTraffic.sessions)} GA4 sessions arrived as (direct) / (none).
+              {data.directTraffic.state === "HIGH"
+                ? ` That is above the ${data.directTraffic.alarmPct}% alarm: links are going out untagged (texts, WhatsApp, printed QR, the app) or a redirect is dropping the referrer. Tag every link the shop sends and check the 301 chain before trusting any channel split.`
+                : ` Below the ${data.directTraffic.alarmPct}% alarm; the channel split can be trusted at this level.`}
+            </p>
+          )}
+        </section>
+
+        <section class="mt-10 rounded-2xl border border-slate-200 bg-slate-50 p-6" aria-labelledby="outcomes-sources">
+          <h2 id="outcomes-sources" class="text-sm font-black text-brand-dark">Where each figure comes from</h2>
+          <ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-600">
+            <li>Carts with items: server carts touched in the period holding at least one item. Checkouts started: distinct browsers that sent begin_checkout. Orders: the orders table (the Commerce Analytics count).</li>
+            <li>Whales: paid orders at or above 2 × the period's average paid order.</li>
+            <li>Journeys: measurement.order_touch_link joined to the visitor's recorded landing touches before the order.</li>
+            <li>Micro conversions: accounts, product questions, battery finder requests, quote requests, dealer applications, paid gift cards and wish-list adds, each dated by its own record.</li>
+            <li>Session conversion, segments and the direct check: GA4 Data API daily series kept in measurement.ga4_daily_series. Cost per order: measurement.mmm_daily spend over orders placed.</li>
+          </ul>
+        </section>
+      </>
+    )}
+  </div>
+</AdminLayout>

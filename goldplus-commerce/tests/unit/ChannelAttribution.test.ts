@@ -283,7 +283,7 @@ describe('model list', () => {
       expect(m.help, m.value).toBe(MODEL_LABELS[m.value as keyof typeof MODEL_LABELS].help);
     }
     expect(WEB_DIRECT_RULE_HELP).toBe(DIRECT_RULE_HELP);
-    expect(parseReportModel('shapley')).toBe('last_click');
+    expect(parseReportModel('shapley')).toBe('time_decay');
     expect(parseReportModel('linear')).toBe('linear');
   });
   it('view helpers: a flat-zero trend is not drawn; shared sales show one decimal', () => {

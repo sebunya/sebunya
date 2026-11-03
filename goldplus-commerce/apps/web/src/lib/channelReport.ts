@@ -7,7 +7,7 @@ export const CHANNEL_REPORT_MODELS: ReadonlyArray<{ value: string; label: string
   { value: 'last_click', label: 'Last click', help: 'All credit to the last recorded source before the order (direct visits skipped, as in GA4).' },
   { value: 'first_touch', label: 'First touch', help: 'All credit to the first recorded source in the 30 days before the order.' },
   { value: 'linear', label: 'Linear', help: 'Credit shared equally across the recorded sources.' },
-  { value: 'time_decay', label: 'Time decay', help: 'Recent sources count more; weight halves every 7 days.' },
+  { value: 'time_decay', label: 'Time decay', help: 'Recent sources count more; weight halves every 7 days. The report opens on this model: the defensible reference (Kaushik), with last click beside it. No model proves cause; the holdouts and MMM do.' },
   { value: 'position_based', label: 'Position-based', help: '40% first, 40% last, 20% shared by the middle.' },
   { value: 'self_reported', label: 'Customer said', help: 'Only what the customer (or staff for them) answered to "How did you hear about us?".' },
 ];

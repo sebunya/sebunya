@@ -123,3 +123,40 @@ export async function getSalesFunnel(
     return { ok: false, status: 0, data: null };
   }
 }
+
+/** Outcomes (2026-11-03): the critical few with goals, split abandonment, whales, journeys, micro conversions, segments. */
+export interface OutcomesData {
+  period: { startDay: string; endDay: string; days: number; previousStartDay: string; previousEndDay: string };
+  critical: Array<{ key: string; label: string; unit: 'rate' | 'UGX'; value: number | null; previousValue: number | null; state: string; goal: number | null; verdict: 'MET' | 'MISSED' | 'NO_GOAL' | 'NO_VALUE'; lowerIsBetter: boolean; rule: string }>;
+  funnel: { cartsWithItems: number; checkoutsStarted: number; ordersPlaced: number; previous: { cartsWithItems: number; checkoutsStarted: number; ordersPlaced: number } };
+  whales: { thresholdUgx: number | null; averageUgx: number | null; whaleOrders: number; whaleRevenueUgx: number; paidOrders: number; paidRevenueUgx: number; revenueShare: number | null; orderShare: number | null };
+  journeys: {
+    linkedOrders: number; ordersPlaced: number; coverage: number | null;
+    daysToPurchase: { orders: number; buckets: Array<{ bucket: string; orders: number; share: number | null }> };
+    touchesToPurchase: { orders: number; buckets: Array<{ bucket: string; orders: number; share: number | null }> };
+  };
+  micro: { rows: Array<{ key: string; label: string; help: string; count: number; previousCount: number; valueUgx: number | null; economicValueUgx: number | null }>; totalEconomicValueUgx: number; valued: number; unvalued: number };
+  segments: { byChannel: OutcomeSegment[]; byDevice: OutcomeSegment[]; daysCovered: number };
+  directTraffic: { share: number | null; directSessions: number; sessions: number; alarmPct: number; state: 'OK' | 'HIGH' | 'NO_DATA' };
+}
+export interface OutcomeSegment { segment: string; sessions: number; newUsers: number; totalUsers: number; purchases: number; revenueUgx: number; newShare: number | null; conversion: { value: number | null; state: string } }
+
+export async function getOutcomes(
+  token: string,
+  params: { startDate?: string | null; endDate?: string | null; days?: number | null },
+): Promise<{ ok: boolean; status: number; data: OutcomesData | null }> {
+  const query = new URLSearchParams();
+  if (params.startDate) query.set('startDate', params.startDate);
+  if (params.endDate) query.set('endDate', params.endDate);
+  if (params.days) query.set('days', String(params.days));
+  try {
+    const response = await fetch(`${apiBase}/admin/analytics/outcomes${query.size ? `?${query}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const envelope = (await response.json().catch(() => null)) as ApiEnvelope<OutcomesData> | null;
+    return response.ok && envelope?.success ? { ok: true, status: response.status, data: envelope.data ?? null } : { ok: false, status: response.status, data: null };
+  } catch {
+    return { ok: false, status: 0, data: null };
+  }
+}
