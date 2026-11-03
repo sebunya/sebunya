@@ -7,14 +7,14 @@ import { indexNowKey, resetIndexNowKeyCache } from '../../apps/web/src/lib/index
 const web = (p: string) => readFileSync(join(__dirname, '../../apps/web/src', p), 'utf8');
 const mw = web('middleware.ts');
 
-describe('holderIsAdmin forwards the visitor address (fail-open kept)', () => {
+describe('holderIsAdmin forwards the visitor address', () => {
   it('sends X-Forwarded-For from the client address', () => {
     expect(mw).toContain('async function holderIsAdmin(request: Request, clientAddress: string | null)');
     expect(mw).toContain('headers: apiHeaders({ Authorization: `Bearer ${bearer}` }, clientAddress)');
     expect(mw).toContain('holderIsAdmin(context.request, readClientAddress(context))');
   });
-  it('still degrades open on 429/5xx/outage (owner decision, unchanged)', () => {
-    expect(mw).toContain("if (res.status < 500 && res.status !== 429) return false;\n    return true;");
+  it('answers unknown on 429/5xx/outage; the gate turns that into a 503 (fail closed, owner decision 2026-11-03 — see AdminGateFailsClosed.test.ts)', () => {
+    expect(mw).toContain("if (res.status < 500 && res.status !== 429) return 'no';\n    return 'unknown';");
   });
 });
 

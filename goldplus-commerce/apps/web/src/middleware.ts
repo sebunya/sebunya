@@ -59,19 +59,25 @@ export function visitCookieOptions() {
  * One call to /auth/admin-session settles it: authMiddleware refuses an account with
  * no permissions, so a 200 means a real admin.
  *
- * Fail CLOSED on a definite refusal (401/403): that is the case this exists for.
- * Fail OPEN on a timeout or an unreachable API: a blip must not lock the
- * operator out of the console they would use to diagnose it, and the pages
- * behind this still cannot read a single privileged byte without the API.
+ * Three verdicts. 'no' on a definite refusal (401/403, or any other 4xx: a
+ * moved route answers 404 and must not open the console). 'unknown' when the
+ * API is under strain or unreachable (429, 5xx, timeout): the caller answers
+ * 503 and serves nothing. Until 2026-11-03 'unknown' opened the console, on
+ * the argument that the pages behind it cannot read a privileged byte without
+ * the API anyway; review chunk 240 closed it (owner decision 2026-11-03): the
+ * console shell and the gp_staff cookie were handed to any cookie holder
+ * exactly when the API was being hammered, and the console is useless in an
+ * outage regardless — the operator diagnoses on the host.
  */
-async function holderIsAdmin(request: Request, clientAddress: string | null): Promise<boolean> {
+type AdminVerdict = 'yes' | 'no' | 'unknown';
+async function holderIsAdmin(request: Request, clientAddress: string | null): Promise<AdminVerdict> {
   // Through readSessionToken: it sees a token the renewal step just issued.
   const token = readSessionToken(request);
-  if (!token) return false;
+  if (!token) return 'no';
   // Decoded before the try: a malformed cookie (e.g. "%E0") threw URIError
   // inside it and the catch below let any visitor render the console.
   let bearer: string;
-  try { bearer = decodeURIComponent(token); } catch { return false; }
+  try { bearer = decodeURIComponent(token); } catch { return 'no'; }
   try {
     const res = await fetch(`${apiBase}/auth/admin-session`, {
       // The visitor's own address: without it every caller shared the web
@@ -81,15 +87,12 @@ async function holderIsAdmin(request: Request, clientAddress: string | null): Pr
     });
     // Only a 200 proves an admin. Treating "anything that is not 401/403" as
     // proof means a moved route, a 404 or a 502 silently stops guarding.
-    if (res.ok) return true;
-    if (res.status === 401 || res.status === 403) return false;
-    // Any other 4xx is a refusal too (a moved route answers 404, and that
-    // must not open the console). 429 and 5xx are the API under strain, not a
-    // verdict on this caller, so they degrade like an outage.
-    if (res.status < 500 && res.status !== 429) return false;
-    return true;
+    if (res.ok) return 'yes';
+    if (res.status === 401 || res.status === 403) return 'no';
+    if (res.status < 500 && res.status !== 429) return 'no';
+    return 'unknown';
   } catch {
-    return true;
+    return 'unknown';
   }
 }
 
@@ -247,7 +250,16 @@ export const onRequest = defineMiddleware(async (context, next) => {
     !adminPath.startsWith('/admin/login') &&
     !adminPath.startsWith('/admin/logout');
   if (adminGuarded) {
-    if (!(await holderIsAdmin(context.request, readClientAddress(context)))) {
+    const verdict = await holderIsAdmin(context.request, readClientAddress(context));
+    if (verdict === 'unknown') {
+      // The API could not say. Serve nothing (not the shell, not gp_staff) and
+      // say so plainly; a browser retries on its own after Retry-After.
+      return new Response('The admin console cannot verify your session right now: the API did not answer. Try again in a minute.', {
+        status: 503,
+        headers: { 'Retry-After': '30', 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+    }
+    if (verdict === 'no') {
       return context.redirect(`/admin/login?returnTo=${encodeURIComponent(adminPath)}`, 303);
     }
     // This browser belongs to staff: the shop's tag and beacons leave it out of GA4 and the shopper records

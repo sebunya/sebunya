@@ -222,9 +222,10 @@ describe('the three decisions the owner signed off', () => {
     expect(mw).toMatch(/const adminGuarded =/);
     expect(mw).toMatch(/!adminPath\.startsWith\('\/admin\/login'\)/);
     // Closed on a definite refusal...
-    expect(mw).toMatch(/if \(res\.status === 401 \|\| res\.status === 403\) return false;/);
+    expect(mw).toMatch(/if \(res\.status === 401 \|\| res\.status === 403\) return 'no';/);
     // ...open when the API cannot be reached, so a blip cannot lock the operator out.
-    expect(mw).toMatch(/\} catch \{\s*\n\s*return true;/);
+    // Fail closed since 2026-11-03: an unreachable API is 'unknown', which the gate answers with a 503.
+    expect(mw).toMatch(/\} catch \{\s*\n\s*return 'unknown';/);
     // Lives under /auth, not /admin: every /admin route must be gated by a
     // SPECIFIC permission, and this one deliberately asks only whether the
     // holder has any admin permission at all.
@@ -292,7 +293,7 @@ describe('what the self-review of this session caught', () => {
 
   it('only a 200 proves an admin, and logout is never trapped', () => {
     const mw = read('apps/web/src/middleware.ts');
-    expect(mw).toMatch(/if \(res\.ok\) return true;/);
+    expect(mw).toMatch(/if \(res\.ok\) return 'yes';/);
     expect(mw).toMatch(/!adminPath\.startsWith\('\/admin\/logout'\)/);
   });
 });
