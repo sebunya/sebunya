@@ -432,8 +432,10 @@ routes.put('/draws/:id/budget', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
     return c.json({ success: false, error: { code: 'INVALID_VALUE', message: 'budgetCapPoints must be a positive whole number.' } } satisfies ApiResponse<never>, 400);
   }
   const registry = Registry.getInstance();
-  const campaigns = await registry.loyaltyDrawRepo.listCampaignsWithStats();
-  const campaign = campaigns.find((camp) => camp.id === c.req.param('id'));
+  // One row. The stats listing ran a prize list and an outstanding-token count
+  // for EVERY campaign (1 + 2N queries) only to find the one being edited.
+  const campaignId = c.req.param('id');
+  const campaign = campaignId ? await registry.loyaltyDrawRepo.findCampaignById(campaignId) : null;
   if (!campaign) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Campaign not found.' } } satisfies ApiResponse<never>, 404);
   // Refusing to set a cap below what has already been paid out keeps the
   // spent/cap relationship meaningful rather than instantly "over budget".

@@ -3,6 +3,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import { formatUgx } from "../lib/money";
 import { apiBase } from "../lib/api";
 import { resolveAuthenticatedUserId } from "../lib/customerAuth";
+import { loadProgrammeAndDraw } from "../lib/loyaltyProgramme";
 import { loyaltyWorkedExample } from "../lib/loyaltyWorkedExample";
 import { ordinalWord } from "../lib/ordinalWord";
 
@@ -15,38 +16,13 @@ import { ordinalWord } from "../lib/ordinalWord";
  * which admin previews still read). Safeguards live below the fold, short.
  * Anything not configured yet is stated as exactly that — never defaulted.
  */
-interface Programme {
-  active: boolean;
-  earnRatePer1000Ugx: number;
-  expiryDays: number;
-  redemption: { configured: boolean; pointValueUgx?: number; minPoints?: number; maxShareBps?: number };
-  vesting?: string;
-  /** 0087: only ACTIVE earn sources arrive here — nothing unshipped is listed. */
-  earnSources?: {
-    verificationScan: number | null;
-    counterfeitReport: number | null;
-    phoneVerification: number | null;
-    referral: { referrer: number | null; referee: number | null; bonus?: { friends: number; points: number } | null } | null;
-    birthday: number | null;
-    streak: { orders: number; windowDays: number | null; points: number } | null;
-    milestones?: Array<{ title: string; description: string | null; points: number }>;
-  } | null;
-  tiers?: Array<{ code: string; name: string; threshold: number; benefits: Record<string, boolean> }>;
-  /** 0087: the real admin-defined badge catalogue — empty until configured. */
-  badges?: Array<{ key: string; title: string; description?: string | null }>;
-  termsVersion?: string | null;
-}
-let programme: Programme | null = null;
-try {
-  const res = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(3000) });
-  const json: any = res.ok ? await res.json().catch(() => null) : null;
-  if (json?.success && json.data?.active) programme = json.data;
-} catch {
-  /* dormant messaging is the safe fallback */
-}
-
-// Signed-in balance: the one number a member actually came for.
-const userId = await resolveAuthenticatedUserId(Astro.cookies);
+// Programme, draw and the session identity in parallel: none depends on another
+// (lib/loyaltyProgramme owns the shape and the "not running" fallbacks).
+const [{ programme, draw: drawInfo }, userId] = await Promise.all([
+  loadProgrammeAndDraw(),
+  // Signed-in balance: the one number a member actually came for.
+  resolveAuthenticatedUserId(Astro.cookies),
+]);
 const sessionToken = Astro.cookies.get("goldplus_session")?.value ?? null;
 let balance: { available: number; pendingPoints: number } | null = null;
 if (userId && sessionToken && programme) {
@@ -157,14 +133,7 @@ if (src?.birthday) {
 // 0088: the scratch card is listed only when draws are actually running, and
 // described honestly — it is a bonus ON TOP of the points the order already
 // earned, it costs nothing, and every card wins.
-let drawInfo: { name: string; tokenExpiryDays: number } | null = null;
-try {
-  const res = await fetch(`${apiBase}/commerce/reward-draw`, { signal: AbortSignal.timeout(2500) });
-  const json: any = res.ok ? await res.json().catch(() => null) : null;
-  if (json?.success && json.data?.enabled) drawInfo = json.data;
-} catch {
-  /* the card simply isn't advertised */
-}
+// (drawInfo was loaded above, alongside the programme.)
 if (drawInfo) {
   earnWays.push({
     label: "A scratch card with every delivery",

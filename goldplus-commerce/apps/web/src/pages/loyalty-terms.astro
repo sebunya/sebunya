@@ -1,7 +1,7 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
-import { apiBase } from "../lib/api";
 import { formatUgx } from "../lib/money";
+import { loadProgrammeAndDraw } from "../lib/loyaltyProgramme";
 import { ordinalWord } from "../lib/ordinalWord";
 
 /**
@@ -13,40 +13,10 @@ import { ordinalWord } from "../lib/ordinalWord";
  * configured, the clause says the mechanic is not active rather than stating a
  * number that would not pay out.
  */
-interface Programme {
-  active: boolean;
-  earnRatePer1000Ugx: number;
-  expiryDays: number;
-  redemption: { configured: boolean; pointValueUgx?: number; minPoints?: number; maxShareBps?: number };
-  earnSources?: {
-    verificationScan: number | null;
-    counterfeitReport: number | null;
-    phoneVerification: number | null;
-    referral: { referrer: number | null; referee: number | null; bonus?: { friends: number; points: number } | null } | null;
-    birthday: number | null;
-    streak: { orders: number; windowDays: number | null; points: number } | null;
-    milestones?: Array<{ title: string; description: string | null; points: number }>;
-  } | null;
-  tiers?: Array<{ code: string; name: string; threshold: number }>;
-  termsVersion?: string | null;
-  termsEffectiveFrom?: string | null;
-}
-
-let programme: Programme | null = null;
-let draw: { name: string; tokenExpiryDays: number; odds: Array<{ label: string; oddsBps: number; soldOut: boolean }> } | null = null;
-try {
-  const [res, drawRes] = await Promise.all([
-    fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(3000) }),
-    // Public odds disclosure — the same numbers the engine selects on.
-    fetch(`${apiBase}/commerce/reward-draw`, { signal: AbortSignal.timeout(3000) }).catch(() => null),
-  ]);
-  const json: any = res.ok ? await res.json().catch(() => null) : null;
-  if (json?.success && json.data?.active) programme = json.data;
-  const drawJson: any = drawRes && drawRes.ok ? await drawRes.json().catch(() => null) : null;
-  if (drawJson?.success && drawJson.data?.enabled) draw = drawJson.data;
-} catch {
-  /* an unreachable API renders the not-active version, never invented terms */
-}
+// One shape and one loader with /loyalty (lib/loyaltyProgramme). An unreachable
+// API renders the not-active version, never invented terms. The draw carries the
+// public odds disclosure — the same numbers the engine selects on.
+const { programme, draw } = await loadProgrammeAndDraw();
 
 const fmtUgx = (n: number) => formatUgx(n);
 const src = programme?.earnSources ?? null;
