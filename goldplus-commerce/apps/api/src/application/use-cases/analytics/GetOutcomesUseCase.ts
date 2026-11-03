@@ -41,6 +41,7 @@ export function buildOutcomes(now: OutcomeCounts, before: OutcomeCounts, values:
   if (micro.unvalued > 0) actions.push({ key: 'micro_values', text: `${micro.unvalued} micro conversion${micro.unvalued === 1 ? ' has' : 's have'} no value yet, so the economic value shown is incomplete. Set each in Measurement settings.`, href: '/admin/measurement/mmm' });
   if (critical.every((c) => c.verdict === 'NO_GOAL')) actions.push({ key: 'goals', text: 'No goals are set, so nothing here can be met or missed. Set the four goals in Measurement settings.', href: '/admin/measurement/mmm' });
   return {
+    countedFrom: now.countedFrom,
     critical,
     actions,
     funnel: { cartsWithItems: now.cartsWithItems, checkoutsStarted: now.checkoutsStarted, ordersPlaced: now.ordersPlaced, previous: { cartsWithItems: before.cartsWithItems, checkoutsStarted: before.checkoutsStarted, ordersPlaced: before.ordersPlaced } },

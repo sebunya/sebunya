@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { TELEMETRY_TRUSTED_FROM, TELEMETRY_TRUSTED_FROM_DAY } from '../../../domain/measurement/Outcomes';
 import { db } from '../client';
 import type { IOutcomesReader, OutcomeCounts } from '../../../application/ports/IOutcomesReader';
 import type { MicroConversionKey, SegmentRow } from '../../../domain/measurement/Outcomes';
@@ -19,7 +20,12 @@ const EV = sql.raw(`(case when jsonb_typeof(o.payload) = 'string' then (o.payloa
  * from measurement.order_touch_link, GA4 figures from the shop's own copy of the daily series.
  */
 export class DrizzleOutcomesReader implements IOutcomesReader {
-  async counts(start: Date, end: Date, startDay: string, endDay: string): Promise<OutcomeCounts> {
+  async counts(requestedStart: Date, end: Date, requestedStartDay: string, endDay: string): Promise<OutcomeCounts> {
+    // Nothing before the trusted day is counted (see TELEMETRY_TRUSTED_FROM): the whole window moves, so every
+    // rate's two halves still cover the same days.
+    const clipped = requestedStart < TELEMETRY_TRUSTED_FROM;
+    const start = clipped ? TELEMETRY_TRUSTED_FROM : requestedStart;
+    const startDay = requestedStartDay < TELEMETRY_TRUSTED_FROM_DAY ? TELEMETRY_TRUSTED_FROM_DAY : requestedStartDay;
     const endX = new Date(end.getTime() + 1);
     const [base, paid, journeys, micro, spend, ga4Totals, byChannel, byDevice] = await Promise.all([
       db.execute(sql`
@@ -74,6 +80,7 @@ export class DrizzleOutcomesReader implements IOutcomesReader {
           and o.created_at < ((${lastDay}::date + 1)::timestamp at time zone 'Africa/Kampala') and o.created_at < ${endX}`))[0]?.n)
       : 0;
     return {
+      countedFrom: clipped && end > TELEMETRY_TRUSTED_FROM ? TELEMETRY_TRUSTED_FROM_DAY : null,
       cartsWithItems: num(b.cartsWithItems),
       checkoutsStarted: num(b.checkoutsStarted),
       ordersPlaced: num(b.ordersPlaced),

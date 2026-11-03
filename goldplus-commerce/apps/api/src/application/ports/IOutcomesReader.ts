@@ -2,6 +2,8 @@ import type { MicroConversionKey, SegmentRow } from '../../domain/measurement/Ou
 
 /** The counts behind the Outcomes page, for one window. Each is bounded: no customer records leave the database. */
 export interface OutcomeCounts {
+  /** The Kampala day the counts start from when the window was clipped to trusted telemetry; null when not clipped. */
+  countedFrom: string | null;
   cartsWithItems: number;
   /** Distinct browsers that sent begin_checkout in the window (telemetry outbox). */
   checkoutsStarted: number;
