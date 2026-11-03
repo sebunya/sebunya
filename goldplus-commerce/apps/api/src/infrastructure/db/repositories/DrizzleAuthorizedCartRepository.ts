@@ -44,6 +44,8 @@ export function confirmedRetailPrice(hasRetailPrice: boolean | null | undefined,
 
 // Same constant the credential cookie uses — cookie lifetime and row expiry move together.
 const CART_TTL_DAYS = CART_RETENTION_DAYS;
+/** How long a declared-automation cart may exist before the hourly scan deletes it. */
+export const PROBE_CART_TTL_MS = 60 * 60 * 1000;
 
 export class DrizzleAuthorizedCartRepository implements ICartAuthorizedRepository {
   async find(cartId: string): Promise<CartRecord | null> {
@@ -168,8 +170,9 @@ export class DrizzleAuthorizedCartRepository implements ICartAuthorizedRepositor
    * There is no unowned-creation path: a cart that exists without an owner is the
    * state migration 0060 had to tolerate for historical rows, not one worth creating.
    */
-  async create(cartId: string, owner: CartOwner): Promise<void> {
+  async create(cartId: string, owner: CartOwner, options?: { probe?: boolean }): Promise<void> {
     const now = new Date();
+    const probe = options?.probe === true;
     await db
       .insert(carts)
       .values({
@@ -178,7 +181,9 @@ export class DrizzleAuthorizedCartRepository implements ICartAuthorizedRepositor
         ownerId: owner.id,
         version: 1,
         updatedAt: now,
-        expiresAt: new Date(now.getTime() + CART_TTL_DAYS * 24 * 60 * 60 * 1000),
+        // A probe's cart lives an hour (its journey takes minutes); the hourly scan deletes it after that.
+        expiresAt: new Date(now.getTime() + (probe ? PROBE_CART_TTL_MS : CART_TTL_DAYS * 24 * 60 * 60 * 1000)),
+        isProbe: probe,
       })
       .onConflictDoNothing();
   }

@@ -55,6 +55,8 @@ export class DrizzleAbandonmentRepository implements IAbandonmentRepository, IBa
       .where(
         and(
           lt(carts.updatedAt, staleBefore),
+          // Declared automation's carts are never abandoned baskets (0217).
+          sql`not ${carts.isProbe}`,
           // An expired cart cannot be recovered, so it is not "newly abandoned"
           // — classifying it again only manufactured a second lifecycle for the
           // same cart (and, before 0129, the collision that stalled every expiry).
@@ -86,6 +88,16 @@ export class DrizzleAbandonmentRepository implements IAbandonmentRepository, IBa
       // Throwing here rolls the insert back, so the cart is classified (and announced) on the next scan.
       if (announce) await announce(record);
       return record;
+    });
+  }
+
+  async purgeProbeCarts(olderThan: Date): Promise<number> {
+    return db.transaction(async (tx) => {
+      const probe = sql`select c.id from ${carts} c where c.is_probe and c.updated_at < ${olderThan}`;
+      await tx.delete(cartAbandonments).where(sql`${cartAbandonments.cartId} in (${probe})`);
+      await tx.delete(cartItems).where(sql`${cartItems.cartId} in (${probe})`);
+      const rows = await tx.delete(carts).where(and(eq(carts.isProbe, true), lt(carts.updatedAt, olderThan))).returning({ id: carts.id });
+      return rows.length;
     });
   }
 

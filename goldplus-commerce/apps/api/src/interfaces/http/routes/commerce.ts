@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { isDeclaredAutomationUa, PROBE_HEADER } from '../../../application/use-cases/telemetry/DeclaredAutomation';
 import { hashVisitToken } from '../../../application/use-cases/identity/ExperienceProfileUseCases';
 import { ShortAnswerCache } from '../shortAnswerCache';
 import { bodyLimit } from 'hono/body-limit';
@@ -667,6 +668,8 @@ async function requireCart(c: Context) {
     claims: resolved.claims,
     owner: { kind: resolved.claims.ownerKind, id: resolved.claims.ownerId },
     traceId: c.req.header('x-request-id') ?? crypto.randomUUID(),
+    // Declared automation: the probe's own user agent, or the storefront forwarding the audits' probe cookie.
+    probe: isDeclaredAutomationUa(c.req.header('user-agent')) || c.req.header(PROBE_HEADER) === '1',
   } as const;
 }
 
@@ -748,6 +751,7 @@ routes.post('/cart/add', async (c) => {
     // meaningful add and would silently do nothing.
     mutation: { kind: 'ADD', productId: parsed.data.productId, quantity: parsed.data.quantity ?? 1 },
     traceId: gate.traceId,
+    probe: gate.probe,
   });
   return cartResponse(c, outcome);
 });

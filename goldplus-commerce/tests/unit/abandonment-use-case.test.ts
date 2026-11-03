@@ -43,6 +43,8 @@ class FakeRepo implements IAbandonmentRepository {
     this.created.push(rec);
     return rec;
   }
+  purged: Date[] = [];
+  async purgeProbeCarts(olderThan: Date): Promise<number> { this.purged.push(olderThan); return 0; }
   async expireOverdue() {
     return this.expiredCount;
   }

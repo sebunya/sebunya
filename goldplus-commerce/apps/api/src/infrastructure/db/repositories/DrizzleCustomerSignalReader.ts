@@ -61,6 +61,7 @@ export class DrizzleCustomerSignalReader implements ICustomerSignalReader {
       const abandoned = and(
         or(...cartMatchers),
         sql`${carts.updatedAt} < now() - interval '24 hours'`,
+        sql`not ${carts.isProbe}`,
         sql`exists (select 1 from ${cartItems} where ${cartItems.cartId} = ${carts.id})`,
       );
       const notConverted = convertedCartIds.length > 0

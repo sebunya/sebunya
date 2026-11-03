@@ -24,7 +24,7 @@ export class DrizzleOutcomesReader implements IOutcomesReader {
     const [base, paid, journeys, micro, spend, ga4Totals, byChannel, byDevice] = await Promise.all([
       db.execute(sql`
         select
-          (select count(*)::int from carts c where c.updated_at >= ${start} and c.updated_at < ${endX}
+          (select count(*)::int from carts c where c.updated_at >= ${start} and c.updated_at < ${endX} and not c.is_probe
              and exists (select 1 from cart_items i where i.cart_id = c.id)) as "cartsWithItems",
           (select count(distinct coalesce(${EV}->'user_data'->>'fp_client_id', o.id::text))::int from outbox_events o
             where o.event_type = 'TELEMETRY_DISPATCH' and ${EV}->>'event_name' = 'begin_checkout'

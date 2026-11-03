@@ -45,6 +45,8 @@ export interface IAbandonmentRepository {
   createOpen(candidate: AbandonmentCandidate, announce?: (record: AbandonmentRecord) => Promise<void>): Promise<AbandonmentRecord | null>;
   /** OPEN rows whose cart has passed its expiry → EXPIRED. Returns count. */
   expireOverdue(now: Date): Promise<number>;
+  /** Deletes declared-automation carts (0217) older than `olderThan`, with their lines and any abandonment rows. */
+  purgeProbeCarts(olderThan: Date): Promise<number>;
   /** OPEN rows whose cart changed after it was classified → RESUMED (the shopper came back). Returns count. */
   resumeChanged(now: Date): Promise<number>;
   summary(): Promise<{ open: number; expired: number; recovered: number; resumed: number; remindersSent7d: number; last24h: number }>;
@@ -57,6 +59,9 @@ export interface AbandonmentEventSink {
 }
 
 export const ABANDONMENT_STALE_HOURS = 6;
+
+/** A declared-automation cart older than this is deleted by the hourly scan. */
+export const PROBE_CART_MAX_AGE_MS = 60 * 60 * 1000;
 
 export class AbandonmentUseCase {
   constructor(
@@ -86,6 +91,8 @@ export class AbandonmentUseCase {
       }
     }
     const expired = await this.repo.expireOverdue(now);
+    // Probe carts (monitor, audits) are an hour's litter at most: gone before any report's day closes.
+    await this.repo.purgeProbeCarts(new Date(now.getTime() - PROBE_CART_MAX_AGE_MS));
     return { classified, expired, resumed, ...(failed ? { failed } : {}) };
   }
 

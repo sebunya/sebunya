@@ -23,7 +23,7 @@ export class DrizzleSalesFunnelReader implements ISalesFunnelReader {
             and e.created_at >= ${start} and e.created_at < ${new Date(end.getTime() + 1)}) as "productViewers",
         (select count(*)::int
            from carts c
-          where c.updated_at >= ${start} and c.updated_at < ${new Date(end.getTime() + 1)}
+          where c.updated_at >= ${start} and c.updated_at < ${new Date(end.getTime() + 1)} and not c.is_probe
             and exists (select 1 from cart_items i where i.cart_id = c.id)) as "cartsWithItems",
         (select count(*)::int from orders o where o.created_at >= ${start} and o.created_at < ${new Date(end.getTime() + 1)}) as "ordersPlaced",
         (select coalesce(sum(o.total_amount), 0)::bigint from orders o where o.created_at >= ${start} and o.created_at < ${new Date(end.getTime() + 1)}) as "ordersPlacedValueUgx",

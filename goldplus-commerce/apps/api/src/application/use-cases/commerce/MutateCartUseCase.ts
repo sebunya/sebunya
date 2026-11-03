@@ -124,7 +124,7 @@ export interface ICartAuthorizedRepository {
    * minted credential found no row and returned CART_NOT_FOUND — the server cart was
    * never created for anyone.
    */
-  create(cartId: string, owner: CartOwner): Promise<void>;
+  create(cartId: string, owner: CartOwner, options?: { probe?: boolean }): Promise<void>;
   /**
    * Claims an unowned cart for this owner, but only while it is still unowned.
    *
@@ -234,6 +234,12 @@ export class MutateCartUseCase {
     expectedVersion?: number;
     mutation: CartMutationKind;
     traceId: string;
+    /**
+     * The caller declared itself automation (its user agent, or the audits' probe cookie forwarded by the
+     * storefront). A cart it creates is marked so no report, sweep or reminder ever takes it for a customer.
+     * Self-declared and grants nothing: claiming it only opts the claimant out of being counted.
+     */
+    probe?: boolean;
   }): Promise<CartOutcome> {
     let authorized = await this.authorize(args.cartId, args.owner, args.traceId);
     if ('refusal' in authorized) {
@@ -243,7 +249,7 @@ export class MutateCartUseCase {
       // on a browser-only basket. Create it (idempotently) for ADD, then authorize.
       // REMOVE/UPDATE/CLEAR on a non-existent cart remain genuine not-founds.
       if (authorized.refusal.kind === 'CART_NOT_FOUND' && args.mutation.kind === 'ADD') {
-        await this.deps.carts.create(args.cartId, args.owner);
+        await this.deps.carts.create(args.cartId, args.owner, { probe: args.probe === true });
         authorized = await this.authorize(args.cartId, args.owner, args.traceId);
       }
       if ('refusal' in authorized) return authorized.refusal;

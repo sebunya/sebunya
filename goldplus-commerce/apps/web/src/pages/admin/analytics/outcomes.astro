@@ -322,7 +322,7 @@ const confidenceTone = (c: string) => c === "MEASURED" ? "bg-emerald-50 text-eme
         <section class="mt-10 rounded-2xl border border-slate-200 bg-slate-50 p-6" aria-labelledby="outcomes-sources">
           <h2 id="outcomes-sources" class="text-sm font-black text-brand-dark">Where each figure comes from</h2>
           <ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-600">
-            <li>Carts with items: server carts touched in the period holding at least one item. Checkouts started: distinct browsers that sent begin_checkout. Orders: the orders table (the Commerce Analytics count).</li>
+            <li>Carts with items: server carts touched in the period holding at least one item, excluding carts created by declared automation (the synthetic monitor and the post-deploy audits mark their own). Checkouts started: distinct browsers that sent begin_checkout. Orders: the orders table (the Commerce Analytics count).</li>
             <li>Whales: paid orders at or above 2 × the period's average paid order.</li>
             <li>Journeys: measurement.order_touch_link joined to the visitor's recorded landing touches before the order.</li>
             <li>Micro conversions: accounts, product questions, battery finder requests, quote requests, dealer applications, paid gift cards and wish-list adds, each dated by its own record.</li>

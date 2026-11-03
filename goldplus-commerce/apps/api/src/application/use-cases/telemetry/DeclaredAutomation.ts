@@ -12,6 +12,12 @@
  */
 const DECLARED = /GoldPlusSyntheticProbe|Chrome-Lighthouse|HeadlessChrome|PageSpeed|GTmetrix|PTST\/|Playwright|Puppeteer/i;
 
+/**
+ * The storefront forwards the audits' probe cookie (gp_probe, see apps/web/src/lib/declaredAutomation.ts) to the
+ * API as this header when it adds to a basket on the visitor's behalf; the API never sees the browser's cookies.
+ */
+export const PROBE_HEADER = 'x-goldplus-probe';
+
 export function isDeclaredAutomationUa(userAgent: string | null | undefined): boolean {
   return !!userAgent && DECLARED.test(userAgent);
 }

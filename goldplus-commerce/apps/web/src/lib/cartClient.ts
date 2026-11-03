@@ -76,15 +76,26 @@ type CartAction =
   | { path: '/commerce/cart/remove'; method: 'POST'; body: { productId: string; expectedVersion?: number } }
   | { path: '/commerce/cart/clear'; method: 'POST'; body: { expectedVersion?: number } };
 
+/** Same header name as the API's PROBE_HEADER (DeclaredAutomation.ts). */
+export const PROBE_HEADER = 'x-goldplus-probe';
+export interface CartCallOptions {
+  /** The request came from declared automation (user agent or gp_probe cookie). */
+  probe?: boolean;
+}
+
 async function call(
   action: CartAction,
   credential: string,
   sessionToken?: string | null,
+  options?: CartCallOptions,
 ): Promise<CartCallResult> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
     [CART_CREDENTIAL_HEADER]: credential,
   };
+  // The audits declare themselves with a cookie the API never sees; forwarded as a header so the cart they
+  // create is marked a probe (never a customer's basket in any report, sweep or reminder).
+  if (options?.probe) headers[PROBE_HEADER] = '1';
   if (action.method === 'POST') headers['Content-Type'] = 'application/json';
   // Forwarded so the API can cross-check a USER-owned basket against the session. A
   // user credential presented without the session is refused, deliberately.
@@ -138,7 +149,8 @@ export const cartClient = {
     credential: string,
     body: { productId: string; quantity?: number; expectedVersion?: number },
     sessionToken?: string | null,
-  ) => call({ path: '/commerce/cart/add', method: 'POST', body }, credential, sessionToken),
+    options?: CartCallOptions,
+  ) => call({ path: '/commerce/cart/add', method: 'POST', body }, credential, sessionToken, options),
 
   update: (
     credential: string,
