@@ -128,6 +128,7 @@ export async function getSalesFunnel(
 export interface OutcomesData {
   period: { startDay: string; endDay: string; days: number; previousStartDay: string; previousEndDay: string };
   critical: Array<{ key: string; label: string; unit: 'rate' | 'UGX'; value: number | null; previousValue: number | null; state: string; goal: number | null; verdict: 'MET' | 'MISSED' | 'NO_GOAL' | 'NO_VALUE'; lowerIsBetter: boolean; rule: string }>;
+  actions: Array<{ key: string; text: string; href: string }>;
   funnel: { cartsWithItems: number; checkoutsStarted: number; ordersPlaced: number; previous: { cartsWithItems: number; checkoutsStarted: number; ordersPlaced: number } };
   whales: { thresholdUgx: number | null; averageUgx: number | null; whaleOrders: number; whaleRevenueUgx: number; paidOrders: number; paidRevenueUgx: number; revenueShare: number | null; orderShare: number | null };
   journeys: {
@@ -136,7 +137,7 @@ export interface OutcomesData {
     touchesToPurchase: { orders: number; buckets: Array<{ bucket: string; orders: number; share: number | null }> };
   };
   micro: { rows: Array<{ key: string; label: string; help: string; count: number; previousCount: number; valueUgx: number | null; economicValueUgx: number | null }>; totalEconomicValueUgx: number; valued: number; unvalued: number };
-  segments: { byChannel: OutcomeSegment[]; byDevice: OutcomeSegment[]; daysCovered: number };
+  segments: { byChannel: OutcomeSegment[]; byDevice: OutcomeSegment[]; daysCovered: number; lastDay: string | null };
   directTraffic: { share: number | null; directSessions: number; sessions: number; alarmPct: number; state: 'OK' | 'HIGH' | 'NO_DATA' };
 }
 export interface OutcomeSegment { segment: string; sessions: number; newUsers: number; totalUsers: number; purchases: number; revenueUgx: number; newShare: number | null; conversion: { value: number | null; state: string } }

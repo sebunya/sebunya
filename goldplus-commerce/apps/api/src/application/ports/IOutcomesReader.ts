@@ -16,8 +16,11 @@ export interface OutcomeCounts {
   ga4: {
     sessions: number;
     directSessions: number;
-    /** Days of the window the GA4 series covers (GA4 runs a day or two behind). */
+    /** Days of the window the GA4 series covers (GA4 runs a day or two behind), and the last such day. */
     daysCovered: number;
+    lastDay: string | null;
+    /** Orders placed on the GA4-covered days only, so the conversion rate's two halves cover the same days. */
+    ordersInCoveredDays: number;
     byChannel: SegmentRow[];
     byDevice: SegmentRow[];
   };
