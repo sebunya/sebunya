@@ -16,7 +16,7 @@ if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/measurement/channel-report", 303);
 }
 
-const model = CHANNEL_REPORT_MODELS.some((m) => m.value === Astro.url.searchParams.get("model")) ? String(Astro.url.searchParams.get("model")) : "last_click";
+const model = CHANNEL_REPORT_MODELS.some((m) => m.value === Astro.url.searchParams.get("model")) ? String(Astro.url.searchParams.get("model")) : "time_decay";
 const weeksParam = Number(Astro.url.searchParams.get("weeks"));
 const weeks = [4, 8, 12, 26, 52].includes(weeksParam) ? weeksParam : 12;
 

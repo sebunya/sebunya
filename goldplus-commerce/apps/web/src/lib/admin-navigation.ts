@@ -28,6 +28,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Decision-grade business metrics, trends, actions and data quality from the canonical metric catalogue.'
   },
   {
+    label: 'Outcomes',
+    href: '/admin/analytics/outcomes',
+    group: 'Dashboard',
+    status: 'working',
+    description: 'The critical few with goals, abandonment split in two, whales, days and visits to purchase, micro conversions in shillings.'
+  },
+  {
     label: 'Products',
     href: '/admin/products',
     group: 'Commerce',

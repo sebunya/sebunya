@@ -53,6 +53,21 @@ routes.get('/overview', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async 
   }
 });
 
+/** Outcomes (2026-11-03): the critical few with goals, split abandonment, whales, journeys, micro conversions. */
+routes.get('/outcomes', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => {
+  const parsed = parsePeriod(c);
+  if (!parsed.success) return c.json(invalidQuery('startDate/endDate must be YYYY-MM-DD and days must be 1-366.'), 400);
+  try {
+    const data = await Registry.getInstance().getOutcomesUseCase.execute(parsed.data);
+    return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+  } catch (error) {
+    if (error instanceof Error && (error.message === 'END_BEFORE_START' || error.message === 'PERIOD_TOO_LONG')) {
+      return c.json(invalidQuery('Invalid period.'), 400);
+    }
+    throw error;
+  }
+});
+
 routes.get('/metrics/:metricKey/series', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => {
   const parsed = parsePeriod(c);
   if (!parsed.success) {
