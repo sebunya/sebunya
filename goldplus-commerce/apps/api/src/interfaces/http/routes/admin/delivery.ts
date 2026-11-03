@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { splitDraftValues } from './deliveryDraftValues';
+import { splitDraftValues } from '../../deliveryDraftValues';
 import { PERMISSIONS, ApiResponse } from '@goldplus/shared';
 import { Registry } from '../../../../infrastructure/Registry';
 import { authMiddleware } from '../../middleware/auth';

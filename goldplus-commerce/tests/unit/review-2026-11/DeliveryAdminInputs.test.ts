@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { splitDraftValues } from '../../../apps/api/src/interfaces/http/routes/admin/deliveryDraftValues';
+import { splitDraftValues } from '../../../apps/api/src/interfaces/http/deliveryDraftValues';
 import { parseAdminNumber } from '../../../apps/web/src/lib/adminNumber';
 
 const web = (p: string) => readFileSync(join(__dirname, '../../../apps/web/src', p), 'utf8');
