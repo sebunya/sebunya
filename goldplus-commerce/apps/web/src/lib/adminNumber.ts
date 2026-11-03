@@ -4,7 +4,7 @@
  * API would read null as "no value").
  */
 export function parseAdminNumber(raw: unknown): { ok: true; value: number } | { ok: false } {
-  const text = String(raw ?? '').trim().replace(/[,\s ]/g, '');
+  const text = String(raw ?? '').trim().replace(/[,\s\u00a0]/g, '');
   if (!text || !/^-?\d+(\.\d+)?$/.test(text)) return { ok: false };
   const value = Number(text);
   return Number.isFinite(value) ? { ok: true, value } : { ok: false };
