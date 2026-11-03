@@ -1,11 +1,23 @@
 import { db } from '../db/client';
 import { orders } from '../db/schema/commerce';
 import { outboxEvents } from '../db/schema/system';
+import { carts, cartItems } from '../db/schema/commerce';
+import { cartAbandonments } from '../db/schema/abandonment';
 import { eq, and } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { logger } from '../logging/logger';
 import { env } from '../../config/env';
 import * as client from 'prom-client';
+
+/**
+ * The monitor names itself (2026-11-03). Its journey used to look like a customer: every five-minute run left a
+ * guest cart holding the first catalogue product, which the abandonment sweep then classified (245 "carts with
+ * items" and 198 "abandoned baskets" a week on production, against 16 product-page views). Declared automation
+ * is dropped by the telemetry collector and the storefront relays, and the cart each run creates is deleted
+ * before the run ends (see discardSyntheticCart), so no synthetic cart can reach the sweep, the reminders or
+ * the Outcomes page.
+ */
+export const SYNTHETIC_MONITOR_USER_AGENT = 'GoldPlusSyntheticProbe/1.0 (synthetic monitor)';
 import { createHash } from 'node:crypto';
 
 const CATALOGUE_MONITOR_LIMIT = 5;
@@ -320,7 +332,7 @@ export async function verifyCatalogueParity(
 ): Promise<{ truth: IndependentCatalogueTruth; result: CatalogueParityResult; products: Array<Record<string, unknown>> }> {
   const truth = await loadIndependentCatalogueTruth(CATALOGUE_MONITOR_LIMIT);
   const response = await fetchFn(`${baseUrl}/products?limit=${CATALOGUE_MONITOR_LIMIT}`, {
-    headers: { accept: 'application/json' },
+    headers: { accept: 'application/json', 'user-agent': SYNTHETIC_MONITOR_USER_AGENT },
     signal: AbortSignal.timeout(5000),
   });
   let body: unknown;
@@ -386,6 +398,21 @@ registerMetric(syntheticDuration);
 registerMetric(syntheticFailures);
 
 export class SyntheticMonitor {
+  /**
+   * Delete the cart a run created (lines, any abandonment record the sweep managed to file, the cart). Best
+   * effort: a failure here is logged and never fails the run, but the next run tries again on its own cart.
+   */
+  async discardSyntheticCart(cartId: string | null): Promise<void> {
+    if (!cartId) return;
+    try {
+      await db.delete(cartAbandonments).where(eq(cartAbandonments.cartId, cartId));
+      await db.delete(cartItems).where(eq(cartItems.cartId, cartId));
+      await db.delete(carts).where(eq(carts.id, cartId));
+    } catch (err) {
+      logger.warn({ err, cartId }, '[SyntheticMonitor] could not discard the synthetic cart');
+    }
+  }
+
   async execute(): Promise<{
     success: boolean;
     durationMs: number;
@@ -418,6 +445,7 @@ export class SyntheticMonitor {
     // signal. This also stops the pre-credential cart-add call from emitting a false
     // CRITICAL every run.
     const writeStagesEnabled = process.env.SYNTHETIC_MONITOR_WRITE_STAGES_ENABLED === 'true';
+    let syntheticCartId: string | null = null;
 
     try {
       // Stage 0: Storefront Uptime & HTML Structure Check
@@ -532,6 +560,7 @@ export class SyntheticMonitor {
       const cartRes = await fetch(`${baseUrl}/commerce/cart/add`, {
         method: 'POST',
         headers: {
+          'user-agent': SYNTHETIC_MONITOR_USER_AGENT,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -547,6 +576,9 @@ export class SyntheticMonitor {
       if (!cartRes.ok) {
         throw new Error(`Cart addition failed with status: ${cartRes.status}`);
       }
+      // The cart this run created, deleted in the finally below whether the run passes or fails.
+      const cartBody = (await cartRes.json().catch(() => null)) as { data?: { id?: unknown } } | null;
+      syntheticCartId = typeof cartBody?.data?.id === 'string' ? cartBody.data.id : null;
       const cartDuration = Date.now() - cartStart;
       if (cartDuration > 1500) {
         isDegraded = true;
@@ -576,6 +608,7 @@ export class SyntheticMonitor {
       const checkoutRes = await fetch(`${baseUrl}/commerce/checkout`, {
         method: 'POST',
         headers: {
+          'user-agent': SYNTHETIC_MONITOR_USER_AGENT,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(checkoutBody),
@@ -610,6 +643,7 @@ export class SyntheticMonitor {
       const webhookRes = await fetch(`${baseUrl}/webhooks/payment/mtn`, {
         method: 'POST',
         headers: {
+          'user-agent': SYNTHETIC_MONITOR_USER_AGENT,
           'Content-Type': 'application/json',
           'idempotency-key': webhookPayload.idempotencyKey,
         },
@@ -626,6 +660,7 @@ export class SyntheticMonitor {
       const replayRes = await fetch(`${baseUrl}/webhooks/payment/mtn`, {
         method: 'POST',
         headers: {
+          'user-agent': SYNTHETIC_MONITOR_USER_AGENT,
           'Content-Type': 'application/json',
           'idempotency-key': webhookPayload.idempotencyKey,
         },
@@ -757,6 +792,8 @@ export class SyntheticMonitor {
         stages,
         reasonCode: catalogueParityResult?.reasonCode,
       };
+    } finally {
+      await this.discardSyntheticCart(syntheticCartId);
     }
   }
 }
