@@ -31,3 +31,17 @@ export async function getBusinessInfo(): Promise<BusinessInfo> {
     .catch(() => { inflight = null; return cached ?? DEFAULT_BUSINESS_INFO; });
   return inflight;
 }
+
+/**
+ * The same-day cut-off hour as customers read it ("3pm"), from ONE formatter. Null for a value that is not an hour
+ * (an admin typo), so no page prints "NaNam" or "13am".
+ */
+export function formatCutoffHour(h: unknown): string | null {
+  if (typeof h !== 'number' || !Number.isInteger(h) || h < 0 || h > 23) return null;
+  return `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? 'am' : 'pm'}`;
+}
+
+/** For a sentence ("Order before …"): the hour, or words that stay true when the hour is unknown. */
+export function cutoffPhrase(h: unknown): string {
+  return formatCutoffHour(h) ?? 'the daily cut-off';
+}

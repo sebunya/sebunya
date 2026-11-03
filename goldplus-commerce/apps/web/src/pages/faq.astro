@@ -1,6 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { getBusinessInfo } from '../lib/businessInfo';
+import { getBusinessInfo, cutoffPhrase } from '../lib/businessInfo';
 import { getStorefrontCopy } from '../lib/storefrontCopy';
 import { serializeJsonLd, breadcrumbJsonLd } from '../lib/jsonld';
 import { RETURNS_POLICY } from '../lib/returnsPolicy';
@@ -19,7 +19,7 @@ import { SITE_ORIGIN } from '../lib/sitemap';
  */
 const [biz, copy] = await Promise.all([getBusinessInfo(), getStorefrontCopy()]);
 
-const cutoff = `${biz.sameDayCutoffHour % 12 || 12}${biz.sameDayCutoffHour >= 12 ? 'pm' : 'am'}`;
+const cutoff = cutoffPhrase(biz.sameDayCutoffHour);
 const faqs: Array<{ q: string; a: string; links?: Array<{ label: string; href: string }> }> = [
   {
     q: 'Do you deliver, and how long does it take?',

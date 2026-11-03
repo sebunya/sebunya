@@ -12,7 +12,10 @@ import { normalizeUgandanPhone } from '@goldplus/shared';
  * claimed twice by simply re-registering.
  */
 export function hashCustomerPhoneIdentity(phone: string, pepper: string): string {
-  const normalised = phone.replace(/[^0-9+]/g, '').trim();
+  // One person, one identity: a Ugandan number in any spelling (0772…, 256772…, +256 772…) hashes as its E.164
+  // form. Anything else keeps the old digits-and-plus shape.
+  const ugandan = normalizeUgandanPhone(phone);
+  const normalised = ugandan ? ugandan.e164 : phone.replace(/[^0-9+]/g, '').trim();
   if (!normalised) throw new Error('A phone number is required to resolve a first-order identity.');
   return createHmac('sha256', pepper).update(normalised).digest('hex');
 }

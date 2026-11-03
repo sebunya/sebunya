@@ -3,7 +3,7 @@ import { apiBase } from './api';
 import { fetchApprovedCatalogueWithStatus } from './catalogue';
 import { getStorefrontDiscount, type StorefrontDiscount } from './storefrontDiscount';
 import { chargedPriceUgx, realProductImageUrls } from './productStructuredData';
-import { getBusinessInfo } from './businessInfo';
+import { getBusinessInfo, cutoffPhrase } from './businessInfo';
 import { getTaxonomy } from './taxonomy';
 import { SITE_ORIGIN } from './sitemap';
 import { RETURNS_POLICY, merchantReturnPolicyJsonLd } from './returnsPolicy';
@@ -277,7 +277,7 @@ async function hubDocument(pathname: string): Promise<AgentDocument | null> {
 
 async function faqDocument(): Promise<AgentDocument> {
   const biz = await getBusinessInfo();
-  const cutoff = `${biz.sameDayCutoffHour % 12 || 12}${biz.sameDayCutoffHour >= 12 ? 'pm' : 'am'}`;
+  const cutoff = cutoffPhrase(biz.sameDayCutoffHour);
   const qa: Array<[string, string]> = [
     ['Do you deliver, and how long does it take?',
       `${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. Order before ${cutoff} for the same day's run. The fee is calculated for the address and shown before payment.`],
@@ -400,7 +400,7 @@ async function blogPostDocument(slug: string): Promise<AgentDocument | null> {
 /** Delivery, returns and warranty — the terms an assistant is asked to confirm. */
 async function policyDocument(kind: 'returns' | 'warranty' | 'delivery'): Promise<AgentDocument> {
   const biz = await getBusinessInfo();
-  const cutoff = `${biz.sameDayCutoffHour % 12 || 12}${biz.sameDayCutoffHour >= 12 ? 'pm' : 'am'}`;
+  const cutoff = cutoffPhrase(biz.sameDayCutoffHour);
   if (kind === 'delivery') {
     const body = [
       '# Delivery to Kampala and Wakiso', '',

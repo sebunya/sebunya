@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { splitDraftValues } from '../../deliveryDraftValues';
 import { PERMISSIONS, ApiResponse } from '@goldplus/shared';
 import { Registry } from '../../../../infrastructure/Registry';
 import { authMiddleware } from '../../middleware/auth';
@@ -211,15 +212,7 @@ routes.post('/config/draft', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PRO
   if (!raw || typeof raw !== 'object') {
     return c.json({ success: false, error: { code: 'INVALID_BODY', message: 'No values supplied.' } } satisfies ApiResponse<never>, 400);
   }
-  const values: Record<string, number> = {};
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    const parsed = Number(String(v ?? '').replace(/[,\s]/g, ''));
-    if (Number.isFinite(parsed)) values[k] = parsed;
-  }
-  const stringValues: Record<string, string> = {};
-  for (const [k, v] of Object.entries((body?.stringValues ?? {}) as Record<string, unknown>)) {
-    if (typeof v === 'string' && v.trim()) stringValues[k] = v.trim();
-  }
+  const { values, stringValues } = splitDraftValues(raw, body?.stringValues);
   const result = await Registry.getInstance().draftLaunchValuesUseCase.execute({
     values,
     stringValues,
@@ -401,6 +394,9 @@ routes.get('/calibration/proposals', requirePermissions([PERMISSIONS.DELIVERY_CO
 routes.post('/calibration/proposals/:id/accept', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PUBLISH]), async (c) => {
   const body = await c.req.json().catch(() => null);
   const edited = body?.editedValue === undefined || body?.editedValue === null ? null : Number(body.editedValue);
+  if (edited !== null && !Number.isFinite(edited)) {
+    return c.json({ success: false, error: { code: 'INVALID_VALUE', message: 'The edited value must be a number.' } } satisfies ApiResponse<never>, 400);
+  }
   const result = await Registry.getInstance().acceptCalibrationProposalUseCase.execute({
     proposalId: String(c.req.param('id') ?? ''),
     actorId: (c.get('user') as { id: string }).id,

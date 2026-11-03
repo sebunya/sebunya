@@ -631,7 +631,8 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: 'days',
     mandatory: false,
     defaultValue: 180,
-    min: 30,
+    // A stricter privacy setting is always allowed; the privacy page must state the number in use.
+    min: 1,
     max: 365,
     label: 'How long a delivery pin is kept',
     help: 'A location a customer or rider shared for an order is deleted this many days after it was captured (the nightly purge). A pin the customer chose to save to their address stays until they remove it. The privacy page states this number.',

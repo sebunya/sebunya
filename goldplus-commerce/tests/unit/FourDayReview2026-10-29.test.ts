@@ -135,7 +135,9 @@ describe('loose ends of #187, #189 and #190 (2026-10-29)', () => {
     expect(afterSwitch).toContain('Start a return online');
   });
   it('the bare parent addresses move permanently, kept by a browser for a day only; dealers find their page', () => {
-    for (const [p, target] of [['dealers', '/dealers/apply'], ['delivery', '/delivery/kampala-wakiso'], ['locations', '/locations/zainab-aziza']]) {
+    // /locations moved into MOVED_PATHS (review 2026-11), with the same one-day cache, set in the middleware.
+    expect(read('apps/web/src/middleware.ts')).toContain("'/locations': '/locations/zainab-aziza'");
+    for (const [p, target] of [['dealers', '/dealers/apply'], ['delivery', '/delivery/kampala-wakiso']]) {
       const page = read(`apps/web/src/pages/${p}/index.astro`);
       expect(page).toContain(`const moved = Astro.redirect('${target}', 301);`);
       expect(page).toContain("moved.headers.set('Cache-Control', 'public, max-age=86400');");

@@ -1,6 +1,8 @@
 import type { APIRoute } from 'astro';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { visitorKey } from '../lib/publicFormLimiter';
+import { readBodyCapped } from '../lib/boundedBody';
+import { WindowLimiter } from '../lib/windowLimiter';
 import { INSTRUCTIONS, TOOLS, callTool, isToolName, toolText, type Json } from '../lib/agentTools';
 
 /**
@@ -31,18 +33,7 @@ const CORS: Record<string, string> = {
 // public endpoint must not become a way to hammer it.
 const WINDOW_MS = 60_000;
 const MAX_PER_WINDOW = 60;
-const calls = new Map<string, { start: number; n: number }>();
-function allow(key: string): boolean {
-  const now = Date.now();
-  const cur = calls.get(key);
-  if (!cur || now - cur.start > WINDOW_MS) {
-    if (calls.size > 5000) calls.clear();
-    calls.set(key, { start: now, n: 1 });
-    return true;
-  }
-  cur.n += 1;
-  return cur.n <= MAX_PER_WINDOW;
-}
+const limiter = new WindowLimiter(MAX_PER_WINDOW, WINDOW_MS);
 
 type RpcRequest = { jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unknown };
 
@@ -89,9 +80,13 @@ const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =
 export const POST: APIRoute = async ({ request, clientAddress }) => {
   // The visitor's own address (X-Real-IP from the edge), not the proxy's: keyed on
   // the socket address every agent would share one budget behind Caddy.
-  if (!allow(visitorKey(request.headers, () => clientAddress))) return json(rpcError(null, -32000, 'Too many requests; slow down.'), 429, { 'Retry-After': '60' });
-  const raw = await request.text();
-  if (raw.length > MAX_BODY_BYTES) return json(rpcError(null, -32600, 'Request too large'), 413);
+  const key = visitorKey(request.headers, () => clientAddress);
+  const tooMany = () => json(rpcError(null, -32000, 'Too many requests; slow down.'), 429, { 'Retry-After': '60' });
+  if (!limiter.take(key)) return tooMany();
+  // Bytes, not string length, and the read stops at the cap: an oversized body is never buffered whole.
+  const read = await readBodyCapped(request, MAX_BODY_BYTES);
+  if (!read.ok) return json(rpcError(null, -32600, read.reason === 'TOO_LARGE' ? 'Request too large' : 'Could not read the request'), read.reason === 'TOO_LARGE' ? 413 : 400);
+  const raw = read.text;
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -100,6 +95,8 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   }
   if (Array.isArray(parsed)) {
     if (parsed.length === 0 || parsed.length > 20) return json(rpcError(null, -32600, 'Invalid Request'), 400);
+    // Every member of a batch is a call against the budget (the first was counted above).
+    if (parsed.length > 1 && !limiter.take(key, parsed.length - 1)) return tooMany();
     const out = (await Promise.all(parsed.map((m) => (m && typeof m === 'object' ? handle(m as RpcRequest) : rpcError(null, -32600, 'Invalid Request'))))).filter((r): r is Json => r !== null);
     return out.length ? json(out) : new Response(null, { status: 202, headers: CORS });
   }

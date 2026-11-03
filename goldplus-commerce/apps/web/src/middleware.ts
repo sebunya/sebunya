@@ -103,6 +103,8 @@ async function holderIsAdmin(request: Request): Promise<boolean> {
 export const MOVED_PATHS: Readonly<Record<string, string>> = {
   '/locations/wilson-road': '/locations/zainab-aziza',
   '/locations/new-pioneer-mall': '/locations/zainab-aziza',
+  // /locations has no page of its own: the one shop page below it.
+  '/locations': '/locations/zainab-aziza',
 };
 
 /** Renew this long before expiry, so a page's own API calls never meet a dead token. */
@@ -178,7 +180,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // A moved page first (it already ignores a trailing slash: one hop, not two),
   // then one address per page, site-wide (lib/pageAddress): /x/ → /x.
   const moved = MOVED_PATHS[context.url.pathname.replace(/\/+$/, '') || '/'];
-  if (moved) return context.redirect(`${moved}${context.url.search}`, 301);
+  if (moved) {
+    // Permanent, but kept by a browser for a day only (a bare 301 is kept for ever): if a moved path ever becomes a
+    // page again, returning visitors see it the next day, not never.
+    const res = context.redirect(`${moved}${context.url.search}`, 301);
+    res.headers.set('Cache-Control', 'public, max-age=86400');
+    return res;
+  }
   const slashTarget = trailingSlashTarget(context.request.method, context.url.pathname, context.url.search);
   if (slashTarget) return context.redirect(slashTarget, 301);
   if (!context.url.pathname.startsWith('/_astro/')) await renewSessionIfDue(context);

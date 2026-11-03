@@ -58,6 +58,26 @@ function structuredValues(input: Partial<CreateAddressInput>): Record<string, un
   return out;
 }
 
+/**
+ * A pin belongs to the area it was dropped in. When an edit moves the address to another area (or district) and does
+ * not bring a new point with it, the old point and the old snapshot go: otherwise checkout would price and dispatch to
+ * the previous place under the new area's name.
+ */
+export function areaChangeClears(
+  target: { areaSlug: string | null; district: string },
+  patch: UpdateAddressPatch,
+): Record<string, unknown> {
+  const areaMoved = patch.areaSlug !== undefined && (patch.areaSlug ?? null) !== (target.areaSlug ?? null);
+  const districtMoved = patch.district !== undefined && patch.district.trim().toUpperCase() !== (target.district ?? '').trim().toUpperCase();
+  if (!areaMoved && !districtMoved) return {};
+  const out: Record<string, unknown> = {
+    snapshotAreaLabel: null, snapshotDistrict: null, snapshotPostcode: null, snapshotDataVersion: null,
+  };
+  const bringsNewPin = patch.gpsLat !== undefined && patch.gpsLat !== null && patch.gpsLng !== undefined && patch.gpsLng !== null;
+  if (!bringsNewPin) Object.assign(out, { gpsLat: null, gpsLng: null, gpsAccuracyM: null, gpsSource: null, gpsCapturedAt: null });
+  return out;
+}
+
 const live = (userId: string) => and(eq(addresses.userId, userId), isNull(addresses.deletedAt));
 
 export class DrizzleAddressRepository implements IAddressRepository {
@@ -124,7 +144,7 @@ export class DrizzleAddressRepository implements IAddressRepository {
         where: and(eq(addresses.id, addressId), live(userId)),
       });
       if (!target) return null;
-      const set: Record<string, unknown> = { updatedAt: new Date(), ...structuredValues(patch) };
+      const set: Record<string, unknown> = { updatedAt: new Date(), ...areaChangeClears(target, patch), ...structuredValues(patch) };
       for (const k of ['label', 'recipientName', 'phone', 'district', 'areaDetails'] as const) {
         if (patch[k] !== undefined) set[k] = patch[k];
       }

@@ -2,6 +2,7 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
 import { apiBase } from "../../../lib/api";
+import { parseAdminNumber } from "../../../lib/adminNumber";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -17,7 +18,14 @@ if (Astro.request.method === "POST") {
   const intent = String(form.get("intent") || "save");
   try {
     if (intent === "policy") {
-      const fee = (name: string) => Number(String(form.get(name) || "").replace(/[,\s]/g, ""));
+      // A blank or mistyped band ("5k", "UGX 5000") is refused here: blank used to save as a FREE band (0) and junk as
+      // NaN, which JSON sends as null.
+      const BANDS = ["coreFeeUgx", "cityFeeUgx", "metroFeeUgx", "metroEdgeFeeUgx", "nearFeeUgx", "midFeeUgx", "farFeeUgx", "remoteFeeUgx"];
+      const bad = BANDS.filter((b) => { const v = parseAdminNumber(form.get(b)); return !v.ok || !Number.isInteger(v.value) || v.value < 0; });
+      const fee = (name: string) => { const v = parseAdminNumber(form.get(name)); return v.ok ? v.value : NaN; };
+      if (bad.length > 0) {
+        notice = { kind: "error", text: `Type each band fee as a whole number of shillings, for example 5000. Check: ${bad.join(", ")}. Nothing was saved.` };
+      } else {
       const res = await fetch(`${apiBase}/admin/delivery-zones/policy`, {
         method: "PUT",
         headers,
@@ -38,6 +46,7 @@ if (Astro.request.method === "POST") {
       notice = json?.success
         ? { kind: "success", text: "Band pricing policy saved — every unconfirmed district now estimates from it." }
         : { kind: "error", text: json?.error?.message || "Could not save the policy." };
+      }
     } else if (intent === "adopt") {
       const res = await fetch(`${apiBase}/admin/delivery-zones/adopt`, {
         method: "POST",

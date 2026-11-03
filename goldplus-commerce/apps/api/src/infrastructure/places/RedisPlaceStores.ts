@@ -56,6 +56,26 @@ function kampalaDay(now: Date): { month: string; day: string; daysLeftIncludingT
   return { month, day: `${month}-${String(d).padStart(2, '0')}`, daysLeftIncludingToday: daysInMonth - d + 1 };
 }
 
+/**
+ * KEYS[1] month counter, KEYS[2] day counter; ARGV[1] monthly cap, ARGV[2] days left including today.
+ * Same allowance as dailyAllowance(). Returns {ok, monthUsed, todayUsed, allowance}.
+ */
+export const PLACES_CONSUME_LUA = `
+local m = tonumber(redis.call('GET', KEYS[1]) or '0')
+local d = tonumber(redis.call('GET', KEYS[2]) or '0')
+local cap = tonumber(ARGV[1])
+local days = math.max(1, tonumber(ARGV[2]))
+local left = math.max(0, cap - (m - d))
+local allowance = 0
+if left > 0 then allowance = math.min(left, math.max(50, math.ceil((left / days) * 2))) end
+if m >= cap or d >= allowance then return {0, m, d, allowance} end
+redis.call('INCR', KEYS[1])
+redis.call('EXPIRE', KEYS[1], 3456000)
+redis.call('INCR', KEYS[2])
+redis.call('EXPIRE', KEYS[2], 259200)
+return {1, m + 1, d + 1, allowance}
+`;
+
 export class RedisPlaceRequestBudget implements IPlaceRequestBudget {
   constructor(
     private readonly caps: Record<PlaceRequestKind, number> = {
@@ -76,14 +96,15 @@ export class RedisPlaceRequestBudget implements IPlaceRequestBudget {
     const mKey = `places:${kind}:${month}`;
     const dKey = `places:${kind}:${day}`;
     try {
-      const [mUsed, dUsed] = (await c.mget(mKey, dKey)).map((v) => Number(v ?? 0));
-      const allowance = dailyAllowance({ cap: this.caps[kind], usedBeforeToday: mUsed - dUsed, daysLeftIncludingToday });
-      if (mUsed >= this.caps[kind] || dUsed >= allowance) {
+      // Check and increment in ONE Lua script, so two replicas (or two parallel requests) can never both pass the
+      // cap on the same last unit.
+      const res = (await c.eval(PLACES_CONSUME_LUA, 2, mKey, dKey, String(this.caps[kind]), String(daysLeftIncludingToday))) as [number, number, number, number];
+      const [ok, mUsed, dUsed, allowance] = res.map(Number);
+      if (ok !== 1) {
         logger.warn({ kind, monthUsed: mUsed, todayUsed: dUsed, allowance }, 'PLACES_BUDGET_REFUSED');
         return false;
       }
-      const res = await c.multi().incr(mKey).expire(mKey, 40 * 24 * 60 * 60).incr(dKey).expire(dKey, 3 * 24 * 60 * 60).exec();
-      return Array.isArray(res) && res.every(([err]) => !err);
+      return true;
     } catch {
       return false;
     }

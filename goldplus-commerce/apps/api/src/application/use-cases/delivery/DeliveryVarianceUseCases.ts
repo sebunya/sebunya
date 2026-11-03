@@ -58,8 +58,11 @@ export interface IDeliveryVarianceRepository {
   } | null>;
   insert(record: Omit<VarianceRecord, 'id'>): Promise<VarianceRecord>;
   findById(varianceId: string): Promise<VarianceRecord | null>;
-  /** Only applied on an `absorbed` REDUCTION, or on `agreed`. Never on `pending`, never an absorbed increase. */
-  applyFeeToOrder(input: { orderId: string; newFeeUgx: number }): Promise<void>;
+  /**
+   * Only applied on an `absorbed` REDUCTION, or on `agreed`. Never on `pending`, never an absorbed increase.
+   * Refuses (false) a paid or handed-over order at write time.
+   */
+  applyFeeToOrder(input: { orderId: string; newFeeUgx: number }): Promise<boolean>;
   /** Null when the variance was no longer awaiting an answer (someone else answered first). */
   setAgreement(input: {
     varianceId: string;
@@ -136,9 +139,10 @@ export class ApplyDeliveryVarianceUseCase {
     // promised. Now the customer's fee moves only DOWN without their
     // agreement; an absorbed increase is recorded on the variance row (the
     // cost is ours) and the order keeps the fee the customer agreed to.
-    const feeApplied = !needsAgreement && decision.disposition.deltaUgx < 0;
+    const feeApplied =
+      !needsAgreement && decision.disposition.deltaUgx < 0 &&
+      (await this.repo.applyFeeToOrder({ orderId: order.id, newFeeUgx: input.newFeeUgx }));
     if (feeApplied) {
-      await this.repo.applyFeeToOrder({ orderId: order.id, newFeeUgx: input.newFeeUgx });
       await this.captures.upsert({ orderId: order.id, finalFeeUgx: input.newFeeUgx, varianceReason: decision.reason });
     } else if (!needsAgreement) {
       // What the customer is charged is unchanged; the reason is still learned from.
@@ -231,8 +235,11 @@ export class RecordVarianceAgreementUseCase {
 
     let cancelled = false;
     if (input.agreed) {
-      // Only NOW does the fee move.
-      await this.repo.applyFeeToOrder({ orderId: existing.orderId, newFeeUgx: existing.newFeeUgx });
+      // Only NOW does the fee move, and only on an order that is still unpaid and not handed over.
+      const applied = await this.repo.applyFeeToOrder({ orderId: existing.orderId, newFeeUgx: existing.newFeeUgx });
+      if (!applied) {
+        return fail('ORDER_SETTLED', 'That order was paid or delivered before the fee could change. The fee stays as it was.');
+      }
       await this.captures.upsert({
         orderId: existing.orderId,
         finalFeeUgx: existing.newFeeUgx,

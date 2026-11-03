@@ -34,11 +34,33 @@ const API = process.env.E2E_API_BASE ?? 'http://127.0.0.1:3000';
  * "stable" timed out. Investigated 2026-10-22: not the view transitions, the service worker or a render-blocking
  * resource. The form itself is still exercised once, below ('the sign-in form lands in the admin').
  */
-async function signIn(page: Page, email: string, password: string) {
-  const res = await page.context().request.post(`${API}/auth/login`, { data: { email, password } });
-  expect(res.ok(), 'admin login').toBe(true);
+/**
+ * One sign-in per worker, reused by every test in it. POST /auth/login allows 10 a minute per address
+ * (PublicEndpointPolicy 'auth-customer-login'); this file alone signed in nine times per browser project, and once a
+ * header-less localhost call stopped counting as an internal service call (clientAddress.isInternalServiceRequest)
+ * the eleventh login in the minute was refused and every later test failed at "admin login".
+ */
+let cachedToken: string | null = null;
+
+async function adminToken(page: Page, email: string, password: string): Promise<string> {
+  if (cachedToken) return cachedToken;
+  let res = await page.context().request.post(`${API}/auth/login`, { data: { email, password } });
+  if (res.status() === 429) {
+    // Another worker used the window: wait it out once rather than fail the whole file.
+    const retryAfter = Math.min(65, Math.max(1, Number(res.headers()['retry-after'] ?? 60)));
+    await new Promise((r) => setTimeout(r, retryAfter * 1000));
+    res = await page.context().request.post(`${API}/auth/login`, { data: { email, password } });
+  }
+  expect(res.ok(), `admin login (status ${res.status()})`).toBe(true);
   const body = await res.json();
   const token = body?.data?.token ?? body?.token;
+  expect(typeof token, 'admin login token').toBe('string');
+  cachedToken = token;
+  return token;
+}
+
+async function signIn(page: Page, email: string, password: string) {
+  const token = await adminToken(page, email, password);
   await page.context().addCookies([{ name: 'goldplus_session', value: token, domain: new URL(process.env.E2E_WEB_BASE ?? 'http://127.0.0.1:4321').hostname, path: '/' }]);
 }
 

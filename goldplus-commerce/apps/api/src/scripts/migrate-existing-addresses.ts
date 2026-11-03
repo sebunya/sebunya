@@ -118,17 +118,24 @@ async function main() {
     const m = (await matchText(firstToken, a.district)) ?? (await matchText(a.district, a.district));
     if (m) {
       matched++;
+      // A district-only match links a REPRESENTATIVE area so the zone is right, but the real area is not known: the
+      // address goes to the ops review queue, exactly as the order path warns, never silently "resolved".
+      const districtOnly = m.via === 'district';
       if (apply) {
         await db.execute(sql`
           update addresses set area_slug = ${m.slug}, snapshot_area_label = ${m.label},
             snapshot_district = ${m.district}, snapshot_postcode = ${m.postcode},
-            snapshot_data_version = ${m.version}, updated_at = now()
+            snapshot_data_version = ${m.version},
+            resolution_status = case when ${districtOnly} then 'needs_ops_review' else resolution_status end, updated_at = now()
           where id = ${a.id}`);
         await db.execute(sql`
           insert into address_audit (address_id, actor_type, action, after, note)
-          values (${a.id}, 'system', 'migration_linked', ${JSON.stringify({ areaSlug: m.slug, via: m.via })}::jsonb, 'E.4 migration')`);
+          values (${a.id}, 'system', 'migration_linked', ${JSON.stringify({ areaSlug: m.slug, via: m.via, districtOnly })}::jsonb,
+            ${districtOnly
+              ? `E.4 migration: DISTRICT-LEVEL match only. Linked to a representative area in ${m.district}; the specific area is NOT known and must not be treated as confirmed. Ops review.`
+              : 'E.4 migration'})`);
       }
-      console.log(`ADDRESS_MATCHED ${a.id} → ${m.slug} (${m.via})`);
+      console.log(`ADDRESS_MATCHED ${a.id} → ${m.slug} (${m.via}${districtOnly ? ', DISTRICT-LEVEL only: ops review' : ''})`);
     } else {
       unmatched++;
       candidates.set(firstToken.toLowerCase(), (candidates.get(firstToken.toLowerCase()) ?? 0) + 1);

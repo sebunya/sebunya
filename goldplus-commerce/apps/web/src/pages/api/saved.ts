@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { apiBase } from '../../lib/api';
+import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
 import { readSessionToken } from '../../lib/session';
 import { readBodyCapped } from '../../lib/boundedBody';
 
@@ -11,7 +12,8 @@ import { readBodyCapped } from '../../lib/boundedBody';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const safeBack = (v: string) => (/^\/(products\/[a-z0-9-]+|account\/saved)$/i.test(v) ? v : '/account/saved');
 
-export const POST: APIRoute = async ({ request, redirect }) => {
+export const POST: APIRoute = async (ctx) => {
+  const { request, redirect } = ctx;
   const read = await readBodyCapped(request, 2048);
   if (!read.ok) return new Response(null, { status: 413 });
   const f = new URLSearchParams(read.text);
@@ -23,7 +25,7 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   if (UUID.test(productId)) {
     await fetch(op === 'add' ? `${apiBase}/account/saved` : `${apiBase}/account/saved/${productId}`, {
       method: op === 'add' ? 'POST' : 'DELETE',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: apiHeaders({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, readClientAddress(ctx)),
       body: op === 'add' ? JSON.stringify({ productId }) : undefined,
       signal: AbortSignal.timeout(4000),
     }).catch(() => null);

@@ -34,8 +34,10 @@ class FakeRepo implements IDeliveryVarianceRepository {
     return this.records.find((r) => r.id === id) ?? null;
   }
   async applyFeeToOrder(input: { orderId: string; newFeeUgx: number }) {
+    if ((this.order as any).paymentStatus === 'paid' || this.order.handedOver) return false;
     this.feeApplications.push(input);
     this.order.deliveryFeeUgx = input.newFeeUgx;
+    return true;
   }
   async setAgreement(input: { varianceId: string; agreement: VarianceRecord['agreement']; actorId: string; at: Date }) {
     const r = this.records.find((x) => x.id === input.varianceId)!;
@@ -328,5 +330,30 @@ describe('the controls that cannot be argued with', () => {
     if (!r.ok) return;
     expect(r.variance.disposition).toBe('absorbed');
     expect(repo.feeApplications).toEqual([{ orderId: 'order-1', newFeeUgx: 1000 }]);
+  });
+});
+
+describe('review 2026-11: the fee write refuses a settled order', () => {
+  it('a reduction on a paid order is not written to the order', async () => {
+    (repo.order as any).paymentStatus = 'paid';
+    const r = await apply().execute({ orderId: 'order-1', newFeeUgx: 6000, reason: 'AREA_MISMATCH_ON_RESOLUTION', note: null, actorId: 'ops-1' });
+    expect(r.ok).toBe(true);
+    expect(repo.feeApplications).toEqual([]);
+    expect(audit.entries[0].newState.feeApplied).toBe(false);
+  });
+
+  it('an agreement on an order that was delivered meanwhile is refused', async () => {
+    const raised = await apply({ absoluteUgx: 100, shareBps: 1 }).execute({ orderId: 'order-1', newFeeUgx: 12000, reason: 'AREA_MISMATCH_ON_RESOLUTION', note: null, actorId: 'ops-1' });
+    expect(raised.ok).toBe(true);
+    if (!raised.ok) return;
+    expect(raised.variance.agreement).toBe('pending');
+    // Delivered between the use case's read and the write.
+    const orig = repo.orderForVariance.bind(repo);
+    repo.orderForVariance = async (id: string) => ({ ...(await orig(id))!, handedOver: false });
+    repo.order.handedOver = true;
+    const r = await agree().execute({ varianceId: raised.variance.id, agreed: true, actorId: 'ops-2' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('ORDER_SETTLED');
+    expect(repo.feeApplications).toEqual([]);
   });
 });
