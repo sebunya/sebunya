@@ -49,9 +49,14 @@ export function strictReportOnlyPolicy(nonce: string): string {
 
 const OPEN = '<script';
 
+/** Astro's own build output: /_astro/<hashed-name>.js. Nothing else is stamped. */
+const ASTRO_BUNDLE = /^\/_astro\/[A-Za-z0-9_.-]+\.m?js$/;
+
 /**
- * Adds nonce="…" to <script> start tags that load a SAME-SITE FILE
- * (src="/…", our own bundles) and have no nonce yet. Inline scripts are never
+ * Adds nonce="…" to <script> start tags that load one of OUR BUNDLES
+ * (src="/_astro/<name>.js") and have no nonce yet. Any other same-site src
+ * (an API route, an uploaded file) is left unstamped: an injected tag pointing
+ * at one must stay blocked, since 'strict-dynamic' trusts whatever it loads. Inline scripts are never
  * touched: a template that owns one writes nonce={Astro.locals.cspNonce}
  * itself. Stamping every <script> would hand the nonce to a script an attacker
  * managed to inject into the page — the very thing the policy exists to stop.
@@ -60,7 +65,7 @@ export function nonceScriptTags(html: string, nonce: string): string {
   return html.replace(/<script(?=[\s>])([^>]*)>/gi, (tag, attrs: string) => {
     if (/\snonce\s*=/i.test(attrs)) return tag;
     const src = /\ssrc\s*=\s*(["'])([^"']*)\1/i.exec(attrs)?.[2];
-    if (!src || !src.startsWith('/') || src.startsWith('//')) return tag;
+    if (!src || !ASTRO_BUNDLE.test(src)) return tag;
     return `<script nonce="${nonce}"${attrs}>`;
   });
 }

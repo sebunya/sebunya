@@ -48,6 +48,16 @@ export async function resolveRequestIdentity(
   if (need) {
     const token = cookies.get(SESSION_COOKIE)?.value;
     if (token) accountCartId = await (deps.accountCart ?? cartClient.accountCart)(token, need.guestToken);
+    if (!accountCartId) {
+      // The account-basket call failed (timeout, 5xx, network). Minting now would
+      // overwrite the guest credential with an empty basket and the guest basket
+      // would never be merged. Keep whatever verifies; the next page asks again.
+      return {
+        gpUserId: userId,
+        gpSessionUnknown: false,
+        gpCart: resolveCartCredential(cookies, userId, { sessionUnknown: true }),
+      };
+    }
   }
   return {
     gpUserId: userId,

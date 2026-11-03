@@ -282,3 +282,21 @@ export function durationOf(startedAt: unknown, completedAt: unknown): string {
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
 }
+
+/**
+ * Rows from several per-connection queries as one newest-first list without
+ * duplicates. The provider page used to read the 25 newest rows across ALL
+ * providers and filter them, so a busy provider pushed another's history off.
+ */
+export function mergeNewest<T extends { id?: string }>(lists: T[][], at: (row: T) => string | null | undefined, limit = 25): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const row of lists.flat()) {
+    const key = row.id ?? JSON.stringify(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  const t = (row: T) => { const v = Date.parse(at(row) ?? ''); return Number.isFinite(v) ? v : 0; };
+  return out.sort((a, b) => t(b) - t(a)).slice(0, limit);
+}

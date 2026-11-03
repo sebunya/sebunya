@@ -60,6 +60,11 @@ async function onePhotoAtATime<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
+/** The raw base must be one byte per sample, or the width/height/channels re-wrap misreads it. */
+export function rawIsEightBit(info: { width: number; height: number; channels: number }, bytes: number): boolean {
+  return bytes === info.width * info.height * info.channels;
+}
+
 export class SharpVariantGenerator implements IMediaVariantGenerator {
   /**
    * Originals are served publicly (and are the storefront/feed image when no
@@ -117,7 +122,11 @@ export class SharpVariantGenerator implements IMediaVariantGenerator {
       // Decoded ONCE: upright and no wider than the largest rendition, as raw pixels. Each of the 12 renditions used to
       // decode the full camera photo again (up to 50 MP); now they resize this copy (2048 px wide at most).
       const largest = Math.max(...PURPOSE_WIDTHS.map((p) => p.width));
-      const base = await sharp(args.buffer, DECODE_LIMITS).rotate().resize({ width: largest, withoutEnlargement: true }).raw().toBuffer({ resolveWithObject: true });
+      // toColourspace('srgb'): a 16-bit source (16-bit PNG, rgb16/grey16) decodes to 2 bytes per sample, but the
+      // raw re-wrap below can only say width/height/channels, so sharp read it as 8-bit and the renditions came
+      // out garbled or failed. Converting here makes the base 8-bit sRGB whatever the source depth.
+      const base = await sharp(args.buffer, DECODE_LIMITS).rotate().resize({ width: largest, withoutEnlargement: true }).toColourspace('srgb').raw().toBuffer({ resolveWithObject: true });
+      if (!rawIsEightBit(base.info, base.data.length)) throw new Error('RAW_BASE_NOT_8_BIT');
       const fromBase = () => sharp(base.data, { raw: { width: base.info.width, height: base.info.height, channels: base.info.channels } });
 
       for (const { purpose, width: purposeWidth } of PURPOSE_WIDTHS) {

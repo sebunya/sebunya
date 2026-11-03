@@ -22,6 +22,25 @@ export function vaultCipher(): CredentialCipher | null {
   };
 }
 
+type RunJobQueue = {
+  getJob(id: string): Promise<{ isFailed(): Promise<boolean>; isCompleted(): Promise<boolean>; remove(): Promise<void> } | undefined | null>;
+  add(name: string, data: unknown, opts: Record<string, unknown>): Promise<unknown>;
+};
+
+/**
+ * jobId = run id, so a run waiting or active is not queued twice. BullMQ
+ * silently ignores add() while a job with that id exists in ANY state, so a
+ * retained failed or finished job is removed first; otherwise a re-queue of the
+ * same run returned true and never ran.
+ */
+export async function addRunJob(q: RunJobQueue, runId: string): Promise<boolean> {
+  const jobId = `aiv-run-${runId}`;
+  const existing = await q.getJob(jobId);
+  if (existing && ((await existing.isFailed()) || (await existing.isCompleted()))) await existing.remove();
+  await q.add('aiv-run', { runId }, { jobId, attempts: 1, removeOnComplete: 100, removeOnFail: 200 });
+  return true;
+}
+
 /** Runs execute on their own queue ('ai-visibility'), job name 'aiv-run'. */
 export const bullRunQueue: RunQueue = {
   async enqueueRun(runId: string) {
@@ -29,9 +48,7 @@ export const bullRunQueue: RunQueue = {
     // request hung; now it is refused as unavailable.
     const q = QueueService.getInstance().getReadyQueue(QUEUES.AI_VISIBILITY);
     if (!q) return false;
-    // jobId = run id: BullMQ will not enqueue the same run twice.
-    await q.add('aiv-run', { runId }, { jobId: `aiv-run-${runId}`, attempts: 1, removeOnComplete: 100, removeOnFail: 200 });
-    return true;
+    return addRunJob(q, runId);
   },
   async enqueueReclassify(projectId: string) {
     const q = QueueService.getInstance().getReadyQueue(QUEUES.AI_VISIBILITY);

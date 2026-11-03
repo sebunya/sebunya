@@ -175,7 +175,10 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
           db
             .select({ userId: orders.userId, cnt: sql<number>`count(*)`.as('cnt') })
             .from(orders)
-            .where(sql`${orders.userId} is not null and ${orders.paymentStatus} = 'paid'`)
+            // The same orders the live missionProgress counts (paid-qualifying, delivered or completed, retail),
+            // so the dry run predicts what the mission will actually award.
+            .where(sql`${orders.userId} is not null and ${LOYALTY_PAYMENT_QUALIFIES_SQL}
+              and ${orders.status} in ('delivered','completed') and ${orders.buyerType} = 'retail'`)
             .groupBy(orders.userId)
             .as('per_user'),
         );
@@ -187,7 +190,7 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
         evaluable: true,
         wouldQualify: row?.qualifying ?? 0,
         population: row?.population ?? 0,
-        note: `Counts PAID orders per signed-in customer. ${unattr?.n ?? 0} order(s) have no account identity and are excluded, not guessed.`,
+        note: `Counts paid, delivered or completed retail orders per signed-in customer (as the live mission does). ${unattr?.n ?? 0} order(s) have no account identity and are excluded, not guessed.`,
       };
     }
     if (mission.kind === 'REVIEW_COUNT') {
@@ -200,7 +203,7 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
           db
             .select({ h: reviews.customerIdentityHash, cnt: sql<number>`count(*)`.as('cnt') })
             .from(reviews)
-            .where(sql`${reviews.status} = 'approved'`)
+            .where(sql`${reviews.status} = 'published'`) // 'approved' is not a review status; it matched nothing
             .groupBy(reviews.customerIdentityHash)
             .as('per_hash'),
         );

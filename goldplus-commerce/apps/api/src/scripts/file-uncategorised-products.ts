@@ -12,8 +12,10 @@
  *
  *   npx tsx src/scripts/file-uncategorised-products.ts [--apply]
  *
- * Dry run unless --apply is given.
+ * Dry run unless --apply is given. There is no application use case for a
+ * category change yet, so the move stays a direct update of those two columns.
  */
+import '../config/env';
 import { db } from '../infrastructure/db/client';
 import { products, categories } from '../infrastructure/db/schema/products';
 import { eq } from 'drizzle-orm';
@@ -31,13 +33,19 @@ async function main(): Promise<void> {
   const cats = await db.select({ id: categories.id, name: categories.name }).from(categories);
   const byName = new Map(cats.map((c) => [c.name, c.id]));
   const otherId = byName.get('Other');
+  if (!otherId) {
+    console.log('no "Other" category — nothing to file.');
+    process.exit(0);
+  }
 
   const rows = await db
     .select({ id: products.id, name: products.name, categoryId: products.categoryId, categoryName: products.categoryName })
     .from(products);
 
   const moves = rows
-    .filter((r) => r.categoryId === otherId || r.categoryName === 'Other' || !r.categoryName)
+    // By category id only: category_name is a denormalised label and may be blank or stale on a row that
+    // already points at a real category, which this script must never move.
+    .filter((r) => r.categoryId === otherId)
     .map((r) => ({ row: r, target: displayedCategoryFor(r.name) }))
     .filter((m): m is { row: typeof rows[number]; target: string } => m.target !== null && byName.has(m.target));
 

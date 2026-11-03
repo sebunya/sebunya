@@ -1,6 +1,7 @@
 import { and, eq, asc, isNull, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { productImages } from '../schema/phase11';
+import { products } from '../schema/products';
 import { IProductImageRepository, PersistedProductImage } from '../../../application/ports/IProductImageRepository';
 
 function rowToDto(row: typeof productImages.$inferSelect): PersistedProductImage {
@@ -46,7 +47,23 @@ export class DrizzleProductImageRepository implements IProductImageRepository {
     const row = await db.query.productImages.findFirst({ where: eq(productImages.id, imageId) });
     if (!row) return null;
     if (row.slot !== null) throw new Error('SUPERSEDED: a slotted gallery image is removed through ProductMediaUseCases (Focus 4).');
-    await db.delete(productImages).where(and(eq(productImages.id, imageId), isNull(productImages.slot)));
+    await db.transaction(async (tx) => {
+      const gone = await tx.delete(productImages).where(and(eq(productImages.id, imageId), isNull(productImages.slot))).returning({ id: productImages.id });
+      if (gone.length === 0 || !row.isPrimary) return;
+      // The removed row was the cover: promote the first surviving legacy image and move the product's
+      // image_url/has_image projection with it (cleared when none is left), so cards stop showing a deleted image.
+      const [survivor] = await tx
+        .select({ id: productImages.id, url: productImages.url })
+        .from(productImages)
+        .where(and(eq(productImages.productId, row.productId), isNull(productImages.slot)))
+        .orderBy(asc(productImages.displayOrder), asc(productImages.createdAt))
+        .limit(1);
+      if (survivor) await tx.update(productImages).set({ isPrimary: true }).where(eq(productImages.id, survivor.id));
+      await tx
+        .update(products)
+        .set({ imageUrl: survivor?.url ?? null, hasImage: !!survivor, updatedAt: new Date() })
+        .where(and(eq(products.id, row.productId), sql`${products.imageUrl} is not distinct from ${row.url}`));
+    });
     return { removedProductId: row.productId };
   }
 

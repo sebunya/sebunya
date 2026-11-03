@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import { db } from '../client';
 import { creators, creatorAttributions, creatorCommissions, creatorContentAssets, creatorPayouts } from '../schema/creators';
 import { couponCodes, couponRedemptions } from '../schema/pricing';
@@ -26,6 +26,11 @@ export interface RecordAttributionCommissionInput {
     status: 'pending' | 'held';
     holdUntil: Date | null;
   };
+}
+
+/** A commission belongs to a payout period when its Kampala day is inside [periodStart, periodEnd]. */
+export function payoutPeriodSql(createdAt: AnyColumn, periodStart: string, periodEnd: string): SQL {
+  return sql`(${createdAt} at time zone 'Africa/Kampala')::date between ${periodStart}::date and ${periodEnd}::date`;
 }
 
 export class DrizzleCreatorRepository {
@@ -83,8 +88,10 @@ export class DrizzleCreatorRepository {
         .set({ status: 'reversed', reversedReason: input.reason, updatedAt: input.now })
         .where(and(eq(creatorCommissions.orderId, input.orderId), eq(creatorCommissions.creatorId, input.creatorId), sql`${creatorCommissions.status} <> 'reversed'`))
         .returning({ id: creatorCommissions.id });
-      if (updated.length === 0) return { reversed: false };
 
+      // The coupon is reversed even with no commission row: an attribution-only order (commission null)
+      // that used a creator coupon kept its redemption counted. wasReversed=false keeps it idempotent.
+      let couponReversed = false;
       if (input.couponId) {
         const rev = await tx
           .update(couponRedemptions)
@@ -92,10 +99,11 @@ export class DrizzleCreatorRepository {
           .where(and(eq(couponRedemptions.couponId, input.couponId), eq(couponRedemptions.orderId, input.orderId), eq(couponRedemptions.wasReversed, false)))
           .returning({ id: couponRedemptions.id });
         if (rev.length > 0) {
+          couponReversed = true;
           await tx.update(couponCodes).set({ redemptionCount: sql`GREATEST(${couponCodes.redemptionCount} - 1, 0)` }).where(eq(couponCodes.id, input.couponId));
         }
       }
-      return { reversed: true };
+      return { reversed: updated.length > 0 || couponReversed };
     });
   }
 
@@ -114,7 +122,13 @@ export class DrizzleCreatorRepository {
       const commissions = await tx
         .select({ id: creatorCommissions.id, amount: creatorCommissions.commissionAmountUgx })
         .from(creatorCommissions)
-        .where(and(eq(creatorCommissions.creatorId, input.creatorId), eq(creatorCommissions.status, 'approved'), isNull(creatorCommissions.payoutId)))
+        .where(and(
+          eq(creatorCommissions.creatorId, input.creatorId),
+          eq(creatorCommissions.status, 'approved'),
+          isNull(creatorCommissions.payoutId),
+          // Only the run's own period (shop days, inclusive): a later month's commissions wait for their run.
+          payoutPeriodSql(creatorCommissions.createdAt, input.periodStart, input.periodEnd),
+        ))
         .for('update');
       if (commissions.length === 0) return null;
       const gross = commissions.reduce((sum, c) => sum + c.amount, 0);

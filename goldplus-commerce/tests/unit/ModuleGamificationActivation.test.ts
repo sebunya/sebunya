@@ -120,7 +120,9 @@ describe('event wiring', () => {
 
   it('puts the counterfeit-confirmation earn behind a mutating permission with an audit entry', () => {
     expect(governance).toContain("routes.patch('/admin/fake-reports/:id/status', requirePermissions([PERMISSIONS.SETTINGS_MANAGE])");
-    expect(governance).toContain("action: 'FAKE_REPORT_STATUS_CHANGED'");
+    // The resolution (earn + audit) moved into ResolveFakeReportUseCase (2026-11 review).
+    expect(governance).toContain('new ResolveFakeReportUseCase(');
+    expect(read('apps/api/src/application/use-cases/governance/ResolveFakeReportUseCase.ts')).toContain("action: 'FAKE_REPORT_STATUS_CHANGED'");
   });
 
   it('sets date of birth once only, so the birthday source cannot be cycled', () => {

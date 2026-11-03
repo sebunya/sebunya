@@ -17,6 +17,11 @@ import {
 import type { StoredSnapshot } from '../../application/use-cases/seo-growth/OrganicIntelligenceIdentity';
 import { known, unknown } from '../../application/use-cases/seo-growth/OrganicOpportunityScoring';
 
+/** The marker a work item carries for its opportunity; matched whole, so one key is never a prefix match of another. */
+export function workItemMarker(opportunityKey: string): string {
+  return `[opportunity:${opportunityKey}]`;
+}
+
 /**
  * Binds the materialiser to real storage. All decisions live in the use case;
  * this file only reads canonical GoldPlus truth and writes the result.
@@ -510,9 +515,11 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
     async reconcileWorkItem({ opportunityKey, title, detail, priority, material, targetUrl }) {
       if (!material) return { workItemId: null, created: false, updated: false };
       // Deduplicated on the OPPORTUNITY key carried in target_url-independent
-      // detail: one opportunity yields at most one work item, ever.
+      // detail: one opportunity yields at most one work item, ever. Matched on the
+      // whole closed marker with strpos: a LIKE '%key%' let `...:power` match the
+      // `...:power-devices` item (and `_` is a LIKE wildcard).
       const existing = rowsOf(await conn.execute(sql`
-        select id from seo_work_items where detail like ${`%${opportunityKey}%`} limit 1
+        select id from seo_work_items where strpos(detail, ${workItemMarker(opportunityKey)}) > 0 order by created_at limit 1
       `));
       if (existing[0]?.id) {
         await conn.execute(sql`
@@ -523,7 +530,7 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
       }
       const rows = rowsOf(await conn.execute(sql`
         insert into seo_work_items (title, detail, state, priority, target_url, created_by)
-        values (${title}, ${`${detail}\n\n[opportunity:${opportunityKey}]`}, 'BACKLOG', ${priority}, ${targetUrl},
+        values (${title}, ${`${detail}\n\n${workItemMarker(opportunityKey)}`}, 'BACKLOG', ${priority}, ${targetUrl},
                 coalesce((select id from users order by created_at limit 1), gen_random_uuid()))
         returning id
       `));

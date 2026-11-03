@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { hashVisitToken } from '../../../application/use-cases/identity/ExperienceProfileUseCases';
+import { ShortAnswerCache } from '../shortAnswerCache';
 import { bodyLimit } from 'hono/body-limit';
 import { clientKey, isInternalCall } from '../clientAddress';
 import { GIFT_CARD_PHOTO_MAX_BYTES, type GiftCardPhotoRefusal } from '../../../domain/credit/GiftCardPhoto';
@@ -1669,12 +1670,13 @@ const handleIpn = async (c: any) => {
  * expected outcome — so asking again is safe and is the only way the page can
  * tell the truth as it stands.
  */
+// Public and unauthenticated: one settlement per (tracking id, reference) per 10 s, shared by repeats.
+const returnStateAnswers = new ShortAnswerCache<{ kind: string; code: string }>(10_000, 1_000);
 routes.get('/payments/pesapal/return-state', async (c) => {
-  const described = await describeSettlement(
-    c.req.query('OrderTrackingId') || c.req.query('orderTrackingId') || '',
-    c.req.query('OrderMerchantReference') || c.req.query('orderMerchantReference') || '',
-    c.req.header('x-request-id') ?? crypto.randomUUID(),
-  );
+  const trackingId = c.req.query('OrderTrackingId') || c.req.query('orderTrackingId') || '';
+  const reference = c.req.query('OrderMerchantReference') || c.req.query('orderMerchantReference') || '';
+  const traceId = c.req.header('x-request-id') ?? crypto.randomUUID();
+  const described = await returnStateAnswers.get(`${trackingId}\n${reference}`, () => describeSettlement(trackingId, reference, traceId));
   return c.json({ success: true, data: described });
 });
 

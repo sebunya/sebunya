@@ -74,12 +74,42 @@ const ACCOUNT_CART = '33333333-3333-4333-8333-333333333333';
 describe('the session check has three answers', () => {
   it('only a definite refusal is GUEST', () => {
     expect(classifySessionResponse(401, null)).toBe('GUEST');
-    expect(classifySessionResponse(403, null)).toBe('GUEST');
+    expect(classifySessionResponse(403, { success: false, error: { code: 'FORBIDDEN' } })).toBe('GUEST');
     expect(classifySessionResponse(404, null)).toBe('GUEST');
     expect(classifySessionResponse(200, { success: true, data: { id: 'u-1' } })).toBe('USER');
     expect(classifySessionResponse(502, null)).toBe('UNKNOWN');
     expect(classifySessionResponse(429, null)).toBe('UNKNOWN');
     expect(classifySessionResponse(200, null)).toBe('UNKNOWN');
+  });
+
+  it('a 403 without the API error body (proxy, Cloudflare challenge) is UNKNOWN', async () => {
+    expect(classifySessionResponse(403, null)).toBe('UNKNOWN');
+    expect(classifySessionResponse(403, { success: false })).toBe('UNKNOWN');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>challenge</html>', { status: 403 })));
+    expect(await checkCustomerSession(jar({ goldplus_session: 'tok' }) as never)).toEqual({ state: 'UNKNOWN' });
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ success: false, error: { code: 'FORBIDDEN' } }, { status: 403 })));
+    expect(await checkCustomerSession(jar({ goldplus_session: 'tok' }) as never)).toEqual({ state: 'GUEST' });
+  });
+
+  it('an expired token with a refresh cookie still present is UNKNOWN, not guest', async () => {
+    const jwt = (exp: number) => `h.${Buffer.from(JSON.stringify({ exp })).toString('base64url')}.s`;
+    const expired = jwt(Math.floor(Date.now() / 1000) - 60);
+    const live = jwt(Math.floor(Date.now() / 1000) + 600);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ success: false, error: { code: 'UNAUTHORIZED' } }, { status: 401 })));
+    expect(await checkCustomerSession(jar({ goldplus_session: expired, goldplus_refresh: 'r' }) as never)).toEqual({ state: 'UNKNOWN' });
+    expect(await checkCustomerSession(jar({ goldplus_refresh: 'r' }) as never)).toEqual({ state: 'UNKNOWN' });
+    // No refresh cookie, or a live token the API refused: a real sign-out.
+    expect(await checkCustomerSession(jar({ goldplus_session: expired }) as never)).toEqual({ state: 'GUEST' });
+    expect(await checkCustomerSession(jar({ goldplus_session: live, goldplus_refresh: 'r' }) as never)).toEqual({ state: 'GUEST' });
+  });
+
+  it('cancels the unread body of a refusal', async () => {
+    const cancel = vi.fn(async () => undefined);
+    const res = new Response('nope', { status: 503 });
+    Object.defineProperty(res, 'body', { value: { cancel } });
+    vi.stubGlobal('fetch', vi.fn(async () => res));
+    expect(await checkCustomerSession(jar({ goldplus_session: 'tok' }) as never)).toEqual({ state: 'UNKNOWN' });
+    expect(cancel).toHaveBeenCalled();
   });
 
   it('a timeout is UNKNOWN, not guest', async () => {
@@ -175,14 +205,27 @@ describe('signing in keeps the basket', () => {
     expect(identity.gpCart?.token).toBe(token);
   });
 
-  it('falls back to a fresh basket when the API cannot answer', async () => {
-    const identity = await resolveRequestIdentity(jar({ goldplus_session: 'tok' }) as never, {
+  it('keeps the guest credential when the account-basket call fails', async () => {
+    const guestToken = credential('GUEST', 'g-1', GUEST_CART);
+    const cookies = jar({ goldplus_session: 'tok', [COOKIE]: guestToken });
+    const identity = await resolveRequestIdentity(cookies as never, {
       check: async () => ({ state: 'USER', customer: { userId: 'u-1', apiCredential: 'tok' } }),
       accountCart: async () => null,
     });
-    const claims = claimsOf(identity.gpCart!.token);
-    expect(claims.ownerKind).toBe('USER');
-    expect(claims.cartId).not.toBe(ACCOUNT_CART);
+    expect(identity.gpUserId).toBe('u-1');
+    expect(identity.gpCart?.token).toBe(guestToken);
+    expect(identity.gpCart?.cartId).toBe(GUEST_CART);
+    expect(cookies.sets).toEqual([]);
+  });
+
+  it('mints nothing when the account-basket call fails and there is nothing to keep', async () => {
+    const cookies = jar({ goldplus_session: 'tok' });
+    const identity = await resolveRequestIdentity(cookies as never, {
+      check: async () => ({ state: 'USER', customer: { userId: 'u-1', apiCredential: 'tok' } }),
+      accountCart: async () => null,
+    });
+    expect(identity.gpCart).toBeNull();
+    expect(cookies.sets).toEqual([]);
   });
 });
 

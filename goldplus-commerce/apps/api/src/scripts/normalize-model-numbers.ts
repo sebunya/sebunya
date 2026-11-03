@@ -1,6 +1,7 @@
 import '../config/env';
 import { sql } from 'drizzle-orm';
 import { db, endDbConnection } from '../infrastructure/db/client';
+import { rowsOf } from './lib/scriptHelpers';
 
 /**
  * Model numbers came off the price list as "GP - C10" while the SKU is
@@ -12,7 +13,6 @@ import { db, endDbConnection } from '../infrastructure/db/client';
  *
  *   DRY_RUN=1 npx tsx src/scripts/normalize-model-numbers.ts
  */
-const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 
 async function main(): Promise<void> {
   const dryRun = process.env.DRY_RUN === '1';

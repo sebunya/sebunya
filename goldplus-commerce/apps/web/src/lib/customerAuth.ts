@@ -1,5 +1,6 @@
 import type { AstroCookies } from 'astro';
 import { apiBase } from './api';
+import { REFRESH_SESSION_COOKIE_NAME, tokenSecondsLeft } from './session';
 
 /**
  * Context-aware origin from api.ts. This module only ever runs server side (it
@@ -53,13 +54,21 @@ export type SessionCheck =
   | { state: 'GUEST' }
   | { state: 'UNKNOWN' };
 
+type MeBody = { success?: boolean; data?: { id?: string }; error?: { code?: unknown } } | null;
+
+/** True when a body is the API's own error envelope ({ success: false, error: { code } }). */
+function isApiErrorBody(body: MeBody): boolean {
+  return body?.success === false && typeof body.error?.code === 'string' && body.error.code.length > 0;
+}
+
 /** Classifies an /account/me answer. Exported for tests. */
-export function classifySessionResponse(
-  status: number,
-  body: { success?: boolean; data?: { id?: string } } | null,
-): 'USER' | 'GUEST' | 'UNKNOWN' {
+export function classifySessionResponse(status: number, body: MeBody): 'USER' | 'GUEST' | 'UNKNOWN' {
   // 404: the token verified but its account no longer exists — a definite answer.
-  if (status === 401 || status === 403 || status === 404) return 'GUEST';
+  if (status === 401 || status === 404) return 'GUEST';
+  // A 403 is only the API's answer when it carries the API's own error body. A
+  // proxy, Cloudflare challenge or firewall 403 says nothing about the token, and
+  // reading it as GUEST replaced a signed-in customer's basket credential.
+  if (status === 403) return isApiErrorBody(body) ? 'GUEST' : 'UNKNOWN';
   if (status < 200 || status >= 300) return 'UNKNOWN';
   if (body?.success === true && typeof body.data?.id === 'string' && body.data.id) return 'USER';
   // A 2xx the API explicitly marked unsuccessful is a refusal; anything else is unreadable.
@@ -71,7 +80,11 @@ export async function checkCustomerSession(
   fetchImpl: typeof fetch = fetch,
 ): Promise<SessionCheck> {
   const token = cookies.get(SESSION_COOKIE)?.value;
-  if (!token) return { state: 'GUEST' };
+  // A refresh credential is still here (the middleware clears it when the API
+  // refuses it), so a missing or expired access token only means renewal could
+  // not finish this time (timeout, 5xx): we cannot know who this is.
+  const canRenew = Boolean(cookies.get(REFRESH_SESSION_COOKIE_NAME)?.value);
+  if (!token) return canRenew ? { state: 'UNKNOWN' } : { state: 'GUEST' };
 
   try {
     // Asks the API who this token belongs to. The storefront deliberately does
@@ -81,10 +94,19 @@ export async function checkCustomerSession(
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       signal: AbortSignal.timeout(SESSION_CHECK_TIMEOUT_MS),
     });
-    const json = res.ok
-      ? ((await res.json().catch(() => null)) as { success?: boolean; data?: { id?: string } } | null)
-      : null;
+    let json: MeBody = null;
+    if (res.ok || res.status === 403) {
+      json = (await res.json().catch(() => null)) as MeBody;
+    } else {
+      // Release the pooled connection instead of holding it until GC.
+      await res.body?.cancel().catch(() => undefined);
+    }
     const state = classifySessionResponse(res.status, json);
+    if (state === 'GUEST' && res.status === 401 && canRenew) {
+      const left = tokenSecondsLeft(token);
+      // Expired (or unreadable) access token whose renewal failed for now: not a sign-out.
+      if (left === null || left <= 0) return { state: 'UNKNOWN' };
+    }
     if (state === 'USER') return { state, customer: { userId: json!.data!.id!, apiCredential: token } };
     return { state };
   } catch {

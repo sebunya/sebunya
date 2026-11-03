@@ -35,23 +35,47 @@ export function isPrivateAddress(addr: string): boolean {
   const family = isIP(addr);
   if (family === 4) {
     const parts = addr.split('.').map(Number);
-    const [a, b] = parts;
+    const [a, b, c] = parts;
     if (a === 10 || a === 127 || a === 0) return true;
     if (a === 172 && b >= 16 && b <= 31) return true;
     if (a === 192 && b === 168) return true;
     if (a === 169 && b === 254) return true; // link-local incl. cloud metadata
     if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    if (a === 198 && (b === 18 || b === 19)) return true; // benchmarking 198.18.0.0/15
+    if (a === 192 && b === 0 && (c === 0 || c === 2)) return true; // IETF 192.0.0.0/24, TEST-NET-1
+    if (a === 198 && b === 51 && c === 100) return true; // TEST-NET-2
+    if (a === 203 && b === 0 && c === 113) return true; // TEST-NET-3
+    if (a >= 224) return true; // multicast 224/4, reserved 240/4, broadcast
     return false;
   }
   if (family === 6) {
-    const lower = addr.toLowerCase();
+    const lower = addr.toLowerCase().replace(/^\[|\]$/g, '');
     if (lower === '::1' || lower === '::') return true;
     if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // ULA fc00::/7
-    if (lower.startsWith('fe8') || lower.startsWith('fe9') || lower.startsWith('fea') || lower.startsWith('feb')) return true; // link-local
-    if (lower.startsWith('::ffff:')) return isPrivateAddress(lower.slice(7)); // v4-mapped
+    if (/^fe[89a-f]/.test(lower)) return true; // link-local fe80::/10 and old site-local fec0::/10
+    if (lower.startsWith('ff')) return true; // multicast
+    if (lower.startsWith('2001:db8:') || lower.startsWith('2001:0db8:')) return true; // documentation
+    // An IPv4 address carried inside IPv6 is judged as that IPv4 address: v4-mapped (::ffff:), NAT64
+    // (64:ff9b::/96) and the old v4-compatible form, in dotted (::ffff:127.0.0.1) or hex (::ffff:7f00:1) form.
+    for (const prefix of ['::ffff:', '64:ff9b::', '0:0:0:0:0:ffff:', '::']) {
+      if (lower.startsWith(prefix)) {
+        const v4 = embeddedIpv4(lower.slice(prefix.length));
+        if (v4) return isPrivateAddress(v4);
+      }
+    }
     return false;
   }
   return false;
+}
+
+/** 'a.b.c.d' or the hex form 'hhhh:hhhh' of the low 32 bits, as dotted IPv4; null otherwise. */
+function embeddedIpv4(tail: string): string | null {
+  if (isIP(tail) === 4) return tail;
+  const m = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(tail);
+  if (!m) return null;
+  const hi = parseInt(m[1], 16);
+  const lo = parseInt(m[2], 16);
+  return `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
 }
 
 export interface CustomRequestValidation { ok: boolean; reason?: string; addresses?: string[] }

@@ -432,14 +432,6 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
     };
   }
   /**
-   * Mirrors the ledger outcome onto the order's denormalised state, inside the
-   * caller's transaction. NEVER touches lifecycle `status` — that belongs
-   * exclusively to OrderTransitionService — only `reservation_state`, which the
-   * canonical-transition guard explicitly permits. Kept as its own method so
-   * the guard's inspection window around `.update(orders)` contains nothing
-   * but these two fields.
-   */
-  /**
    * Hold again the stock of an order whose holds were RELEASED (expired unpaid)
    * but which has now been paid. All or nothing: every released line is held
    * again, or none is and the short lines are returned. Products are locked in
@@ -473,6 +465,14 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
     }));
   }
 
+  /**
+   * Mirrors the ledger outcome onto the order's denormalised state, inside the
+   * caller's transaction. NEVER touches lifecycle `status` — that belongs
+   * exclusively to OrderTransitionService — only `reservation_state`, which the
+   * canonical-transition guard explicitly permits. Kept as its own method so
+   * the guard's inspection window around `.update(orders)` contains nothing
+   * but these two fields.
+   */
   private async mirrorOrderReservationState(
     tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
     orderId: string,

@@ -3,6 +3,7 @@ import AdminLayout from '../../../../layouts/AdminLayout.astro';
 import FormFeedback from '../../../../components/FormFeedback.astro';
 import { apiBase } from '../../../../lib/api';
 import { readSessionToken } from '../../../../lib/session';
+import { adminFetchJson } from '../../../../lib/adminFetch';
 
 /**
  * Focus 4 — reviewed bulk image import. Stage a folder (named SKU__01-main.ext …)
@@ -25,16 +26,17 @@ if (Astro.request.method === 'POST') {
     for (const f of files) body.append('files', f, f.name);
     if (manifest && typeof manifest !== 'string' && manifest.size > 0) body.append('manifest', manifest, manifest.name);
     body.append('name', String(form.get('name') ?? ''));
-    const res = await fetch(`${apiBase}/admin/media-imports`, { method: 'POST', headers, body });
-    const json = await res.json().catch(() => null);
-    if (json?.success) return Astro.redirect(`/admin/media/imports/${json.data.session.id}?staged=1`, 303);
-    status = 'error'; message = json?.error?.message ?? `The batch was not staged (HTTP ${res.status}).`;
+    const out = await adminFetchJson(`${apiBase}/admin/media-imports`, { method: 'POST', headers, body }, 120_000);
+    const json = out.kind === 'answered' ? out.json : null;
+    if (json?.success) return Astro.redirect(`/admin/media/imports/${encodeURIComponent(json.data.session.id)}?staged=1`, 303);
+    status = 'error'; message = out.kind === 'unreachable' ? 'The API did not answer, so it is not known whether that went through. Reload the page to check.' : json?.error?.message ?? `The batch was not staged (HTTP ${out.status}).`;
   }
 }
 
 interface Session { id: string; name: string; status: string; version: number; totals: Record<string, number>; blocking: boolean; createdAt: string; approvedAt: string | null; appliedAt: string | null }
-const res = await fetch(`${apiBase}/admin/media-imports`, { headers, signal: AbortSignal.timeout(10000) });
-const json = await res.json().catch(() => null);
+const listed = await adminFetchJson(`${apiBase}/admin/media-imports`, { headers }, 10_000);
+const json = listed.kind === 'answered' ? listed.json : null;
+if (listed.kind === 'unreachable' && !status) { status = 'error'; message = 'The API did not answer; the list of imports could not be loaded.'; }
 const sessions: Session[] = json?.success ? (json.data.sessions as Session[]) : [];
 ---
 <AdminLayout title="Image imports" description="Stage a folder of product images, review the plan, approve with a second person, apply." activePath="/admin/media/imports">

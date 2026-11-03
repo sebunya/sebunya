@@ -184,9 +184,12 @@ export class DrizzleSeoIntegrationRepository {
     // replacement were two autocommits: if the insert failed, the connection
     // was left with NO active credential and the integration silently reported
     // itself unconfigured, with no way back. The version is allocated inside
-    // the insert rather than from a prior read, so two concurrent rotations
-    // cannot compute the same number.
+    // the insert, and rotations of one connection are serialised by an
+    // advisory lock: under READ COMMITTED the second rotation's UPDATE could
+    // not see the first's new ACTIVE row, so both stayed ACTIVE (and with no
+    // prior credential both computed version 1).
     const rows = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${'seo-credential:' + input.connectionId}))`);
       await tx.execute(sql`
         update seo_integration_credentials
         set status = 'ROTATED', last_rotated_at = now(), updated_at = now()

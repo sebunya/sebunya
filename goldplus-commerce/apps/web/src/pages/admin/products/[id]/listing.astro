@@ -3,6 +3,7 @@ import AdminLayout from '../../../../layouts/AdminLayout.astro';
 import FormFeedback from '../../../../components/FormFeedback.astro';
 import { apiBase } from '../../../../lib/api';
 import { readSessionToken } from '../../../../lib/session';
+import { adminFetchJson, photoUploadResult } from '../../../../lib/adminFetch';
 
 /**
  * The listing editor: everything a shopper and Google read about one product
@@ -36,38 +37,49 @@ if (Astro.request.method === 'POST') {
       const body = new FormData();
       for (const f of files) body.append('files', f, f.name);
       body.append('makeFirstPrimary', form.get('makeFirstPrimary') === 'on' ? 'true' : 'false');
-      const res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/images/upload`, { method: 'POST', headers, body });
-      const json = await res.json().catch(() => null);
-      // n = photos actually STORED (the API counts ASSIGNED/COVER), never files sent.
-      if (json?.success) return Astro.redirect(`/admin/products/${encodeURIComponent(id ?? '')}/listing?saved=photos&n=${Number(json.stored ?? files.length)}`, 303);
-      status = 'error'; message = json?.error?.message ?? `The photos were not saved (HTTP ${res.status}).`;
+      const outcome = await adminFetchJson(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/images/upload`, { method: 'POST', headers, body }, 60_000);
+      const result = photoUploadResult(outcome, files.length);
+      if (result.ok) {
+        const q = new URLSearchParams({ saved: 'photos', n: String(result.stored), of: String(files.length) });
+        if (result.note) q.set('note', result.note);
+        return Astro.redirect(`/admin/products/${encodeURIComponent(id ?? '')}/listing?${q}`, 303);
+      }
+      status = 'error'; message = result.message;
     }
   } else {
     const count = Number(form.get('specCount') ?? 0);
     const specs = Array.from({ length: Number.isFinite(count) ? count : 0 }, (_, i) => ({
       name: String(form.get(`spec_name_${i}`) ?? ''), value: String(form.get(`spec_value_${i}`) ?? ''), unit: String(form.get(`spec_unit_${i}`) ?? ''), isVerified: form.get(`spec_verified_${i}`) === 'on',
     })).filter((s) => s.name.trim() || s.value.trim());
-    const res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/listing`, {
+    const outcome = await adminFetchJson(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/listing`, {
       method: 'PUT', headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: String(form.get('name') ?? ''), shortDescription: String(form.get('shortDescription') ?? ''), longDescription: String(form.get('longDescription') ?? ''),
         isFeedEligible: form.get('isFeedEligible') === 'on', specs,
       }),
     });
-    const json = await res.json().catch(() => null);
-    if (json?.success) return Astro.redirect(`/admin/products/${encodeURIComponent(id ?? '')}/listing?saved=listing`, 303);
-    status = 'error'; message = json?.error?.message ?? `The listing was not saved (HTTP ${res.status}).`;
+    if (outcome.kind === 'answered' && outcome.json?.success) return Astro.redirect(`/admin/products/${encodeURIComponent(id ?? '')}/listing?saved=listing`, 303);
+    status = 'error';
+    message = outcome.kind === 'unreachable'
+      ? 'The API did not answer, so it is not known whether the listing was saved. Reload the page to check.'
+      : outcome.json?.error?.message ?? `The listing was not saved (HTTP ${outcome.status}).`;
   }
 }
 
-const res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/listing`, { headers, signal: AbortSignal.timeout(10000) });
-const json = await res.json().catch(() => null);
-const listing: Listing | null = json?.success ? (json.data as Listing) : null;
+const loaded = await adminFetchJson(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/listing`, { headers });
+const listing: Listing | null = loaded.kind === 'answered' && loaded.json?.success ? (loaded.json.data as Listing) : null;
 if (!listing) return Astro.redirect('/admin/listing-quality', 303);
 
 const saved = new URL(Astro.request.url).searchParams.get('saved');
 if (saved === 'listing') { status = 'success'; message = 'Listing saved. The product page and the Google feed now carry it.'; }
-if (saved === 'photos') { status = 'success'; message = `Photos saved (${new URL(Astro.request.url).searchParams.get('n') ?? ''}).`; }
+if (saved === 'photos') {
+  const sp = new URL(Astro.request.url).searchParams;
+  const n = sp.get('n') ?? '';
+  const of = sp.get('of');
+  const note = (sp.get('note') ?? '').slice(0, 300);
+  status = 'success';
+  message = of && of !== n ? `${n} of ${of} photos saved. ${note}`.trim() : `Photos saved (${n}).`;
+}
 
 // Rows to render: the product's values first, then the category's remaining attributes as empty rows, then three blank rows.
 const known = new Set(listing.specs.map((s) => s.name.toLowerCase()));

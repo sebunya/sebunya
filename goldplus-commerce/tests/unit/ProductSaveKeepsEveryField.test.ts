@@ -58,8 +58,8 @@ describe('an edit writes everything the operator changed', () => {
   const EDITABLE = [
     'sku', 'modelNumber', 'name', 'slug', 'categoryId', 'categoryName', 'subcategory',
     'shortDescription', 'longDescription', 'priceUgx', 'compareAtPriceUgx', 'stockStatus',
-    'imageUrl', 'features', 'warrantyPeriod', 'verificationEligible', 'active',
-    'specifications', 'approvalStatus', 'isPreOrderEnabled', 'hasRetailPrice', 'hasImage',
+    'features', 'warrantyPeriod', 'verificationEligible', 'active',
+    'specifications', 'approvalStatus', 'isPreOrderEnabled', 'hasRetailPrice',
   ];
 
   for (const field of EDITABLE) {
@@ -73,5 +73,11 @@ describe('an edit writes everything the operator changed', () => {
     // carries the reserved <= stock invariant. Rewriting it here would reopen
     // the read-then-write window that guard exists to close.
     expect(setBlock).not.toMatch(/\bstockQuantity[,:]/);
+  });
+
+  it('leaves the gallery projection (imageUrl, hasImage) to the gallery owner (2026-11 review)', () => {
+    // The route passes the request's earlier read of these; writing them back overwrote a gallery change.
+    expect(setBlock).not.toMatch(/\bimageUrl[,:]/);
+    expect(setBlock).not.toMatch(/\bhasImage[,:]/);
   });
 });

@@ -5,7 +5,8 @@ import { CreateAuditLogUseCase } from '../../../application/use-cases/audit/Crea
 import { RequestQuoteUseCase } from '../../../application/use-cases/governance/RequestQuoteUseCase';
 import { OpenSupportTicketUseCase } from '../../../application/use-cases/governance/OpenSupportTicketUseCase';
 import { ReportFakeProductUseCase } from '../../../application/use-cases/governance/ReportFakeProductUseCase';
-import { randomUUID } from 'node:crypto';
+import { ResolveFakeReportUseCase } from '../../../application/use-cases/governance/ResolveFakeReportUseCase';
+import { createHash, randomUUID } from 'node:crypto';
 import { authMiddleware } from '../middleware/auth';
 import { bearerTokenFrom, resolveLiveSession } from '../middleware/liveSession';
 import { requirePermissions } from '../middleware/permissions';
@@ -15,6 +16,14 @@ import { canTransitionOrder } from '../../../domain/commerce/OrderStateMachine';
 import type { OrderStatus } from '../../../domain/commerce/Order';
 import { DealerApplicationValidationError } from '../../../application/use-cases/DealerApplicationUseCase';
 import { logger } from '../../../infrastructure/logging/logger';
+
+/** The admin transition's idempotency key: the move itself plus a nonce, so a later identical move is not a replay. */
+export function adminTransitionKey(orderId: string, from: string, to: string, clientKey?: string | null): string {
+  // 32 hex chars either way: order_events.idempotency_key is varchar(120).
+  const k = (clientKey ?? '').trim();
+  const nonce = k ? createHash('sha256').update(k).digest('hex').slice(0, 32) : randomUUID().replace(/-/g, '');
+  return `admin:${orderId}:${from}->${to}:${nonce}`;
+}
 
 
 const routes = new Hono();
@@ -260,46 +269,14 @@ routes.use('/admin/*', authMiddleware);
 // point-granting admin action. ----------
 routes.patch('/admin/fake-reports/:id/status', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => null);
-  const status = String(body?.status ?? '');
-  if (!['investigating', 'verified_fake', 'dismissed'].includes(status)) {
-    return c.json({ success: false, error: { code: 'BAD_STATUS', message: 'status must be investigating, verified_fake or dismissed.' } }, 400);
-  }
-  const report = await registry.fakeReportRepo.findByIdRaw(c.req.param('id') ?? '');
-  if (!report) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Report not found.' } }, 404);
-
-  let loyalty: { points: number } | null = null;
-  if (status === 'verified_fake' && report.reporterUserId && !report.loyaltyEntryId) {
-    const earn = await registry.earnForCounterfeitConfirmationUseCase
-      .execute({ reportId: report.id, reporterUserId: report.reporterUserId })
-      .catch(() => null);
-    if (earn && 'points' in earn) {
-      loyalty = { points: earn.points };
-      await registry.fakeReportRepo.setStatus(report.id, status, earn.entryId);
-      // Support pathway: the confirmed reporter gets a follow-up message.
-      await registry.loyaltyOutboxNotifier
-        .enqueue({
-          userId: report.reporterUserId,
-          eventType: 'LOYALTY_POINTS_EARNED',
-          idempotencyKey: `counterfeit-confirmed:${report.id}`,
-          data: { points: earn.points, source: 'counterfeit_report' },
-        })
-        .catch(() => undefined);
-    } else {
-      await registry.fakeReportRepo.setStatus(report.id, status);
-    }
-  } else {
-    await registry.fakeReportRepo.setStatus(report.id, status);
-  }
-
-  const confirmAuditUc = new CreateAuditLogUseCase(registry.auditRepo);
-  await confirmAuditUc.execute({
-    actorId: (c.get('user') as { id: string }).id,
-    action: 'FAKE_REPORT_STATUS_CHANGED',
-    entity: 'fake_report',
-    entityId: report.id,
-    newState: { status, loyaltyPointsAwarded: loyalty?.points ?? 0 },
-  });
-  return c.json({ success: true, data: { id: report.id, status, loyalty } });
+  const result = await new ResolveFakeReportUseCase({
+    reports: registry.fakeReportRepo,
+    earn: registry.earnForCounterfeitConfirmationUseCase,
+    notify: registry.loyaltyOutboxNotifier,
+    audit: new CreateAuditLogUseCase(registry.auditRepo),
+  }).execute({ reportId: c.req.param('id') ?? '', status: String(body?.status ?? ''), actorId: (c.get('user') as { id: string }).id });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } }, result.code === 'NOT_FOUND' ? 404 : 400);
+  return c.json({ success: true, data: { id: result.id, status: result.status, loyalty: result.loyalty } });
 });
 
 // ---------- Authenticity centre reads (read-only, redacted) ----------
@@ -583,7 +560,10 @@ routes.patch('/admin/orders/:id/fulfillment', requirePermissions([PERMISSIONS.OR
       actorType: 'administrator',
       source: 'admin_api',
       reasonCode: 'admin_transition',
-      idempotencyKey: `admin:${order.id}:${nextStatus}`,
+      // From-status plus a nonce (the client's Idempotency-Key when it sends one): `admin:<id>:<status>` was the
+      // same for every move into a status, so a legitimate second move (dispatched again after delivery_failed)
+      // was answered as a replay of the first and nothing changed.
+      idempotencyKey: adminTransitionKey(order.id, currentStatus, nextStatus, c.req.header('idempotency-key')),
     });
 
     // Audit log

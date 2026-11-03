@@ -20,14 +20,16 @@ export class DrizzleBusinessInfoRepository implements IBusinessInfoRepository {
 
   async updateConfig(config: BusinessInfo, actorId: string): Promise<StoredBusinessInfo> {
     // jsonb: bind the RAW object and cast ::jsonb (never JSON.stringify first).
+    // Upsert: the boot seed is best-effort, and a plain UPDATE of a missing row returned nothing (a 500 on save).
     const rows = rowsOf(
       await db.execute(sql`
-        update business_info
-           set config = ${pgJsonb(config)},
-               version = version + 1,
-               updated_by = ${actorId}::uuid,
+        insert into business_info (id, config, version, updated_by, updated_at)
+        values (true, ${pgJsonb(config)}, 1, ${actorId}::uuid, now())
+        on conflict (id) do update
+           set config = excluded.config,
+               version = business_info.version + 1,
+               updated_by = excluded.updated_by,
                updated_at = now()
-         where id = true
          returning config, version, updated_at
       `),
     );

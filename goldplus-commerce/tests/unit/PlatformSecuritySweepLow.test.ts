@@ -109,7 +109,8 @@ describe('MFA confirmation cannot route around the step-up lock', () => {
 describe('customer sign-in and sign-out', () => {
   it('sign-out revokes the token server-side (same-origin only) and replaces the linked visit cookie', () => {
     const src = read('apps/web/src/pages/logout.ts');
-    expect(src).toContain('/auth/logout-all');
+    expect(src).toContain('/auth/logout`');
+    expect(src).toContain("url.searchParams.get('scope') === 'all'");
     expect(src).toContain('checkRequestOrigin(request');
     expect(src).toContain('${apiBase}');
     expect(src).not.toContain('PUBLIC_API_BASE_URL');
@@ -403,7 +404,8 @@ describe('the maintenance freeze', () => {
     }
   });
   it('and still freezes ordinary writes', () => {
-    for (const p of ['/auth/register', '/commerce/checkout', '/admin/products/x', '/auth/mfa/enrol']) {
+    // /auth/mfa/enrol is exempt since the 2026-11 review: an admin who must enrol could not lift the freeze.
+    for (const p of ['/auth/register', '/commerce/checkout', '/admin/products/x', '/auth/mfa/disable']) {
       expect(isMaintenanceExempt(p), p).toBe(false);
     }
   });

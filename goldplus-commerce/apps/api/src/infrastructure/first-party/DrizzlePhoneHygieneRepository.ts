@@ -1,7 +1,11 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client';
+import { isUniqueViolation } from '../db/pgErrors';
 import type { IPhoneHygieneRepository } from '../../application/ports/first-party/FirstPartyPorts';
 import type { PlannedNormalisation, StoredPhone, PhoneTable } from '../../domain/first-party/PhoneHygiene';
+
+/** phone_normalisation_log.previous_value is varchar(50) (0155). */
+export const PREVIOUS_VALUE_MAX = 50;
 
 const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
 
@@ -33,14 +37,22 @@ export class DrizzlePhoneHygieneRepository implements IPhoneHygieneRepository {
   async applyNormalisation(runId: string, n: PlannedNormalisation): Promise<boolean> {
     const col = COLUMNS.find((c) => c.table === n.table && c.column === n.column);
     if (!col) throw new Error('PHONE_COLUMN_NOT_ALLOWLISTED');
+    // The log keeps previous_value in varchar(50); a longer raw value could not be put back by revertRun
+    // (it used to be stored cut to 50 characters, so a revert lost the rest). Such a row is left as it is.
+    if (n.from.length > PREVIOUS_VALUE_MAX) return false;
     return db.transaction(async (tx) => {
       // Optimistic: only if the stored value is still what the plan saw.
       const updated = rows(await tx.execute(sql`update ${sql.raw(col.table)} set ${sql.raw(col.column)} = ${n.to}
         where id = ${n.rowId}::uuid and ${sql.raw(col.column)} = ${n.from} returning id`));
       if (updated.length === 0) return false;
       await tx.execute(sql`insert into phone_normalisation_log (run_id, table_name, column_name, row_id, previous_value, new_value)
-        values (${runId}::uuid, ${col.table}, ${col.column}, ${n.rowId}::uuid, ${n.from.slice(0, 50)}, ${n.to})`);
+        values (${runId}::uuid, ${col.table}, ${col.column}, ${n.rowId}::uuid, ${n.from}, ${n.to})`);
       return true;
+    }).catch((err) => {
+      // users.phone is unique: another account may already hold the same number in canonical form.
+      // That row is skipped (the duplicate is for a person to resolve), not the whole run aborted.
+      if (isUniqueViolation(err)) return false;
+      throw err;
     });
   }
 

@@ -29,9 +29,13 @@ if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   const id = encodeURIComponent(String(f.get("id") ?? ""));
   const action = String(f.get("action") ?? "");
+  // Only the two known actions reach the API. An unknown or missing one used to
+  // fall through to an irreversible decline.
   const r = action === "fulfil"
     ? await call("POST", `/privacy-requests/${id}/fulfil`, { confirmation: String(f.get("confirmation") ?? ""), reason: String(f.get("reason") ?? "") })
-    : await call("POST", `/privacy-requests/${id}/decline`, { reason: String(f.get("reason") ?? "") });
+    : action === "decline"
+      ? await call("POST", `/privacy-requests/${id}/decline`, { reason: String(f.get("reason") ?? "") })
+      : { ok: false as const, message: "Unknown action. Nothing was changed." };
   if (r.ok) {
     notice = action === "fulfil"
       ? `Done. Records changed: ${Object.entries(r.data.counts ?? {}).filter(([, n]) => Number(n) > 0).map(([k, n]) => `${k} ${n}`).join(", ") || "none held"}.`

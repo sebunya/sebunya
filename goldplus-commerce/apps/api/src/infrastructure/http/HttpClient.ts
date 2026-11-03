@@ -57,7 +57,7 @@ export function redactSecrets(message: unknown): string {
  * A send threw: may the provider have received it anyway? A timeout, a connection that broke after the request
  * was written, or an unreadable answer to a request that went out all may have delivered the message, and a retry
  * would send it twice. Only a failure before anything left (open breaker, SSRF block, no route, DNS, TLS) or a
- * provider's own error status is a definite "not sent".
+ * provider's own error status is a definite "not sent" (except 502/504: a gateway error after the provider may have acted).
  */
 export function sendMayHaveReachedProvider(err: unknown): boolean {
   const e = err as { name?: unknown; message?: unknown; code?: unknown; cause?: { code?: unknown } } | null;
@@ -65,7 +65,10 @@ export function sendMayHaveReachedProvider(err: unknown): boolean {
   if (name === 'AbortError' || name === 'TimeoutError') return true;
   if (name === 'CircuitBreakerError') return false;
   const message = String(e?.message ?? '');
-  if (/^HTTP error status \d+/.test(message) || message.startsWith('SSRF Block')) return false;
+  // 502/504 come from a gateway in front of the provider, which may already have processed the request.
+  const status = /^HTTP error status (\d+)/.exec(message);
+  if (status) return status[1] === '502' || status[1] === '504';
+  if (message.startsWith('SSRF Block')) return false;
   const code = String(e?.cause?.code ?? e?.code ?? '');
   return !/^(ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|UND_ERR_CONNECT_TIMEOUT|CERT_|ERR_TLS|DEPTH_ZERO|UNABLE_TO)/.test(code);
 }

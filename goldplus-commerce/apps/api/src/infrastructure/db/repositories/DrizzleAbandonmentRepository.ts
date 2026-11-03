@@ -3,7 +3,7 @@ import { db } from '../client';
 import { cartAbandonments } from '../schema/abandonment';
 import type { BasketReminderCandidate, BasketReminderRefusal, IBasketReminderCandidates } from '../../../application/use-cases/abandonment/SendBasketRemindersUseCase';
 import { carts, cartItems } from '../schema/commerce';
-import { products, productPrices } from '../schema/products';
+import { products } from '../schema/products';
 import {
   AbandonmentCandidate,
   AbandonmentRecord,
@@ -45,12 +45,13 @@ export class DrizzleAbandonmentRepository implements IAbandonmentRepository, IBa
         lastActivityAt: carts.updatedAt,
         expiresAt: carts.expiresAt,
         itemCount: sql<number>`count(${cartItems.productId})::int`,
-        subtotalUgx: sql<number>`coalesce(sum(coalesce(${productPrices.retailPrice}, ${products.priceUgx}, 0) * ${cartItems.quantity}), 0)::bigint`,
+        // One price row per item (a scalar subquery): product_prices has no unique product_id, and a
+        // LEFT JOIN on a product with two price rows doubled its line in both the count and the subtotal.
+        subtotalUgx: sql<number>`coalesce(sum(coalesce((select pp.retail_price from product_prices pp where pp.product_id = ${cartItems.productId} order by pp.id limit 1), ${products.priceUgx}, 0) * ${cartItems.quantity}), 0)::bigint`,
       })
       .from(carts)
       .innerJoin(cartItems, eq(cartItems.cartId, carts.id))
       .innerJoin(products, eq(products.id, cartItems.productId))
-      .leftJoin(productPrices, eq(productPrices.productId, cartItems.productId))
       .where(
         and(
           lt(carts.updatedAt, staleBefore),

@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { Registry } from '../infrastructure/Registry';
 import { db, endDbConnection } from '../infrastructure/db/client';
 import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAuditLogUseCase';
+import { rowsOf } from './lib/scriptHelpers';
 
 /**
  * One-off. On 2026-08-31 the owner pressed "Approve all 94" on PIM import
@@ -14,7 +15,6 @@ import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAudi
  *
  *   ACTOR_USER_ID=<owner uuid> npx tsx src/scripts/backfill-bulk-approval-audit.ts
  */
-const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
 async function main(): Promise<void> {
   const actorId = String(process.env.ACTOR_USER_ID ?? '').trim();
   if (!/^[0-9a-f-]{36}$/i.test(actorId)) throw new Error('ACTOR_USER_ID must be the owner uuid.');

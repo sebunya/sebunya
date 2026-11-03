@@ -48,6 +48,8 @@ const stateBadge = (s: string) =>
   : s === "INCONCLUSIVE" ? "border-amber-300 bg-amber-50 text-amber-900"
   : "border-gray-300 bg-gray-50 text-gray-600";
 const stateLabel = (s: string) => (s === "NOT_TESTED" ? "NOT TESTED" : s);
+// A measured 0 MB/s (a dead card) is a value; only a missing or unreadable field is "—".
+const mbps = (v: unknown) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? "—" : `${num(Number(v))} MB/s`);
 ---
 
 <AdminLayout title="Storage Testing" description="Measured capacity and speed for storage products — with untested stock shown honestly as NOT TESTED.">
@@ -170,8 +172,8 @@ const stateLabel = (s: string) => (s === "NOT_TESTED" ? "NOT TESTED" : s);
                   <td>{t.tested_capacity_gb === null || t.tested_capacity_gb === undefined ? "Not measured" : `${num(Number(t.tested_capacity_gb))} GB`}</td>
                   <td class="font-bold">{str(t.result)}</td>
                   <td class="font-mono text-[11px]">{str(t.method)}</td>
-                  <td>{t.read_mb_s ? `${num(Number(t.read_mb_s))} MB/s` : "—"}</td>
-                  <td>{t.write_mb_s ? `${num(Number(t.write_mb_s))} MB/s` : "—"}</td>
+                  <td>{mbps(t.read_mb_s)}</td>
+                  <td>{mbps(t.write_mb_s)}</td>
                   <td>{str(t.tester)}</td>
                   <td class="p-3">{str(t.tested_at)}</td>
                 </tr>

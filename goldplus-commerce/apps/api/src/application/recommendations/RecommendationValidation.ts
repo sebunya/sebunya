@@ -49,8 +49,10 @@ export { isRecommendationPlacement, isRecommendationEventType };
  */
 export class RecommendationEventValidationError extends Error {}
 
-function isValidUuid(uuid: string): boolean {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export function isValidUuid(uuid: string): boolean {
+  // Any uuid shape, as PostgreSQL's uuid type and the rest of the code accept: demanding a v1-5 version and
+  // RFC variant nibble refused valid ids (v7, seeded ids such as 00000000-0000-0000-0000-000000000001).
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   return uuidRegex.test(uuid);
 }
 

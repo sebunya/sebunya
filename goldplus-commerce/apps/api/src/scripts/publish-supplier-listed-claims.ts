@@ -19,7 +19,9 @@ import { endDbConnection } from '../infrastructure/db/client';
  * submitter, so with UPLOADER_USER_ID set the claims are submitted by their
  * creator (the uploader) and only published by ACTOR_USER_ID — leaving the
  * actor free to verify them afterwards. MODE=resubmit repairs claims already
- * live that the actor submitted (reopen → submit as uploader → publish again).
+ * live that the actor submitted (reopen → submit as uploader → publish again);
+ * if a step after the reopen fails, the claim is walked back to live, and any
+ * fit that cannot be is listed at the end as hidden.
  * ENABLE_AWAITING=1 turns the finder setting on first (versioned, audited).
  */
 const uuid = (v: unknown) => /^[0-9a-f-]{36}$/i.test(String(v ?? ''));
@@ -56,22 +58,57 @@ async function main(): Promise<void> {
     : fromSession(await r.batteryCompatibilityRepo.list({ workflowStatus: 'DRAFT', evidenceStatus: 'SUPPLIER_LISTED', limit: 5000 }));
   console.log(`${claims.length} ${mode === 'resubmit' ? 'live awaiting claim(s) submitted by the actor' : 'draft supplier-listed claim(s)'} from import ${sessionId}`);
   let published = 0, failed = 0;
+  const leftUnpublished: string[] = [];
+  const PUBLISH_REASON = 'Published as awaiting verification (owner policy 2026-10-12).';
+  /**
+   * MODE=resubmit takes a LIVE fit down (REOPEN) before putting it back. If a later step fails, walk the claim
+   * back to live from wherever it stopped (DRAFT → submit as uploader, REVIEW → publish as actor), so a fit
+   * customers could see is not left hidden. Returns the claim's final status.
+   */
+  const putBackLive = async (id: string): Promise<string> => {
+    for (let step = 0; step < 2; step += 1) {
+      const now = await r.batteryCompatibilityRepo.find(id);
+      const status = now?.workflowStatus ?? 'MISSING';
+      try {
+        if (status === 'DRAFT') await uc.transition(id, 'SUBMIT', uploaderId);
+        else if (status === 'REVIEW') await uc.transition(id, 'PUBLISH', actorId, { allowAwaiting: true, reason: PUBLISH_REASON });
+        else return status;
+      } catch (e) {
+        console.log(`    put-back step from ${status} failed — ${e instanceof Error ? e.message : String(e)}`);
+        return status;
+      }
+    }
+    return (await r.batteryCompatibilityRepo.find(id))?.workflowStatus ?? 'MISSING';
+  };
   for (const claim of claims) {
     const label = `${claim.sourceReference ?? claim.id}`;
     if (claim.createdBy === actorId) { failed += 1; console.log(`  ${label}: SKIP — actor is the creator`); continue; }
     if (uploaderId && claim.createdBy !== uploaderId) { failed += 1; console.log(`  ${label}: SKIP — created by ${claim.createdBy}, not UPLOADER_USER_ID`); continue; }
     if (dryRun) continue;
+    let reopened = false;
     try {
-      if (mode === 'resubmit') await uc.transition(claim.id, 'REOPEN', uploaderId, { reason: 'Resubmitted by the uploader so a second person can verify (2026-10-12).' });
+      if (mode === 'resubmit') {
+        await uc.transition(claim.id, 'REOPEN', uploaderId, { reason: 'Resubmitted by the uploader so a second person can verify (2026-10-12).' });
+        reopened = true;
+      }
       await uc.transition(claim.id, 'SUBMIT', uploaderId || actorId);
-      await uc.transition(claim.id, 'PUBLISH', actorId, { allowAwaiting: true, reason: 'Published as awaiting verification (owner policy 2026-10-12).' });
+      await uc.transition(claim.id, 'PUBLISH', actorId, { allowAwaiting: true, reason: PUBLISH_REASON });
       published += 1;
     } catch (e) {
       failed += 1;
       console.log(`  ${label}: FAILED — ${e instanceof Error ? e.message : String(e)}`);
+      if (reopened) {
+        const status = await putBackLive(claim.id);
+        if (status === 'ACTIVE') console.log(`    ${label}: put back live (awaiting verification).`);
+        else { leftUnpublished.push(`${label} (${claim.id}) now ${status}`); console.log(`    ${label}: NOT LIVE — left at ${status}; republish it in Admin → Battery compatibility.`); }
+      }
     }
   }
   console.log(`${claims.length} claims: published ${published}, failed ${failed}${dryRun ? ' (DRY RUN — nothing written)' : ''}`);
+  if (leftUnpublished.length) {
+    console.log(`WARNING: ${leftUnpublished.length} fit(s) that were live before this run are now HIDDEN from the finder:`);
+    for (const l of leftUnpublished) console.log(`  ${l}`);
+  }
   if (failed > 0) process.exitCode = 1;
 }
 main().then(() => endDbConnection()).catch(async (e) => { console.error(e instanceof Error ? e.message : e); await endDbConnection(); process.exit(1); });

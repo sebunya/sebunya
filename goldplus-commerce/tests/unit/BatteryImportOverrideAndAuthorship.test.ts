@@ -51,7 +51,7 @@ describe('a row override is a canonical code, nothing else', () => {
     const repo = read('apps/api/src/infrastructure/db/repositories/DrizzleBatteryImportRepository.ts');
     const resolveRow = repo.slice(repo.indexOf('async resolveRow('), repo.indexOf('async linkRowBattery('));
     expect(resolveRow).toMatch(/lockEditableSession\(tx, sessionId\)/);
-    expect(resolveRow).toMatch(/\.\.\.\(override \? \{ status: 'MAPPED', previewDigest: null \} : \{\}\)/);
+    expect(resolveRow).toMatch(/\.\.\.\(override \|\| actionChanged \? \{ status: 'MAPPED', previewDigest: null \} : \{\}\)/);
     expect(resolveRow).not.toMatch(/override\.proposedAction/);
     const link = repo.slice(repo.indexOf('async linkRowBattery('), repo.indexOf('async approve('));
     expect(link.indexOf('lockEditableSession')).toBeLessThan(link.indexOf('tx.update(batteryImportRows)'));
