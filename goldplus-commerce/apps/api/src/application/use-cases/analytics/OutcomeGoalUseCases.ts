@@ -13,14 +13,14 @@ export interface SuggestedGoal extends Suggestion { currentSetting: string | nul
 export class SuggestOutcomeGoalsUseCase {
   constructor(private readonly reader: IOutcomeSuggestionReader, private readonly settings: MeasurementSettingsPort) {}
 
-  async execute(now = new Date()): Promise<{ generatedAt: string; suggestions: SuggestedGoal[]; facts: { aovUgx: number; marginPerPaidOrderUgx: number; costCoverage: number; daysWithSessions: number } }> {
+  async execute(now = new Date()): Promise<{ generatedAt: string; suggestions: SuggestedGoal[]; facts: { paidOrders: number; aovUgx: number; marginPerPaidOrderUgx: number; costCoverage: number; daysWithSessions: number } }> {
     const [facts, values] = await Promise.all([this.reader.facts(now), this.settings.values()]);
     const cpaMarginSharePct = effectiveNumber(values, 'cpa_margin_share_pct') ?? DEFAULT_CPA_MARGIN_SHARE_PCT;
     const suggestions = suggestGoals({ ...facts, cpaMarginSharePct }).map((s) => ({ ...s, currentSetting: values[s.key] ?? null }));
     return {
       generatedAt: now.toISOString(),
       suggestions,
-      facts: { aovUgx: facts.aovUgx, marginPerPaidOrderUgx: facts.marginPerPaidOrderUgx, costCoverage: facts.costCoverage, daysWithSessions: facts.days.filter((d) => d.sessions > 0).length },
+      facts: { paidOrders: facts.paidOrders, aovUgx: facts.aovUgx, marginPerPaidOrderUgx: facts.marginPerPaidOrderUgx, costCoverage: facts.costCoverage, daysWithSessions: facts.days.filter((d) => d.sessions > 0).length },
     };
   }
 }

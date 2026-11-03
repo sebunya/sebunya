@@ -5,6 +5,12 @@ import type { MicroConversionKey, SegmentRow } from '../../../domain/measurement
 
 const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
 const num = (v: unknown): number => Number(v ?? 0) || 0;
+/**
+ * The telemetry outbox holds the event as a JSON STRING inside jsonb on production (2026-11-03: every row's
+ * payload->>'event_name' read NULL), so the payload is unwrapped before a key is read. Kept in step with the
+ * partial index in 0216 (same expression), or the planner cannot use it.
+ */
+const EV = sql.raw(`(case when jsonb_typeof(o.payload) = 'string' then (o.payload #>> '{}')::jsonb else o.payload end)`);
 
 /**
  * Bounded aggregates for the Outcomes page (2026-11-03). Every query is a count or a sum over the window; the only
@@ -20,8 +26,8 @@ export class DrizzleOutcomesReader implements IOutcomesReader {
         select
           (select count(*)::int from carts c where c.updated_at >= ${start} and c.updated_at < ${endX}
              and exists (select 1 from cart_items i where i.cart_id = c.id)) as "cartsWithItems",
-          (select count(distinct coalesce(o.payload->'user_data'->>'fp_client_id', o.id::text))::int from outbox_events o
-            where o.event_type = 'TELEMETRY_DISPATCH' and o.payload->>'event_name' = 'begin_checkout'
+          (select count(distinct coalesce(${EV}->'user_data'->>'fp_client_id', o.id::text))::int from outbox_events o
+            where o.event_type = 'TELEMETRY_DISPATCH' and ${EV}->>'event_name' = 'begin_checkout'
               and o.created_at >= ${start} and o.created_at < ${endX}) as "checkoutsStarted",
           (select count(*)::int from orders o where o.created_at >= ${start} and o.created_at < ${endX}) as "ordersPlaced"`),
       db.execute(sql`select o.total_amount::bigint as total from orders o

@@ -163,7 +163,7 @@ export async function getOutcomes(
 }
 
 export interface OutcomeSuggestion { key: string; label: string; unit: 'pct' | 'UGX'; current: number | null; suggested: number; confidence: 'MEASURED' | 'SHRUNK' | 'DEFAULT'; basis: string; impactUgxPerMonth: number | null; currentSetting: string | null }
-export interface OutcomeSuggestions { generatedAt: string; suggestions: OutcomeSuggestion[]; facts: { aovUgx: number; marginPerPaidOrderUgx: number; costCoverage: number; daysWithSessions: number } }
+export interface OutcomeSuggestions { generatedAt: string; suggestions: OutcomeSuggestion[]; facts: { paidOrders: number; aovUgx: number; marginPerPaidOrderUgx: number; costCoverage: number; daysWithSessions: number } }
 
 export async function getOutcomeSuggestions(token: string): Promise<{ ok: boolean; status: number; data: OutcomeSuggestions | null }> {
   try {

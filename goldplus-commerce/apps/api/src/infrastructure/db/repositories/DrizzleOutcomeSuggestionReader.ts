@@ -6,6 +6,12 @@ import { SAME_VISIT_HOURS, type DayPoint } from '../../../domain/measurement/Out
 
 const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
 const num = (v: unknown): number => Number(v ?? 0) || 0;
+/**
+ * The telemetry outbox holds the event as a JSON STRING inside jsonb on production (2026-11-03: every row's
+ * payload->>'event_name' read NULL), so the payload is unwrapped before a key is read. Kept in step with the
+ * partial index in 0216 (same expression), or the planner cannot use it.
+ */
+const EV = sql.raw(`(case when jsonb_typeof(o.payload) = 'string' then (o.payload #>> '{}')::jsonb else o.payload end)`);
 const KD = (col: string) => sql.raw(`(${col} at time zone 'Africa/Kampala')::date`);
 
 /**
@@ -19,14 +25,14 @@ export class DrizzleOutcomeSuggestionReader implements IOutcomeSuggestionReader 
     const [carts, checkouts, orders, ga4, econ, micro] = await Promise.all([
       db.execute(sql`select ${KD('c.updated_at')} as day, count(*)::int as n from carts c
         where c.updated_at >= ${now}::timestamptz - interval '180 days' and exists (select 1 from cart_items i where i.cart_id = c.id) group by 1`),
-      db.execute(sql`select ${KD('o.created_at')} as day, count(distinct coalesce(o.payload->'user_data'->>'fp_client_id', o.id::text))::int as n from outbox_events o
-        where o.event_type = 'TELEMETRY_DISPATCH' and o.payload->>'event_name' = 'begin_checkout' and o.created_at >= ${now}::timestamptz - interval '180 days' group by 1`),
+      db.execute(sql`select ${KD('o.created_at')} as day, count(distinct coalesce(${EV}->'user_data'->>'fp_client_id', o.id::text))::int as n from outbox_events o
+        where o.event_type = 'TELEMETRY_DISPATCH' and ${EV}->>'event_name' = 'begin_checkout' and o.created_at >= ${now}::timestamptz - interval '180 days' group by 1`),
       db.execute(sql`select ${KD('o.created_at')} as day, count(*)::int as n from orders o where o.created_at >= ${now}::timestamptz - interval '180 days' group by 1`),
       db.execute(sql`select day::text as day, sum(sessions)::int as n from measurement.ga4_daily_series where report = 'source_medium' and day >= (${now}::timestamptz at time zone 'Africa/Kampala')::date - 180 group by 1`),
       db.execute(sql`
         with paid as (select o.id, o.total_amount from orders o where o.payment_status = 'paid' and o.created_at >= ${now}::timestamptz - interval '90 days'),
         lines as (select i.order_id, i.quantity, i.unit_price, i.cogs_snapshot_ugx as unit_cost from order_items i join paid on paid.id = i.order_id)
-        select (select coalesce(avg(total_amount), 0) from paid) as aov,
+        select (select count(*) from paid) as paid_orders, (select coalesce(avg(total_amount), 0) from paid) as aov,
                (select coalesce(sum(quantity * (unit_price - unit_cost)), 0) / greatest(1, count(distinct order_id)) from lines where unit_cost is not null) as margin,
                (select case when count(*) = 0 then 0 else count(*) filter (where unit_cost is not null)::numeric / count(*) end from lines) as coverage`),
       db.execute(sql`
@@ -60,6 +66,7 @@ export class DrizzleOutcomeSuggestionReader implements IOutcomeSuggestionReader 
     const m = new Map(rows(micro).map((x) => [String(x.k), { n: num(x.n), converted: num(x.converted) }]));
     return {
       days,
+      paidOrders: num(e.paid_orders),
       aovUgx: num(e.aov),
       marginPerPaidOrderUgx: num(e.margin),
       costCoverage: num(e.coverage),

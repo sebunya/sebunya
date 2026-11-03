@@ -91,3 +91,15 @@ same stated rules, with its basis beside it, is a target (Kaushik ch. 10). The r
 
 What it does not do: prove that an event *caused* the order (no control group; it is the conditional rate, as
 Kaushik defines the economic value), or set goals above what the shop has done or double today.
+
+## Feed check, 2026-11-03 evening (read-only queries on production)
+
+- `begin_checkout` is recorded (51 batches, 0 rejected, 130 telemetry rows a week) but the outbox stores the event
+  as a JSON **string** inside jsonb, so `payload->>'event_name'` reads NULL on every row. Both readers and the
+  partial index now unwrap the payload (0216 replaces 0215's index). Before this the page would have shown
+  100% cart abandonment as *Measured*; it now refuses that case outright (zero checkouts against carts = no feed).
+- Orders are few: 29 in 90 days, 11 failed Pesapal, 3 paid, 0 delivered-unpaid. Margin per paid order needs 20
+  paid orders before the CPA cap uses it; the suggestions header states the paid-order count.
+- GA4: 44 days of series since 2026-09-19, ~13 sessions a day. The best-window floor is 300 sessions.
+- Direct is 65% of landing touches: the alarm is right; the shop's own links (texts, WhatsApp, printed) are
+  going out untagged. That is the next data-quality job.
