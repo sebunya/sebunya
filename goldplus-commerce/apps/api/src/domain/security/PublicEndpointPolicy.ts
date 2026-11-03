@@ -189,6 +189,9 @@ export function classifyPublicEndpoint(method: string, rawPath: string): RouteFa
   if (post && path === '/commerce/gift-cards/photos') return 'issue-report';
   // A question can text the number typed on it, and a review photo is an upload: both are human forms, not the
   // shared 'global' budget of 1,000 a minute they fell into (2026-10-29 review).
+  // 0214: a guest's checkout number for a basket reminder (a beacon on leaving the field) and the one-tap stop link.
+  if (post && path === '/commerce/cart/contact') return 'telemetry';
+  if (path === '/commerce/basket-reminders/stop') return 'order-lookup';
   if (post && path === '/commerce/questions') return 'quote-request';
   if (post && path === '/commerce/reviews/photos') return 'issue-report';
   if (isUnder(path, '/commerce/gift-cards')) return 'order-lookup';

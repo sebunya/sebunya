@@ -100,6 +100,8 @@ import { RequestReturnUseCase } from '../application/use-cases/commerce/RequestR
 import { publicBaseUrl } from '../application/notifications/CustomerMessages';
 import { BasketReminderConsentUseCases } from '../application/use-cases/first-party/BasketReminderConsentUseCases';
 import { SendBasketRemindersUseCase, basketItemsWords } from '../application/use-cases/abandonment/SendBasketRemindersUseCase';
+import { GuestBasketContactUseCases } from '../application/use-cases/abandonment/GuestBasketContactUseCases';
+import { issueBasketStopToken, readBasketStopToken } from './abandonment/BasketStopToken';
 import { AskProductQuestionUseCase, AnswerProductQuestionUseCase } from '../application/use-cases/questions/ProductQuestionUseCases';
 import { DrizzleProductQuestionRepository } from './questions/DrizzleProductQuestionRepository';
 import { DrizzleOrderDeliveredAt } from './commerce/DrizzleOrderDeliveredAt';
@@ -2356,11 +2358,18 @@ export class Registry {
     (orderId) => this.enqueueCustomerOrderMessage(orderId, 'ORDER_PAYMENT_REMINDER'),
     () => (process.env.ORDER_PAYMENT_REMINDERS || '').trim().toLowerCase() !== 'off',
   );
-  /** 0210: the one text about a basket left behind, to a signed-in shopper who asked for such texts. */
+  /** 0214: a guest's checkout number, the stop link in their text, and the STOP it records. */
+  public readonly guestBasketContactUseCases = new GuestBasketContactUseCases(
+    { upsert: (i) => this.abandonmentRepo.upsertGuestContact(i) },
+    new FirstPartyConsentRepository(),
+    { issue: (p) => issueBasketStopToken(p), read: (t) => readBasketStopToken(t) },
+  );
+  /** 0210: the one text about a basket left behind, on by default (2026-11-03) for signed-in shoppers and guests alike. */
   public readonly sendBasketRemindersUseCase = new SendBasketRemindersUseCase(
     this.abandonmentRepo,
     this.basketReminderConsentUseCases,
     async (c, phoneE164, sendBy) => {
+      const guest = c.ownerKind === 'GUEST';
       await this.customerOutboxNotifier.enqueue({
         eventType: 'BASKET_REMINDER',
         template: 'BASKET_REMINDER',
@@ -2370,7 +2379,15 @@ export class Registry {
         // it: a signed-out phone is told its basket is saved on the account and asked to sign in, not shown "empty".
         // notAfter: the router drops a reminder not out by then (NotificationRouter, basketReminderSendRefusal); userId:
         // the router reads the consent again at send time.
-        data: { basketItems: basketItemsWords(c.itemNames, c.itemCount), basketUrl: tagShopUrl(`${publicBaseUrl()}/cart`, 's', 'basket'), preferencesUrl: `${publicBaseUrl()}/account/preferences`, notAfter: sendBy.toISOString(), userId: c.userId },
+        data: {
+          basketItems: basketItemsWords(c.itemNames, c.itemCount), basketUrl: tagShopUrl(`${publicBaseUrl()}/cart`, 's', 'basket'),
+          notAfter: sendBy.toISOString(),
+          // USER: the account switch and the consent re-read by id. GUEST (0214): no account; the stop link carries the
+          // number, signed, and the router re-reads only the STOP against it.
+          ...(guest
+            ? { guest: true, stopUrl: this.guestBasketContactUseCases.stopUrlFor(phoneE164, publicBaseUrl()) }
+            : { preferencesUrl: `${publicBaseUrl()}/account/preferences`, userId: c.userId }),
+        },
         idempotencyKey: `basket-reminder:${c.abandonmentId}`,
         relatedEntity: 'cart',
         relatedEntityId: c.cartId,
@@ -2381,6 +2398,7 @@ export class Registry {
     // The abandoned-basket programme's holdout (MeasurementConfig: 10% by default), as review and mission messages.
     async (c) => this.holdoutGate.decide({ programme: 'abandoned_basket', subjectRef: c.abandonmentId, userId: c.userId, channel: 'sms' }),
     (event, detail) => logger.warn(detail, `[basket-reminders] ${event}`),
+    (phoneE164) => this.guestBasketContactUseCases.mayRemindGuest(phoneE164),
   );
   /** The one review reminder per order, a few days after delivery or collection. */
   public readonly sendReviewRemindersUseCase = new SendReviewRemindersUseCase(
@@ -3778,6 +3796,8 @@ export class Registry {
    */
   private registerBasketReminderRecheck(): void {
     this.notificationRouter.setBasketReminderRecheck(async (userId, phoneE164) => {
+      // 0214: a guest reminder names no account; only a STOP against the number can refuse it.
+      if (!userId) return (await this.guestBasketContactUseCases.mayRemindGuest(phoneE164)).allowed;
       const gate = await this.basketReminderConsentUseCases.mayRemind(userId);
       return gate.allowed && gate.phoneE164 === phoneE164;
     });

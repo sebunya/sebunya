@@ -132,12 +132,12 @@ const TRANSACTIONAL_TEMPLATES = new Set([
 ]);
 
 /**
- * Templates a human has decided ARE marketing (0210). They stay consent-gated: each is sent only with the customer's
- * own recorded opt-in in its payload (consentGrantedIn), and refused without it. Listing them here records that
+ * Templates a human has decided ARE marketing (0210). Since 2026-11-03 the governance permits marketing by default
+ * (opt-out shop); the consent marker (consentGrantedIn) is kept as the sender's statement that its own gate passed. Listing them here records that
  * decision, so the build guard below does not mistake them for a template nobody classified.
  */
 const MARKETING_TEMPLATES = new Set([
-  // Basket reminder text: signed-in shoppers who ticked the unticked box at sign-up or in My preferences.
+  // Basket reminder text: signed-in shoppers, on by default, unless switched off in My preferences or STOP.
   'BASKET_REMINDER',
 ]);
 

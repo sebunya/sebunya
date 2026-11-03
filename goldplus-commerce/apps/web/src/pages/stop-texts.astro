@@ -1,0 +1,65 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { apiBase } from '../lib/api';
+import { apiHeaders, readClientAddress } from '../lib/forwardClient';
+import { checkRequestOrigin } from '../lib/requestOrigin';
+
+/**
+ * 0214: the stop link in a guest's basket reminder text. The link carries the number, signed by the API; this page
+ * shows only its masked form and one button. One tap records a STOP against the number, which no basket reminder
+ * ever gets past again. No account, no sign-in.
+ */
+const token = (Astro.url.searchParams.get('t') ?? '').slice(0, 256);
+let phoneMasked: string | null = null;
+let done = false;
+let invalid = !token;
+
+if (Astro.request.method === 'POST') {
+  if (!checkRequestOrigin(Astro.request, import.meta.env as unknown as Record<string, string | undefined>).allowed) {
+    return new Response('Forbidden', { status: 403 });
+  }
+  const form = await Astro.request.formData().catch(() => null);
+  const t = String(form?.get('t') ?? '').slice(0, 256);
+  const res = await fetch(`${apiBase}/commerce/basket-reminders/stop`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }, readClientAddress(Astro)),
+    body: JSON.stringify({ token: t }),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => null);
+  const json = res ? await res.json().catch(() => null) as { success?: boolean; data?: { phoneMasked?: string } } | null : null;
+  if (json?.success && json.data?.phoneMasked) { done = true; phoneMasked = json.data.phoneMasked; } else invalid = true;
+} else if (token) {
+  const res = await fetch(`${apiBase}/commerce/basket-reminders/stop?t=${encodeURIComponent(token)}`, {
+    headers: apiHeaders({ Accept: 'application/json' }, readClientAddress(Astro)),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => null);
+  const json = res ? await res.json().catch(() => null) as { success?: boolean; data?: { phoneMasked?: string } } | null : null;
+  if (json?.success && json.data?.phoneMasked) phoneMasked = json.data.phoneMasked; else invalid = true;
+}
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+<BaseLayout robotsMeta="noindex,nofollow" title="Stop basket texts | GoldPlus" description="Stop GoldPlus basket reminder texts to your number.">
+  <main class="mx-auto max-w-lg px-4 py-12">
+    <p class="text-xs font-black uppercase tracking-wider text-brand-primaryInk">Basket reminders</p>
+    {done && (
+      <>
+        <h1 class="mt-2 text-2xl font-black text-brand-charcoal">Done. No more basket texts to {phoneMasked}.</h1>
+        <p class="mt-4 text-sm leading-relaxed text-slate-600">Messages about an order you place are not affected. <a href="/" class="font-bold underline">Back to the shop</a>.</p>
+      </>
+    )}
+    {!done && !invalid && (
+      <form method="POST" class="grid gap-4">
+        <input type="hidden" name="t" value={token} />
+        <h1 class="mt-2 text-2xl font-black text-brand-charcoal">Stop basket reminder texts to {phoneMasked}?</h1>
+        <p class="text-sm leading-relaxed text-slate-600">We text once when something is left in a basket, at most once a week. One tap stops them for good. Messages about an order you place are not affected.</p>
+        <button type="submit" class="justify-self-start min-h-11 rounded-xl bg-slate-950 px-6 py-3 text-sm font-black text-white">Stop these texts</button>
+      </form>
+    )}
+    {!done && invalid && (
+      <>
+        <h1 class="mt-2 text-2xl font-black text-brand-charcoal">This link is not valid</h1>
+        <p class="mt-4 text-sm leading-relaxed text-slate-600">Open the link from the text message again, or <a href="/support" class="font-bold underline">contact us</a> with the number you want us to stop texting.</p>
+      </>
+    )}
+  </main>
+</BaseLayout>

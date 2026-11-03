@@ -70,6 +70,9 @@ export interface CustomerMessageData {
   /** 0210 BASKET_REMINDER: what the basket holds, in words ("X and 2 more items"), the basket page and where to stop reminders. */
   basketItems?: string | null;
   basketUrl?: string | null;
+  /** 0214: a guest's reminder (no account): its stop link carries the number, signed. */
+  guest?: boolean;
+  stopUrl?: string | null;
   preferencesUrl?: string | null;
   /** 0208: the product a question was asked about, and the shop's answer. */
   productName?: string | null;
@@ -370,10 +373,15 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
       // up to 320 characters of answer: four parts, nine with one emoji (2026-10-29).
       return `${SHOP_NAME}: your question about ${smsName(d.productName)}. Our answer: ${smsCut(String(d.questionAnswer ?? ''), 150)}${d.productUrl ? ` Full answer: ${d.productUrl}` : ` Questions? Call ${phone}.`}`;
     case 'BASKET_REMINDER':
-      // Marketing, by the customer's own tick: names what they left, says the basket is saved on their account (a
+      // Marketing, on by default (2026-11-03): names what they left, says the basket is saved on their account (a
       // signed-out phone is asked to sign in, not shown an empty basket) and how to stop these texts. The names are
       // folded to plain GSM and cut, so the text stays at two parts: "It is still here" with two long names and one
       // curly quote was billed as five Unicode parts, and was wrong on a phone that was not signed in (2026-10-29).
+      // 0214: a guest's basket lives on the device they used (the cart credential cookie), and their stop link is the
+      // signed one in the payload; a signed-in customer's is on their account, stopped in My preferences.
+      if (d.guest === true) {
+        return `${SHOP_NAME}: you left ${smsCut(String(d.basketItems ?? 'some items'), 110)} in your basket. It is still there on the phone or computer you used: ${d.basketUrl ?? `${publicBaseUrl()}/cart`} To stop these texts: ${d.stopUrl ?? `${publicBaseUrl()}/stop-texts`}`;
+      }
       return `${SHOP_NAME}: you left ${smsCut(String(d.basketItems ?? 'some items'), 110)} in your basket. It is saved on your account: ${d.basketUrl ?? `${publicBaseUrl()}/cart`} To stop these texts: ${d.preferencesUrl ?? `${publicBaseUrl()}/account/preferences`}`;
     case 'SUPPORT_REQUEST_RECEIVED':
       return `${SHOP_NAME}: we have your request${d.reference ? ` (ref ${d.reference})` : ''}. Our team will call you on this number. Need us sooner? Call ${phone}.`;
@@ -631,7 +639,7 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         subject: 'Your GoldPlus basket is still here',
         preheader: `You left ${d.basketItems ?? 'some items'} in your basket.`,
         headline: 'Still thinking it over?',
-        body: `You left ${d.basketItems ?? 'some items'} in your basket. It is saved and ready whenever you are. You asked us for basket reminders; switch them off any time in My preferences: ${d.preferencesUrl ?? `${publicBaseUrl()}/account/preferences`}`,
+        body: `You left ${d.basketItems ?? 'some items'} in your basket. It is saved and ready whenever you are. Switch these reminders off any time in My preferences: ${d.preferencesUrl ?? `${publicBaseUrl()}/account/preferences`}`,
         cta: { label: 'Open my basket', url: d.basketUrl ?? `${publicBaseUrl()}/cart` },
         tone: 'neutral',
       };

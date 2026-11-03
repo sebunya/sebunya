@@ -4,7 +4,7 @@ import type { IBasketReminderGate } from '../first-party/BasketReminderConsentUs
 import type { HoldoutArm } from '../../../domain/measurement/Incrementality';
 
 /**
- * Basket reminders (0210, gap analysis #1): a signed-in shopper who left items
+ * Basket reminders (0210, gap analysis #1; guests since 0214, 2026-11-03): a shopper who left items
  * in their basket is texted once about it, if they asked for such texts.
  *
  * Rules, all here so they can be read in one place:
@@ -15,8 +15,8 @@ import type { HoldoutArm } from '../../../domain/measurement/Incrementality';
  *  - one text per basket, at most one per customer per week, taken atomically
  *    per customer (claimForReminder), so two baskets or two replicas cannot
  *    both pass the cap;
- *  - only with the customer's own basket-reminder consent covering today's
- *    VERIFIED number on an active account, and no STOP (the gate); a refusal is
+ *  - on by default (owner 2026-11-03): to every customer who has not switched it
+ *    off, at a VERIFIED number on an active account, no STOP (the gate); a refusal is
  *    recorded with its reason so the basket is not re-read every hour;
  *  - not a basket changed since it was classified, not a customer who has
  *    ordered since, and naming only what can still be bought (findDue);
@@ -36,7 +36,11 @@ const QUIET_HOURS_MARGIN_MINUTES = 15;
 export interface BasketReminderCandidate {
   abandonmentId: string;
   cartId: string;
+  /** The cart owner id: the account id for USER, the guest credential's owner id for GUEST (0214). */
   userId: string;
+  ownerKind: 'USER' | 'GUEST';
+  /** 0214: the number a guest typed at checkout; null for a signed-in customer (their account number is read by the gate). */
+  guestPhoneE164: string | null;
   itemCount: number;
   subtotalUgx: number;
   /** Up to two product names, biggest line first. */
@@ -44,7 +48,7 @@ export interface BasketReminderCandidate {
 }
 
 /** Why a basket got no text (recorded, so it is not re-read every hour). */
-export type BasketReminderRefusal = 'not_opted_in' | 'no_phone' | 'suppressed' | 'unverified' | 'inactive' | 'phone_changed' | 'no_evidence' | 'nothing_left' | 'held_out';
+export type BasketReminderRefusal = 'switched_off' | 'blocked' | 'no_phone' | 'suppressed' | 'unverified' | 'inactive' | 'phone_changed' | 'no_evidence' | 'nothing_left' | 'held_out';
 
 export interface IBasketReminderCandidates {
   findDue(input: { classifiedBefore: Date; classifiedAfter: Date; noReminderSince: Date; limit: number }): Promise<BasketReminderCandidate[]>;
@@ -56,7 +60,7 @@ export interface IBasketReminderCandidates {
 
 const REFUSAL_OF: Record<string, BasketReminderRefusal> = {
   SUPPRESSED: 'suppressed', NO_PHONE: 'no_phone', PHONE_NOT_VERIFIED: 'unverified', ACCOUNT_INACTIVE: 'inactive',
-  PHONE_CHANGED_SINCE_OPT_IN: 'phone_changed', NO_OPT_IN_EVIDENCE: 'no_evidence',
+  SWITCHED_OFF: 'switched_off', BLOCKED_BY_POLICY: 'blocked',
 };
 
 export class SendBasketRemindersUseCase {
@@ -69,7 +73,17 @@ export class SendBasketRemindersUseCase {
     /** The abandoned-basket holdout ('hold' = this customer is in this wave's control group: nothing is sent). */
     private readonly holdout: (candidate: BasketReminderCandidate) => Promise<HoldoutArm> = async () => 'treat',
     private readonly log: (event: string, detail: Record<string, unknown>) => void = () => undefined,
+    /** 0214: the gate for a guest's number (a STOP against it is the only refusal). Without one, guests are skipped. */
+    private readonly guestGate: ((phoneE164: string) => Promise<{ allowed: boolean; reason: string }>) | null = null,
   ) {}
+
+  /** USER: the account gate (switched off, blocked, no/unknown number, inactive, STOP). GUEST: a STOP against the typed number. */
+  private async gateFor(c: BasketReminderCandidate): Promise<{ allowed: boolean; reason: string; phoneE164: string | null }> {
+    if (c.ownerKind !== 'GUEST') return this.gate.mayRemind(c.userId);
+    if (!this.guestGate || !c.guestPhoneE164) return { allowed: false, reason: 'NO_PHONE', phoneE164: null };
+    const g = await this.guestGate(c.guestPhoneE164);
+    return { ...g, phoneE164: g.allowed ? c.guestPhoneE164 : null };
+  }
 
   async execute(now: Date): Promise<{ due: number; sent: number; refused: number; failed: number; held: number; disabled?: true }> {
     if (!this.enabled()) return { due: 0, sent: 0, refused: 0, failed: 0, held: 0, disabled: true };
@@ -89,10 +103,10 @@ export class SendBasketRemindersUseCase {
     for (const c of due) {
       try {
         if (c.itemCount <= 0) { refused += 1; await this.candidates.markReminded(c.abandonmentId, now, 'nothing_left'); continue; }
-        const gate = await this.gate.mayRemind(c.userId);
+        const gate = await this.gateFor(c);
         if (!gate.allowed || !gate.phoneE164) {
           refused += 1;
-          await this.candidates.markReminded(c.abandonmentId, now, REFUSAL_OF[gate.reason] ?? 'not_opted_in');
+          await this.candidates.markReminded(c.abandonmentId, now, REFUSAL_OF[gate.reason] ?? 'no_phone');
           continue;
         }
         if ((await this.holdout(c)) === 'hold') { held += 1; await this.candidates.markReminded(c.abandonmentId, now, 'held_out'); continue; }

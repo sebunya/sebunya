@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, isNotNull, lt, sql } from 'drizzle-orm';
 import { db } from '../client';
-import { cartAbandonments } from '../schema/abandonment';
+import { guestBasketContacts, cartAbandonments } from '../schema/abandonment';
 import type { BasketReminderCandidate, BasketReminderRefusal, IBasketReminderCandidates } from '../../../application/use-cases/abandonment/SendBasketRemindersUseCase';
 import { carts, cartItems } from '../schema/commerce';
 import { products } from '../schema/products';
@@ -114,33 +114,37 @@ export class DrizzleAbandonmentRepository implements IAbandonmentRepository, IBa
     // Each customer's newest basket (distinct on), then the longest-waiting first: ordered by owner alone, a batch
     // limit would always serve the same customers first.
     const rows = (await db.execute(sql`
-      select d."abandonmentId", d."cartId", d."userId", d."subtotalUgx", d."itemCount", d."itemNames" from (
-      select distinct on (a.owner_id) a.id as "abandonmentId", a.cart_id as "cartId", a.owner_id as "userId", a.subtotal_ugx as "subtotalUgx",
+      select d."abandonmentId", d."cartId", d."userId", d."ownerKind", d."guestPhone", d."subtotalUgx", d."itemCount", d."itemNames" from (
+      select distinct on (a.owner_id) a.id as "abandonmentId", a.cart_id as "cartId", a.owner_id as "userId", a.owner_kind as "ownerKind", g.phone_e164 as "guestPhone", a.subtotal_ugx as "subtotalUgx",
              coalesce(live.n, 0) as "itemCount", coalesce(live.names, '{}') as "itemNames", a.classified_at as "classifiedAt"
       from cart_abandonments a
       join carts c on c.id = a.cart_id
-      left join users u on u.id::text = a.owner_id
+      left join users u on u.id::text = a.owner_id and a.owner_kind = 'USER'
+      -- 0214: a GUEST basket is reachable only through the number typed at checkout.
+      left join guest_basket_contacts g on g.owner_id = a.owner_id and a.owner_kind = 'GUEST'
       left join lateral (
         select count(*)::int as n, (array_agg(p.name order by ci.quantity desc, p.name))[1:2] as names
         from cart_items ci join products p on p.id = ci.product_id
         where ci.cart_id = a.cart_id and p.active = true and p.approval_status = 'approved'
       ) live on true
-      where a.status = 'OPEN' and a.owner_kind = 'USER' and a.owner_id is not null and a.reminded_at is null
+      where a.status = 'OPEN' and a.owner_id is not null and a.reminded_at is null
+        and ((a.owner_kind = 'USER') or (a.owner_kind = 'GUEST' and g.phone_e164 is not null))
         and a.classified_at <= ${input.classifiedBefore} and a.classified_at >= ${input.classifiedAfter}
         and c.updated_at <= a.last_activity_at + ${UNCHANGED_SLACK}
         -- No order since: their own online order, or one staff recorded at the counter or by phone under their number
         -- (no account on it; matched on the last nine digits, the expression orders_phone_last9_idx indexes).
         and not exists (select 1 from orders o where o.created_at > a.last_activity_at
           and (o.user_id::text = a.owner_id
-            or (length(regexp_replace(coalesce(u.phone, ''), '\\D', '', 'g')) >= 9
-                and right(regexp_replace(o.customer_phone, '\\D', '', 'g'), 9) = right(regexp_replace(u.phone, '\\D', '', 'g'), 9))))
+            or (length(regexp_replace(coalesce(u.phone, g.phone_e164, ''), '\\D', '', 'g')) >= 9
+                and right(regexp_replace(o.customer_phone, '\\D', '', 'g'), 9) = right(regexp_replace(coalesce(u.phone, g.phone_e164), '\\D', '', 'g'), 9))))
         and not exists (select 1 from cart_abandonments b where b.owner_id = a.owner_id and b.reminder_outcome in ('sent', 'sending') and b.reminded_at > ${input.noReminderSince})
       order by a.owner_id, a.classified_at desc
       ) d order by d."classifiedAt", d."abandonmentId"
-      limit ${input.limit}`)) as unknown as Array<{ abandonmentId: string; cartId: string; userId: string; itemCount: number; subtotalUgx: number | string; itemNames: string[] | null }>;
+      limit ${input.limit}`)) as unknown as Array<{ abandonmentId: string; cartId: string; userId: string; ownerKind: string; guestPhone: string | null; itemCount: number; subtotalUgx: number | string; itemNames: string[] | null }>;
     const list = Array.isArray(rows) ? rows : ((rows as { rows?: unknown[] }).rows ?? []) as typeof rows;
     return list.map((r) => ({
       abandonmentId: String(r.abandonmentId), cartId: String(r.cartId), userId: String(r.userId),
+      ownerKind: r.ownerKind === 'GUEST' ? 'GUEST' : 'USER', guestPhoneE164: r.guestPhone ? String(r.guestPhone) : null,
       itemCount: Number(r.itemCount), subtotalUgx: Number(r.subtotalUgx), itemNames: Array.isArray(r.itemNames) ? r.itemNames.map(String) : [],
     }));
   }
@@ -169,6 +173,13 @@ export class DrizzleAbandonmentRepository implements IAbandonmentRepository, IBa
 
   async markReminded(abandonmentId: string, now: Date, outcome: BasketReminderRefusal): Promise<void> {
     await db.update(cartAbandonments).set({ remindedAt: now, reminderOutcome: outcome }).where(and(eq(cartAbandonments.id, abandonmentId), sql`${cartAbandonments.remindedAt} is null`));
+  }
+
+  /** 0214: the number a guest typed at checkout, against their cart owner id; replaced on every capture. */
+  async upsertGuestContact(input: { ownerId: string; phoneE164: string; name: string | null; now: Date }): Promise<void> {
+    await db.insert(guestBasketContacts)
+      .values({ ownerId: input.ownerId, phoneE164: input.phoneE164, name: input.name, capturedAt: input.now, updatedAt: input.now })
+      .onConflictDoUpdate({ target: guestBasketContacts.ownerId, set: { phoneE164: input.phoneE164, name: input.name, updatedAt: input.now } });
   }
 
   /**

@@ -165,10 +165,9 @@ describe("governance outcome, both directions", () => {
     expect(decision.guard).not.toMatch(/CONSENT/);
   });
 
-  it("still blocks genuine marketing to that same customer", () => {
-    const decision = decide("SOME_NEW_CAMPAIGN_BLAST");
-    expect(decision.kind).toBe("BLOCK_CONSENT");
-    expect(decision.guard).toBe("NO_CONSENT_FOR_MARKETING");
+  it("marketing to that same customer is permitted by default (opt-out shop, owner 2026-11-03) and still blocked on an explicit refusal", () => {
+    expect(decide("SOME_NEW_CAMPAIGN_BLAST").kind).toBe("ALLOW_LIVE");
+    expect(decide("SOME_NEW_CAMPAIGN_BLAST", { consentGranted: false }).guard).toBe("NO_CONSENT_FOR_MARKETING");
   });
 
   it("still blocks marketing when the customer HAS refused explicitly", () => {

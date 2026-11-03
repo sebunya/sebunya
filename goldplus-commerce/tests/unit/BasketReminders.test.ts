@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { BASKET_REMINDERS_COPY, BASKET_REMINDERS_COPY_VERSION, basketRemindersCopyHash, planBasketReminderChange, basketReminderStatus } from '../../apps/api/src/domain/consent/BasketReminderConsent';
+import { BASKET_REMINDERS_COPY, BASKET_REMINDERS_COPY_VERSION, basketRemindersCopyHash, planBasketReminderChange, mayReceiveBasketReminder, basketReminderStatus } from '../../apps/api/src/domain/consent/BasketReminderConsent';
 import { SendBasketRemindersUseCase, basketItemsWords, basketReminderSendRefusal, type BasketReminderCandidate, type IBasketReminderCandidates } from '../../apps/api/src/application/use-cases/abandonment/SendBasketRemindersUseCase';
 import { BasketReminderConsentUseCases } from '../../apps/api/src/application/use-cases/first-party/BasketReminderConsentUseCases';
 import { DefaultNotificationRouter } from '../../apps/api/src/infrastructure/notifications/NotificationRouter';
@@ -12,27 +12,28 @@ import { smsText } from '../../apps/api/src/application/notifications/CustomerMe
 
 const root = resolve(__dirname, '../..');
 const NOON_EAT = new Date('2026-10-26T09:00:00Z');
-const cand = (id: string, userId = 'u1'): BasketReminderCandidate => ({ abandonmentId: id, cartId: 'c' + id, userId, itemCount: 3, subtotalUgx: 90000, itemNames: ['Oraimo powerbank', 'USB-C cable'] });
+const cand = (id: string, userId = 'u1'): BasketReminderCandidate => ({ ownerKind: 'USER', guestPhoneE164: null, abandonmentId: id, cartId: 'c' + id, userId, itemCount: 3, subtotalUgx: 90000, itemNames: ['Oraimo powerbank', 'USB-C cable'] });
 
 describe('basket reminders: consent', () => {
-  it('is its own purpose, off by default, and a grant needs the tick, the words, a phone', () => {
+  it('is its own purpose, ON by default (owner 2026-11-03), switched on again with no tick, needs a phone', () => {
     expect(CONSENT_PURPOSE_KEYS).toContain('basket_reminders');
-    expect(basketReminderStatus(null)).toBe('NOT_OPTED_IN');
-    const base = { current: null, requested: 'granted' as const, confirmationTicked: true, copyVersionId: BASKET_REMINDERS_COPY_VERSION, signedInAccount: true, phoneE164: '+256772123456' };
+    expect(basketReminderStatus(null)).toBe('ON_BY_DEFAULT');
+    const base = { current: null, requested: 'granted' as const, signedInAccount: true, phoneE164: '+256772123456' };
     expect(planBasketReminderChange(base)).toMatchObject({ ok: true, next: 'granted' });
-    expect(planBasketReminderChange({ ...base, confirmationTicked: false })).toEqual({ ok: false, reason: 'CONFIRMATION_REQUIRED' });
+    expect(planBasketReminderChange({ ...base, confirmationTicked: false, copyVersionId: 'stale' })).toMatchObject({ ok: true, next: 'granted' });
     expect(planBasketReminderChange({ ...base, phoneE164: null })).toEqual({ ok: false, reason: 'PHONE_REQUIRED' });
+    expect(mayReceiveBasketReminder({ state: null, currentPhoneHash: 'h' })).toEqual({ allowed: true, reason: 'ON_BY_DEFAULT' });
+    expect(mayReceiveBasketReminder({ state: 'withdrawn', currentPhoneHash: 'h' })).toEqual({ allowed: false, reason: 'SWITCHED_OFF' });
+    expect(mayReceiveBasketReminder({ state: 'granted', currentPhoneHash: null })).toEqual({ allowed: false, reason: 'NO_PHONE' });
     expect(planBasketReminderChange({ ...base, requested: 'withdrawn', confirmationTicked: false })).toMatchObject({ ok: true, next: 'withdrawn' });
   });
-  it('0210 pins the hash of the exact words, and sign-up shows the same words', () => {
+  it('0210 pins the hash of the words; since 2026-11-03 sign-up shows no box, only a line saying reminders are on', () => {
     const sql = readFileSync(resolve(root, 'apps/api/src/infrastructure/db/migrations/0210_basket_reminders.sql'), 'utf8');
     expect(sql).toContain(basketRemindersCopyHash());
     const reg = readFileSync(resolve(root, 'apps/web/src/pages/register.astro'), 'utf8');
-    // The whole sentence, not a prefix: the hash pins all of it, so the page must show all of it.
-    expect(reg).toContain(BASKET_REMINDERS_COPY);
-    expect(reg).not.toMatch(/name="basketReminders"[^>]*checked/);
-    // The page echoes the version of the words it showed; the API records that version, and refuses another.
-    expect(reg).toContain(`name="basketRemindersCopyVersion" value="${BASKET_REMINDERS_COPY_VERSION}"`);
+    expect(reg).not.toContain('name="basketReminders"');
+    expect(reg).toContain('we text you once about it, at most once a week');
+    expect(reg).toContain('Switch this off any time in My preferences');
     const auth = readFileSync(resolve(root, 'apps/api/src/interfaces/http/routes/auth.ts'), 'utf8');
     expect(auth).toContain("copyVersionId: typeof body.basketRemindersCopyVersion === 'string' && body.basketRemindersCopyVersion ? body.basketRemindersCopyVersion : BASKET_REMINDERS_COPY_VERSION");
   });
@@ -66,14 +67,14 @@ describe('basket reminders: sending', () => {
   };
   const GATE: Record<string, { allowed: boolean; reason: string; phoneE164: string | null }> = {
     yes: { allowed: true, reason: 'OPTED_IN', phoneE164: '+256772123456' },
-    no: { allowed: false, reason: 'NOT_OPTED_IN', phoneE164: null },
+    no: { allowed: false, reason: 'SWITCHED_OFF', phoneE164: null },
     unverified: { allowed: false, reason: 'PHONE_NOT_VERIFIED', phoneE164: null },
     closed: { allowed: false, reason: 'ACCOUNT_INACTIVE', phoneE164: null },
     stop: { allowed: false, reason: 'SUPPRESSED', phoneE164: null },
   };
   const gate = { mayRemind: async (u: string) => GATE[u] ?? GATE.no };
 
-  it('texts only consenting customers with a known number, and records each refusal with its own reason', async () => {
+  it('texts every customer who has not switched off, at a known number, and records each refusal with its own reason', async () => {
     const sent: string[] = [];
     const st = store([cand('a', 'yes'), cand('b', 'no'), cand('c', 'unverified'), cand('d', 'closed'), cand('e', 'stop')]);
     const uc = new SendBasketRemindersUseCase(st.s, gate, async (c) => { sent.push(c.abandonmentId); });
@@ -81,7 +82,7 @@ describe('basket reminders: sending', () => {
     expect(sent).toEqual(['a']);
     expect(st.claimed).toEqual(['a']);
     expect(st.settled).toEqual([['a', 'sent']]);
-    expect(st.marked).toEqual([['b', 'not_opted_in'], ['c', 'unverified'], ['d', 'inactive'], ['e', 'suppressed']]);
+    expect(st.marked).toEqual([['b', 'switched_off'], ['c', 'unverified'], ['d', 'inactive'], ['e', 'suppressed']]);
   });
 
   it('a basket with nothing left to buy, or a customer in the holdout, gets no text (recorded, not retried)', async () => {
@@ -168,33 +169,38 @@ describe('basket reminders: sending', () => {
     }
   });
 
-  it('records why a grant covered nothing: number changed since, or no evidence of the tick', async () => {
-    const st = store([cand('a', 'changed'), cand('b', 'noev')]);
-    const g = { mayRemind: async (u: string) => ({ allowed: false, reason: u === 'changed' ? 'PHONE_CHANGED_SINCE_OPT_IN' : 'NO_OPT_IN_EVIDENCE', phoneE164: null }) };
-    await new SendBasketRemindersUseCase(st.s, g, async () => undefined).execute(NOON_EAT);
-    expect(st.marked).toEqual([['a', 'phone_changed'], ['b', 'no_evidence']]);
+  it('0214: a GUEST basket is texted at the number typed at checkout unless a STOP stands against it; without a guest gate it is skipped', async () => {
+    const sent: Array<[string, string]> = [];
+    const guest = (id: string, phone: string | null): BasketReminderCandidate => ({ ...cand(id, 'yes'), ownerKind: 'GUEST', guestPhoneE164: phone });
+    const st = store([guest('g1', '+256772000001'), guest('g2', '+256772000002'), guest('g3', null), cand('u', 'yes')]);
+    const uc = new SendBasketRemindersUseCase(st.s, gate, async (c, phone) => { sent.push([c.abandonmentId, phone]); }, () => true, async () => 'treat', () => undefined,
+      async (phone) => (phone.endsWith('2') ? { allowed: false, reason: 'SUPPRESSED' } : { allowed: true, reason: 'ON_BY_DEFAULT' }));
+    expect(await uc.execute(NOON_EAT)).toMatchObject({ due: 4, sent: 2, refused: 2 });
+    expect(sent).toEqual([['g1', '+256772000001'], ['u', '+256772123456']]);
+    expect(st.marked).toEqual([['g2', 'suppressed'], ['g3', 'no_phone']]);
+    const none = store([guest('g1', '+256772000001')]);
+    await new SendBasketRemindersUseCase(none.s, gate, async () => undefined).execute(NOON_EAT);
+    expect(none.marked).toEqual([['g1', 'no_phone']]);
   });
 
-  it('ticking again while "On" repairs a grant that covers nothing (no evidence, or another number), and is a no-op otherwise', async () => {
+  it('switching on again after an off records a fresh grant with no box ticked; on while on is a no-op', async () => {
     const hasher = { hash: (v: string) => `h:${v}` };
     const events: any[] = []; const recorded: any[] = [];
-    const uc = (evidenceHash: string | null) => new BasketReminderConsentUseCases(
+    const uc = (state: string | null) => new BasketReminderConsentUseCases(
       {
-        getLatestConsentState: async () => ({ state: 'granted', last_consent_event_id: 'e1' }),
+        getLatestConsentState: async () => (state ? { state, last_consent_event_id: 'e1' } : null),
         commitStateChange: async (e: any) => { events.push(e); return { consent_event_id: e.consent_event_id, state: e.new_state, already_applied: false }; },
       } as never,
-      { latestFor: async () => (evidenceHash ? { endpointHash: evidenceHash } : null), record: async (r: any) => { recorded.push(r); } } as never,
+      { latestFor: async () => null, record: async (r: any) => { recorded.push(r); } } as never,
       { findAccount: async () => ({ id: 'u', email: null, phone: '0772123456', phoneVerified: true }) } as never,
       hasher as never,
     );
-    const tick = { userId: 'u', requested: 'granted' as const, confirmationTicked: true, copyVersionId: BASKET_REMINDERS_COPY_VERSION, surface: 'preferenceCentre' as const, idempotencyKey: 'k1', correlationId: 'c1' };
-    expect(await uc('h:+256772123456').change(tick)).toMatchObject({ ok: true, alreadyApplied: true });
-    expect(events).toHaveLength(0);
-    expect(await uc(null).change(tick)).toMatchObject({ ok: true, alreadyApplied: false });
-    expect(await uc('h:+256700000000').change({ ...tick, idempotencyKey: 'k2' })).toMatchObject({ ok: true, alreadyApplied: false });
-    expect(events.map((e) => [e.previous_state, e.new_state])).toEqual([['granted', 'granted'], ['granted', 'granted']]);
-    expect(events[0].reason).toMatch(/again, for the number now on the account/);
-    expect(recorded.map((r) => r.endpointHash)).toEqual(['h:+256772123456', 'h:+256772123456']);
+    const on = { userId: 'u', requested: 'granted' as const, confirmationTicked: false, copyVersionId: null, surface: 'preferenceCentre' as const, idempotencyKey: 'k1', correlationId: 'c1' };
+    expect(await uc('withdrawn').change(on)).toMatchObject({ ok: true, status: 'OPTED_IN', alreadyApplied: false });
+    expect(events.map((e) => [e.previous_state, e.new_state])).toEqual([['withdrawn', 'granted']]);
+    expect(recorded[0]).toMatchObject({ confirmation: 'SWITCH_ON_BUTTON', endpointHash: 'h:+256772123456' });
+    expect(await uc('granted').change({ ...on, idempotencyKey: 'k2' })).toMatchObject({ ok: true, alreadyApplied: true });
+    expect(await uc(null).change({ ...on, requested: 'withdrawn', idempotencyKey: 'k3' })).toMatchObject({ ok: true, status: 'WITHDRAWN', alreadyApplied: false });
   });
 
   it('the gate wants a number known to reach its owner: verified, or an order of theirs was delivered to it', async () => {
@@ -213,13 +219,19 @@ describe('basket reminders: sending', () => {
     expect(await gateFor({ phoneVerified: false }).mayRemind('u')).toMatchObject({ allowed: false, reason: 'PHONE_NOT_VERIFIED' });
     expect(await gateFor({ phoneVerified: false }, true).mayRemind('u')).toMatchObject({ allowed: true });
     expect(await gateFor({ phoneVerified: true, isActive: false }).mayRemind('u')).toMatchObject({ allowed: false, reason: 'ACCOUNT_INACTIVE' });
-    // The consent is read first: a customer who never ticked the box reads "not opted in" whatever their phone.
-    const neverTicked = new BasketReminderConsentUseCases(
+    // On by default: a customer who never touched the switch is covered, once their number is known.
+    const neverTouched = (verified: boolean) => new BasketReminderConsentUseCases(
       { getLatestConsentState: async () => null, hasActiveChannelSuppression: async () => false } as never, evidence as never,
-      { findAccount: async () => ({ id: 'u', email: null, phone: '0772123456', phoneVerified: false }), phoneReachedByOrder: async () => false } as never,
+      { findAccount: async () => ({ id: 'u', email: null, phone: '0772123456', phoneVerified: verified }), phoneReachedByOrder: async () => false } as never,
       hasher as never,
     );
-    expect(await neverTicked.mayRemind('u')).toMatchObject({ allowed: false, reason: 'NOT_OPTED_IN', phoneE164: null });
+    expect(await neverTouched(true).mayRemind('u')).toMatchObject({ allowed: true, reason: 'ON_BY_DEFAULT', phoneE164: '+256772123456' });
+    expect(await neverTouched(false).mayRemind('u')).toMatchObject({ allowed: false, reason: 'PHONE_NOT_VERIFIED', phoneE164: null });
+    const switchedOff = new BasketReminderConsentUseCases(
+      { getLatestConsentState: async () => ({ state: 'withdrawn', last_consent_event_id: 'e2' }), hasActiveChannelSuppression: async () => false } as never, evidence as never,
+      { findAccount: async () => ({ id: 'u', email: null, phone: '0772123456', phoneVerified: true }) } as never, hasher as never,
+    );
+    expect(await switchedOff.mayRemind('u')).toMatchObject({ allowed: false, reason: 'SWITCHED_OFF', phoneE164: null });
   });
 
   it('names what was left, in plain GSM within two parts, says the basket is on the account and how to stop', () => {
