@@ -27,7 +27,7 @@ export class DrizzleLoyaltyIdentityRepository implements ILoyaltyIdentityReposit
     return row?.createdAt ?? null;
   }
 
-  async otpCountSince(userId: string, since: Date): Promise<number> {
+  async otpCountSince(userId: string, since: Date, purpose?: 'reset'): Promise<number> {
     const [row] = await db
       .select({ n: sql<number>`count(*)::int` })
       .from(phoneVerificationCodes)
@@ -35,14 +35,17 @@ export class DrizzleLoyaltyIdentityRepository implements ILoyaltyIdentityReposit
         and(
           eq(phoneVerificationCodes.userId, userId),
           gte(phoneVerificationCodes.createdAt, since),
+          purpose === 'reset' ? sql`${phoneVerificationCodes.codeHash} like 'rst:%'` : undefined,
         ),
       );
     return row?.n ?? 0;
   }
 
-  async latestOtp(userId: string) {
+  async latestOtp(userId: string, purpose: 'verify' | 'reset' = 'verify') {
+    // Reset codes carry the 'rst:' marker (SmsPasswordResetUseCases.RESET_CODE_MARKER); verification codes never do.
+    const kind = purpose === 'reset' ? sql`${phoneVerificationCodes.codeHash} like 'rst:%'` : sql`${phoneVerificationCodes.codeHash} not like 'rst:%'`;
     const row = await db.query.phoneVerificationCodes.findFirst({
-      where: and(eq(phoneVerificationCodes.userId, userId), isNull(phoneVerificationCodes.consumedAt)),
+      where: and(eq(phoneVerificationCodes.userId, userId), isNull(phoneVerificationCodes.consumedAt), kind),
       orderBy: (t, { desc }) => [desc(t.createdAt)],
     });
     return row

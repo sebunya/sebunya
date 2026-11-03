@@ -163,8 +163,9 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
       if (added) {
         const a = document.createElement('a'); a.className = 'gp-assistant__add gp-assistant__add--done'; a.href = `/cart#line-${it.id}`; a.textContent = 'Added · View cart'; a.setAttribute('aria-label', `${it.name} added to cart. View cart`);
         btn.replaceWith(a);
-        const badge = document.getElementById('gpNavCart'); const n = (parseInt(badge?.textContent || '0', 10) || 0) + 1;
-        const w = window as unknown as { gpCartCount?: (n: number) => void }; try { w.gpCartCount?.(n); } catch { /* nav not present */ }
+        // The badge shows the server's own count from the cart page that came back, never a guessed +1.
+        const n = cartCountFromPage(await res.text().catch(() => ''));
+        const w = window as unknown as { gpCartCount?: (n: number) => void }; if (n !== null) { try { w.gpCartCount?.(n); } catch { /* nav not present */ } }
         ctx.track('NBA_CLICK', 'goldie-cart-add');
       } else {
         // The server did not accept the line (stock, limit); the cart page explains why.
@@ -250,13 +251,14 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
   // Closing folds the panel back into the launcher where the browser can morph it; opening from the launcher does the same in ShopAssistant.
   const closeMorph = () => (ctx.morph ? ctx.morph(close, false) : close());
   closeBtn.addEventListener('click', closeMorph);
-  clearBtn.addEventListener('click', () => { turns = []; persist(); freshConversation(); paint(); if (!ctx.narrow()) input.focus(); });
+  // Start over waits for the answer in progress: clearing mid-stream would push that answer into the new chat.
+  clearBtn.addEventListener('click', () => { if (busy) return; turns = []; persist(); freshConversation(); paint(); if (!ctx.narrow()) input.focus(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) closeMorph(); });
 
   const ask = async (question: string) => {
     const text = question.trim(); if (!text || busy) return;
     if (panel.hidden) open();
-    busy = true; send.disabled = true; input.value = ''; starters.hidden = true; clearBtn.hidden = false;
+    busy = true; send.disabled = true; clearBtn.disabled = true; input.value = ''; starters.hidden = true; clearBtn.hidden = false;
     turns.push({ role: 'user', content: text }); bubble('user', text); persist();
     const wait = typing();
     let reply: { row: HTMLElement; el: HTMLElement } | null = null; let answer = '';
@@ -342,7 +344,7 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
       if (answer) turns.push({ role: 'assistant', content: answer });
       else if (turns[turns.length - 1]?.role === 'user') turns.pop();
       persist();
-    } finally { clearInterval(timer); busy = false; send.disabled = false; if (!ctx.narrow() || document.activeElement === input) input.focus(); }
+    } finally { clearInterval(timer); busy = false; send.disabled = false; clearBtn.disabled = false; if (!ctx.narrow() || document.activeElement === input) input.focus(); }
   };
 
   // ---- how did I do? Once per conversation: after a thank-you, or after three answers.
@@ -478,4 +480,10 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(input.value); } });
   renderStarters();
   return { open, close, ask, isOpen: () => !panel.hidden };
+}
+
+/** The real basket count the cart page's nav was rendered with ("cartCount":N in its config), or null if absent. */
+export function cartCountFromPage(html: string): number | null {
+  const m = /"cartCount"\s*:\s*(\d{1,6})/.exec(html);
+  return m ? Number(m[1]) : null;
 }

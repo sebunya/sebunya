@@ -8,7 +8,7 @@ function rowsOf(result: unknown): Array<Record<string, unknown>> {
 }
 
 /**
- * Aggregates only, over indexed columns; no per-customer field leaves the query. Windows are closed [start, end]
+ * Aggregates only, over indexed columns; no per-customer field leaves the query. Windows are half-open [start, end + 1ms), i.e. before the next Kampala day starts,
  * instants derived from Kampala calendar days by the use case, exactly as Commerce Analytics does.
  */
 export class DrizzleSalesFunnelReader implements ISalesFunnelReader {
@@ -20,24 +20,24 @@ export class DrizzleSalesFunnelReader implements ISalesFunnelReader {
           where e.event_type = 'PRODUCT_VIEWED'
             and coalesce(e.producer, '') <> 'api-engine'
             and coalesce(e.profile_id::text, e.customer_id::text, e.anonymous_id, e.browser_id) is not null
-            and e.created_at >= ${start} and e.created_at <= ${end}) as "productViewers",
+            and e.created_at >= ${start} and e.created_at < ${new Date(end.getTime() + 1)}) as "productViewers",
         (select count(*)::int
            from carts c
-          where c.updated_at >= ${start} and c.updated_at <= ${end}
+          where c.updated_at >= ${start} and c.updated_at < ${new Date(end.getTime() + 1)}
             and exists (select 1 from cart_items i where i.cart_id = c.id)) as "cartsWithItems",
-        (select count(*)::int from orders o where o.created_at >= ${start} and o.created_at <= ${end}) as "ordersPlaced",
-        (select coalesce(sum(o.total_amount), 0)::bigint from orders o where o.created_at >= ${start} and o.created_at <= ${end}) as "ordersPlacedValueUgx",
+        (select count(*)::int from orders o where o.created_at >= ${start} and o.created_at < ${new Date(end.getTime() + 1)}) as "ordersPlaced",
+        (select coalesce(sum(o.total_amount), 0)::bigint from orders o where o.created_at >= ${start} and o.created_at < ${new Date(end.getTime() + 1)}) as "ordersPlacedValueUgx",
         (select count(*)::int from orders o
-          where o.created_at >= ${start} and o.created_at <= ${end} and o.payment_status = 'paid') as "ordersPaid",
+          where o.created_at >= ${start} and o.created_at < ${new Date(end.getTime() + 1)} and o.payment_status = 'paid') as "ordersPaid",
         (select coalesce(sum(o.total_amount), 0)::bigint from orders o
-          where o.created_at >= ${start} and o.created_at <= ${end} and o.payment_status = 'paid') as "ordersPaidValueUgx",
+          where o.created_at >= ${start} and o.created_at < ${new Date(end.getTime() + 1)} and o.payment_status = 'paid') as "ordersPaidValueUgx",
         (select coalesce(sum(o.total_amount), 0)::bigint from orders o
-          where o.created_at >= ${start} and o.created_at <= ${end}
+          where o.created_at >= ${start} and o.created_at < ${new Date(end.getTime() + 1)}
             and o.payment_status <> 'paid' and o.status <> 'cancelled') as "unpaidOpenValueUgx",
         (select count(*)::int from cart_abandonments a
-          where a.classified_at >= ${start} and a.classified_at <= ${end}) as "abandonedCarts",
+          where a.classified_at >= ${start} and a.classified_at < ${new Date(end.getTime() + 1)}) as "abandonedCarts",
         (select coalesce(sum(a.subtotal_ugx), 0)::bigint from cart_abandonments a
-          where a.classified_at >= ${start} and a.classified_at <= ${end}) as "abandonedCartValueUgx"
+          where a.classified_at >= ${start} and a.classified_at < ${new Date(end.getTime() + 1)}) as "abandonedCartValueUgx"
     `);
     const r = rowsOf(result)[0] ?? {};
     const n = (k: string) => Number(r[k] ?? 0);

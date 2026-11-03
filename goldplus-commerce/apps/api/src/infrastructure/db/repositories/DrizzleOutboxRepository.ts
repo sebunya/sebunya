@@ -75,6 +75,17 @@ export const LEASE_DURATION_MS = 5 * 60_000;
 export class DrizzleOutboxRepository implements IOutboxRepository {
   constructor(private readonly workerId: string = WORKER_ID) {}
 
+  /** Extends this worker's lease on one still-unprocessed event; false when another worker now holds it. */
+  async renewLease(eventId: string, now: Date): Promise<boolean> {
+    const leaseExpiresAt = new Date(now.getTime() + LEASE_DURATION_MS);
+    const renewed = await db
+      .update(outboxEvents)
+      .set({ leaseExpiresAt, nextAttemptAt: leaseExpiresAt })
+      .where(and(eq(outboxEvents.id, eventId), eq(outboxEvents.workerId, this.workerId), eq(outboxEvents.isProcessed, false)))
+      .returning({ id: outboxEvents.id });
+    return renewed.length === 1;
+  }
+
   /**
    * Claims a batch in ONE short transaction, then returns. No external call
    * happens inside it: holding a database transaction open across a slow
@@ -87,16 +98,6 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
    * completion — so a worker whose lease had expired could still come back and
    * overwrite the outcome recorded by its successor.
    */
-  async renewLease(eventId: string, now: Date): Promise<boolean> {
-    const leaseExpiresAt = new Date(now.getTime() + LEASE_DURATION_MS);
-    const renewed = await db
-      .update(outboxEvents)
-      .set({ leaseExpiresAt, nextAttemptAt: leaseExpiresAt })
-      .where(and(eq(outboxEvents.id, eventId), eq(outboxEvents.workerId, this.workerId), eq(outboxEvents.isProcessed, false)))
-      .returning({ id: outboxEvents.id });
-    return renewed.length === 1;
-  }
-
   async claimDueBatch(
     now: Date,
     limit: number,
@@ -179,8 +180,10 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
    * recording it as 'processed' — which is what happened before — made it
    * indistinguishable from a success in every metric and every query.
    */
-  async markDeadLettered(eventId: string, error: string): Promise<boolean> {
+  async markDeadLettered(eventId: string, error: string, opts?: { sentTargets?: string[] }): Promise<boolean> {
     const now = new Date();
+    // Keeps who already got it, so a re-queued dead letter does not send it to them again (review 228).
+    const sent = opts?.sentTargets?.length ? { _sentTargets: opts.sentTargets } : null;
     const updated = await db
       .update(outboxEvents)
       .set({
@@ -191,7 +194,7 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         lastError: error,
         workerId: null,
         leaseExpiresAt: null,
-        payload: scrubbedPayload(),
+        payload: sent ? sql`(case when jsonb_typeof(${payloadObject()}) = 'object' then (${scrubbedPayload()}) || ${pgJsonb(sent)} else ${scrubbedPayload()} end)` : scrubbedPayload(),
       })
       .where(and(eq(outboxEvents.id, eventId), eq(outboxEvents.workerId, this.workerId)))
       .returning({ id: outboxEvents.id });

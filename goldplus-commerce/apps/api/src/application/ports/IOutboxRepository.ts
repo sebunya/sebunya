@@ -65,7 +65,7 @@ export interface IOutboxRepository {
    * the event was never delivered, and recording it as processed made it
    * indistinguishable from a success in every metric and query.
    */
-  markDeadLettered?(eventId: string, error: string): Promise<boolean | void>;
+  markDeadLettered?(eventId: string, error: string, opts?: { sentTargets?: string[] }): Promise<boolean | void>;
   /** Operational counts, read from status rather than the processed boolean. */
   metrics?(now?: Date): Promise<{
     pending: number;

@@ -64,7 +64,13 @@ const TOO_MANY_ATTEMPTS_MESSAGE = 'Too many wrong codes. Ask for a new code and 
  * Domain separation. `hash` is the same SHA-256 the phone verification flow
  * uses; the prefix is what keeps the two code spaces apart in one table.
  */
-export const resetCodeHash = (hash: (v: string) => string, code: string): string => hash(`password-reset:${code}`);
+/**
+ * Reset codes share phone_verification_codes with verification OTPs. The stored hash carries a RESET_CODE_MARKER
+ * prefix (column is varchar(64), so the digest is cut to fit) and the reset path reads ONLY marked rows, while
+ * verification reads only unmarked ones: a verification OTP sent after a reset code no longer hides it (review 228).
+ */
+export const RESET_CODE_MARKER = 'rst:';
+export const resetCodeHash = (hash: (v: string) => string, code: string): string => `${RESET_CODE_MARKER}${hash(`password-reset:${code}`)}`.slice(0, 64);
 
 export interface ResetCodeDeliveryPort {
   /**
@@ -135,7 +141,7 @@ export class RequestSmsPasswordResetUseCase {
     if (issuedThisHour >= OTP_MAX_PER_HOUR) {
       return generic({ userFound: true, throttled: true, delivery: 'NOT_ATTEMPTED' });
     }
-    if ((await this.identity.otpCountSince(user.id, new Date(at.getTime() - 86_400_000))) >= SMS_RESET_MAX_PER_DAY) {
+    if ((await this.identity.otpCountSince(user.id, new Date(at.getTime() - 86_400_000), 'reset')) >= SMS_RESET_MAX_PER_DAY) {
       return generic({ userFound: true, throttled: true, delivery: 'NOT_ATTEMPTED' });
     }
 
@@ -252,7 +258,7 @@ export class ResetPasswordWithSmsCodeUseCase {
     const user = await this.users.findByPhone(phone.e164);
     if (!user || !user.isActive) return noLiveCode();
 
-    const otp = await this.identity.latestOtp(user.id);
+    const otp = await this.identity.latestOtp(user.id, 'reset');
     if (!otp || otp.consumedAt || otp.phoneE164 !== phone.e164) return noLiveCode();
     if (otp.expiresAt.getTime() <= this.now().getTime()) return noLiveCode();
 

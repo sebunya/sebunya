@@ -379,8 +379,13 @@ export class DefaultNotificationRouter implements INotificationRouter {
         let recheckFailed = false;
         if (!refusal && this.basketReminderRecheck) {
           const userId = typeof payload.userId === 'string' ? payload.userId : '';
-          const still = userId ? await this.basketReminderRecheck(userId, customerPhone).catch(() => { recheckFailed = true; return false; }) : false;
-          if (!still && !recheckFailed) refusal = 'Not sent: basket reminders no longer cover this customer and number (switched off, number changed or STOP since it was queued).';
+          // Reminders are queued only for signed-in customers (consent lives on the account). One without a userId has
+          // no consent to read again: it is refused, saying so, not reported as a STOP or a changed number.
+          if (!userId) refusal = 'Not sent: the reminder names no customer account, so its consent cannot be checked again.';
+          else {
+            const still = await this.basketReminderRecheck(userId, customerPhone).catch(() => { recheckFailed = true; return false; });
+            if (!still && !recheckFailed) refusal = 'Not sent: basket reminders no longer cover this customer and number (switched off, number changed or STOP since it was queued).';
+          }
         }
         const provider: INotificationProvider = refusal
           ? { dispatch: async () => ({ status: 'DISABLED', providerCode: 'BASKET_REMINDER_REFUSED', providerMessage: refusal, retryable: false }) }
@@ -459,6 +464,11 @@ export class DefaultNotificationRouter implements INotificationRouter {
         break;
     }
 
+    // A dry-run-only event (the row's dry_run_only, or the payload's flag) leaves nothing on ANY event type: every
+    // target, its fallback included, is prepared and not sent. Automation actions record their own DRY_RUN outcome.
+    if (payload.dryRunOnly === true && eventType !== 'AUTOMATION_ACTION_REQUESTED') {
+      return targets.map(({ fallback: _fallback, ...t }) => ({ ...t, provider: honourDryRun(t.provider, true) }));
+    }
     return targets;
   }
 }

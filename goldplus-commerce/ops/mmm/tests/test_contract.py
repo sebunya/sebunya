@@ -240,3 +240,14 @@ def test_level_controls_are_carried_forward_not_zero_filled():
     wide = densify_controls(controls, dates)
     assert wide["usd_ugx"].tolist() == [4100.0, 4100.0, 4100.0, 4120.0, 4120.0]
     assert wide["rain_mm"].tolist() == [0.0, 0.0, 12.5, 0.0, 0.0]
+
+
+def test_partly_reported_impressions_fall_back_to_spend(small_daily):
+    # Review 233: impressions only from Jan 13 while spend runs all along -> no impressions column (spend is the media).
+    partial = small_daily.copy()
+    partial["impressions"] = partial["impressions"].astype("Int64")
+    early = (partial["channel"] == "meta") & (partial["date"] < "2025-01-13")
+    partial.loc[early, "impressions"] = pd.NA
+    weekly = to_weekly(validate_daily(partial), None)
+    assert "impressions_meta" not in weekly.columns
+    assert "spend_meta" in weekly.columns

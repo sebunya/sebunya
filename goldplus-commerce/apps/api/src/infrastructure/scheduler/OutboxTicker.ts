@@ -25,6 +25,9 @@ async function runMeasurementDelivery() {
       } catch (err) {
         if (!(err instanceof QueueUnavailableError)) throw err;
         queueUp = false; // Redis went away mid-cycle: the rest go inline too.
+        // A timed-out add may still land and run on the worker: not run inline as well. Left for the worker, or for
+        // the re-schedule two minutes on (a new generation) if it never landed (review 231).
+        if (err.mayHaveLanded) { logger.warn({ jobId }, '[OutboxTicker] measurement enqueue timed out; left for the worker or the next schedule'); return false; }
         logger.warn({ jobId }, '[OutboxTicker] measurement queue unavailable; delivering inline');
       }
     }

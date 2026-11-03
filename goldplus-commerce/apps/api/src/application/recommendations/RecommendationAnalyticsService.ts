@@ -234,6 +234,8 @@ export class RecommendationAnalyticsService {
   }
 
   async getDepthMetrics(windowDays = 30) {
+    // Same 1..90 clamp as its siblings (review 228); NaN or junk falls back to 30.
+    windowDays = Number.isFinite(windowDays) ? Math.min(90, Math.max(1, Math.trunc(windowDays))) : 30;
     const raw = await this.repo.depthMetricsRaw(windowDays);
     const unknownPlacement = safeShare(raw.nullPlacementEvents + raw.invalidPlacementEvents, raw.totalEvents);
     const top5Events = raw.topProducts.reduce((sum, t) => sum + t.events, 0);

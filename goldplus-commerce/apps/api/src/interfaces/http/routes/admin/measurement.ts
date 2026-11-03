@@ -159,12 +159,17 @@ routes.get('/match-quality', requirePermissions([PERMISSIONS.REPORTS_READ]), asy
 // GET /admin/measurement/attribution/:orderId — attribution for specific order
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Marketing attribution for a specific order, by its order reference (0111).
+const ORDER_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Marketing attribution for a specific order, by its order id or order reference (0111).
 routes.get('/attribution/:orderId', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   const ref = (c.req.param('orderId') || '').trim();
   if (!ref) return c.json({ success: false, error: 'MISSING_ORDER_ID' }, 400);
   try {
-    const row = await registry.orderAttributionRepo.getByOrderNumber(ref);
+    // An order id (UUID) or its GP- number, as typed on the page; numbers are matched upper-case (review 231).
+    const row = ORDER_UUID.test(ref)
+      ? await registry.orderAttributionRepo.getByOrderId(ref.toLowerCase())
+      : await registry.orderAttributionRepo.getByOrderNumber(ref.toUpperCase());
     if (!row) return c.json({ success: false, error: 'NOT_FOUND' }, 404);
     return c.json({
       success: true,

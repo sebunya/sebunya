@@ -73,6 +73,9 @@ export function safeClarityValue(value: string): string {
   return value.startsWith('/') ? safe.replace(/^https:\/\/shopgoldplus\.com/, '') : safe;
 }
 
+/** The metric name of the row that marks a breakdown Clarity answered with nothing for the day. */
+export const CLARITY_EMPTY_MARKER = '_answered_empty';
+
 export class ClarityInsightsPull {
   constructor(private readonly token: string | undefined, private readonly fetchImpl: typeof fetch = fetch) {}
 
@@ -102,7 +105,10 @@ export class ClarityInsightsPull {
         if (!res.ok) throw new Error(`Clarity answered HTTP ${res.status}`);
         const json = await res.json() as ClarityInsightItem[];
         if (!Array.isArray(json)) throw new Error('Clarity answered something other than the insights list');
-        const flat = flatten(json, breakdown);
+        // An answered call with nothing numeric in it (a quiet day) still counts as done: one marker row, so the next
+        // run in the window does not spend another of the ten daily calls on it (review 230). Readers skip the marker.
+        const pulled = flatten(json, breakdown);
+        const flat = pulled.length ? pulled : [{ breakdownValue: '', metric: CLARITY_EMPTY_MARKER, field: 'empty', value: 0 }];
         let n = 0;
         await db.transaction(async (tx) => {
           for (const r of flat) {
@@ -112,6 +118,7 @@ export class ClarityInsightsPull {
             n++;
           }
         });
+        if (!pulled.length) n = 0;
         out.calls[breakdown] = n; out.rows += n;
       } catch (err) {
         out.calls[breakdown] = { error: String((err as Error).message ?? err).slice(0, 200) };
@@ -128,7 +135,7 @@ export class ClarityInsightsPull {
     const day = String(last.day);
     const totals: Record<string, number> = {};
     let fetchedAt: string | null = null;
-    for (const r of rows(await db.execute(sql`select metric, field, value, fetched_at from measurement.clarity_insights where day = ${day}::date and breakdown = 'total' and breakdown_value = ''`))) {
+    for (const r of rows(await db.execute(sql`select metric, field, value, fetched_at from measurement.clarity_insights where day = ${day}::date and breakdown = 'total' and breakdown_value = '' and metric <> ${CLARITY_EMPTY_MARKER}`))) {
       totals[`${r.metric}.${r.field}`] = Number(r.value);
       if (r.fetched_at) fetchedAt = new Date(r.fetched_at).toISOString();
     }

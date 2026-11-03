@@ -204,6 +204,6 @@ describe('what the admin sees is what the shop has', () => {
 describe('consent is read for the right person', () => {
   it('the paid-social lookup passes its identifiers in the declared order', () => {
     expect(read('apps/api/src/application/use-cases/measurement/RoutePaidSocialEventUseCase.ts'))
-      .toMatch(/getCurrentState\(sessionId, userId\)/);
+      .toMatch(/advertisingConversionsSent\(sessionId, userId\)/);
   });
 });

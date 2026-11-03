@@ -76,7 +76,12 @@ export class WhatsAppMarketingConsentUseCases implements IWhatsAppMarketingGate 
       };
       return { ok: false, code: plan.reason, message: message[plan.reason] ?? 'That choice was not saved.' };
     }
-    if (plan.noOp) return { ok: true, status: whatsappMarketingStatus(plan.next), alreadyApplied: true };
+    if (plan.noOp) {
+      // The same request retried after its state committed: the state is a no-op now, the evidence may still be missing.
+      const retriedId = eventIdFor(input.userId, input.idempotencyKey);
+      if (current?.last_consent_event_id === retriedId) await this.writeEvidence(retriedId, input, phone);
+      return { ok: true, status: whatsappMarketingStatus(plan.next), alreadyApplied: true };
+    }
 
     const consentEventId = eventIdFor(input.userId, input.idempotencyKey);
     const receipt = await this.consent.commitStateChange({
@@ -99,7 +104,15 @@ export class WhatsAppMarketingConsentUseCases implements IWhatsAppMarketingGate 
       retention_policy: 'consent-audit-v1',
       effective_at: new Date().toISOString(),
     });
-    if (!receipt.already_applied) {
+    await this.writeEvidence(consentEventId, input, phone);
+    return { ok: true, status: whatsappMarketingStatus(receipt.state), alreadyApplied: receipt.already_applied };
+  }
+
+  /**
+   * Idempotent on consentEventId (onConflictDoNothing), so it is written on every call, retries included: a retry
+   * after an evidence write that failed (state committed, no evidence) repairs it instead of skipping it (review 228).
+   */
+  private async writeEvidence(consentEventId: string, input: { requested: WhatsAppChangeRequest; ipAddress?: string | null; userAgent?: string | null }, phone: string | null) {
       const hashOrNull = (v: string | null | undefined) => (v ? this.hasher.hash(v) : null);
       await this.evidence.record({
         consentEventId,
@@ -114,9 +127,7 @@ export class WhatsAppMarketingConsentUseCases implements IWhatsAppMarketingGate 
         userAgentHash: hashOrNull(input.userAgent?.trim().slice(0, 512) || null),
         sourceSurface: WHATSAPP_MARKETING_SOURCE_SURFACE,
       });
-    }
-    return { ok: true, status: whatsappMarketingStatus(receipt.state), alreadyApplied: receipt.already_applied };
-  }
+      }
 
   /** The messaging gate. Transactional messages never call this. */
   async mayMarket(accountUserId: string): Promise<{ allowed: boolean; reason: string; phoneE164: string | null }> {

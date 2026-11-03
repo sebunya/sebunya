@@ -21,8 +21,10 @@ export interface ILoyaltyIdentityRepository {
    * asked for one.
    */
   lastOtpIssuedAt(userId: string): Promise<Date | null>;
-  otpCountSince(userId: string, since: Date): Promise<number>;
-  latestOtp(userId: string): Promise<{ id: string; phoneE164: string; codeHash: string; attempts: number; expiresAt: Date; consumedAt: Date | null } | null>;
+  /** purpose 'reset' counts only password-reset codes; omitted counts every code (the shared SMS budget). */
+  otpCountSince(userId: string, since: Date, purpose?: 'reset'): Promise<number>;
+  /** 'verify' (default) never returns a password-reset code; 'reset' returns only those. */
+  latestOtp(userId: string, purpose?: 'verify' | 'reset'): Promise<{ id: string; phoneE164: string; codeHash: string; attempts: number; expiresAt: Date; consumedAt: Date | null } | null>;
   bumpOtpAttempts(id: string): Promise<number>;
   consumeOtp(id: string): Promise<void>;
   markPhoneVerified(userId: string, phoneE164: string): Promise<void>;

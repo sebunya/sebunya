@@ -70,8 +70,14 @@ const errorMessage = (err: unknown): string => (err instanceof Error ? err.messa
  */
 export class QueueUnavailableError extends Error {
   readonly code = 'QUEUE_UNAVAILABLE';
-  constructor(queueName: string, reason: string) {
+  /**
+   * True when queue.add was already sent and only its answer was late (the enqueue timeout): the job may still land
+   * in Redis, so a caller must not also run it inline (review 231). False when nothing was sent.
+   */
+  readonly mayHaveLanded: boolean;
+  constructor(queueName: string, reason: string, mayHaveLanded = false) {
     super(`Queue ${queueName} unavailable: ${reason}`);
+    this.mayHaveLanded = mayHaveLanded;
     this.name = 'QueueUnavailableError';
   }
 }
@@ -254,7 +260,7 @@ export class QueueService {
       await Promise.race([
         queue.add(jobName, payload, { jobId }),
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new QueueUnavailableError(queueName, 'enqueue timed out')), ENQUEUE_TIMEOUT_MS);
+          timer = setTimeout(() => reject(new QueueUnavailableError(queueName, 'enqueue timed out', true)), ENQUEUE_TIMEOUT_MS);
           timer.unref?.();
         }),
       ]);

@@ -34,16 +34,10 @@ measurementPaidSocialRoutes.post('/destinations/:id/update', requirePermissions(
   if (!body || typeof body !== 'object') {
     return c.json({ success: false, status: 'ERROR', error: 'Body must be JSON.' }, 400);
   }
-  const result = await registry.updatePaidSocialDestinationUseCase.execute(destinationId, body);
-  await registry.createAuditLogUseCase.execute({
-    actorId: (c.get('user') as { id?: string } | undefined)?.id ?? 'unknown',
-    action: 'PAID_SOCIAL_DESTINATION_UPDATED',
-    entity: 'paid_social_destination',
-    entityId: destinationId,
-    // What was asked for, so enabling a platform is attributable after the fact.
-    newState: { requested: body },
-  }).catch(() => undefined);
-  return c.json({ success: true, status: 'OK', data: result });
+  // Nothing stores a destination change yet (UpdatePaidSocialDestinationUseCase is a stub), so this says so instead
+  // of answering OK and auditing a change that never happened. The body (it can hold platform tokens) is neither
+  // echoed nor written to the audit log (review 231; CLAUDE.md: disabled integrations return "Not configured").
+  return c.json({ success: false, status: 'NOT_CONFIGURED', error: 'Not configured: paid-social destinations cannot be edited here yet.' }, 501);
 });
 
 // Re-sending a conversion event to an ad platform is an outbound mutation with

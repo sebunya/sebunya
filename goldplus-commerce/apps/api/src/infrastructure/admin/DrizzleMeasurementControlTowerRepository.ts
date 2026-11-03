@@ -2,6 +2,7 @@ import { eq, count, sql, isNotNull, desc, isNull, max, and } from 'drizzle-orm';
 import { db } from '../db/client';
 import { env } from '../../config/env';
 import { outboxEvents } from '../db/schema/system';
+import { DEAD_LETTER_STATES } from '../../domain/outbox/TerminalState';
 import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDestinationRepository';
 import {
   IMeasurementControlTowerRepository,
@@ -50,7 +51,11 @@ const rowsOf = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: an
 export class DrizzleMeasurementControlTowerRepository implements IMeasurementControlTowerRepository {
   async getMeasurementHealthSummary(): Promise<MeasurementHealthSummary> {
     const [auditCountResult] = await db.select({ value: count() }).from(measurementAuditLogs);
-    const [dlqCountResult] = await db.select({ value: count() }).from(measurementDeadLetterEvents).where(eq(measurementDeadLetterEvents.isResolved, false));
+    const [measurementDlq] = await db.select({ value: count() }).from(measurementDeadLetterEvents).where(eq(measurementDeadLetterEvents.isResolved, false));
+    // Browser events dead-letter in the outbox (TerminalState), not in the measurement DLQ; count both.
+    const [outboxDlq] = await db.select({ value: count() }).from(outboxEvents)
+      .where(and(eq(outboxEvents.eventType, 'TELEMETRY_DISPATCH'), sql`${outboxEvents.status} in (${sql.raw(DEAD_LETTER_STATES.map((st) => `'${st}'`).join(', '))})`));
+    const dlqCountResult = { value: Number(measurementDlq?.value ?? 0) + Number(outboxDlq?.value ?? 0) };
     // Queued = browser events waiting in the outbox to be dispatched. This card
     // used to show the dead-letter count (the same query as "failed"), so the
     // page reported failures as a queue and counted them twice in its total.

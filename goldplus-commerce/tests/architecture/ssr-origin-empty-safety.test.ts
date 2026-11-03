@@ -41,8 +41,8 @@ describe('SSR origin empty-safety (RC-1 guard)', () => {
     expect(api).toMatch(/import\.meta\.env\.SSR/);
   });
 
-  it('server-side proxies do not hairpin: measurement proxy prefers INTERNAL_API_ORIGIN', () => {
+  it('server-side proxies do not hairpin: measurement proxy uses the canonical resolver (which prefers INTERNAL_API_ORIGIN)', () => {
     const proxy = fs.readFileSync(path.join(WEB_SRC, 'pages/api/admin/measurement/[...path].ts'), 'utf8');
-    expect(proxy).toMatch(/INTERNAL_API_ORIGIN/);
+    expect(proxy).toMatch(/import \{ apiBase \} from '\.\.\/\.\.\/\.\.\/\.\.\/lib\/api'/);
   });
 });
