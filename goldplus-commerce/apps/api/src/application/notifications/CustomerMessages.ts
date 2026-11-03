@@ -295,7 +295,9 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
     case 'ORDER_FULFILLMENT_PROCESSING':
       return `${SHOP_NAME}: your order${ref} is being packed at our shop. We will message you when the rider leaves. Track it: ${track}`;
     case 'ORDER_DISPATCHED':
-      return `${SHOP_NAME}: your order${ref} is on its way with our rider. Please keep your phone on. Track it: ${track}`;
+      // Short enough that the SMS channel tag fits in one part: at 156 characters the tag (11 more) made a second
+      // part, so the rule in tagShopLinksInSms dropped it and the most-tapped link we send arrived as "direct".
+      return `${SHOP_NAME}: your order${ref} is on its way with our rider. Keep your phone on. Track it: ${track}`;
     case 'ORDER_FULFILLMENT_COMPLETED':
       // The one moment to ask for a review: the goods have just arrived. Same text, one link more.
       return `${SHOP_NAME}: your order${ref} has been delivered. Thank you. How was it? Rate it in a minute: ${reviewOrderUrl(d.orderNumber)} If anything is wrong, call ${phone}.`;
