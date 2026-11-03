@@ -211,7 +211,8 @@ export const otpHash = (v: string) => {
     .digest();
   return createHmac('sha256', otpKey).update(v).digest('hex');
 };
-export const otpRandom = () => String(randomInt(100000, 999999));
+// randomInt's upper bound is exclusive: 1_000_000 so 999999 is a possible code too.
+export const otpRandom = () => String(randomInt(100000, 1_000_000));
 
 /* ── Tier repository (0086, PART L) ─────────────────────────────────────── */
 import { loyaltyTierAssignments, loyaltyTiers } from '../db/schema/loyalty';

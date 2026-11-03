@@ -382,7 +382,9 @@ describe('0091 relaxed controls and activation', () => {
 
 describe('customer copy honesty', () => {
   it('renders the loyalty terms from live programme config, not hardcoded numbers', () => {
-    expect(terms).toContain('/commerce/loyalty-programme');
+    // The programme comes from the API through the shared loader (lib/loyaltyProgramme).
+    expect(terms).toContain('loadProgrammeAndDraw()');
+    expect(read('apps/web/src/lib/loyaltyProgramme.ts')).toContain('/commerce/loyalty-programme');
     expect(terms).toContain('programme.earnRatePer1000Ugx');
     expect(terms).toContain('programme.expiryDays');
     // The "not active" branch must exist so the page never invents terms.

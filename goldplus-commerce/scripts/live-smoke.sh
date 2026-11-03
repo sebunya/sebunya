@@ -41,7 +41,7 @@ else check "foreign origin still refused" "$(refused && echo 1 || echo 0)" "a cr
 providers=$(curl -s --max-time 15 "$API/auth/social/providers")
 for p in google facebook; do
   if printf '%s' "$providers" | grep -q "\"provider\":\"$p\",\"displayName\":\"[A-Za-z]*\",\"configured\":true"; then echo "  ok    sign-in with $p configured"
-  else echo "  WARN  sign-in with $p NOT configured (check ${p^^}_CLIENT_ID / _SECRET in .env.production, then restart api)"; warn=1; fi
+  else echo "  WARN  sign-in with $p NOT configured (check $(printf '%s' "$p" | tr a-z A-Z)_CLIENT_ID / _SECRET in .env.production, then restart api)"; warn=1; fi
 done
 [ "$warn" = 1 ] && echo "note: some checks were challenged by Cloudflare (Bot Fight Mode or a rate rule); run this from a browser network to be sure."
 if [ "$fail" = 1 ]; then echo "LIVE SMOKE FAILED: fix forward or roll back (docker tags rollback-<previous sha>)."; exit 1; fi
