@@ -15,7 +15,9 @@
 
 export const BEST_WINDOW_DAYS = 28;
 export const MIN_RATE_DENOMINATOR = 100;
-export const MIN_SESSION_DENOMINATOR = 500;
+export const MIN_SESSION_DENOMINATOR = 300;
+/** Below this many paid orders in 90 days, margin per order is an anecdote; the no-cost-data rule stands in. */
+export const MIN_PAID_ORDERS_FOR_MARGIN = 20;
 export const SHRINKAGE_K = 20;
 export const MAX_ABANDONMENT_STEP_POINTS = 15;
 export const MAX_CONVERSION_MULTIPLE = 2;
@@ -47,6 +49,7 @@ export interface Suggestion {
 export interface SuggestionInput {
   days: DayPoint[];
   /** Average paid order (UGX) and gross margin per paid order (UGX) over the last 90 days; coverage = share of sold lines with a cost on file. */
+  paidOrders: number;
   aovUgx: number;
   marginPerPaidOrderUgx: number;
   costCoverage: number;
@@ -136,13 +139,15 @@ export function suggestGoals(input: SuggestionInput): Suggestion[] {
   }
 
   // Cost per order: a share of gross margin per paid order; without cost data, a fifth of the average paid order.
-  const hasCosts = input.costCoverage >= 0.5 && input.marginPerPaidOrderUgx > 0;
+  const hasCosts = input.costCoverage >= 0.5 && input.marginPerPaidOrderUgx > 0 && input.paidOrders >= MIN_PAID_ORDERS_FOR_MARGIN;
   const share = Math.max(0, Math.min(100, input.cpaMarginSharePct)) / 100;
   const cpa = hasCosts ? Math.round(input.marginPerPaidOrderUgx * share) : Math.round(input.aovUgx * NO_COST_DATA_CPA_SHARE);
   out.push({ key: 'goal_cost_per_order_ugx', label: 'Cost per order at most', unit: 'UGX', current: null, suggested: Math.max(1, cpa), confidence: hasCosts ? 'MEASURED' : 'DEFAULT', impactUgxPerMonth: null,
     basis: hasCosts
       ? `${Math.round(share * 100)}% of the gross margin per paid order (${Math.round(input.marginPerPaidOrderUgx).toLocaleString('en-UG')} UGX over the last 90 days, ${Math.round(input.costCoverage * 100)}% of sold lines with a cost on file).`
-      : `Only ${Math.round(input.costCoverage * 100)}% of sold lines have a cost on file, so a fifth of the average paid order (${Math.round(input.aovUgx).toLocaleString('en-UG')} UGX) stands in. Enter product costs to get a margin-based cap.` });
+      : input.paidOrders < MIN_PAID_ORDERS_FOR_MARGIN
+        ? `Only ${input.paidOrders} paid orders in 90 days (${MIN_PAID_ORDERS_FOR_MARGIN} needed before margin per order means anything), so a fifth of the average paid order (${Math.round(input.aovUgx).toLocaleString('en-UG')} UGX) stands in.`
+        : `Only ${Math.round(input.costCoverage * 100)}% of sold lines have a cost on file, so a fifth of the average paid order (${Math.round(input.aovUgx).toLocaleString('en-UG')} UGX) stands in. Enter product costs to get a margin-based cap.` });
 
   // Micro conversion values: shrunk P(order in 30 days | event) x margin per paid order (or AOV x 20% without costs).
   const perOrder = hasCosts ? input.marginPerPaidOrderUgx : input.aovUgx * NO_COST_DATA_CPA_SHARE;

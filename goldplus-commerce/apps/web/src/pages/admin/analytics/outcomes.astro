@@ -161,6 +161,7 @@ const confidenceTone = (c: string) => c === "MEASURED" ? "bg-emerald-50 text-eme
                 </li>
               ))}
             </ol>
+            {data.funnel.checkoutsStarted === 0 && data.funnel.cartsWithItems > 0 && <p class="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-800">No checkout starts were recorded against {fmtNumber(data.funnel.cartsWithItems)} carts: the checkout feed is not arriving, so neither abandonment rate is shown.</p>}
             <p class="mt-4 text-xs text-slate-500">Checkouts started are browsers that opened the checkout page in the period (begin_checkout). Carts are server carts touched in the period, so a checkout from last week's cart can make the first rate not comparable.</p>
           </article>
 
@@ -283,7 +284,7 @@ const confidenceTone = (c: string) => c === "MEASURED" ? "bg-emerald-50 text-eme
               <p class="mt-1 text-sm text-slate-600">Each goal is anchored to the shop's best 28 days in the last 180 (never a fantasy: at most 15 points or double today), with what reaching it is worth in revenue per month. Each micro value is the share of those events followed by an order within 30 days, times the gross margin per paid order. Adopting writes the settings through the audited path; re-run each quarter.</p>
             </div>
             {suggestions && (
-              <p class="text-xs text-slate-500">Average paid order {fmtMoney(suggestions.facts.aovUgx)} · gross margin per paid order {fmtMoney(suggestions.facts.marginPerPaidOrderUgx)} ({fmtRate(suggestions.facts.costCoverage)} of sold lines costed) · {suggestions.facts.daysWithSessions} days with GA4 sessions</p>
+              <p class="text-xs text-slate-500">{suggestions.facts.paidOrders} paid orders in 90 days · average paid order {fmtMoney(suggestions.facts.aovUgx)} · gross margin per paid order {fmtMoney(suggestions.facts.marginPerPaidOrderUgx)} ({fmtRate(suggestions.facts.costCoverage)} of sold lines costed) · {suggestions.facts.daysWithSessions} days with GA4 sessions</p>
             )}
           </div>
           {adoptNotice && <p class="mt-3 rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-bold text-brand-dark" role="status">{adoptNotice}</p>}

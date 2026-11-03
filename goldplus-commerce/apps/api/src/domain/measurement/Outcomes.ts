@@ -63,6 +63,11 @@ export function abandonmentSplit(input: { cartsWithItems: number; checkoutsStart
   cart: RateVerdict & { comparable: boolean };
   checkout: RateVerdict & { comparable: boolean };
 } {
+  // Zero checkout starts against carts with items is a feed failure (nothing recorded), not 100% abandonment.
+  if (input.checkoutsStarted === 0 && input.cartsWithItems > 0) {
+    const noFeed: RateVerdict & { comparable: boolean } = { value: null, numerator: 0, denominator: input.cartsWithItems, state: 'NO_DATA', comparable: true };
+    return { cart: noFeed, checkout: { ...noFeed, denominator: 0 } };
+  }
   const cartR = rate(input.checkoutsStarted, input.cartsWithItems);
   const checkoutR = rate(input.ordersPlaced, input.checkoutsStarted);
   const invert = (r: RateVerdict, num: number, den: number) => {

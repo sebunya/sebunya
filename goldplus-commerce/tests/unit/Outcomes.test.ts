@@ -31,6 +31,12 @@ describe('Outcomes: Kaushik\'s split abandonment', () => {
     expect(s.cart.value).toBeNull();
     expect(s.checkout.value).toBeCloseTo(0.75, 6);
   });
+  it('zero checkouts against carts is a feed failure (NO_DATA), never 100% abandonment', () => {
+    const s = abandonmentSplit({ cartsWithItems: 233, checkoutsStarted: 0, ordersPlaced: 1 });
+    expect(s.cart.state).toBe('NO_DATA');
+    expect(s.cart.value).toBeNull();
+    expect(s.checkout.state).toBe('NO_DATA');
+  });
   it('fewer than 20 in the denominator is insufficient evidence; zero is no data', () => {
     expect(rate(3, 10).state).toBe('INSUFFICIENT_EVIDENCE');
     expect(rate(0, 0).state).toBe('NO_DATA');
@@ -163,8 +169,13 @@ describe('Outcomes: wiring', () => {
     expect(read('apps/api/src/infrastructure/Registry.ts')).toContain('getOutcomesUseCase = new GetOutcomesUseCase(new DrizzleOutcomesReader(), this.measurementConfig)');
     expect(read('apps/web/src/lib/admin-navigation.ts')).toContain("href: '/admin/analytics/outcomes'");
     expect(read('apps/web/src/pages/admin/analytics/index.astro')).toContain('/admin/analytics/outcomes?days=');
-    expect(read('apps/api/src/infrastructure/db/migrations/0215_outcomes_checkout_index.sql')).toContain("(payload->>'event_name') = 'begin_checkout'");
-    expect(read('apps/api/src/infrastructure/db/repositories/DrizzleOutcomesReader.ts')).toContain("o.payload->>'event_name' = 'begin_checkout'");
+    // The outbox payload is a JSON string inside jsonb on production: readers and the index unwrap it the same way.
+    expect(read('apps/api/src/infrastructure/db/migrations/0216_outcomes_checkout_index_unwrapped.sql')).toContain("case when jsonb_typeof(payload) = 'string' then (payload #>> '{}')::jsonb else payload end");
+    for (const f of ['DrizzleOutcomesReader', 'DrizzleOutcomeSuggestionReader']) {
+      const src = read(`apps/api/src/infrastructure/db/repositories/${f}.ts`);
+      expect(src, f).toContain("case when jsonb_typeof(o.payload) = 'string' then (o.payload #>> '{}')::jsonb else o.payload end");
+      expect(src, f).not.toMatch(/o\.payload->>'event_name'/);
+    }
   });
   it('the channel report opens on time decay as the reference model (Kaushik), with last click beside it', () => {
     expect(read('apps/web/src/pages/admin/measurement/channel-report.astro')).toContain(': "time_decay";');
