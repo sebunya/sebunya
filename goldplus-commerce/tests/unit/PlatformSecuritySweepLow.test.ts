@@ -332,8 +332,9 @@ describe('body caps are enforced while the body streams', () => {
 
   it('the hero, nav and signals relays forward the visitor address so abuse control applies', () => {
     for (const f of ['apps/web/src/pages/api/hero/events.ts', 'apps/web/src/pages/api/nav/events.ts', 'apps/web/src/pages/api/hero/signals.ts']) {
-      expect(read(f), f).toContain('headers["X-Forwarded-For"] = clientAddress');
+      expect(read(f), f).toContain('relayHeaders(context,');
     }
+    expect(read('apps/web/src/lib/relayHeaders.ts')).toContain("headers['X-Forwarded-For'] = address");
   });
 });
 

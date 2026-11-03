@@ -51,17 +51,23 @@ tail -1 "$BUILD_LOG"
 # --relative: this checkout is a nested directory of the repository, so without
 # it git prints "goldplus-commerce/Caddyfile" and the exact match below never
 # fired (found 2026-09-13: a Caddyfile change rolled without recreating Caddy).
-if git diff --name-only --relative "$PREV" HEAD | grep -qx Caddyfile; then
+# Read once into a variable: `git diff | grep -q` under pipefail fails when grep
+# exits on the first match and git dies of SIGPIPE on a long file list, which
+# silently skipped the recreate.
+CHANGED_FILES="$(git diff --name-only --relative "$PREV" HEAD)"
+if grep -qx Caddyfile <<<"$CHANGED_FILES"; then
   docker compose --env-file .env.production -f docker-compose.production.yml up -d --force-recreate --no-deps caddy 2>&1 | tail -1
   sleep 5
-  docker compose --env-file .env.production -f docker-compose.production.yml exec -T caddy caddy validate --config /etc/caddy/Caddyfile 2>&1 | grep -q 'Valid configuration' || { echo "STOP: Caddyfile invalid after recreate"; exit 1; }
+  CADDY_VALIDATE="$(docker compose --env-file .env.production -f docker-compose.production.yml exec -T caddy caddy validate --config /etc/caddy/Caddyfile 2>&1 || true)"
+  grep -q 'Valid configuration' <<<"$CADDY_VALIDATE" || { echo "STOP: Caddyfile invalid after recreate"; echo "$CADDY_VALIDATE" | tail -5; exit 1; }
   echo "Caddy recreated for the new Caddyfile"
 fi
 # Monitoring config is bind-mounted the same way (prometheus.yml and the rules are single files; Grafana reads
 # its provisioning at start): a change only takes effect when those containers are recreated. Never fatal.
 MON=""
-git diff --name-only --relative "$PREV" HEAD | grep -q '^ops/prometheus/' && MON="$MON prometheus"
-git diff --name-only --relative "$PREV" HEAD | grep -q '^ops/grafana/' && MON="$MON grafana"
+if grep -q '^ops/prometheus/' <<<"$CHANGED_FILES"; then MON="$MON prometheus"; fi
+if grep -q '^ops/grafana/' <<<"$CHANGED_FILES"; then MON="$MON grafana"; fi
+
 if [ -n "$MON" ]; then
   docker compose --env-file .env.production -f docker-compose.production.yml up -d --force-recreate --no-deps $MON 2>&1 | tail -1 || echo "WARN: could not recreate$MON (monitoring only)"
   echo "Recreated for new monitoring config:$MON"

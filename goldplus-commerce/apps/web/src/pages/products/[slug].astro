@@ -33,6 +33,7 @@ import { SITE_ORIGIN } from '../../lib/sitemap';
 import { RETURNS_POLICY } from '../../lib/returnsPolicy';
 import { getStorefrontCopy } from '../../lib/storefrontCopy';
 import { findRecordedRedirect } from '../../lib/recordedRedirect';
+import { clipText } from '../../lib/clipText';
 import { carryQuery } from '../../lib/carryQuery';
 import { productShareUrl } from '@goldplus/shared/src/attribution/arrival';
 import { isLikelyHuman } from '../../lib/humanTraffic';
@@ -576,7 +577,7 @@ const metaStock: Record<ProductPublicDto['availability']['kind'], string> = {
   unknown: 'ask us about stock',
 };
 const firstSentence = (s: string | null | undefined) => (s ?? '').trim().split(/(?<=\.)\s/)[0] ?? '';
-const clip = (s: string, max: number) => (s.length <= max ? s : `${s.slice(0, s.lastIndexOf(' ', max - 1)).replace(/[,;:.\s]+$/, '')}…`);
+const clip = clipText; // lib/clipText: a hard cut when there is no space before the limit
 const description = product
   ? clip(
       [

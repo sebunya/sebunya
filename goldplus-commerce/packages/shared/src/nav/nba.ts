@@ -17,6 +17,7 @@
  * and shows the top one.
  */
 import { upcountryNavLine } from '../locations/locationCopy';
+import { toEatParts, nextEatDispatchDay } from '../time/eat';
 
 
 export interface NbaContext {
@@ -38,6 +39,8 @@ export interface NbaContext {
   minsToCutoff: number;
   /** Sunday in Kampala (kept as the back-compat "closed today" flag) */
   sunday: boolean;
+  /** Tomorrow is a closed day too, so "tomorrow morning" would be a false promise. */
+  tomorrowClosed?: boolean;
   /** the flash sale is still running */
   saleLive: boolean;
   /** operator-configured cutoff label for copy, e.g. "5:00pm" (default 5:00pm) */
@@ -146,8 +149,8 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
       // which days are closed, so the copy states the rule rather than a weekday
       // that may not be the right one.
       // It GOES OUT then; when it arrives depends on where it is going.
-      text: 'Your basket is waiting. Order now and it goes out <b>' + (ctx.sunday ? 'on the next working day' : 'tomorrow morning') + '</b>',
-      short: 'Basket saved. It goes out <b>' + (ctx.sunday ? 'next working day' : 'tomorrow') + '</b>',
+      text: 'Your basket is waiting. Order now and it goes out <b>' + (ctx.sunday || ctx.tomorrowClosed ? 'on the next working day' : 'tomorrow morning') + '</b>',
+      short: 'Basket saved. It goes out <b>' + (ctx.sunday || ctx.tomorrowClosed ? 'next working day' : 'tomorrow') + '</b>',
       cta: 'Finish order', href: R.cart,
     });
   }
@@ -209,7 +212,9 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
       href: R.delivery,
     });
   } else if (!noSameDay) {
-    c.push({ id: 'aftercutoff', score: 44, text: "Today's run has left. Order now and it goes out <b>tomorrow morning</b>", short: 'Next delivery run is <b>tomorrow</b>', href: R.delivery });
+    c.push(ctx.tomorrowClosed
+      ? { id: 'aftercutoff', score: 44, text: "Today's run has left. Order now and it goes out on the <b>next working day</b>", short: 'Next delivery run is the <b>next working day</b>', href: R.delivery }
+      : { id: 'aftercutoff', score: 44, text: "Today's run has left. Order now and it goes out <b>tomorrow morning</b>", short: 'Next delivery run is <b>tomorrow</b>', href: R.delivery });
   }
 
   // Outside the same-day zone: say what IS true for them (we call to confirm the day), not nothing.
@@ -250,15 +255,18 @@ export function formatCutoffLabel(hour: number): string {
 export function kampalaCutoff(
   now: Date,
   cfg?: DeliveryCutoffConfig,
-): { beforeCutoff: boolean; minsToCutoff: number; closed: boolean; sunday: boolean; cutoffHour: number; cutoffLabel: string } {
+): { beforeCutoff: boolean; minsToCutoff: number; closed: boolean; sunday: boolean; tomorrowClosed: boolean; cutoffHour: number; cutoffLabel: string } {
   const cutoffHour = Number.isFinite(cfg?.cutoffHour) ? Math.min(23, Math.max(0, Math.trunc(cfg!.cutoffHour!))) : 17;
   const closedDays = Array.isArray(cfg?.closedDays) ? cfg!.closedDays! : [0];
-  const k = new Date(now.getTime() + 3 * 60 * 60 * 1000);
-  const day = k.getUTCDay();
-  const hour = k.getUTCHours();
-  const mins = k.getUTCMinutes();
+  // Kampala civil time through the shared helpers (time/eat), not a hand-written shift.
+  const { weekday: day, hour, minute: mins } = toEatParts(now);
   const closed = closedDays.includes(day);
   const minsToCutoff = (cutoffHour - hour) * 60 - mins;
   const beforeCutoff = !closed && hour < cutoffHour;
-  return { beforeCutoff, minsToCutoff, closed, sunday: closed, cutoffHour, cutoffLabel: formatCutoffLabel(cutoffHour) };
+  // Is tomorrow a dispatch day? The next dispatch day counted from tomorrow must BE tomorrow.
+  const operating = new Set([0, 1, 2, 3, 4, 5, 6].filter((d) => !closedDays.includes(d)));
+  const tomorrow = new Date(now.getTime() + 86_400_000);
+  const next = nextEatDispatchDay(tomorrow, operating);
+  const tomorrowClosed = !next || next.getTime() !== tomorrow.getTime();
+  return { beforeCutoff, minsToCutoff, closed, sunday: closed, tomorrowClosed, cutoffHour, cutoffLabel: formatCutoffLabel(cutoffHour) };
 }

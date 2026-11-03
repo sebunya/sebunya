@@ -64,7 +64,7 @@ export function visitCookieOptions() {
  * operator out of the console they would use to diagnose it, and the pages
  * behind this still cannot read a single privileged byte without the API.
  */
-async function holderIsAdmin(request: Request): Promise<boolean> {
+async function holderIsAdmin(request: Request, clientAddress: string | null): Promise<boolean> {
   // Through readSessionToken: it sees a token the renewal step just issued.
   const token = readSessionToken(request);
   if (!token) return false;
@@ -74,7 +74,9 @@ async function holderIsAdmin(request: Request): Promise<boolean> {
   try { bearer = decodeURIComponent(token); } catch { return false; }
   try {
     const res = await fetch(`${apiBase}/auth/admin-session`, {
-      headers: { Authorization: `Bearer ${bearer}` },
+      // The visitor's own address: without it every caller shared the web
+      // container's one rate-limit bucket on this route.
+      headers: apiHeaders({ Authorization: `Bearer ${bearer}` }, clientAddress),
       signal: AbortSignal.timeout(4000),
     });
     // Only a 200 proves an admin. Treating "anything that is not 401/403" as
@@ -104,6 +106,9 @@ export const MOVED_PATHS: Readonly<Record<string, string>> = {
   '/locations/wilson-road': '/locations/zainab-aziza',
   '/locations/new-pioneer-mall': '/locations/zainab-aziza',
 };
+
+/** Expires the pre-domain, host-only `_fp_cid` (no Domain attribute = host-only). */
+export const HOST_ONLY_FP_CID_EXPIRY = '_fp_cid=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; SameSite=Lax';
 
 /** Renew this long before expiry, so a page's own API calls never meet a dead token. */
 const RENEW_WHEN_SECONDS_LEFT = 120;
@@ -181,7 +186,20 @@ export const onRequest = defineMiddleware(async (context, next) => {
   if (moved) return context.redirect(`${moved}${context.url.search}`, 301);
   const slashTarget = trailingSlashTarget(context.request.method, context.url.pathname, context.url.search);
   if (slashTarget) return context.redirect(slashTarget, 301);
-  if (!context.url.pathname.startsWith('/_astro/')) await renewSessionIfDue(context);
+  // Asset and API-relay requests keep whatever cookie state they arrived
+  // with; only document requests mint. (The relay still READS the cookie.)
+  const path = context.url.pathname;
+  // Machine endpoints (/mcp, /.well-known/*) are not pages: no analytics visitor
+  // cookie and no page Link headers on their responses.
+  // Review photos (/review-photo/<id>, and the admin copy) have no extension but are images: each one ran the whole
+  // page work (identity lookup, cookies, basket, delivery place), up to 18 per product page (2026-10-29).
+  const isDocument =
+    !path.startsWith("/api/") && !path.startsWith("/_astro/") && !path.startsWith("/.well-known/") && path !== "/mcp" &&
+    !path.startsWith("/review-photo/") && !path.startsWith("/admin/review-photo/") &&
+    !/\.[A-Za-z0-9]{2,8}$/.test(path);
+  // Renew on document requests only: a product page's beacons and up to 18
+  // review photos each POSTed /auth/refresh with the same refresh token.
+  if (isDocument) await renewSessionIfDue(context);
 
   if (context.request.method === 'POST') {
     const formPath = budgetedFormPath(context.url.pathname);
@@ -221,7 +239,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     !adminPath.startsWith('/admin/login') &&
     !adminPath.startsWith('/admin/logout');
   if (adminGuarded) {
-    if (!(await holderIsAdmin(context.request))) {
+    if (!(await holderIsAdmin(context.request, readClientAddress(context)))) {
       return context.redirect(`/admin/login?returnTo=${encodeURIComponent(adminPath)}`, 303);
     }
     // This browser belongs to staff: the shop's tag and beacons leave it out of GA4 and the shopper records
@@ -229,19 +247,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     if (!context.cookies.get('gp_staff')) context.cookies.set('gp_staff', '1', { path: '/', maxAge: 60 * 60 * 24 * 395, sameSite: 'lax', secure: true, httpOnly: false });
   }
 
-  // Asset and API-relay requests keep whatever cookie state they arrived
-  // with; only document requests mint. (The relay still READS the cookie.)
-  // The extension check is anchored to the LAST path segment so a product
-  // slug containing a dot still counts as a document.
-  const path = context.url.pathname;
-  // Machine endpoints (/mcp, /.well-known/*) are not pages: no analytics visitor
-  // cookie and no page Link headers on their responses.
-  // Review photos (/review-photo/<id>, and the admin copy) have no extension but are images: each one ran the whole
-  // page work (identity lookup, cookies, basket, delivery place), up to 18 per product page (2026-10-29).
-  const isDocument =
-    !path.startsWith("/api/") && !path.startsWith("/_astro/") && !path.startsWith("/.well-known/") && path !== "/mcp" &&
-    !path.startsWith("/review-photo/") && !path.startsWith("/admin/review-photo/") &&
-    !/\.[A-Za-z0-9]{2,8}$/.test(path);
+  // (isDocument is worked out at the top: session renewal needs it too.)
 
   // The analytics visitor id (`_fp_cid`, GA's client_id) is set by the SERVER
   // and refreshed on every page: Safari caps cookies written by JavaScript at 7
@@ -253,13 +259,18 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // decision 2026-09-19); this is a first-party id our own server sets.
   // Read BEFORE the block below sets it: absent = first document today.
   const firstDocumentToday = isDocument && !context.cookies.get('_fp_r');
+  let dropHostOnlyFpCid = false;
   if (isDocument) {
     const fp = context.cookies.get('_fp_cid')?.value;
     const valid = !!fp && /^fp\.\d+\.[0-9a-f-]{36}$/.test(fp);
     if (!valid || !context.cookies.get('_fp_r')) {
       const id = valid ? fp! : `fp.${Date.now()}.${crypto.randomUUID()}`;
       // Domain-scoped so the collector on api. receives it (lib/visitorCookieDomain).
-      context.cookies.set('_fp_cid', id, { path: '/', domain: visitorCookieDomain(context.url.hostname), maxAge: 60 * 60 * 24 * 395, sameSite: 'lax', secure: true, httpOnly: false });
+      const fpDomain = visitorCookieDomain(context.url.hostname);
+      context.cookies.set('_fp_cid', id, { path: '/', domain: fpDomain, maxAge: 60 * 60 * 24 * 395, sameSite: 'lax', secure: true, httpOnly: false });
+      // A browser from before the domain scope also holds a HOST-ONLY _fp_cid; two
+      // cookies of one name made the id flip. It is expired on the response below.
+      if (fpDomain) dropHostOnlyFpCid = true;
       context.cookies.set('_fp_r', '1', { path: '/', maxAge: 60 * 60 * 24, sameSite: 'lax', secure: true, httpOnly: true });
     }
   }
@@ -332,6 +343,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
       headers.set('location', carried);
       response = new Response(response.body, { status: response.status, statusText: response.statusText, headers });
     }
+  }
+  if (dropHostOnlyFpCid) {
+    try { response.headers.append('Set-Cookie', HOST_ONLY_FP_CID_EXPIRY); } catch { /* immutable response: next day's refresh retries */ }
   }
   // Tell agents the cheaper representation exists. Only for documents we can
   // actually serve as Markdown, so the header never promises a 404.

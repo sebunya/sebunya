@@ -285,7 +285,8 @@ describe("the relay residual is CLOSED — per-visitor attribution at the truste
     expect(resolved.ip).toBe("203.0.113.42");
     expect(resolved.confidence).toBe("TRUSTED");
     const relay = read("apps/web/src/pages/api/rec/[...path].ts");
-    expect(relay).toContain('headers["X-Forwarded-For"]');
+    expect(relay).toContain("relayHeaders(context,");
+    expect(read("apps/web/src/lib/relayHeaders.ts")).toContain("headers['X-Forwarded-For']");
   });
 });
 

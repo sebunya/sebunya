@@ -95,7 +95,9 @@ function shopUrl(overrides: Partial<{ search: string; category: string; subcateg
   if (state.page && state.page > 1) params.set('page', String(state.page));
   // The shopper's choice of the standard order survives paging.
   if (Astro.url.searchParams.get('order') === 'standard') params.set('order', 'standard');
-  if (state.page && state.page > 1 && preferredCategories.length > 0) params.set('lead', preferredCategories.join(','));
+  // Every link, page 1 included: going back to page 1 must not re-ask for the
+  // visitor's interests and reshuffle what pages 2+ were cut from.
+  if (preferredCategories.length > 0) params.set('lead', preferredCategories.join(','));
   const query = params.toString();
   return query ? `/shop?${query}` : '/shop';
 }
@@ -171,7 +173,9 @@ const standardLead = sortDiscoveryProducts(facetedProducts, sort, taxonomy, [], 
 const products = sortDiscoveryProducts(facetedProducts, sort, taxonomy, preferredCategories, shopPrice);
 // Said plainly, and only when it actually changed what is on top.
 const personalLead = preferredCategories.length > 0 && products[0] && products[0].categoryName !== standardLead ? products[0].categoryName : '';
-if (personalLead) Astro.response.headers.set('Cache-Control', 'private, no-store');
+// Any personal order is private, not only one that changed the top product:
+// preferredCategories can reorder the rest of the grid too.
+if (preferredCategories.length > 0) Astro.response.headers.set('Cache-Control', 'private, no-store');
 const totalPages = Math.max(1, Math.ceil(products.length / PAGE_SIZE));
 // A page past the end shows the last page rather than an empty grid.
 const page = Math.min(requestedPage, totalPages);

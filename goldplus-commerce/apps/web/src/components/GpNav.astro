@@ -211,7 +211,7 @@ const navPlace = Astro.locals.gpDeliverTo !== undefined ? Astro.locals.gpDeliver
 const navPlaceSameDay = navPlace ? (isSameDayDistrict(navPlace.district) ? '1' : '0') : '';
 const nba = computeNbaCandidates({
   signedIn, visits, cart: cartCount, points, lastOrderDays, orderInTransit,
-  beforeCutoff: cut.beforeCutoff, minsToCutoff: cut.minsToCutoff, sunday: cut.sunday, saleLive,
+  beforeCutoff: cut.beforeCutoff, minsToCutoff: cut.minsToCutoff, sunday: cut.sunday, tomorrowClosed: cut.tomorrowClosed, saleLive,
   cutoffLabel: cut.cutoffLabel,
   deliverTo: navPlace ? { label: (navPlace.label.split(',')[0] || navPlace.district).slice(0, 40), sameDay: navPlaceSameDay === '1' } : null,
 }, {
@@ -1547,7 +1547,12 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       var d = gpShopNow(), h = d.getHours(), m = d.getMinutes();
       var cutoffHour = gpCutoffHour(navEl);
       if (gpClosedDays(navEl).indexOf(d.getDay()) !== -1){ cut.innerHTML = 'Closed today. This order goes out on the <b>next working day</b>'; return; }
-      if (h >= cutoffHour){ cut.innerHTML = "Today's run has left. This order goes out <b>tomorrow morning</b>"; return; }
+      if (h >= cutoffHour){
+        cut.innerHTML = gpClosedDays(navEl).indexOf((d.getDay() + 1) % 7) !== -1
+          ? "Today's run has left. This order goes out on the <b>next working day</b>"
+          : "Today's run has left. This order goes out <b>tomorrow morning</b>";
+        return;
+      }
       var mins = (cutoffHour - h) * 60 - m;
       var left = mins >= 60 ? Math.floor(mins/60) + 'h ' + (mins%60) + 'm' : mins + ' minutes';
       cut.innerHTML = 'Kampala &amp; Wakiso: check out in <b>' + left + '</b> and it goes out <b>today</b>.';
@@ -1942,6 +1947,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     var d = gpShopNow(), hour = d.getHours(), day = d.getDay();
     var cutoffHour = gpCutoffHour(nav), closedDays = gpClosedDays(nav);
     var isClosedToday = closedDays.indexOf(day) !== -1;
+    var isClosedTomorrow = closedDays.indexOf((day + 1) % 7) !== -1;
     var minsToCutoff = (cutoffHour - hour) * 60 - d.getMinutes();
     var saleEnd = new Date(nav.getAttribute('data-sale-ends')).getTime();
 
@@ -1999,8 +2005,8 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       /* same cart, past the cut-off: still worth finishing, honest promise
          (it GOES OUT then; when it arrives depends on where it is going) */
       if (CTX.cart > 0 && !CTX.beforeCutoff && !inFunnel) c.push({ id:'cart-later', score:94,
-        text:'Your basket is waiting. Order now and it goes out <b>' + (CTX.sunday ? 'on the next working day' : 'tomorrow morning') + '</b>',
-        short:'Basket saved. It goes out <b>' + (CTX.sunday ? 'next working day' : 'tomorrow') + '</b>',
+        text:'Your basket is waiting. Order now and it goes out <b>' + (CTX.sunday || isClosedTomorrow ? 'on the next working day' : 'tomorrow morning') + '</b>',
+        short:'Basket saved. It goes out <b>' + (CTX.sunday || isClosedTomorrow ? 'next working day' : 'tomorrow') + '</b>',
         cta:'Finish order', href:'/cart' });
 
       if (CTX.signedIn && CTX.points >= 1000 && RATE_PTS > 0) c.push({ id:'points', score:88,
@@ -2048,8 +2054,8 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           : SD + 'order by <b>' + (nav.getAttribute('data-cutoff-label') || '5:00pm') + '</b>, out today',
         href:'/delivery/kampala-wakiso' });
       else if (!noSameDay) c.push({ id:'aftercutoff', score:44,
-        text:"Today's run has left. Order now and it goes out <b>tomorrow morning</b>",
-        short:'Next delivery run is <b>tomorrow</b>', href:'/delivery/kampala-wakiso' });
+        text: isClosedTomorrow ? "Today's run has left. Order now and it goes out on the <b>next working day</b>" : "Today's run has left. Order now and it goes out <b>tomorrow morning</b>",
+        short: isClosedTomorrow ? 'Next delivery run is the <b>next working day</b>' : 'Next delivery run is <b>tomorrow</b>', href:'/delivery/kampala-wakiso' });
 
       /* outside the same-day zone: what IS true for them (mirrors nba.ts upcountryNavLine) */
       if (noSameDay && DL) c.push({ id:'upcountry', score:48,

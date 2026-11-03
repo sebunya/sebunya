@@ -27,7 +27,7 @@ export async function applyManualPoints(opts: { apply: boolean; replace: boolean
   const now = opts.now ?? new Date();
   // data/geo at the repo root, like the parish importer: the migrator image mounts it at /app/data, not under apps/api.
   const path = opts.csvPath ?? resolve(__dirname, '../../../../data/geo/manual-points.csv');
-  const rows = parseCsv(readFileSync(path, 'utf8'));
+  const rows = parseCsv(readFileSync(path, 'utf8'), { comments: true });
   const problems: string[] = [];
   const plan: Array<{ slug: string; lat: number; lng: number; err: number; ref: string; note: string; current: string | null }> = [];
   const existing = new Map(

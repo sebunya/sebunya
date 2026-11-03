@@ -51,3 +51,6 @@ __pycache__/
 
 # Vendored, reviewed package tarballs ARE committed (vendor/README.md).
 !vendor/*.tgz
+
+# Redis snapshot (BullMQ scheduler state from a local redis-server). Never commit.
+dump.rdb

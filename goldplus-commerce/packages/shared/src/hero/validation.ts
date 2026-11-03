@@ -52,10 +52,15 @@ export const headlineVisibleText = (raw: string): string =>
   (raw ?? '').replace(/<\/?em>/gi, '');
 
 /** Balanced <em>? An unbalanced tag would leak green across the rest of the copy. */
-const emBalanced = (raw: string): boolean => {
-  const opens = (raw.match(/<em>/gi) || []).length;
-  const closes = (raw.match(/<\/em>/gi) || []).length;
-  return opens === closes;
+export const emBalanced = (raw: string): boolean => {
+  // In ORDER, not just by count: "Fast </em>charging<em>" has one of each and
+  // still leaves an <em> open into the subcopy.
+  let depth = 0;
+  for (const m of raw.matchAll(/<(\/?)em>/gi)) {
+    depth += m[1] ? -1 : 1;
+    if (depth < 0) return false;
+  }
+  return depth === 0;
 };
 
 export interface HeroSlideFieldErrors {
@@ -113,7 +118,8 @@ export const validateHeroSlide = (slide: Partial<HeroSlideSeed>): HeroSlideField
     }
     // A dead CTA is hidden at render (§2.5); flag it here so the operator knows why.
     const url = (slide.ctaUrl ?? '').trim();
-    if (url && (url === '#' || (!url.startsWith('/') && !/^https?:\/\//i.test(url)))) {
+    // "//host" and "/\host" start with "/" but leave the site: not a real path.
+    if (url && (url === '#' || (!/^\/(?![\/\\])/.test(url) && !/^https?:\/\//i.test(url)))) {
       add('ctaUrl', 'The link must be a real path (starts with /) or a full URL. "#" is not a link.');
     }
     // A bleed slide with no photo is a black rectangle.

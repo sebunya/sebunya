@@ -87,7 +87,7 @@ export class DryRunCorridorCsvUseCase {
   async execute(csv: string): Promise<CorridorDryRun> {
     const current = await this.repo.currentCorridors();
     // RFC 4180: the Control Centre's own export quotes every cell, so the reader must unquote (review board, 2026-10-15).
-    const lines = parseCsvRows(csv);
+    const lines = parseCsvRows(csv, { unguardFormulas: true });
     if (lines.length === 0) {
       return { totalRows: 0, changes: [], failures: [], unchanged: 0, summary: 'The file is empty — nothing to apply.', confirmation: '' };
     }

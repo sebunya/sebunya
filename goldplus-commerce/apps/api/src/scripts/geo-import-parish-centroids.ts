@@ -158,13 +158,13 @@ interface ManifestRow {
 
 function readManifest(dataDir: string): ManifestRow[] {
   const p = path.join(dataDir, 'MANIFEST.csv');
-  return fs.existsSync(p) ? (parseCsv(fs.readFileSync(p, 'utf8')) as unknown as ManifestRow[]) : [];
+  return fs.existsSync(p) ? (parseCsv(fs.readFileSync(p, 'utf8'), { comments: true }) as unknown as ManifestRow[]) : [];
 }
 
 function readOptional<T>(dataDir: string, file: string, map: (rows: Array<Record<string, string>>) => T, fallback: T): T {
   const p = path.join(dataDir, file);
   if (!fs.existsSync(p)) return fallback;
-  return map(parseCsv(fs.readFileSync(p, 'utf8')));
+  return map(parseCsv(fs.readFileSync(p, 'utf8'), { comments: true }));
 }
 
 export function loadLineage(dataDir: string) {
@@ -224,7 +224,7 @@ function readParishes(csvPath: string, manifest: ManifestRow | undefined, opts: 
   const wantMd5 = opts.expectedMd5 === undefined ? manifest?.md5 || null : opts.expectedMd5;
   if (opts.expectedMd5 === undefined && !wantMd5) fail(`${path.basename(csvPath)} has no checksum in MANIFEST.csv`);
   if (wantMd5 && md5 !== wantMd5) fail(`checksum mismatch for ${path.basename(csvPath)}: got ${md5}, expected ${wantMd5} (MANIFEST.csv)`);
-  const records = parseCsv(content);
+  const records = parseCsv(content, { comments: true });
   const wantRows = opts.expectedRows === undefined ? (manifest?.rows ? Number(manifest.rows) : null) : opts.expectedRows;
   if (wantRows !== null && records.length !== wantRows) fail(`row count ${records.length}, expected ${wantRows}`);
   const parishes: ParishRecord[] = [];

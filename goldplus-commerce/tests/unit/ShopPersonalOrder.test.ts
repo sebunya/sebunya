@@ -40,6 +40,6 @@ describe("the shop's default order leads with the visitor's own interest", () =>
     expect(src).toContain("based on your recent activity on GoldPlus");
     expect(src).toContain("params.set('lead', preferredCategories.join(','))");
     expect(src).toContain("Show the standard order");
-    expect(src).toContain("if (personalLead) Astro.response.headers.set('Cache-Control', 'private, no-store')");
+    expect(src).toContain("if (preferredCategories.length > 0) Astro.response.headers.set('Cache-Control', 'private, no-store')");
   });
 });

@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { apiBase } from '../lib/api';
+import { indexNowKey } from '../lib/indexNowKey';
 
 /**
  * IndexNow key-file verification (protocol: https://host/{key}.txt must return
@@ -14,17 +14,12 @@ export const GET: APIRoute = async ({ params }) => {
   if (!/^[a-zA-Z0-9-]{8,128}$/.test(requested)) {
     return new Response('Not found', { status: 404 });
   }
-  try {
-    const res = await fetch(`${apiBase}/seo/indexnow-key`);
-    if (!res.ok) return new Response('Not found', { status: 404 });
-    const body = (await res.json()) as { success?: boolean; data?: { key?: string } };
-    const key = body?.data?.key;
-    if (!key || key !== requested) return new Response('Not found', { status: 404 });
-    return new Response(key, {
-      status: 200,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=300' },
-    });
-  } catch {
-    return new Response('Not found', { status: 404 });
-  }
+  // Cached in memory (lib/indexNowKey): a scan of random .txt paths no longer
+  // costs one API round trip each.
+  const key = await indexNowKey();
+  if (!key || key !== requested) return new Response('Not found', { status: 404 });
+  return new Response(key, {
+    status: 200,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=300' },
+  });
 };

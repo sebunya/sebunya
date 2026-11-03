@@ -76,7 +76,7 @@ describe('district lineage families', () => {
     expect(lineageFamily('Kassanda').has('MUBENDE')).toBe(true);
   });
   it('the reviewed CSV under data/geo carries every row the constant has (the CSV is what the importer reads)', () => {
-    const csv = parseCsv(readFileSync(resolve(__dirname, '../../data/geo/district-lineage.csv'), 'utf8'));
+    const csv = parseCsv(readFileSync(resolve(__dirname, '../../data/geo/district-lineage.csv'), 'utf8'), { comments: true });
     const inCsv = new Set(csv.map((r) => `${r.child}<${r.parent}`));
     const missing = DISTRICT_LINEAGE.map((r) => `${r.child}<${r.parent}`).filter((k) => !inCsv.has(k));
     expect(missing).toEqual([]);
@@ -314,11 +314,11 @@ describe('agreement with the hand-assigned band', () => {
 
 describe('the shared CSV grammar', () => {
   it('handles quoted commas, doubled quotes, CRLF, comment lines and the export formula guard', () => {
-    expect(parseCsv('# provenance line\na,b\r\n"x, y","say ""hi"""\r\n1,2\n')).toEqual([
+    expect(parseCsv('# provenance line\na,b\r\n"x, y","say ""hi"""\r\n1,2\n', { comments: true })).toEqual([
       { a: 'x, y', b: 'say "hi"' },
       { a: '1', b: '2' },
     ]);
-    expect(parseCsvRows("k\n'-leading\n")).toEqual([['k'], ['-leading']]);
+    expect(parseCsvRows("k\n'-leading\n", { unguardFormulas: true })).toEqual([['k'], ['-leading']]);
     expect(csvField('Kiwatule, Upper')).toBe('"Kiwatule, Upper"');
     expect(csvField('B2')).toBe('B2');
     expect(csvField(null)).toBe('');

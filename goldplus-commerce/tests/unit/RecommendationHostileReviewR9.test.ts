@@ -463,7 +463,8 @@ describe("the evidence stream cannot be quietly poisoned", () => {
     // be buffered in full first.
     expect(relay).toContain("readBodyCapped(request, MAX_BODY_BYTES)");
     expect(relay).not.toContain("await request.text()");
-    expect(relay).toContain('headers["X-Forwarded-For"]');
+    expect(relay).toContain("relayHeaders(context,");
+    expect(read("apps/web/src/lib/relayHeaders.ts")).toContain("headers['X-Forwarded-For']");
   });
 
   it("login and registration ROTATE the visit token — a planted cookie is never the one that gets linked", () => {
