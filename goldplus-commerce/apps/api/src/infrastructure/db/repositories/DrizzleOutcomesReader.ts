@@ -40,7 +40,7 @@ export class DrizzleOutcomesReader implements IOutcomesReader {
           (select count(*)::int from gift_card_purchases g where g.paid_at >= ${start} and g.paid_at < ${endX}) as gift_card_purchase,
           (select count(*)::int from wishlists w where w.added_at >= ${start} and w.added_at < ${endX}) as wishlist_add`),
       db.execute(sql`select coalesce(sum(spend_minor), 0)::bigint as spend from measurement.mmm_daily where day >= ${startDay}::date and day <= ${endDay}::date`),
-      db.execute(sql`select coalesce(sum(sessions), 0)::int as sessions, count(distinct day)::int as days,
+      db.execute(sql`select coalesce(sum(sessions), 0)::int as sessions, count(distinct day)::int as days, max(day)::text as last_day,
           coalesce(sum(sessions) filter (where dimension like '(direct)%'), 0)::int as direct
         from measurement.ga4_daily_series where report = 'source_medium' and day >= ${startDay}::date and day <= ${endDay}::date`),
       db.execute(sql`select dimension, sum(sessions)::int as sessions, sum(new_users)::int as new_users, sum(total_users)::int as total_users,
@@ -60,6 +60,13 @@ export class DrizzleOutcomesReader implements IOutcomesReader {
       segment: String(x.dimension ?? '(not set)'), sessions: num(x.sessions), newUsers: num(x.new_users), totalUsers: num(x.total_users), purchases: num(x.purchases), revenueUgx: num(x.revenue),
     }));
     const g = rows(ga4Totals)[0] ?? {};
+    const lastDay = g.last_day ? String(g.last_day) : null;
+    // Orders on the GA4-covered Kampala days only: GA4 fills a day in up to two days late, so orders placed today
+    // would otherwise be divided by sessions that GA4 has not reported yet.
+    const covered = lastDay
+      ? num(rows(await db.execute(sql`select count(*)::int as n from orders o where o.created_at >= ${start}
+          and o.created_at < ((${lastDay}::date + 1)::timestamp at time zone 'Africa/Kampala') and o.created_at < ${endX}`))[0]?.n)
+      : 0;
     return {
       cartsWithItems: num(b.cartsWithItems),
       checkoutsStarted: num(b.checkoutsStarted),
@@ -68,7 +75,7 @@ export class DrizzleOutcomesReader implements IOutcomesReader {
       journeys: rows(journeys).map((r) => ({ firstTouchAt: new Date(r.first_touch_at), orderAt: new Date(r.order_at), touches: num(r.touches) })),
       micro: microCounts,
       spendUgx: num(rows(spend)[0]?.spend),
-      ga4: { sessions: num(g.sessions), directSessions: num(g.direct), daysCovered: num(g.days), byChannel: seg(byChannel), byDevice: seg(byDevice) },
+      ga4: { sessions: num(g.sessions), directSessions: num(g.direct), daysCovered: num(g.days), lastDay, ordersInCoveredDays: covered, byChannel: seg(byChannel), byDevice: seg(byDevice) },
     };
   }
 }

@@ -14,7 +14,7 @@ const read = (p: string) => readFileSync(resolve(root, p), 'utf8');
 
 const counts = (over: Partial<OutcomeCounts> = {}): OutcomeCounts => ({
   cartsWithItems: 200, checkoutsStarted: 60, ordersPlaced: 30, paidTotalsUgx: [], journeys: [], micro: {}, spendUgx: 0,
-  ga4: { sessions: 0, directSessions: 0, daysCovered: 0, byChannel: [], byDevice: [] },
+  ga4: { sessions: 0, directSessions: 0, daysCovered: 0, lastDay: null, ordersInCoveredDays: 0, byChannel: [], byDevice: [] },
   ...over,
 });
 
@@ -140,12 +140,20 @@ describe('Outcomes: the assembled page', () => {
     expect(out.journeys.coverage).toBe(0);
   });
   it('session conversion uses GA4 sessions of the same days, and the direct alarm honours the setting', () => {
-    const now = counts({ ordersPlaced: 10, ga4: { sessions: 1000, directSessions: 450, daysCovered: 28, byChannel: [], byDevice: [] } });
+    const now = counts({ ordersPlaced: 12, ga4: { sessions: 1000, directSessions: 450, daysCovered: 28, lastDay: '2026-11-02', ordersInCoveredDays: 10, byChannel: [], byDevice: [] } });
     const out = buildOutcomes(now, counts(), { direct_traffic_alarm_pct: '50' });
     const conv = out.critical.find((c) => c.key === 'session_conversion')!;
     expect(conv.value).toBeCloseTo(0.01, 6);
     expect(conv.state).toBe('VALUE');
+    expect(conv.rule).toContain('28 GA4-covered days');
     expect(out.directTraffic.state).toBe('OK');
+  });
+  it('the action list names each missed goal, a high direct share and unvalued micro conversions', () => {
+    const now = counts({ paidTotalsUgx: [10_000], spendUgx: 150_000, ga4: { sessions: 1000, directSessions: 600, daysCovered: 28, lastDay: '2026-11-02', ordersInCoveredDays: 30, byChannel: [], byDevice: [] } });
+    const out = buildOutcomes(now, counts(), { goal_cart_abandonment_pct: '50', goal_cost_per_order_ugx: '1000' });
+    expect(out.actions.map((a) => a.key)).toEqual(['cart_abandonment', 'cost_per_order', 'direct_traffic', 'micro_values']);
+    const none = buildOutcomes(counts(), counts(), {});
+    expect(none.actions.map((a) => a.key)).toEqual(['micro_values', 'goals']);
   });
 });
 

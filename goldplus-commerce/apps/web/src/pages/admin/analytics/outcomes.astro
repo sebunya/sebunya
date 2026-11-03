@@ -116,6 +116,15 @@ const barWidth = (share: number | null) => `width:${share ? Math.max(2, Math.rou
           </div>
         </section>
 
+        {data.actions.length > 0 && (
+          <section class="mt-8 rounded-2xl border border-amber-300 bg-amber-50 p-6" aria-labelledby="outcomes-actions">
+            <h2 id="outcomes-actions" class="text-lg font-black text-amber-900">What to do next</h2>
+            <ol class="mt-3 list-decimal space-y-2 pl-5 text-sm text-amber-900">
+              {data.actions.map((a) => <li>{a.text} <a href={a.href} class="font-bold underline">Open</a></li>)}
+            </ol>
+          </section>
+        )}
+
         <section class="mt-10 grid gap-6 lg:grid-cols-2">
           <article class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="outcomes-abandon">
             <h2 id="outcomes-abandon" class="text-lg font-black text-brand-dark">Two leaks, not one</h2>
@@ -208,7 +217,7 @@ const barWidth = (share: number | null) => `width:${share ? Math.max(2, Math.rou
 
         <section class="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="outcomes-segments">
           <h2 id="outcomes-segments" class="text-lg font-black text-brand-dark">Conversion by segment (GA4)</h2>
-          <p class="mt-1 text-sm text-slate-600">An average conversion rate is a lie of omission; by channel and by device it says where to work. From the shop's own copy of the GA4 daily series, which covers {data.segments.daysCovered} of {period.days} days in this period (GA4 fills a day in up to two days late).</p>
+          <p class="mt-1 text-sm text-slate-600">An average conversion rate is a lie of omission; by channel and by device it says where to work. From the shop's own copy of the GA4 daily series, which covers {data.segments.daysCovered} of {period.days} days in this period{data.segments.lastDay ? ` (to ${data.segments.lastDay}; GA4 fills a day in up to two days late)` : ""}. "New" is new users over total users summed by day, so a shopper seen on two days counts twice: a guide, not a census.</p>
           <div class="mt-4 grid gap-8 lg:grid-cols-2">
             {[{ title: "By channel", rows: data.segments.byChannel }, { title: "By device", rows: data.segments.byDevice }].map((block) => (
               <div>
@@ -255,7 +264,7 @@ const barWidth = (share: number | null) => `width:${share ? Math.max(2, Math.rou
             <li>Whales: paid orders at or above 2 × the period's average paid order.</li>
             <li>Journeys: measurement.order_touch_link joined to the visitor's recorded landing touches before the order.</li>
             <li>Micro conversions: accounts, product questions, battery finder requests, quote requests, dealer applications, paid gift cards and wish-list adds, each dated by its own record.</li>
-            <li>Session conversion, segments and the direct check: GA4 Data API daily series kept in measurement.ga4_daily_series. Cost per order: measurement.mmm_daily spend over orders placed.</li>
+            <li>Session conversion: orders placed on the GA4-covered days ÷ GA4 sessions on those days, from the Data API daily series kept in measurement.ga4_daily_series; segments and the direct check from the same series. Cost per order: measurement.mmm_daily spend (built nightly) over orders placed.</li>
           </ul>
         </section>
       </>

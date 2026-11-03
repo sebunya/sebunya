@@ -11,8 +11,8 @@ Analysis) and the shop's own data before anything was built.
 | Insight (Kaushik) | Self-critique | Verdict | Where it lives now |
 |---|---|---|---|
 | Small business: four KPIs only (cost per acquisition, bounce rate, checkout abandonment, macro conversion) | Bounce rate is gone in GA4 (engagement rate replaces it, and it is a weaker signal for a shop than abandonment). The other three hold. | Keep three, swap bounce for cart abandonment | `/admin/analytics/outcomes`, "The critical few" |
-| Split abandonment: cart (never reached checkout) vs checkout (started, never ordered) | Still the single most useful split for a shop; Baymard's 2026 data still reports them separately. We had one blended funnel. | Keep | Outcomes, "Two leaks, not one"; counts from carts, begin_checkout telemetry, orders |
-| A conversion rate needs a visits denominator, not page views | True; GA4 sessions from our own copy of the daily series, same Kampala days. GA4 lags up to 2 days, so the page says how many days it covers. | Keep | Session conversion (critical four) |
+| Split abandonment: cart (never reached checkout) vs checkout (started, never ordered) | Still the single most useful split for a shop; Baymard's long-running checkout research reports them separately (its often-quoted ~70% is cart abandonment). We had one blended funnel. | Keep | Outcomes, "Two leaks, not one"; counts from carts, begin_checkout telemetry, orders |
+| A conversion rate needs a visits denominator, not page views | True; GA4 sessions from our own copy of the daily series, same Kampala days. GA4 lags up to 2 days, so the page says how many days it covers. | Keep | Session conversion (critical four): orders on the GA4-covered days ÷ sessions on those days |
 | Whales: find the ~2× AOV orders instead of averaging | Holds, trivially cheap, we never showed it. | Keep | Outcomes, "Whales" |
 | Days and visits to purchase as distributions | Holds; GA4 removed the old "time lag" report from the UI for most properties, so our own touch links are the only honest source. Coverage is shown (staff-placed orders have no journey). | Keep | Outcomes, "How long, and how many visits" |
 | Micro conversions with an economic value | Holds and is the one most shops skip; a count without a value never changes a decision. Values are the owner's, set once. | Keep | Outcomes, "Micro conversions, in shillings" + measurement settings `micro_value_*` |
@@ -56,3 +56,13 @@ Analysis) and the shop's own data before anything was built.
    no purchase (7 days)" audiences; export the last to Google Ads once paid media starts.
 7. **Direct traffic**: Reports → Acquisition → Traffic acquisition, filter `(direct) / (none)`, compare with the
    Outcomes page's alarm; the two should agree within the GA4 lag.
+
+## Known limits (read before trusting a number)
+
+- Checkout starts come from the telemetry outbox (`begin_checkout`, one per browser). The outbox is not pruned
+  today, so history is complete; if a retention job is ever added, this count shortens with it.
+- "New" share per segment sums GA4's daily new and total users, so a user seen on two days counts twice.
+- Journeys need `measurement.order_touch_link`; orders placed by staff or from a browser without the script have
+  none, and the page shows the coverage.
+- Micro "sign-ups" are all accounts created, staff included (a handful a year).
+- Spend comes from `measurement.mmm_daily`, built nightly; cost per order for today is yesterday's spend.
