@@ -65,7 +65,8 @@ function optionalTier(row: Record<string, unknown>, column: string | undefined):
   if (!column) return null;
   const raw = String(row[column] ?? "").trim();
   if (!raw) return null;
-  const n = Number(raw.replace(/,/g, ""));
+  // Same as retail: "145,000" and "145 000" are both 145000.
+  const n = Number(raw.replace(/[,\s]/g, ""));
   return Number.isFinite(n) ? n : Number.NaN;
 }
 

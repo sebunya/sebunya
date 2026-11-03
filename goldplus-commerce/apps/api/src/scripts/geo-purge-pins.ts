@@ -15,6 +15,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../infrastructure/db/client';
 import { DeliveryConfigReader } from '../infrastructure/delivery/DeliveryConfigReader';
 import { LOCATION_SIGNAL_RETENTION_DAYS } from '../domain/locations/LocationSignals';
+import { effectivePinRetentionDays } from '../domain/delivery/DeliveryPins';
 
 /** Google-derived coordinates are removed after this many days; the nightly cadence keeps them under the terms' 30. */
 export const MAP_PLACE_RETENTION_DAYS = 29;
@@ -24,7 +25,7 @@ export async function purgePins(now: Date = new Date()): Promise<{ signals: numb
   const pending = (await db.execute(sql`delete from whatsapp_pending_location where expires_at < ${now} returning wamid`)) as unknown as { count?: number };
   // A rider's handover point is the customer's front door: same retention as a pin (privacy page). The attempt row stays.
   const retention = (await new DeliveryConfigReader().numericValues()).pin_retention_days;
-  const days = Number.isFinite(retention) && retention >= 30 ? Math.min(retention, 365) : 180;
+  const days = effectivePinRetentionDays(retention);
   const cutoff = new Date(now.getTime() - days * 86_400_000);
   const handovers = (await db.execute(sql`
     update fulfilment_deliveries set handover_lat = null, handover_lng = null, handover_accuracy_m = null
@@ -35,7 +36,8 @@ export async function purgePins(now: Date = new Date()): Promise<{ signals: numb
   const orderPins = (await db.execute(sql`
     update orders set delivery_location = delivery_location - 'gpsLat' - 'gpsLng' - 'gpsAccuracyM'
     where delivery_location ? 'gpsLat' and created_at < ${cutoff}`)) as unknown as { count?: number };
-  // "Locate me" keeps the customer's own fix on the signal; the signal itself stays its 13 months, the point does not.
+  // "Locate me" keeps the customer's own fix on the signal; its coordinates go at the pin retention (privacy page: 180
+  // days), while the coordinate-free signal row stays LOCATION_SIGNAL_RETENTION_DAYS.
   const signalPins = (await db.execute(sql`
     update location_signals set pin_lat = null, pin_lng = null, pin_accuracy_m = null
     where pin_lat is not null and occurred_at < ${cutoff}`)) as unknown as { count?: number };
@@ -46,7 +48,7 @@ export async function purgePins(now: Date = new Date()): Promise<{ signals: numb
   const mapPlaceAddresses = (await db.execute(sql`
     update addresses set gps_lat = null, gps_lng = null, gps_accuracy_m = null
     where gps_source = 'map_place' and gps_lat is not null and coalesce(gps_captured_at, updated_at) < ${mapCutoff}`)) as unknown as { count?: number };
-  // 0193: location signals (areas, fees, ranks; their coordinates go at the pin retention above) are kept 13 months, then deleted.
+  // 0193: location signals (areas, fees, ranks; their coordinates go at the pin retention above) are deleted after LOCATION_SIGNAL_RETENTION_DAYS.
   const signalCutoff = new Date(now.getTime() - LOCATION_SIGNAL_RETENTION_DAYS * 86_400_000);
   const signals = (await db.execute(sql`delete from location_signals where occurred_at < ${signalCutoff}`)) as unknown as { count?: number };
   return {

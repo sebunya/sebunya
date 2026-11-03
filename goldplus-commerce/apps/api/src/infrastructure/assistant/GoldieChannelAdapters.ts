@@ -41,7 +41,7 @@ export class WhatsAppCloudMessenger implements IWhatsAppMessenger {
     }
   }
 
-  /** Marks the customer's message read (blue ticks) and, while Goldie prepares the answer, shows "typing…". */
+  /** Sends a message with up to three reply buttons (a plain text when there are none). */
   async sendInteractive(input: { phoneNumberId: string; to: string; body: string; buttons: Array<{ id: string; title: string }> }) {
     const token = (process.env.GOLDIE_WHATSAPP_TOKEN || '').trim() || (await this.token());
     if (!token) return { ok: false as const, reason: 'no messaging token' };
@@ -68,6 +68,8 @@ export class WhatsAppCloudMessenger implements IWhatsAppMessenger {
       return { ok: false as const, reason: e instanceof Error ? e.message.slice(0, 120) : 'unreachable' };
     }
   }
+
+  /** Marks the customer's message read (blue ticks) and, while Goldie prepares the answer, shows "typing…". */
   async markRead(input: { phoneNumberId: string; messageId: string; typing: boolean }) {
     const token = (process.env.GOLDIE_WHATSAPP_TOKEN || '').trim() || (await this.token());
     if (!token || !/^\d{5,20}$/.test(input.phoneNumberId)) return;
@@ -147,10 +149,11 @@ export class CareAlertChannels implements ICareAlertChannels {
   async push(input: { title: string; body: string; url: string; key: string }) {
     const keys = await careVapidKeys().catch(() => null);
     if (!keys) return { sent: 0 };
-    // Only staff who still have an active account with an admin role: an alert carries a customer's name and number.
+    // Only staff who still have an active account AND a role that may read the Care Desk (customer_data.view, the
+    // permission its routes and the subscribe route require): an alert carries a customer's name and number.
     const subs = await db.select().from(carePushSubscriptions)
       .where(sql`exists (select 1 from users u where u.id = ${carePushSubscriptions.userId} and u.is_active)
-        and exists (select 1 from user_roles r where r.user_id = ${carePushSubscriptions.userId})`).limit(100);
+        and ${CARE_PUSH_RECIPIENT_HAS_PERMISSION}`).limit(100);
     let sent = 0;
     // Sent side by side (each has its own timeout), so a few slow push services cannot hold up the ticker.
     const outcomes = await Promise.all(subs.map((s) => sendWebPush({ endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth }, { title: input.title, body: input.body, url: input.url }, keys).catch(() => 'failed' as const)));
@@ -164,6 +167,12 @@ export class CareAlertChannels implements ICareAlertChannels {
     return { sent };
   }
 }
+
+/** Holds customer_data.view through a role (permission codes split at the first dot: action.resource). */
+export const CARE_PUSH_RECIPIENT_HAS_PERMISSION = sql`exists (select 1 from user_roles ur
+  join role_permissions rp on rp.role_id = ur.role_id
+  join permissions p on p.id = rp.permission_id
+  where ur.user_id = ${carePushSubscriptions.userId} and p.action || '.' || p.resource = 'customer_data.view')`;
 
 /**
  * The Care Desk's VAPID keys: the environment's when set, otherwise the pair the api generated and stored (0182),

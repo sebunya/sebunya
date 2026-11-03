@@ -57,7 +57,7 @@ function foldWord(word: string): string {
   // Leading vowel may be dropped or added: entebbe==ntebbe. Fold by DROPPING a
   // leading vowel when it precedes a consonant cluster the language allows
   // word-initially only with the vowel (n+consonant, m+consonant).
-  w = w.replace(/^[ae](?=[nm][a-z])/, '');
+  w = w.replace(/^[ae](?=[nm][b-df-hj-np-tv-z])/, '');
 
   // Terminal -e / -ye variance: kyebando==kyebandoe → strip a terminal `oe`→`o`
   // and terminal duplicate vowels are already collapsed; fold trailing "ye" to

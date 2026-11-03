@@ -57,7 +57,8 @@ class Results:
         return d
 
     def to_json(self, indent: int = 2) -> str:
-        return json.dumps(self.to_dict(), indent=indent, default=_json_default)
+        # NaN/inf (no posterior predictive, zero-spend ROAS) become null: bare NaN is not valid JSON.
+        return json.dumps(_finite(self.to_dict()), indent=indent, default=_json_default, allow_nan=False)
 
     def save(self, path_json) -> None:
         """Write the results (without idata) as JSON."""
@@ -121,3 +122,19 @@ def hdi_from_samples(samples, prob: float = 0.94) -> tuple[float, float]:
     spans = x[width:] - x[: n - width]
     i = int(np.argmin(spans))
     return (float(x[i]), float(x[i + width]))
+
+
+def _finite(value: Any) -> Any:
+    """Replace non-finite floats with None, recursively (dicts, lists, tuples, numpy scalars)."""
+    import math
+    if isinstance(value, dict):
+        return {k: _finite(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_finite(v) for v in value]
+    if hasattr(value, "tolist") and not isinstance(value, (str, bytes)):
+        value = value.tolist()  # numpy scalar -> Python scalar, array -> list
+        if isinstance(value, list):
+            return [_finite(v) for v in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value

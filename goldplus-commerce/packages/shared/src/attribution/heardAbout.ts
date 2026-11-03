@@ -84,7 +84,7 @@ export const WHATSAPP_REF_PATTERN = /^GP-[23456789ABCDEFGHJKMNPQRSTVWXYZ]{6}$/;
  */
 export function normaliseWhatsAppRef(input: unknown): string | null {
   if (typeof input !== 'string') return null;
-  const compact = input.toUpperCase().replace(/^\s*REF[:\s]*/, '').replace(/[\s_-]+/g, '');
+  const compact = input.toUpperCase().replace(/^\s*REF(?::\s*|\s+)/, '').replace(/[\s_-]+/g, '');
   // Bare six characters, or the prefixed eight: a bare code may itself start with "GP".
   const body = compact.length === WHATSAPP_REF_LENGTH + 2 && compact.startsWith('GP') ? compact.slice(2) : compact;
   const code = `GP-${body}`;

@@ -54,10 +54,23 @@ export const DEFAULT_PROMOTION_APPROVAL_POLICY: PromotionApprovalPolicy = {
   fixedUgxThreshold: 100_000,
 };
 
-export function requiresDistinctApprover(benefits: PromotionBenefit[], policy: PromotionApprovalPolicy): boolean {
+/**
+ * A FIXED_PRICE benefit's value is the TARGET price, not the discount: the evaluator takes canonical − value off. The
+ * discount is therefore measured against the highest canonical unit price in scope (`fixedPriceReferenceUgx`); when
+ * that is not known the discount cannot be bounded, so a second approver is required (fail safe).
+ */
+export function requiresDistinctApprover(
+  benefits: PromotionBenefit[],
+  policy: PromotionApprovalPolicy,
+  fixedPriceReferenceUgx?: number | null,
+): boolean {
   return benefits.some((benefit) => {
     if (benefit.type === 'PERCENTAGE_OFF') return benefit.value > policy.percentBpsThreshold;
-    if (benefit.type === 'FIXED_AMOUNT_OFF' || benefit.type === 'FIXED_PRICE') return benefit.value > policy.fixedUgxThreshold;
+    if (benefit.type === 'FIXED_AMOUNT_OFF') return benefit.value > policy.fixedUgxThreshold;
+    if (benefit.type === 'FIXED_PRICE') {
+      if (fixedPriceReferenceUgx == null || !Number.isFinite(fixedPriceReferenceUgx)) return true;
+      return Math.max(0, fixedPriceReferenceUgx - benefit.value) > policy.fixedUgxThreshold;
+    }
     return false; // FREE_SHIPPING is not discount-value gated
   });
 }

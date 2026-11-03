@@ -51,7 +51,7 @@ export const POSTBACK_CLICK_IDS = ['clickid', 'click_id'] as const;
 export const CLICK_ID_PARAMS: readonly string[] = [...Object.keys(AD_CLICK_IDS), ...Object.keys(SOCIAL_SHARE_CLICK_IDS), ...POSTBACK_CLICK_IDS];
 
 /** URL parameters that say where a visit came from: carried onto the next page when the tag missed the landing. */
-export const CAMPAIGN_PARAM = /^(utm_[a-z]+|gclid|gbraid|wbraid|dclid|fbclid|ttclid|twclid|msclkid|li_fat_id|sccid|epik)$/i;
+export const CAMPAIGN_PARAM = /^(utm_[a-z]+|gclid|gbraid|wbraid|dclid|fbclid|ttclid|twclid|msclkid|li_fat_id|sccid|epik|clickid|click_id|srsltid)$/i;
 
 /** Tags or an ad-only id: the visit's own evidence, which an in-app browser or a social click id never overrides. */
 export const TAGGED_OR_AD_PARAM = /^(utm_.+|gclid|gbraid|wbraid|dclid|msclkid|ttclid|li_fat_id|sccid|twclid|epik|clickid|click_id)$/i;
@@ -149,7 +149,9 @@ export function landingTouch(input: { search: string; referrer: string; ua: stri
     const h = input.referrer ? new URL(input.referrer).host : '';
     referrerHost = h && !isInternalReferrerHost(h, input.selfHost) ? h.slice(0, 253) : null;
   } catch { /* no referrer */ }
-  if (!referrerHost) referrerHost = untaggedArrivalHost(q, input.ua);
+  // The in-app browser / marker fallback is for a landing with NO referrer at all. An internal referrer (our own
+  // page, Pesapal) is a page view inside the visit, not a new arrival from the social app (review 233).
+  if (!referrerHost && !String(input.referrer ?? '').trim()) referrerHost = untaggedArrivalHost(q, input.ua);
   const clip = (v: string | null, n: number) => (v ? v.slice(0, n) : null);
   return { source: clip(q.get('utm_source'), 100), medium: clip(q.get('utm_medium'), 100), campaign: clip(q.get('utm_campaign'), 150), referrerHost, clickIdTypes };
 }

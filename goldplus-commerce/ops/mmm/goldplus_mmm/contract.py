@@ -309,8 +309,12 @@ def to_weekly(daily: pd.DataFrame, controls: pd.DataFrame | None = None) -> pd.D
     spend_cols, impr_cols = {}, {}
     for ch in media:
         spend_cols[f"{SPEND_PREFIX}{ch}"] = spend_wide[ch] if ch in spend_wide else 0.0
+        # Impressions are used only when reported for EVERY day with spend: a partly-reported channel (connector
+        # live from June, spend from March) would read as money spent with zero exposure, so it falls back to spend.
         if ch in impr_wide and impr_wide[ch].notna().any():
-            impr_cols[f"{IMPRESSIONS_PREFIX}{ch}"] = impr_wide[ch].fillna(0)
+            spent_days = spend_wide[ch] > 0
+            if impr_wide[ch][spent_days].notna().all():
+                impr_cols[f"{IMPRESSIONS_PREFIX}{ch}"] = impr_wide[ch].fillna(0)
     for name, series in spend_cols.items():
         frame[name] = series
     for name, series in impr_cols.items():

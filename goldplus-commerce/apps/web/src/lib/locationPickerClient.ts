@@ -20,6 +20,7 @@
   import { UGANDA_DISTRICTS, UGANDA_PLACE_ALIASES } from '../../../../packages/shared/src/locations/uganda';
   import { publicApiBase } from './api';
   import { PLUS_CODE, plusCodePoint } from './plusCodeInput';
+  import { keepPinOnCommit } from './locationPickerPin';
 
   interface PlaceOption {
     label: string;
@@ -215,6 +216,12 @@
     }
 
     function commit(opt: PlaceOption) {
+      // A pin from an earlier, unrelated attempt must not ride along with a different area.
+      if (pin && !keepPinOnCommit({ pinSource: pin.gpsSource, offeredAreaSlugs: lastOffer, chosenAreaSlug: opt.areaSlug, chosenFromPin: Boolean(opt.fromPin) })) {
+        pin = null;
+        lastOffer = null;
+        if (pinStatus) pinStatus.textContent = '';
+      }
       recordLocateOutcome(opt);
       resolveMiss(opt);
       const hasArea = Boolean(opt.area && opt.area !== opt.district);
@@ -574,8 +581,15 @@
       commit(opt);
     }
 
+    /** Clearing the answer is a change too: listeners (the fee panel) must stop showing the old area. */
+    function clearPayload() {
+      if (!payloadInput!.value) return;
+      payloadInput!.value = '';
+      payloadInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
     input.addEventListener('input', () => {
-      payloadInput.value = '';
+      clearPayload();
       const q = input.value.trim();
       // A Plus Code typed or pasted into the search box is a location, not an area name: take it as a pin.
       const coded = withPinCapture ? plusCodePoint(q) : null;
@@ -837,7 +851,7 @@
     changeBtn?.addEventListener('click', () => {
       selectedCard.classList.add('hidden');
       searchContainer.classList.remove('hidden');
-      payloadInput.value = '';
+      clearPayload();
       // A new place gets its own pin: the old one could be home while the new answer is the office.
       pin = null;
       if (pinStatus) pinStatus.textContent = '';

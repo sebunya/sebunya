@@ -147,6 +147,14 @@ describe('Meta first, Zoho second', () => {
     const r = await new FailoverWhatsAppProvider(new MetaWhatsAppAdapter(c, async () => null), z).dispatch(payload);
     expect(r.providerCode).toBe('zoho-1');
   });
+  it('Zoho alone: a STOP list that cannot be read blocks WhatsApp (fails closed, review 231)', async () => {
+    const z = zoho();
+    const { c } = catalogWith({});
+    await c.refresh();
+    const r = await new FailoverWhatsAppProvider(new MetaWhatsAppAdapter(c, async () => null), z, async () => { throw new Error('db blink'); }).dispatch(payload);
+    expect(r.providerCode).toBe('BLOCK_CHECK_FAILED');
+    expect(z.dispatch).not.toHaveBeenCalled();
+  });
 });
 
 describe('template catalogue', () => {

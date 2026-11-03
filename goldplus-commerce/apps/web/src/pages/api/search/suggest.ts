@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { apiBase } from '../../../lib/api';
+import { apiHeaders, readClientAddress } from '../../../lib/forwardClient';
 
 /**
  * Same-origin predictive-search relay (Stage 3). The header's search box calls
@@ -16,11 +17,14 @@ const json = (status: number, body: unknown, cache = 'public, max-age=30') =>
     headers: { 'Content-Type': 'application/json', 'Cache-Control': cache },
   });
 
-export const GET: APIRoute = async ({ url }) => {
+export const GET: APIRoute = async (ctx) => {
+  const { url } = ctx;
   const q = (url.searchParams.get('q') ?? '').trim().slice(0, 80);
   if (!q) return json(200, { success: true, data: [] });
   try {
     const res = await fetch(`${apiBase}/products/suggest?q=${encodeURIComponent(q)}&limit=6`, {
+      // The visitor's address, so the API rate-limits this public relay per client (never as our own service).
+      headers: apiHeaders({}, readClientAddress(ctx)),
       signal: AbortSignal.timeout(2500),
     });
     const j: any = await res.json().catch(() => null);

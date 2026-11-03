@@ -35,9 +35,19 @@ describe('an exhausted credit balance is not a rate limit', () => {
   });
 
   it('recognises the other wordings providers use for the same thing', () => {
-    for (const body of ['Insufficient credits on this account', 'Your quota has been exceeded', 'no credits remaining']) {
+    for (const body of ['Insufficient credits on this account', 'no credits remaining']) {
       expect(classifyTransactionalEmailFailure({ response_status: 429, provider_code: body }).classification)
         .toBe('credit_exhausted');
+    }
+  });
+});
+
+describe('a send quota resets by itself (review 228)', () => {
+  it('quota exceeded / resource limit exhausted are retryable rate limits, not credit', () => {
+    for (const body of ['Your quota has been exceeded', 'Daily quota exceeded', 'Rate quota exhausted, try later', 'resource limit exhausted']) {
+      const f = classifyTransactionalEmailFailure({ response_status: 429, provider_code: body });
+      expect(f.classification, body).toBe('rate_limited');
+      expect(f.retryable, body).toBe('yes');
     }
   });
 });

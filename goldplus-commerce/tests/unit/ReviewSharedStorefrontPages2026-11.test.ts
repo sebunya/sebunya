@@ -104,7 +104,7 @@ describe('phone-battery alias redirect keeps the query', () => {
   it('uses carryQuery', () => {
     const src = read('apps/web/src/pages/phone-batteries/[device].astro');
     expect(src).toContain('carryQuery(phoneBatteryPath(deviceRes.data.device.slug), Astro.url.search), 301');
-    expect(src).toContain('formatCutoffLabel(biz.sameDayCutoffHour)');
+    expect(src).toContain('cutoffPhrase(biz.sameDayCutoffHour)');
   });
 });
 

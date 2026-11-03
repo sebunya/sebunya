@@ -1,3 +1,4 @@
+import { OUTCOME_UNKNOWN_PROVIDER_CODE } from '../../apps/api/src/application/ports/INotificationProvider';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   ZohoWhatsAppAdapter,
@@ -205,12 +206,20 @@ describe('Zoho CPaaS WhatsApp', () => {
       expect(res.providerMessage.length).toBeLessThanOrEqual(300);
     });
 
-    it('network errors are redacted and left retryable', async () => {
-      fetchMock.mockRejectedValue(new Error(`socket closed Authorization: ${API_KEY}`));
+    it('a failure before anything left is redacted and left retryable', async () => {
+      fetchMock.mockRejectedValue(Object.assign(new Error(`connect refused Authorization: ${API_KEY}`), { code: 'ECONNREFUSED' }));
       const res = await send();
       expect(res.status).toBe('FAILED');
+      expect(res.providerCode).toBe('PROVIDER_ERROR');
       expect(res.retryable).toBeUndefined();
       expect(res.providerMessage).not.toContain(API_KEY);
+    });
+
+    it('a connection that broke after sending is outcome unknown: not retried, no SMS (review 231)', async () => {
+      fetchMock.mockRejectedValue(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }));
+      const res = await send();
+      expect(res.providerCode).toBe(OUTCOME_UNKNOWN_PROVIDER_CODE);
+      expect(res.retryable).toBe(false);
     });
 
     it('maskPhone never shows the whole number', () => {

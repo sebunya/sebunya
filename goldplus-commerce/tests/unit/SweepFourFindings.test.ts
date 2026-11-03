@@ -507,8 +507,9 @@ describe('turning on an ad platform is a privileged, recorded act', () => {
     const block = src.slice(src.indexOf("'/destinations/:id/update'"), src.indexOf("'/delivery/:eventId/retry'"));
     expect(block).toMatch(/requirePermissions\(\[PERMISSIONS\.SETTINGS_MANAGE\]\)/);
     expect(block).not.toMatch(/requirePermissions\(\[PERMISSIONS\.REPORTS_READ\]\)/);
-    // Enabling a platform must be attributable, and the id must be an id.
-    expect(block).toMatch(/PAID_SOCIAL_DESTINATION_UPDATED/);
+    // Nothing stores the change yet: it says "Not configured", and never audits (or echoes) the raw body (review 231).
+    expect(block).toMatch(/Not configured/);
+    expect(block).not.toMatch(/requested: body/);
     expect(block).toMatch(/Missing or malformed id/);
   });
 

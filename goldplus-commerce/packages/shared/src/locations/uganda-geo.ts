@@ -77,8 +77,22 @@ export const UGANDA_METRO_AREA_KM: Readonly<Record<string, number>> = {
 };
 
 /** Road distance for a district, or null when the name is not canonical. */
+/**
+ * Own-key, case-insensitive lookup: "toString" or "constructor" is never a distance, and "najjera" is Najjera.
+ * The tables are built once into lower-cased Maps.
+ */
+function lowerIndex(table: Record<string, number>): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const k of Object.keys(table)) if (Object.hasOwn(table, k)) m.set(k.trim().toLowerCase(), table[k]);
+  return m;
+}
+let districtIndex: Map<string, number> | null = null;
+let areaIndex: Map<string, number> | null = null;
+
 export function districtRoadKm(district: string): number | null {
-  return UGANDA_DISTRICT_ROAD_KM[district] ?? null;
+  if (typeof district !== 'string') return null;
+  districtIndex ??= lowerIndex(UGANDA_DISTRICT_ROAD_KM);
+  return districtIndex.get(district.trim().toLowerCase()) ?? null;
 }
 
 /**
@@ -86,8 +100,9 @@ export function districtRoadKm(district: string): number | null {
  * when the area is known and mapped, otherwise the district's road distance.
  */
 export function deliveryPointKm(district: string, area?: string | null): number | null {
-  if (area) {
-    const areaKm = UGANDA_METRO_AREA_KM[area.trim()];
+  if (typeof area === 'string' && area.trim()) {
+    areaIndex ??= lowerIndex(UGANDA_METRO_AREA_KM);
+    const areaKm = areaIndex.get(area.trim().toLowerCase());
     if (areaKm !== undefined) return areaKm;
   }
   return districtRoadKm(district);

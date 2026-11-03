@@ -13,6 +13,7 @@
  */
 import '../config/env';
 import { sql } from 'drizzle-orm';
+import { effectivePinRetentionDays } from '../domain/delivery/DeliveryPins';
 import { db } from '../infrastructure/db/client';
 import { pgJsonb } from '../infrastructure/db/PgParams';
 import { DeliveryConfigReader } from '../infrastructure/delivery/DeliveryConfigReader';
@@ -32,7 +33,7 @@ export interface NightlyAreaPointsResult {
 export async function runNightlyAreaPoints(opts: { dryRun?: boolean; now?: Date } = {}): Promise<NightlyAreaPointsResult> {
   const now = opts.now ?? new Date();
   const retentionDays = (await new DeliveryConfigReader().numericValues()).pin_retention_days;
-  const days = Number.isFinite(retentionDays) && retentionDays >= 30 ? Math.min(retentionDays, 365) : 180;
+  const days = effectivePinRetentionDays(retentionDays);
   const since = new Date(now.getTime() - days * 86_400_000);
 
   // Handover pins: a DELIVERED attempt with a point, joined to the order's area through the capture.

@@ -68,7 +68,8 @@ export function validateWorkItem(raw: WorkItemInput, current?: { state?: string 
   const title = (raw.title ?? '').trim();
   if (!title) return { ok: false, code: 'BAD_INPUT', message: 'A work item needs a title.' };
 
-  const state = (raw.state ?? 'BACKLOG') as WorkItemState;
+  // An update that leaves state out keeps the item where it is; only a new item starts in BACKLOG.
+  const state = (raw.state ?? current?.state ?? 'BACKLOG') as WorkItemState;
   const priority = (raw.priority ?? 'MEDIUM') as WorkItemPriority;
   if (!WORK_ITEM_STATES.includes(state)) {
     return { ok: false, code: 'BAD_INPUT', message: `state must be one of ${WORK_ITEM_STATES.join(', ')}.` };

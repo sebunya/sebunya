@@ -8,6 +8,7 @@ import {
   resolveProxyConfig,
   UNKNOWN_CLIENT_IP, isInternalServiceCall } from '../../domain/identity/ClientAddress';
 import { logger } from '../../infrastructure/logging/logger';
+import { INTERNAL_KEY_HEADER, isInternalCaller } from './middleware/floorPriceRedaction';
 
 export { UNKNOWN_CLIENT_IP, clientBucketKey, isDegradedAttribution };
 export type { ClientAddress };
@@ -89,10 +90,37 @@ export function clientAddress(c: Context): ClientAddress {
  * headers — see the domain predicate for why the distinction is exact.
  */
 export function isInternalCall(c: Context): boolean {
-  return isInternalServiceCall({
+  return isInternalServiceRequest({
     forwardedFor: c.req.header('x-forwarded-for') ?? null,
     realIp: c.req.header('x-real-ip') ?? null,
+    internalKey: c.req.header(INTERNAL_KEY_HEADER),
+    expectedKey: process.env.INTERNAL_API_KEY,
   });
+}
+
+let warnedNoKey = false;
+
+/**
+ * Missing forwarding headers alone no longer make a caller "ours": a web relay that forgets to forward the visitor
+ * looks exactly like that. The caller must ALSO present the shared secret the web container already sends on every
+ * SSR call (X-GoldPlus-Internal-Key, see floorPriceRedaction). Only when the API has no key configured does the old
+ * header-less rule apply, with one warning, so a deployment without the key does not fall back to one shared bucket.
+ */
+export function isInternalServiceRequest(input: {
+  forwardedFor: string | null;
+  realIp: string | null;
+  internalKey: string | undefined;
+  expectedKey: string | undefined;
+}): boolean {
+  if (!isInternalServiceCall(input)) return false;
+  if (!input.expectedKey || input.expectedKey.length < 32) {
+    if (!warnedNoKey) {
+      warnedNoKey = true;
+      logger.warn('INTERNAL_API_KEY not configured: header-less calls are treated as internal and skip the public rate limit');
+    }
+    return true;
+  }
+  return isInternalCaller(input.internalKey, input.expectedKey);
 }
 
 /** Convenience for callers that only need the address. */

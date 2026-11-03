@@ -447,6 +447,8 @@ export async function* runAssistant(turns: ChatTurn[], options: AssistantOptions
       // Input tokens were counted at message_start: this call was (at least partly) billed.
       billed = billed || state.usage.inputTokens > 0;
       add(state.usage);
+      // Counted once: the usage probe adds `current` on top of `usage`, so the round just added must leave `current`.
+      current = null;
       if (opts.signal?.aborted) return;
       console.error('[assistant] stream failed', e instanceof Error ? e.message : e);
       yield { type: 'error', code: 'FAILED', message: 'The answer was cut off. Please ask again.', billed, usage: { ...usage } };

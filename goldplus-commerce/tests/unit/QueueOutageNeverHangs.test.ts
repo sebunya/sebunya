@@ -39,7 +39,7 @@ describe('enqueue never waits on a Redis that is not there', () => {
     const qs = fakeService('reconnecting', add);
     expect(qs.isReady()).toBe(false);
     expect(qs.getReadyQueue('q')).toBeNull();
-    await expect(qs.enqueue('q', 'job', {})).rejects.toBeInstanceOf(QueueUnavailableError);
+    await expect(qs.enqueue('q', 'job', {})).rejects.toMatchObject({ mayHaveLanded: false });
     expect(add).not.toHaveBeenCalled();
   });
 
@@ -48,7 +48,8 @@ describe('enqueue never waits on a Redis that is not there', () => {
     vi.useFakeTimers();
     const qs = fakeService('ready', () => new Promise(() => undefined));
     const pending = qs.enqueue('q', 'job', {});
-    const assertion = expect(pending).rejects.toMatchObject({ code: 'QUEUE_UNAVAILABLE' });
+    // The add was sent and may still land: the caller is told so, and must not also run it inline (review 231).
+    const assertion = expect(pending).rejects.toMatchObject({ code: 'QUEUE_UNAVAILABLE', mayHaveLanded: true });
     await vi.advanceTimersByTimeAsync(ENQUEUE_TIMEOUT_MS + 1);
     await assertion;
   });
@@ -58,6 +59,7 @@ describe('enqueue never waits on a Redis that is not there', () => {
     expect(ticker).toContain('let queueUp = qs.isReady();');
     expect(ticker).toContain('err instanceof QueueUnavailableError');
     expect(ticker).not.toContain('!!qs.getQueue(');
+    expect(ticker).toContain('if (err.mayHaveLanded) {');
   });
 
   it('request paths do not await the enqueue', () => {

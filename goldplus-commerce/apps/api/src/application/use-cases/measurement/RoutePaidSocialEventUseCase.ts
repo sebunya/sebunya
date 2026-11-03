@@ -24,12 +24,13 @@ export class RoutePaidSocialEventUseCase {
         this.logger.info({ reason: 'NO_IDENTITY' }, `Measurement event ${eventName} not forwarded: consent cannot be established without an identity`);
         return;
       }
-      // getCurrentState(fpClientId, userId). The arguments were the wrong way
-      // round, so every lookup here asked for a consent record under the
-      // wrong identity and got whatever that returned.
-      const consent = await this.consentService.getCurrentState(sessionId, userId);
-      if (!consent.advertising || !consent.analytics) {
-        this.logger.info({ userId, sessionId, reason: 'CONSENT_DENIED' }, `Measurement event ${eventName} blocked due to missing consent`);
+      // D-002 (the ad-conversion rule): sent unless an explicit advertising
+      // refusal is stored. getCurrentState() falls back to the owner default
+      // (off) when nothing is stored, which dropped every event (review 228).
+      // The second argument is the browser's fp_client_id, as everywhere else.
+      const allowed = await this.consentService.advertisingConversionsSent(sessionId, userId);
+      if (!allowed) {
+        this.logger.info({ userId, sessionId, reason: 'CONSENT_REFUSED' }, `Measurement event ${eventName} blocked: advertising refused`);
         return;
       }
 

@@ -2,7 +2,7 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import CheckYourPhoneNote from '../../components/CheckYourPhoneNote.astro';
 import { SITE_ORIGIN } from '../../lib/sitemap';
-import { getBusinessInfo } from '../../lib/businessInfo';
+import { getBusinessInfo, cutoffPhrase } from '../../lib/businessInfo';
 import { serializeJsonLd, breadcrumbJsonLd } from '../../lib/jsonld';
 import { fitIndexCached, publicBattery, ugx, FIT_BADGE } from '../../lib/batteries';
 import { findRecordedRedirect } from '../../lib/recordedRedirect';
@@ -12,7 +12,6 @@ import {
   type FitProvenance,
 } from '../../lib/phoneBatteryPage';
 import type { BatteryFinderConfig, FinderBatteryResultDto, FinderDeviceDto } from '@goldplus/shared';
-import { formatCutoffLabel } from '@goldplus/shared';
 
 /**
  * One phone, the batteries that fit it, and how to be sure before ordering.
@@ -74,8 +73,7 @@ const PROVENANCE_INTRO: Record<FitProvenance, string> = {
 const guides = device ? phoneGuides(device.brandName) : [];
 const waHref = (text: string) => `${biz.whatsappUrl}?text=${encodeURIComponent(text)}`;
 const waText = `${cfg?.whatsappPrefill ?? 'Hello GoldPlus, I need a battery for my '}${device?.label ?? ''}`;
-// One cutoff label for the whole site (nav/nba formatCutoffLabel).
-const cutoff = formatCutoffLabel(biz.sameDayCutoffHour);
+const cutoff = cutoffPhrase(biz.sameDayCutoffHour);
 
 // Other phones of the same brand that have a battery: the brand's own index, one hop away.
 // Found by membership, not by name: a brand typed differently on one device must not hide the list.

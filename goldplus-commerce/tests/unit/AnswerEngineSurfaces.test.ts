@@ -61,7 +61,7 @@ describe('answer-engine surfaces', () => {
     expect(src).toContain('text/plain; charset=utf-8');
     expect(src).toMatch(/# GoldPlus/);
     // The catalogue decides the categories and the count.
-    expect(src).toContain('byCategory');
+    expect(src).toContain('llmsCategoryLines'); // counted per category from the live catalogue (lib/llmsCategories.ts)
     expect(src).toContain('${products.length} products are listed online');
     expect(src).not.toMatch(/Wilson Road|New Pioneer Mall|Zainab Aziza|0705 004545/);
   });

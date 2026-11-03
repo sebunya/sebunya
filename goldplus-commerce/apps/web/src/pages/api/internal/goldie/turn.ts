@@ -69,12 +69,18 @@ export const POST: APIRoute = async ({ request }) => {
   // to call you" is the answer), except the sentences that only narrate the checking ("I'll pull the list again…"),
   // and the parts are joined as sentences, never glued ("more.You were right").
   let text = ''; const parts: string[] = []; let products: ProductCard[] = []; let links: Array<{ label: string; url: string }> = [];
-  for await (const ev of prepared.run()) {
-    if (ev.type === 'text') text += ev.text;
-    else if (ev.type === 'tool') { const kept = withoutNarration(text); if (kept) parts.push(kept); text = ''; }
-    else if (ev.type === 'products') products = [...products, ...ev.items];
-    else if (ev.type === 'links') links = [...links, ...ev.items];
-    else if (ev.type === 'error' && !text) text = 'Sorry, I could not finish that one. The team will reply to you here shortly.';
+  // A throw (order API down inside a fixed answer, settle failing) still gets the JSON holding line, as chat.ts does.
+  try {
+    for await (const ev of prepared.run()) {
+      if (ev.type === 'text') text += ev.text;
+      else if (ev.type === 'tool') { const kept = withoutNarration(text); if (kept) parts.push(kept); text = ''; }
+      else if (ev.type === 'products') products = [...products, ...ev.items];
+      else if (ev.type === 'links') links = [...links, ...ev.items];
+      else if (ev.type === 'error' && !text) text = 'Sorry, I could not finish that one. The team will reply to you here shortly.';
+    }
+  } catch (e) {
+    console.error('[goldie/turn] unexpected', e instanceof Error ? e.message : e);
+    if (!text.trim() && !parts.length) text = 'Sorry, I could not finish that one. The team will reply to you here shortly.';
   }
   text = [...parts, text.trim()].filter(Boolean).join(' ');
   return json({ success: true, data: { text, products, links, intent: prepared.meta.intent, mood: prepared.meta.mood.mood, route: prepared.meta.route, cacheId: prepared.meta.cacheId ?? null } });

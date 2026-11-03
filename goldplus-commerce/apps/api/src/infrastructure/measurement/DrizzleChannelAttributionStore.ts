@@ -17,6 +17,9 @@ const rows = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[
 const env = () => environmentOf(process.env.NODE_ENV);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** A first-party visitor id the cross-device stitch may use (fp.<ms>.<uuid>); shared with AttributionJob so both paths stitch the same set. */
+export const isStitchableVisitorId = (x: string): boolean => /^fp\.\d{10,16}\.[0-9a-f-]{36}$/.test(x);
+
 export class DrizzleChannelAttributionStore implements ChannelAttributionStore {
   async loadOrder(orderId: string): Promise<OrderAttributionFacts | null> {
     if (!UUID.test(orderId)) return null;
@@ -82,7 +85,7 @@ export class DrizzleChannelAttributionStore implements ChannelAttributionStore {
     const r = rows(await db.execute(sql`select distinct substr(v.identifier_key, 4) as fp
       from customer_identity_links ol join customer_identity_links v on v.canonical_customer_id = ol.canonical_customer_id and v.signal_type = 'STABLE_ANONYMOUS_ID' and v.identifier_key like 'fp:%' and v.status = 'ACTIVE'
       where ol.signal_type = 'ORDER_CUSTOMER_RELATIONSHIP' and ol.identifier_key = 'order:' || ${orderId}::text`));
-    return r.map((x) => String(x.fp)).filter((x) => /^fp\.\d{10,16}\.[0-9a-f-]{36}$/.test(x));
+    return r.map((x) => String(x.fp)).filter(isStitchableVisitorId);
   }
 
   async linkVisitorTouches(input: { orderId: string; visitorId: string; orderAt: Date; lookbackDays: number; method: 'visitor' | 'whatsapp_ref' | 'stitched' }): Promise<number> {

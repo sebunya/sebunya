@@ -1,10 +1,12 @@
 import type { APIRoute } from 'astro';
 import { apiBase } from '../lib/api';
-import { getBusinessInfo } from '../lib/businessInfo';
+import { getBusinessInfo, cutoffPhrase } from '../lib/businessInfo';
 import { fetchApprovedCatalogueWithStatus } from '../lib/catalogue';
 import { getStorefrontDiscount } from '../lib/storefrontDiscount';
 import { chargedPriceUgx } from '../lib/productStructuredData';
 import { SITE_ORIGIN } from '../lib/sitemap';
+import { getTaxonomy } from '../lib/taxonomy';
+import { llmsCategoryLines } from '../lib/llmsCategories';
 
 /**
  * /llms.txt — the site in the form an answer engine can quote.
@@ -23,10 +25,11 @@ const esc = (s: string): string => s.replace(/\s+/g, ' ').trim();
 const noDot = (s: string): string => esc(s).replace(/\.$/, '');
 
 export const GET: APIRoute = async () => {
-  const [biz, read, discount] = await Promise.all([
+  const [biz, read, discount, taxonomy] = await Promise.all([
     getBusinessInfo(),
     fetchApprovedCatalogueWithStatus(apiBase).catch(() => ({ products: [], complete: false })),
     getStorefrontDiscount(),
+    getTaxonomy(),
   ]);
   // The count, the category counts and the price range are stated as facts and
   // cached publicly, so they come only from a COMPLETE catalogue read. A page-2
@@ -35,12 +38,7 @@ export const GET: APIRoute = async () => {
   const complete = read.complete && read.products.length > 0;
   const products = complete ? read.products : [];
 
-  const byCategory = new Map<string, number>();
-  for (const p of products) {
-    const key = p.categoryName ?? 'Other';
-    byCategory.set(key, (byCategory.get(key) ?? 0) + 1);
-  }
-  const categories = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
+  const categories = llmsCategoryLines(products, taxonomy, SITE_ORIGIN);
   // What the shop charges (the campaign price while one runs): the line below
   // says "Prices on the site are what is charged".
   const prices = products.map((p) => chargedPriceUgx(p, discount)).filter((v): v is number => typeof v === 'number' && v > 0);
@@ -49,21 +47,21 @@ export const GET: APIRoute = async () => {
   const lines = [
     '# GoldPlus',
     '',
-    `> GoldPlus sells phone accessories and replacement phone batteries in Kampala, Uganda${complete ? `: ${categories.map(([n, c]) => `${n.toLowerCase()} (${c})`).join(', ')}. ${products.length} products are listed online${range ? `, priced ${range}` : ''}` : ''}. The shop is at ${noDot(biz.addressLine1)}${biz.addressLine2 ? ` (${noDot(biz.addressLine2)})` : ''}, open ${noDot(biz.openDays)}, ${noDot(biz.shopHours)}.`,
+    `> GoldPlus sells phone accessories and replacement phone batteries in Kampala, Uganda${complete ? `: ${categories.map(({ name: n, count: c }) => `${n.toLowerCase()} (${c})`).join(', ')}. ${products.length} products are listed online${range ? `, priced ${range}` : ''}` : ''}. The shop is at ${noDot(biz.addressLine1)}${biz.addressLine2 ? ` (${noDot(biz.addressLine2)})` : ''}, open ${noDot(biz.openDays)}, ${noDot(biz.shopHours)}.`,
     '',
     '## Facts',
     '',
     `- Shop: ${esc(biz.addressLine1)}. ${esc(biz.addressLine2)}`,
     `- Opening hours: ${esc(biz.openDays)}, ${esc(biz.shopHours)}`,
     `- Phone and WhatsApp: ${esc(biz.phoneDisplay)}`,
-    `- Delivery: ${esc(biz.deliveryNote)} Delivery runs ${esc(biz.deliveryHours)}; order before ${biz.sameDayCutoffHour % 12 || 12}${biz.sameDayCutoffHour >= 12 ? 'pm' : 'am'} for the same-day run.`,
+    `- Delivery: ${esc(biz.deliveryNote)} Delivery runs ${esc(biz.deliveryHours)}; order before ${cutoffPhrase(biz.sameDayCutoffHour)} for the same-day run.`,
     '- Currency: Ugandan shilling (UGX). Prices on the site are what is charged.',
     '',
     ...(complete
       ? [
           '## What GoldPlus sells',
           '',
-          ...categories.map(([name, count]) => `- [${name}](${SITE_ORIGIN}/shop?category=${encodeURIComponent(name.toLowerCase().replace(/\s+/g, '-'))}): ${count} products`),
+          ...categories.map(({ name, count, href }) => (href ? `- [${name}](${href}): ${count} products` : `- ${name}: ${count} products`)),
           '',
         ]
       : []),

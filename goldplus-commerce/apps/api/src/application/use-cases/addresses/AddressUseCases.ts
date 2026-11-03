@@ -79,13 +79,28 @@ function validateCore(input: {
   return { ok: true, district, phoneE164, phoneWarning };
 }
 
+/**
+ * Fields only ops (or the server itself) may set. A customer request must never carry them: resolutionStatus decides
+ * whether the address enters the ops review queue, gpsSource 'ops_entered' claims an ops-verified point, and the
+ * snapshot* fields are the server's record of what the area meant at save time (brief PART E).
+ */
+const OPS_ONLY_KEYS = ['resolutionStatus', 'snapshotAreaLabel', 'snapshotDistrict', 'snapshotPostcode', 'snapshotDataVersion'] as const;
+
+export function stripOpsOnlyFields<T extends AddressStructuredFields>(input: T): T {
+  const out = { ...input } as T & Record<string, unknown>;
+  for (const k of OPS_ONLY_KEYS) delete out[k];
+  if (out.gpsSource === 'ops_entered') delete out.gpsSource;
+  return out;
+}
+
 export class AddAddressUseCase {
   constructor(
     private readonly addresses: IAddressRepository,
     private readonly audit: IAddressAuditRepository,
   ) {}
 
-  async execute(input: AddAddressInput): Promise<AddAddressResult> {
+  async execute(rawInput: AddAddressInput): Promise<AddAddressResult> {
+    const input = stripOpsOnlyFields(rawInput);
     // Create semantics: a missing landmark is an EMPTY landmark, not "unchanged".
     const core = validateCore({ ...input, landmarkText: input.landmarkText ?? '' });
     if (!core.ok) return { ok: false, code: 'BAD_INPUT', message: core.message };
@@ -98,8 +113,7 @@ export class AddAddressUseCase {
       areaDetails: input.areaDetails.trim(),
       // The manual fallback (PART H) arrives with rawAddressText and no area —
       // it enters the ops review queue rather than pretending to be resolved.
-      resolutionStatus:
-        input.resolutionStatus ?? (input.rawAddressText && !input.areaSlug ? 'needs_ops_review' : 'resolved'),
+      resolutionStatus: input.rawAddressText && !input.areaSlug ? 'needs_ops_review' : 'resolved',
     } satisfies CreateAddressInput);
     await this.audit.append({
       addressId: address.id,
@@ -122,7 +136,12 @@ export class UpdateAddressUseCase {
     private readonly audit: IAddressAuditRepository,
   ) {}
 
-  async execute(userId: string, addressId: string, patch: UpdateAddressPatch): Promise<UpdateAddressResult> {
+  async execute(userId: string, addressId: string, rawPatch: UpdateAddressPatch): Promise<UpdateAddressResult> {
+    const patch: UpdateAddressPatch = stripOpsOnlyFields(rawPatch);
+    // The status follows what the customer sent, never what they claim: picking an area resolves the address, a
+    // free-text description without one goes (back) to the ops review queue.
+    if (patch.areaSlug) patch.resolutionStatus = 'resolved';
+    else if (patch.areaSlug === null && patch.rawAddressText) patch.resolutionStatus = 'needs_ops_review';
     if (!addressId.trim()) return { ok: false, code: 'NOT_FOUND', message: 'Address not found.' };
     const core = validateCore(patch);
     if (!core.ok) return { ok: false, code: 'BAD_INPUT', message: core.message };
@@ -135,7 +154,7 @@ export class UpdateAddressUseCase {
     // Post-placement address edits are exactly what generates disputes —
     // before and after are recorded verbatim (brief E.2 address_audit).
     await this.audit.append({
-      addressId,
+      addressId: result.after.id,
       actorType: 'customer',
       actorId: userId,
       action: 'edited',

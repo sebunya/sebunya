@@ -194,7 +194,9 @@ export class PimImportOperationsUseCase {
           errors.push(
             "Existing SKU cannot be overwritten in CREATE_ONLY mode.",
           );
-        if (slugOwner && (!existing || slugOwner.id !== existing.id))
+        // An UPDATE keeps the live slug (apply never writes the sheet's slug), so the sheet's slug only matters for a
+        // CREATE: only then can it collide with another product.
+        if (slugOwner && !existing)
           errors.push("Slug belongs to another catalogue product.");
         if (!errors.length) {
           action = existing ? "UPDATE" : "CREATE";

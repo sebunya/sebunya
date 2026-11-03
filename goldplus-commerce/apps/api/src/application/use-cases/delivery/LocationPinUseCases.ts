@@ -61,6 +61,10 @@ export interface ILocationPinRepository {
   activeOrigin(): Promise<{ lat: number; lng: number } | null>;
   savePending(p: PendingLocation): Promise<void>;
   pending(wamid: string): Promise<PendingLocation | null>;
+  /** Deletes the pending row; true only for the ONE caller that removed it, so a replayed tap does nothing. */
+  consumePending(wamid: string): Promise<boolean>;
+  /** True when this task was dispatched to this rider (any status, so it still holds just after the handover). */
+  riderOwnsTask(riderId: string, taskId: string): Promise<boolean>;
   attachPin(p: { orderId: string; lat: number; lng: number; source: 'whatsapp' | 'rider'; sourceRef: string; confirmedAt: Date | null; purgeAfter: Date }): Promise<void>;
   /** The capture row's accuracy tier and point source; nothing about the fee. */
   markCapturePinned(orderId: string, pointSource: 'whatsapp' | 'rider'): Promise<void>;
@@ -95,6 +99,7 @@ export type LocationOutcome =
   | 'asked_confirm'
   | 'asked_which'
   | 'too_many'
+  | 'forwarded'
   | 'rider_asked'
   | 'rider_which_stop'
   | 'rider_no_stop';
@@ -117,6 +122,7 @@ export type ButtonOutcome =
 export const PIN_COPY_DEFAULTS: Record<string, string> = {
   copy_pin_rejected: "That pin doesn't look like a delivery address. Type the area or a landmark instead and we will take it from there.",
   copy_pin_no_order: "Thanks. We don't see an open order for this number, so we have not kept the pin. Place your order on shopgoldplus.com, then send the pin again.",
+  copy_pin_forwarded: "That pin was forwarded from someone else, so we have not used it. Open WhatsApp at the delivery place and send your own location: tap the clip, then Location, then Send your current location.",
   copy_pin_confirm: 'Is this where we deliver order {{order}}?',
   copy_pin_which_order: 'Which order is this pin for?',
   copy_pin_too_many: 'You have several open orders. Reply with the order number (like GP-1234) and then send the pin again.',
@@ -172,7 +178,13 @@ export class LocationPinUseCases {
     if (pinSanity(point, origin) !== null) return { reply: { text: await this.say('copy_pin_rejected') }, outcome: 'rejected' };
 
     const rider = await this.repo.riderByPhone(phone);
-    if (rider) return this.riderLocation(rider, input.wamid, phone, point, at);
+    if (rider) {
+      // A rider's handover point must be where the rider stands, not a location someone sent them.
+      if (input.forwarded) return { reply: { text: await this.say('copy_pin_forwarded') }, outcome: 'forwarded' };
+      return this.riderLocation(rider, input.wamid, phone, point, at);
+    }
+    // A forwarded location is someone else's point (a friend's shared pin, an old chat): never a delivery point.
+    if (input.forwarded) return { reply: { text: await this.say('copy_pin_forwarded') }, outcome: 'forwarded' };
 
     const since = new Date(at.getTime() - ORDER_WINDOW_DAYS * 86_400_000);
     const orders = await this.repo.openOrdersForPhone(phone, since);
@@ -249,12 +261,19 @@ export class LocationPinUseCases {
 
     if (parsed.kind === 'save') {
       if (!parsed.yes) return { reply: { text: await this.say('copy_pin_not_saved') }, outcome: 'not_saved' };
+      // The button id carries the order id, which anyone can type into a payload: only the order's own phone may save.
+      const since = new Date(at.getTime() - ORDER_WINDOW_DAYS * 86_400_000);
+      const own = (await this.repo.openOrdersForPhone(phone, since)).find((o) => o.id === parsed.orderId);
+      if (!own || !own.customerId) return { reply: null, outcome: 'wrong_phone' };
       const r = await this.repo.savePinToAddress(parsed.orderId);
       return r === 'saved'
         ? { reply: { text: await this.say('copy_pin_saved') }, outcome: 'saved' }
         : { reply: { text: await this.say('copy_pin_save_failed') }, outcome: 'save_failed' };
     }
     if (parsed.kind === 'find_difficulty') {
+      // Only the rider the stop was dispatched to may grade it.
+      const rider = await this.repo.riderByPhone(phone);
+      if (!rider || !(await this.repo.riderOwnsTask(rider.id, parsed.taskId))) return { reply: null, outcome: 'wrong_phone' };
       await this.handover?.setFindDifficulty(parsed.taskId, parsed.difficulty);
       return { reply: { text: await this.say('copy_handover_difficulty_recorded') }, outcome: 'difficulty_recorded' };
     }
@@ -277,6 +296,8 @@ export class LocationPinUseCases {
       const since = new Date(at.getTime() - ORDER_WINDOW_DAYS * 86_400_000);
       const order = (await this.repo.openOrdersForPhone(phone, since)).find((o) => o.id === parsed.orderId);
       if (!order) return { reply: { text: await this.say('copy_pin_expired') }, outcome: 'expired' };
+      // One pending location attaches once: a double tap or a replay finds it gone.
+      if (!(await this.repo.consumePending(pending.wamid))) return { reply: { text: await this.say('copy_pin_expired') }, outcome: 'expired' };
       const retention = await this.repo.retentionDays();
       await this.repo.attachPin({
         orderId: order.id, lat: pending.lat, lng: pending.lng, source: 'whatsapp', sourceRef: pending.wamid,
@@ -322,6 +343,7 @@ export class LocationPinUseCases {
       const stop = stops.find((s) => s.taskId === parsed.taskId);
       if (!stop) return { reply: { text: await this.say('copy_handover_no_stop') }, outcome: 'expired' };
       if (!this.handover) return { reply: { text: await this.say('copy_handover_failed', { message: 'not wired' }) }, outcome: 'handover_failed' };
+      if (!(await this.repo.consumePending(pending.wamid))) return { reply: { text: await this.say('copy_pin_expired') }, outcome: 'expired' };
       const point = { lat: pending.lat, lng: pending.lng };
       const r = await this.handover.record({ taskId: stop.taskId, actorId: `rider_whatsapp:${rider.id}`, outcome: parsed.outcome, point });
       if (!r.ok) return { reply: { text: await this.say('copy_handover_failed', { message: r.message ?? 'refused' }) }, outcome: 'handover_failed' };

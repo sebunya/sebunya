@@ -1,8 +1,8 @@
 import type { APIRoute } from 'astro';
 import { apiBase } from '../../lib/api';
+import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
 import { readSessionToken } from '../../lib/session';
 import { readBodyCapped } from '../../lib/boundedBody';
-import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
 
 /**
  * "Save for later" form posts (gap analysis #6). Signed-in: saves or removes through the account API and comes
@@ -12,8 +12,8 @@ import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const safeBack = (v: string) => (/^\/(products\/[a-z0-9-]+|account\/saved)$/i.test(v) ? v : '/account/saved');
 
-export const POST: APIRoute = async (context) => {
-  const { request, redirect } = context;
+export const POST: APIRoute = async (ctx) => {
+  const { request, redirect } = ctx;
   const read = await readBodyCapped(request, 2048);
   if (!read.ok) return new Response(null, { status: 413 });
   const f = new URLSearchParams(read.text);
@@ -25,7 +25,7 @@ export const POST: APIRoute = async (context) => {
   if (UUID.test(productId)) {
     await fetch(op === 'add' ? `${apiBase}/account/saved` : `${apiBase}/account/saved/${productId}`, {
       method: op === 'add' ? 'POST' : 'DELETE',
-      headers: apiHeaders({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, readClientAddress(context)),
+      headers: apiHeaders({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, readClientAddress(ctx)),
       body: op === 'add' ? JSON.stringify({ productId }) : undefined,
       signal: AbortSignal.timeout(4000),
     }).catch(() => null);

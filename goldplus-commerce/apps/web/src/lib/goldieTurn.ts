@@ -117,7 +117,9 @@ export function profileFirstName(name: string | null | undefined): string | null
 export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
   const last = input.turns[input.turns.length - 1]!.content;
   const mood = readMood(last);
-  input = { ...input, care: { ...input.care, channel: input.channel, mood: mood.mood, lastCustomerMessage: last } };
+  const before = input.turns.length >= 2 ? input.turns[input.turns.length - 2] : undefined;
+  const previousAssistantMessage = before?.role === 'assistant' ? before.content : null;
+  input = { ...input, care: { ...input.care, channel: input.channel, mood: mood.mood, lastCustomerMessage: last, previousAssistantMessage } };
   let classified = classify(last);
   if (isOrderFollowUp(input.turns)) classified = { intent: 'ORDER', deterministic: true, query: '' };
   // The answer to the battery finder's own "Which of these is your phone?" ("Spark 10 Pro") goes back to the finder,
@@ -164,6 +166,8 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
     if (admission.reservationId) void release({ reservationId: admission.reservationId, reason: 'replica concurrency cap' });
     return { kind: 'refused', status: 503, code: 'BUSY', message: 'Goldie is busy right now. Please try again in a minute.', retryAfter: '30' };
   }
+  // Taken here, in the same synchronous step as the check, so turns arriving together cannot all pass the cap.
+  if (route === 'ai') inFlight += 1;
   const meta: TurnMeta = { intent: clarify ? 'CLARIFY' : classified.intent, mood, route, tier: admission.tier, cacheId: remembered?.id ?? null };
   const seed = input.requestId ?? last;
   const team = { label: 'Email the team', url: `${input.care.site}${TEAM_HANDOVER_PATH}` };
@@ -202,7 +206,6 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
       return;
     }
 
-    inFlight += 1;
     const reservationId = admission.reservationId!;
     let settled = false;
     let usageSoFar: (() => import('./assistant').Usage) | null = null;

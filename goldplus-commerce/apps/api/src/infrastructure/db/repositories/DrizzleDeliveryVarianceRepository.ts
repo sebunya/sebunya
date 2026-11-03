@@ -84,17 +84,24 @@ export class DrizzleDeliveryVarianceRepository implements IDeliveryVarianceRepos
     return row ? toRecord(row) : null;
   }
 
-  async applyFeeToOrder(input: { orderId: string; newFeeUgx: number }): Promise<void> {
+  async applyFeeToOrder(input: { orderId: string; newFeeUgx: number }): Promise<boolean> {
     // The fee moves and the total moves with it. If these could diverge the
     // rider card would say one thing and the order another, which is exactly
     // the failure the commitment exists to prevent.
-    await db.execute(sql`
+    // Checked at write time, not only when the use case read the order: a paid total is settled with the provider and
+    // a handed-over order is settled at the door, so neither may change underneath.
+    const r: any = await db.execute(sql`
       update orders
       set delivery_fee = ${input.newFeeUgx},
           total_amount = total_amount - delivery_fee + ${input.newFeeUgx},
           delivery_fee_confirmed = true,
           updated_at = now()
-      where id = ${input.orderId}`);
+      where id = ${input.orderId}
+        and coalesce(payment_status, '') <> 'paid'
+        and status not in ('delivered', 'completed')
+      returning id`);
+    const rows = Array.isArray(r) ? r : (r?.rows ?? []);
+    return rows.length > 0;
   }
 
   async setAgreement(input: { varianceId: string; agreement: AgreementState; actorId: string; at: Date }) {

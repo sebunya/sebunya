@@ -103,7 +103,9 @@ export class CollectBrowserBatchUseCase {
       const id = String((item as { event_id?: unknown })?.event_id ?? 'unknown').slice(0, 64);
       const name = (item as { event_name?: unknown })?.event_name;
       if (name === 'purchase' || name === 'refund') { rejected.push({ eventId: id, reason: 'SERVER_ONLY_EVENT' }); continue; }
-      const ud = (item as { user_data?: Record<string, unknown> })?.user_data ?? {};
+      const rawUd = (item as { user_data?: unknown })?.user_data;
+      if (rawUd != null && (typeof rawUd !== 'object' || Array.isArray(rawUd))) { rejected.push({ eventId: id, reason: 'SCHEMA_VIOLATION' }); continue; }
+      const ud = (rawUd ?? {}) as Record<string, unknown>;
       if (FORBIDDEN_USER_FIELDS.some((k) => k in ud)) { rejected.push({ eventId: id, reason: 'SERVER_AUTHORITY_FIELD' }); continue; }
       if (name === 'landing_touch') {
         const t = LandingTouch.safeParse(item);

@@ -100,14 +100,29 @@ routes.post('/review-queue/:addressId/resolve', requirePermissions([PERMISSIONS.
     return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, result.code === 'NOT_FOUND' ? 404 : 400);
   }
   // Ops can promote the raw text into an alias in the same action (PART J.1).
+  // The alias changes what every customer's search finds, so it is checked and audited like /misses/promote. The
+  // address is already resolved either way; a refused alias is reported, never hidden behind "success".
+  let alias: { created: boolean } | { error: string } | null = null;
   if (body.alsoCreateAlias && body.aliasQuery) {
-    await registry.promoteSearchMissToAliasUseCase.execute({
+    const promoted = await registry.promoteSearchMissToAliasUseCase.execute({
       query: String(body.aliasQuery),
       areaSlug: String(body.areaSlug),
       confidence: 'approximate',
       actorId,
       note: 'created from address resolution',
     });
+    if (promoted.ok) {
+      alias = { created: promoted.created };
+      await new CreateAuditLogUseCase(registry.auditRepo).execute({
+        actorId,
+        action: 'LOCATION_ALIAS_PROMOTED',
+        entity: 'ug_area_alias',
+        entityId: String(body.areaSlug),
+        newState: { query: body.aliasQuery, areaSlug: body.areaSlug, confidence: 'approximate', created: promoted.created, resolvedMisses: promoted.resolvedMisses, via: 'address_resolution' },
+      });
+    } else {
+      alias = { error: promoted.message };
+    }
   }
   await new CreateAuditLogUseCase(registry.auditRepo).execute({
     actorId,
@@ -116,7 +131,7 @@ routes.post('/review-queue/:addressId/resolve', requirePermissions([PERMISSIONS.
     entityId: String(c.req.param('addressId')),
     newState: { areaSlug: body.areaSlug },
   });
-  return c.json({ success: true, data: { resolved: true } } satisfies ApiResponse<{ resolved: boolean }>);
+  return c.json({ success: true, data: { resolved: true, alias } } satisfies ApiResponse<{ resolved: boolean; alias: typeof alias }>);
 });
 
 // ── Landmark manager ─────────────────────────────────────────────────────

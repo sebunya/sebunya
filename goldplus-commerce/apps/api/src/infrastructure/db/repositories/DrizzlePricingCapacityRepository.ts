@@ -98,6 +98,16 @@ export class DrizzlePricingCapacityRepository implements IPricingCapacityReposit
             status: sql`CASE WHEN ${promotionVersions.budgetCapUgx} IS NOT NULL AND ${promotionVersions.budgetConsumedUgx} + ${delta} >= ${promotionVersions.budgetCapUgx} THEN 'PAUSED' ELSE ${promotionVersions.status} END`,
           })
           .where(eq(promotionVersions.id, versionId));
+        // Keep the definition in step, as transitionVersion does: a budget pause of the ACTIVE version pauses the
+        // definition too, so admin lists never show a live promotion that pricing no longer applies.
+        await tx
+          .update(promotionDefinitions)
+          .set({ status: 'PAUSED', revision: sql`${promotionDefinitions.revision} + 1` })
+          .where(and(
+            eq(promotionDefinitions.activeVersionId, versionId),
+            eq(promotionDefinitions.status, 'ACTIVE'),
+            sql`exists (select 1 from promotion_versions pv where pv.id = ${versionId} and pv.status = 'PAUSED')`,
+          ));
       }
       return { reservationIds: refreshed.map((row) => row.id), duplicate: false };
     });
