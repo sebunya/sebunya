@@ -98,6 +98,8 @@ import { GetSalesFunnelUseCase } from '../application/use-cases/analytics/GetSal
 import { DrizzleSalesFunnelReader } from './db/repositories/DrizzleSalesFunnelReader';
 import { GetOutcomesUseCase } from '../application/use-cases/analytics/GetOutcomesUseCase';
 import { DrizzleOutcomesReader } from './db/repositories/DrizzleOutcomesReader';
+import { SuggestOutcomeGoalsUseCase, AdoptOutcomeGoalsUseCase } from '../application/use-cases/analytics/OutcomeGoalUseCases';
+import { DrizzleOutcomeSuggestionReader } from './db/repositories/DrizzleOutcomeSuggestionReader';
 import { RequestReturnUseCase } from '../application/use-cases/commerce/RequestReturnUseCase';
 import { publicBaseUrl } from '../application/notifications/CustomerMessages';
 import { BasketReminderConsentUseCases } from '../application/use-cases/first-party/BasketReminderConsentUseCases';
@@ -1730,6 +1732,9 @@ export class Registry {
   public readonly getSalesFunnelUseCase = new GetSalesFunnelUseCase(new DrizzleSalesFunnelReader());
   /** Outcomes (2026-11-03): split abandonment, session conversion, whales, journeys, micro conversions with value. */
   public readonly getOutcomesUseCase = new GetOutcomesUseCase(new DrizzleOutcomesReader(), this.measurementConfig);
+  /** Goals and micro values suggested from the shop's own data, adopted through the audited settings path. */
+  public readonly suggestOutcomeGoalsUseCase = new SuggestOutcomeGoalsUseCase(new DrizzleOutcomeSuggestionReader(), this.measurementConfig);
+  public readonly adoptOutcomeGoalsUseCase = new AdoptOutcomeGoalsUseCase(this.suggestOutcomeGoalsUseCase, this.measurementConfig);
   public readonly getAnalyticsBreakdownUseCase = new GetAnalyticsBreakdownUseCase(this.analyticsReadRepo);
   public readonly getAnalyticsExceptionDrilldownUseCase = new GetAnalyticsExceptionDrilldownUseCase(this.analyticsReadRepo);
 

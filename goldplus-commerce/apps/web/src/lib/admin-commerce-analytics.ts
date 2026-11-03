@@ -161,3 +161,22 @@ export async function getOutcomes(
     return { ok: false, status: 0, data: null };
   }
 }
+
+export interface OutcomeSuggestion { key: string; label: string; unit: 'pct' | 'UGX'; current: number | null; suggested: number; confidence: 'MEASURED' | 'SHRUNK' | 'DEFAULT'; basis: string; impactUgxPerMonth: number | null; currentSetting: string | null }
+export interface OutcomeSuggestions { generatedAt: string; suggestions: OutcomeSuggestion[]; facts: { aovUgx: number; marginPerPaidOrderUgx: number; costCoverage: number; daysWithSessions: number } }
+
+export async function getOutcomeSuggestions(token: string): Promise<{ ok: boolean; status: number; data: OutcomeSuggestions | null }> {
+  try {
+    const response = await fetch(`${apiBase}/admin/analytics/outcomes/suggestions`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
+    const envelope = (await response.json().catch(() => null)) as ApiEnvelope<OutcomeSuggestions> | null;
+    return response.ok && envelope?.success ? { ok: true, status: response.status, data: envelope.data ?? null } : { ok: false, status: response.status, data: null };
+  } catch { return { ok: false, status: 0, data: null }; }
+}
+
+export async function adoptOutcomeSuggestions(token: string, keys: string[] | null): Promise<{ ok: boolean; status: number; adopted: number; refused: Array<{ key: string; message: string }> }> {
+  try {
+    const response = await fetch(`${apiBase}/admin/analytics/outcomes/adopt`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ keys }), signal: AbortSignal.timeout(30_000) });
+    const envelope = (await response.json().catch(() => null)) as ApiEnvelope<{ adopted: unknown[]; refused: Array<{ key: string; message: string }> }> | null;
+    return response.ok && envelope?.success ? { ok: true, status: response.status, adopted: envelope.data?.adopted.length ?? 0, refused: envelope.data?.refused ?? [] } : { ok: false, status: response.status, adopted: 0, refused: [] };
+  } catch { return { ok: false, status: 0, adopted: 0, refused: [] }; }
+}

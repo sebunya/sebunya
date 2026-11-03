@@ -1,7 +1,7 @@
 ---
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
-import { getOutcomes } from "../../../lib/admin-commerce-analytics";
+import { getOutcomes, getOutcomeSuggestions, adoptOutcomeSuggestions } from "../../../lib/admin-commerce-analytics";
 import { resolveAnalyticsPeriod } from "../../../lib/commerce-analytics";
 import { formatUgx } from "../../../lib/money";
 
@@ -26,7 +26,22 @@ try {
   periodError = error instanceof Error && error.message === "PERIOD_TOO_LONG" ? "The requested period exceeds the 366-day maximum." : "The end date cannot be earlier than the start date.";
   period = resolveAnalyticsPeriod({ days: 30 });
 }
-const result = await getOutcomes(token, { startDate: period.startDay, endDate: period.endDay, days: period.days });
+let adoptNotice: string | null = null;
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  if (String(f.get("action") ?? "") === "adopt") {
+    const only = f.getAll("key").map(String).filter(Boolean);
+    const r = await adoptOutcomeSuggestions(token, only.length ? only : null);
+    adoptNotice = !r.ok
+      ? (r.status === 403 ? "Adopting goals needs the settings.manage permission." : "The API declined the request; nothing was changed.")
+      : `${r.adopted} setting${r.adopted === 1 ? "" : "s"} adopted and audited.${r.refused.length ? ` Refused: ${r.refused.map((x) => `${x.key} (${x.message})`).join("; ")}` : ""}`;
+  }
+}
+const [result, suggestionsResult] = await Promise.all([
+  getOutcomes(token, { startDate: period.startDay, endDate: period.endDay, days: period.days }),
+  getOutcomeSuggestions(token),
+]);
+const suggestions = suggestionsResult.data;
 const data = result.data;
 const permissionDenied = result.status === 403;
 
@@ -46,6 +61,10 @@ const change = (now: number | null, before: number | null, lowerIsBetter: boolea
   return { better, same: now === before };
 };
 const barWidth = (share: number | null) => `width:${share ? Math.max(2, Math.round(share * 100)) : 0}%`;
+const fmtSuggested = (s: { unit: "pct" | "UGX"; suggested: number }) => (s.unit === "pct" ? `${s.suggested}%` : fmtMoney(s.suggested));
+const fmtSetting = (s: { unit: "pct" | "UGX"; currentSetting: string | null }) => (s.currentSetting === null ? "not set" : s.unit === "pct" ? `${s.currentSetting}%` : fmtMoney(Number(s.currentSetting)));
+const confidenceWords: Record<string, string> = { MEASURED: "Measured", SHRUNK: "Small sample", DEFAULT: "Default" };
+const confidenceTone = (c: string) => c === "MEASURED" ? "bg-emerald-50 text-emerald-800 border-emerald-200" : c === "SHRUNK" ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-slate-50 text-slate-600 border-slate-200";
 ---
 
 <AdminLayout title="Outcomes" description="The critical few measures with goals, split abandonment, whales, journeys and micro conversions in shillings." activePath="/admin/analytics">
@@ -254,6 +273,48 @@ const barWidth = (share: number | null) => `width:${share ? Math.max(2, Math.rou
                 ? ` That is above the ${data.directTraffic.alarmPct}% alarm: links are going out untagged (texts, WhatsApp, printed QR, the app) or a redirect is dropping the referrer. Tag every link the shop sends and check the 301 chain before trusting any channel split.`
                 : ` Below the ${data.directTraffic.alarmPct}% alarm; the channel split can be trusted at this level.`}
             </p>
+          )}
+        </section>
+
+        <section class="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="outcomes-suggest">
+          <div class="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 id="outcomes-suggest" class="text-lg font-black text-brand-dark">Goals and values suggested from your own data</h2>
+              <p class="mt-1 text-sm text-slate-600">Each goal is anchored to the shop's best 28 days in the last 180 (never a fantasy: at most 15 points or double today), with what reaching it is worth in revenue per month. Each micro value is the share of those events followed by an order within 30 days, times the gross margin per paid order. Adopting writes the settings through the audited path; re-run each quarter.</p>
+            </div>
+            {suggestions && (
+              <p class="text-xs text-slate-500">Average paid order {fmtMoney(suggestions.facts.aovUgx)} · gross margin per paid order {fmtMoney(suggestions.facts.marginPerPaidOrderUgx)} ({fmtRate(suggestions.facts.costCoverage)} of sold lines costed) · {suggestions.facts.daysWithSessions} days with GA4 sessions</p>
+            )}
+          </div>
+          {adoptNotice && <p class="mt-3 rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-bold text-brand-dark" role="status">{adoptNotice}</p>}
+          {!suggestions ? (
+            <p class="mt-4 text-sm text-slate-600">Suggestions could not be computed just now.</p>
+          ) : (
+            <form method="POST" class="mt-4">
+              <input type="hidden" name="action" value="adopt" />
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead><tr class="text-left text-[10px] font-black uppercase tracking-wider text-slate-500"><th class="py-2 pr-3">Adopt</th><th class="py-2 pr-3">Setting</th><th class="py-2 pr-3 text-right">Today</th><th class="py-2 pr-3 text-right">Set now</th><th class="py-2 pr-3 text-right">Suggested</th><th class="py-2 pr-3 text-right">Worth / month</th><th class="py-2">Basis</th></tr></thead>
+                  <tbody>
+                    {suggestions.suggestions.map((s) => (
+                      <tr class="border-t border-slate-100 align-top">
+                        <td class="py-2 pr-3"><input type="checkbox" name="key" value={s.key} checked class="h-4 w-4" aria-label={`Adopt ${s.label}`} /></td>
+                        <td class="py-2 pr-3 font-bold text-brand-dark">{s.label}<span class={`ml-2 inline-block rounded border px-1.5 py-0.5 text-[10px] font-black ${confidenceTone(s.confidence)}`}>{confidenceWords[s.confidence]}</span></td>
+                        <td class="py-2 pr-3 text-right tabular-nums text-slate-600">{s.current === null ? "—" : `${s.current}%`}</td>
+                        <td class="py-2 pr-3 text-right tabular-nums text-slate-600">{fmtSetting(s)}</td>
+                        <td class="py-2 pr-3 text-right tabular-nums font-black text-brand-dark">{fmtSuggested(s)}</td>
+                        <td class="py-2 pr-3 text-right tabular-nums">{s.impactUgxPerMonth === null ? "—" : fmtMoney(s.impactUgxPerMonth)}</td>
+                        <td class="py-2 text-xs text-slate-600">{s.basis}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div class="mt-4 flex flex-wrap items-center gap-3">
+                <button class="rounded-lg bg-brand-dark px-4 py-2.5 text-xs font-black text-white">Adopt the ticked suggestions</button>
+                <span class="text-xs text-slate-500">Needs settings.manage. Each value can be changed later at <a href="/admin/measurement/mmm" class="font-bold underline">Measurement settings</a>.</span>
+              </div>
+            </form>
           )}
         </section>
 

@@ -66,3 +66,28 @@ Analysis) and the shop's own data before anything was built.
   none, and the page shows the coverage.
 - Micro "sign-ups" are all accounts created, staff included (a handful a year).
 - Spend comes from `measurement.mmm_daily`, built nightly; cost per order for today is yesterday's spend.
+
+## Goals and values suggested from the shop's own data (2026-11-03, PR after #261)
+
+`/admin/analytics/outcomes` → "Goals and values suggested from your own data" (`GET /admin/analytics/outcomes/suggestions`,
+`POST /admin/analytics/outcomes/adopt`, settings.manage, audited per setting plus one `OUTCOME_GOALS_ADOPTED` row).
+
+Why a feature and not a one-off script: a goal set once by hand is a report; one re-derived each quarter from the
+same stated rules, with its basis beside it, is a target (Kaushik ch. 10). The rules:
+
+- **Abandonment goals**: the shop's best 28-day window in the last 180 days (denominator ≥ 100), if clearly better
+  than today's 90 days; else five points better than today. A stretch of at most 15 points, bounded 30–90%. Too
+  little data → the industry default (70% cart, 50% checkout) marked *Default*. Each carries the revenue per
+  month that closing the gap is worth (points × monthly denominator × average paid order).
+- **Session conversion goal**: best 28-day window (≥ 500 sessions) or a quarter better than today, at most double
+  today; one decimal (the setting type was changed to `percent` for this). Default 1.0%.
+- **Cost per order cap**: `cpa_margin_share_pct` (default 50) of the gross margin per paid order, computed from
+  the order lines' recorded unit cost over 90 days. With under half the sold lines costed, a fifth of the average
+  paid order stands in and the row says to enter product costs.
+- **Micro conversion values**: for events 180–30 days ago, the share followed by an order between one hour and
+  thirty days later (same account, or the same phone by its last nine digits; the one-hour gap keeps an account
+  made at checkout from claiming the order), shrunk towards the pooled rate (k = 20) so four-of-four is not
+  certainty, times the gross margin per paid order. *Measured* at n ≥ 50, *Small sample* below, *Default* at 0.
+
+What it does not do: prove that an event *caused* the order (no control group; it is the conditional rate, as
+Kaushik defines the economic value), or set goals above what the shop has done or double today.
