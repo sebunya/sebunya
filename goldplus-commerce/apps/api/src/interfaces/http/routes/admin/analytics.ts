@@ -68,6 +68,29 @@ routes.get('/outcomes', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async 
   }
 });
 
+/** Goals and micro values suggested from the shop's own data (best 28-day window, margin per order, event outcomes). */
+routes.get('/outcomes/suggestions', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => {
+  const data = await Registry.getInstance().suggestOutcomeGoalsUseCase.execute();
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+/** Adopt the suggestions (all, or body.keys) as measurement settings: each write is audited like a manual one. */
+routes.post('/outcomes/adopt', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null) as { keys?: unknown } | null;
+  const keys = Array.isArray(body?.keys) ? body!.keys.filter((k): k is string => typeof k === 'string').slice(0, 20) : null;
+  const registry = Registry.getInstance();
+  const actor = String((c.get('user') as { id?: string } | undefined)?.id ?? '');
+  const data = await registry.adoptOutcomeGoalsUseCase.execute({ keys, actorId: actor });
+  // Each setting write is audited by the settings path; this row records the adoption as one act.
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: actor,
+    action: 'OUTCOME_GOALS_ADOPTED',
+    entity: 'measurement_config',
+    entityId: 'outcome_goals',
+    newState: { adopted: data.adopted, refused: data.refused },
+  });
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
 routes.get('/metrics/:metricKey/series', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => {
   const parsed = parsePeriod(c);
   if (!parsed.success) {

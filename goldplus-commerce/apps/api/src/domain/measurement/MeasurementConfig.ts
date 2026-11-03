@@ -16,7 +16,7 @@ export const DEFAULT_FX_MARGIN_UGX = 100;
 
 export interface MeasurementConfigEntry {
   key: string;
-  type: 'integer' | 'ratio' | 'switch' | 'usd';
+  type: 'integer' | 'ratio' | 'switch' | 'usd' | 'percent';
   unit: string;
   min?: number;
   max?: number;
@@ -43,7 +43,8 @@ export const MEASUREMENT_CONFIG_REGISTRY: readonly MeasurementConfigEntry[] = [
   // Outcomes (2026-11-03, Kaushik ch. 5/10): goals per critical measure and a value per micro conversion.
   { key: 'goal_cart_abandonment_pct', type: 'integer', unit: '%', min: 0, max: 100, label: 'Goal: cart abandonment at most', help: 'Carts with items that never reach checkout. Baymard puts the global average near 70%; set the goal the shop will work towards.' },
   { key: 'goal_checkout_abandonment_pct', type: 'integer', unit: '%', min: 0, max: 100, label: 'Goal: checkout abandonment at most', help: 'Checkouts started that never become an order. Unset: the page shows the rate without a verdict.' },
-  { key: 'goal_conversion_pct', type: 'integer', unit: '%', min: 0, max: 100, label: 'Goal: session conversion at least', help: 'Orders placed over GA4 sessions in the same days. Whole percent; 1–3% is typical for a shop.' },
+  { key: 'goal_conversion_pct', type: 'percent', unit: '%', min: 0, max: 100, label: 'Goal: session conversion at least', help: 'Orders placed over GA4 sessions in the same days. One decimal (1.5 = 1.5%); 1–3% is typical for a shop.' },
+  { key: 'cpa_margin_share_pct', type: 'integer', unit: '%', min: 1, max: 100, defaultValue: 50, label: 'Share of gross margin allowed for acquisition', help: 'The suggested cost-per-order cap is this share of the gross margin per paid order (half by default: the other half stays in the shop).' },
   { key: 'goal_cost_per_order_ugx', type: 'integer', unit: 'UGX', min: 1, max: 100000000, label: 'Goal: cost per order at most', help: 'Media spend in the period over orders placed in it. Unset until paid media runs.' },
   { key: 'direct_traffic_alarm_pct', type: 'integer', unit: '%', min: 1, max: 100, defaultValue: 30, label: 'Direct traffic alarm', help: 'Share of GA4 sessions reported as (direct) above which the page says links are going out untagged.' },
   { key: 'micro_value_sign_up', type: 'integer', unit: 'UGX', min: 0, max: 100000000, label: 'Value of an account sign-up', help: 'What one new account is worth to the shop in shillings (Kaushik: a micro conversion without a value is a count, not an outcome).' },
@@ -71,6 +72,7 @@ export function validateMeasurementValue(key: string, raw: string): MeasurementC
   if (!Number.isFinite(n)) return { ok: false, message: `${entry.label} must be a number of ${entry.unit}.` };
   if (entry.type === 'usd' && Math.abs(n * 10000 - Math.round(n * 10000)) > 1e-6) return { ok: false, message: `${entry.label} takes at most four decimal places (Meta quotes to the tenth of a cent).` };
   if (entry.type === 'integer' && !Number.isInteger(n)) return { ok: false, message: `${entry.label} must be a whole number of ${entry.unit}.` };
+  if (entry.type === 'percent' && Math.abs(n * 10 - Math.round(n * 10)) > 1e-9) return { ok: false, message: `${entry.label} takes at most one decimal place.` };
   if (entry.min !== undefined && n < entry.min) return { ok: false, message: `${entry.label} cannot be below ${entry.min}.` };
   if (entry.max !== undefined && n > entry.max) return { ok: false, message: `${entry.label} cannot be above ${entry.max}.` };
   return { ok: true, value: n };
