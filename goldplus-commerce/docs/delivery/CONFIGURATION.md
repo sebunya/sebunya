@@ -74,7 +74,7 @@ promise rather than a default.
 | `fee_shape` | string | — | `continuous` | continuous / ladder | How the fee is presented |
 | `fee_ladder` | string | UGX | `` | — | Your price points, lowest to highest |
 | `ladder_margin_alarm_pct` | integer | % | `10` | 1 to 100 | Margin alarm: share of orders under cost |
-| `pin_retention_days` | integer | days | `180` | 30 to 365 | How long a delivery pin is kept |
+| `pin_retention_days` | integer | days | `180` | 1 to 365 | How long a delivery pin is kept |
 
 ## Help text, as an operator sees it
 

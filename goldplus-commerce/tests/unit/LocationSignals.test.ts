@@ -134,7 +134,7 @@ describe('capture points', () => {
   it('the picker sends Locate me outcomes through our own origin, which adds the visitor token server-side', () => {
     expect(read('apps/web/src/lib/locationPickerClient.ts')).toMatch(/fetch\('\/location-signal'/);
     const relay = read('apps/web/src/pages/location-signal.ts');
-    expect(relay).toMatch(/text\.length > 1000/);
+    expect(relay).toMatch(/readBodyCapped\(request, 1000\)/);
     expect(read('apps/web/src/lib/locationSignals.ts')).toMatch(/h\['x-gp-visit'\] = visit/);
   });
 });
