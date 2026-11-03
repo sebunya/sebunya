@@ -247,8 +247,8 @@ describe('review fixes 2026-10-07', () => {
 
   it('the admin guard refuses a malformed session cookie and any 4xx', () => {
     const m = read('apps/web/src/middleware.ts');
-    expect(m).toMatch(/try \{ bearer = decodeURIComponent\(token\); \} catch \{ return false; \}/);
-    expect(m).toMatch(/if \(res\.status < 500 && res\.status !== 429\) return false;/);
+    expect(m).toMatch(/try \{ bearer = decodeURIComponent\(token\); \} catch \{ return 'no'; \}/);
+    expect(m).toMatch(/if \(res\.status < 500 && res\.status !== 429\) return 'no';/);
   });
 
   it('a crash exits non-zero and tickers stop before the HTTP drain', () => {
