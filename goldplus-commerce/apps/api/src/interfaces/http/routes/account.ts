@@ -4,6 +4,8 @@ import { customerSessionMiddleware } from '../middleware/customerSession';
 import { normaliseReferralCode, referralRefusalWords, referralStage, REFERRAL_STAGE_WORDS, type ReferralStatus } from '../../../domain/loyalty/Referral';
 import { Registry } from '../../../infrastructure/Registry';
 import { ListMyOrdersUseCase, GetMyOrderUseCase } from '../../../application/use-cases/orders/CustomerOrderUseCases';
+import { ClaimOrderUseCase } from '../../../application/use-cases/orders/ClaimOrderUseCase';
+import { RedisFailureLockout } from '../../../infrastructure/security/RedisFailureLockout';
 import {
   ListMyAddressesUseCase,
   AddAddressUseCase,
@@ -186,6 +188,18 @@ routes.get('/orders', async (c) => {
   return c.json(res);
 });
 
+// Baymard A1: the account offered after a guest order keeps that order. The same proof and lockout as order
+// tracking ('lockout:order-contact' is shared with /commerce/orders/lookup), so a wrong contact here counts there too.
+const orderClaimLockout = new RedisFailureLockout('lockout:order-contact');
+routes.post('/orders/claim', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const uc = new ClaimOrderUseCase(registry.orderRepo, orderClaimLockout, (reference) => registry.getOrderByIdUseCase.execute(reference));
+  const result = await uc.execute({ userId: c.get('userId') as string, reference: body?.reference, contact: body?.contact });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, result.status);
+  return c.json({ success: true, data: { outcome: result.outcome, orderId: result.orderId, orderNumber: result.orderNumber } });
+});
+
 routes.get('/orders/:id', async (c) => {
   const userId = c.get('userId') as string;
   const uc = new GetMyOrderUseCase(Registry.getInstance().orderRepo);
@@ -194,7 +208,9 @@ routes.get('/orders/:id', async (c) => {
     const res: ApiResponse<never> = { success: false, error: { code: 'NOT_FOUND', message: 'Order not found.' } };
     return c.json(res, 404);
   }
-  const res: ApiResponse<OrderDetailDto> = { success: true, data: result.order };
+  // Baymard A6: step dates and rider details for the signed-in ladder, the same facts /track-order shows.
+  const tracking = await Registry.getInstance().orderTrackingUseCase.execute(result.order.id);
+  const res: ApiResponse<OrderDetailDto> = { success: true, data: { ...result.order, tracking } };
   return c.json(res);
 });
 
@@ -349,6 +365,23 @@ routes.post('/password', async (c) => {
     .catch(() => undefined);
   const res: ApiResponse<{ message: string }> = { success: true, data: { message: 'Your password was changed. Sign in again with the new one.' } };
   return c.json(res);
+});
+
+// Baymard A8: change the email, proved by the current password (same throttle key as a password change).
+routes.put('/email', async (c) => {
+  const userId = c.get('userId') as string;
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const result = await registry.changeEmailUseCase.execute({ userId, newEmail: body?.email, currentPassword: body?.currentPassword });
+  if (!result.ok) {
+    if (result.retryAfterSeconds) c.header('Retry-After', String(result.retryAfterSeconds));
+    const status = result.code === 'LOCKED' ? 429 : result.code === 'WRONG_PASSWORD' ? 401 : result.code === 'EMAIL_TAKEN' ? 409 : result.code === 'ACCOUNT_UNAVAILABLE' ? 404 : 400;
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, status);
+  }
+  await registry.createAuditLogUseCase
+    .execute({ actorId: userId, action: 'EMAIL_CHANGED', entity: 'user', entityId: userId, previousState: null, newState: { email: result.email } })
+    .catch(() => undefined);
+  return c.json({ success: true, data: { email: result.email } });
 });
 
 routes.post('/phone/request-verification', async (c) => {

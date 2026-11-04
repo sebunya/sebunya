@@ -29,6 +29,9 @@ let status: 'success' | 'error' | null = null;
 let message: string | undefined;
 let values: { email?: string } = {};
 let notConfigured = false;
+// Baymard A3: sign in with the phone and a code by SMS. 'code' once a code was asked for on this request.
+let smsStep: 'phone' | 'code' = 'phone';
+let smsPhone = '';
 
 // Arriving from /account/password: that change signed this device out too.
 if (Astro.request.method === 'GET' && Astro.url.searchParams.get('passwordChanged') === '1') {
@@ -43,11 +46,55 @@ if (socialError) {
   message = socialError;
 }
 
+/**
+ * Everything a successful sign-in does on this device, whichever way the customer proved who they are
+ * (password, or a code by SMS: Baymard A3). Returns the redirect.
+ */
+const completeSignIn = async (json: any): Promise<Response> => {
+  const data = json.data;
+  // Via Astro.cookies, NOT a raw Set-Cookie header: Astro drops headers set
+  // on Astro.response when the frontmatter returns Astro.redirect(), so the
+  // raw-header version signed nobody in — the customer bounced straight
+  // back to this page. Admin login always used Astro.cookies and worked,
+  // which is why the breakage hid on the customer side only.
+  setSignInCookies(Astro.cookies, data); // short token + refresh credential (renewed by the middleware)
+  // What they saved for later before the account (Baymard P3) comes with them.
+  await mergeGuestSavedIntoAccount(Astro.cookies, json.data.token).catch(() => 0);
+
+
+  // R9 (M8, fixation): the visit token is ROTATED at the authentication
+  // boundary — a pre-planted cookie must never become the token that
+  // gets linked to the freshly signed-in customer. The NEW token is
+  // linked; the old one keeps only its anonymous history.
+  const { mintSignedVisitToken } = await import('../lib/visitToken');
+  const { VISIT_COOKIE_NAME, visitCookieOptions } = await import('../middleware');
+  const rotatedToken = mintSignedVisitToken();
+  if (rotatedToken) {
+    Astro.cookies.set(VISIT_COOKIE_NAME, rotatedToken, visitCookieOptions());
+    try {
+      await fetch(`${apiBase}/recommendations/profile/link`, {
+        method: 'POST',
+        // 0155: the analytics visitor id this server set, so the API can
+        // link it to the customer (within their personalisation choice).
+        headers: { Authorization: `Bearer ${data.token}`, 'x-gp-visit': rotatedToken, ...((() => { const fp = Astro.cookies.get('_fp_cid')?.value; return fp && /^fp\.\d+\.[0-9a-f-]{36}$/.test(fp) ? { 'x-gp-fpcid': fp } : {}; })()) },
+        signal: AbortSignal.timeout(3000),
+      });
+    } catch {
+      // Continuity, not correctness.
+    }
+  }
+  const returnTo = Astro.url.searchParams.get('returnTo');
+  const safe = safeReturnTo(returnTo);
+  return Astro.redirect(safe, 303);
+};
+
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? 'password');
   const email = String(form.get('email') ?? '').trim();
   const password = String(form.get('password') ?? '');
   values = { email };
+  smsPhone = String(form.get('phone') ?? '').trim().slice(0, 20);
 
   // Login CSRF: the credentials ride in the form body, so SameSite does not
   // stop a cross-site page from auto-submitting its OWN account here and
@@ -56,6 +103,46 @@ if (Astro.request.method === 'POST') {
   if (!origin.allowed) {
     status = 'error';
     message = CROSS_SITE_MESSAGE;
+  } else if (intent === 'sms-start') {
+    // The API answers the same for every number (no enumeration); its sentence is the one to show.
+    try {
+      const res = await fetch(`${apiBase}/auth/sms-sign-in/start`, {
+        method: 'POST', signal: AbortSignal.timeout(8000), headers: jsonApiHeaders(clientAddress), body: JSON.stringify({ phone: smsPhone }),
+      });
+      const json: any = await res.json().catch(() => null);
+      if (res.ok && json?.success) {
+        smsStep = 'code';
+        status = 'success';
+        message = String(json.data?.message ?? 'We sent a 6 digit code by SMS.');
+      } else {
+        status = 'error';
+        message = res.status === 429 ? 'Too many attempts. Please wait a few minutes and try again.' : 'We could not send a code right now. Please try again in a moment, or sign in with your email and password.';
+      }
+    } catch {
+      status = 'error';
+      message = 'Cannot reach the authentication service right now. Please try again shortly.';
+    }
+  } else if (intent === 'sms-verify') {
+    smsStep = 'code';
+    try {
+      const res = await fetch(`${apiBase}/auth/sms-sign-in/verify`, {
+        method: 'POST', signal: AbortSignal.timeout(8000), headers: jsonApiHeaders(clientAddress),
+        body: JSON.stringify({ phone: smsPhone, code: String(form.get('code') ?? '') }),
+      });
+      const json: any = await res.json().catch(() => null);
+      if (res.ok && json?.success && json.data?.token) {
+        return await completeSignIn(json);
+      }
+      status = 'error';
+      if (json?.error?.code === 'AUTH_NOT_CONFIGURED') notConfigured = true;
+      // The API's sign-in-code sentences are written for the customer (wrong code, too many codes); never an HTTP number.
+      message = res.status === 429 ? 'Too many wrong codes. Ask for a new code and try again.'
+        : res.status === 401 ? 'That code is not correct or has expired. Ask for a new code and try again.'
+        : 'We could not sign you in right now. Please try again in a moment.';
+    } catch {
+      status = 'error';
+      message = 'Cannot reach the authentication service right now. Please try again shortly.';
+    }
   } else if (!email || !password) {
     status = 'error';
     message = 'Email and password are required.';
@@ -70,40 +157,7 @@ if (Astro.request.method === 'POST') {
       const json: any = await res.json().catch(() => null);
 
       if (res.ok && json?.success && json.data?.token) {
-        // Via Astro.cookies, NOT a raw Set-Cookie header: Astro drops headers set
-        // on Astro.response when the frontmatter returns Astro.redirect(), so the
-        // raw-header version signed nobody in — the customer bounced straight
-        // back to this page. Admin login always used Astro.cookies and worked,
-        // which is why the breakage hid on the customer side only.
-        setSignInCookies(Astro.cookies, json.data); // short token + refresh credential (renewed by the middleware)
-        // What they saved for later before the account (Baymard P3) comes with them.
-        await mergeGuestSavedIntoAccount(Astro.cookies, json.data.token).catch(() => 0);
-
-
-        // R9 (M8, fixation): the visit token is ROTATED at the authentication
-        // boundary — a pre-planted cookie must never become the token that
-        // gets linked to the freshly signed-in customer. The NEW token is
-        // linked; the old one keeps only its anonymous history.
-        const { mintSignedVisitToken } = await import('../lib/visitToken');
-        const { VISIT_COOKIE_NAME, visitCookieOptions } = await import('../middleware');
-        const rotatedToken = mintSignedVisitToken();
-        if (rotatedToken) {
-          Astro.cookies.set(VISIT_COOKIE_NAME, rotatedToken, visitCookieOptions());
-          try {
-            await fetch(`${apiBase}/recommendations/profile/link`, {
-              method: 'POST',
-              // 0155: the analytics visitor id this server set, so the API can
-              // link it to the customer (within their personalisation choice).
-              headers: { Authorization: `Bearer ${json.data.token}`, 'x-gp-visit': rotatedToken, ...((() => { const fp = Astro.cookies.get('_fp_cid')?.value; return fp && /^fp\.\d+\.[0-9a-f-]{36}$/.test(fp) ? { 'x-gp-fpcid': fp } : {}; })()) },
-              signal: AbortSignal.timeout(3000),
-            });
-          } catch {
-            // Continuity, not correctness.
-          }
-        }
-        const returnTo = Astro.url.searchParams.get('returnTo');
-        const safe = safeReturnTo(returnTo);
-        return Astro.redirect(safe, 303);
+        return await completeSignIn(json);
       }
 
       if (json?.error?.code === 'AUTH_NOT_CONFIGURED') {
@@ -133,7 +187,7 @@ if (Astro.request.method === 'POST') {
   <div class="container mx-auto px-4 lg:px-8 py-12 md:py-20">
     <div class="max-w-md mx-auto">
       <h1 class="text-2xl md:text-3xl font-black text-gray-900 mb-2 tracking-tight">Sign in</h1>
-      <p class="text-slate-600 mb-6 text-sm leading-relaxed">Sign in with the email address and password you registered with to see your orders, addresses and points.</p>
+      <p class="text-slate-600 mb-6 text-sm leading-relaxed">Sign in with your phone and a code by SMS, or with your email and password, to see your orders, addresses and points.</p>
 
       {notConfigured && (
         <div class="mb-6">
@@ -144,7 +198,30 @@ if (Astro.request.method === 'POST') {
 
       <SocialSignIn returnTo={Astro.url.searchParams.get('returnTo') ?? '/account'} intent="signin" />
 
+      {/* Baymard A3: the phone is the account for most customers; a code by SMS needs no password to remember. */}
+      <section aria-labelledby="sms-signin-h" class="bg-white p-8 rounded-2xl border border-slate-200/80 space-y-4 mb-6">
+        <h2 id="sms-signin-h" class="text-base font-black text-gray-900">Sign in with your phone</h2>
+        {smsStep === 'code' ? (
+          <form method="POST" action={`/login${Astro.url.search}`} novalidate class="space-y-4">
+            <input type="hidden" name="intent" value="sms-verify" />
+            <input type="hidden" name="phone" value={smsPhone} />
+            <p class="text-sm text-slate-700">Enter the 6 digit code we texted to <span class="font-bold">{smsPhone}</span>.</p>
+            <FormField id="sms-code" name="code" label="Code from the SMS" required inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" autofocus />
+            <button type="submit" class="w-full min-h-12 bg-brand-primary text-gray-950 py-3 rounded-full font-bold text-sm hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk">Sign in</button>
+            <p class="text-xs text-slate-500 text-center leading-relaxed"><a href={`/login${Astro.url.search}`} class="font-bold text-slate-600 underline hover:text-gray-900">Use a different number or ask for a new code</a></p>
+          </form>
+        ) : (
+          <form method="POST" action={`/login${Astro.url.search}`} novalidate class="space-y-4">
+            <input type="hidden" name="intent" value="sms-start" />
+            <FormField id="sms-phone" name="phone" label="Phone number" type="tel" required inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" defaultValue={smsPhone} helperText="The number on your account. We text you a 6 digit code; no password needed." />
+            <button type="submit" class="w-full min-h-12 bg-brand-primary text-gray-950 py-3 rounded-full font-bold text-sm hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk">Text me a code</button>
+          </form>
+        )}
+      </section>
+
+      <p class="text-xs font-bold uppercase tracking-widest text-slate-500 text-center mb-3">Or with your email and password</p>
       <form method="POST" action="/login" novalidate class="bg-white p-8 rounded-2xl border border-slate-200/80 space-y-5">
+        <input type="hidden" name="intent" value="password" />
         <FormField id="email" name="email" label="Email" type="email" required autocomplete="email" defaultValue={values.email} />
         <FormField id="password" name="password" label="Password" type="password" required autocomplete="current-password" />
         <button

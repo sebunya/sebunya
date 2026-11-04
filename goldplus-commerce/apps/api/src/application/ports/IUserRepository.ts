@@ -42,4 +42,6 @@ export interface IUserRepository {
    * "sign out everywhere" true at the moment it is pressed.
    */
   invalidateSessionsAfter(userId: string, at: Date): Promise<void>;
+  /** Baymard A8: a new (lower-cased) email; throws { code: '23505' } when another account holds it. */
+  updateEmail(userId: string, email: string): Promise<void>;
 }

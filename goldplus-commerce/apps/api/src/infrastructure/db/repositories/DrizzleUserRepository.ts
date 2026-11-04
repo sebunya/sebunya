@@ -76,6 +76,16 @@ export class DrizzleUserRepository implements IUserRepository, IPasswordChangeRe
     await db.update(users).set({ sessionsInvalidatedAfter: at }).where(eq(users.id, userId));
   }
 
+  async updateEmail(userId: string, email: string): Promise<void> {
+    try {
+      await db.update(users).set({ email: email.trim().toLowerCase() }).where(eq(users.id, userId));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/duplicate key|unique constraint|UNIQUE/i.test(message)) throw Object.assign(new Error('USER_EMAIL_TAKEN'), { code: '23505' });
+      throw err;
+    }
+  }
+
   async findByEmail(email: string): Promise<PersistedUser | null> {
     const normalised = email.trim().toLowerCase();
     if (!normalised) return null;

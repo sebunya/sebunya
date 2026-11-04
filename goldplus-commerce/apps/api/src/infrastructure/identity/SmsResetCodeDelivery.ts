@@ -1,5 +1,6 @@
 import type { INotificationProvider } from '../../application/ports/INotificationProvider';
 import type { ResetCodeDeliveryPort } from '../../application/use-cases/identity/SmsPasswordResetUseCases';
+import type { SignInCodeDeliveryPort } from '../../application/use-cases/identity/SmsSignInUseCases';
 import { logger } from '../logging/logger';
 
 /**
@@ -73,6 +74,44 @@ export class SmsResetCodeDelivery implements ResetCodeDeliveryPort {
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       logger.error({ err: detail }, 'PASSWORD_RESET_SMS_FAILED');
+      return { status: 'FAILED', detail };
+    }
+  }
+}
+
+/** Baymard A3: the sign-in code, delivered the same way (synchronously, never queued), with its own template. */
+export class SmsSignInCodeDelivery implements SignInCodeDeliveryPort {
+  constructor(private readonly provider: INotificationProvider, private readonly recordAttempt?: ConstructorParameters<typeof SmsResetCodeDelivery>[1]) {}
+
+  async sendSignInCode(input: { phoneE164: string; code: string; expiresInMinutes: number }): Promise<{
+    status: 'SENT' | 'FAILED' | 'NOT_CONFIGURED' | 'DRY_RUN' | 'DISABLED';
+    detail?: string;
+  }> {
+    try {
+      const result = await this.provider.dispatch({
+        recipient: input.phoneE164,
+        template: 'SIGN_IN_CODE',
+        data: { code: input.code, expiresInMinutes: input.expiresInMinutes },
+        relatedEntity: 'sms_sign_in',
+        relatedEntityId: null,
+      });
+      const status =
+        result.status === 'SENT' || result.status === 'DRY_RUN' || result.status === 'NOT_CONFIGURED' || result.status === 'DISABLED'
+          ? result.status
+          : 'FAILED';
+      if (status === 'NOT_CONFIGURED' || status === 'DISABLED') {
+        logger.error({ template: 'SIGN_IN_CODE', status, providerCode: result.providerCode, providerMessage: result.providerMessage }, 'SIGN_IN_SMS_NOT_SENT');
+      }
+      await this.recordAttempt
+        ?.execute({
+          channel: 'sms', recipient: input.phoneE164, template: 'SIGN_IN_CODE', status,
+          providerCode: result.providerCode, providerMessage: result.providerMessage, relatedEntity: 'sms_sign_in', relatedEntityId: null,
+        })
+        .catch(() => undefined);
+      return { status, detail: result.providerMessage };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      logger.error({ err: detail }, 'SIGN_IN_SMS_FAILED');
       return { status: 'FAILED', detail };
     }
   }

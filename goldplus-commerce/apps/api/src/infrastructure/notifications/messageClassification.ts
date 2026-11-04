@@ -117,6 +117,9 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   // customer asked for this code seconds ago; its lawful basis is that request,
   // not a marketing opt-in.
   'PHONE_VERIFICATION',
+  // Baymard A3 (2026-11-04): the sign-in code by SMS. The customer typed their number and pressed
+  // "Text me a code" seconds ago; like PHONE_VERIFICATION its lawful basis is that request.
+  'SIGN_IN_CODE',
   // Loyalty account notices (owner, 2026-09-24; docs/loyalty-decisions.md:
   // "warnings are transactional", decision #15). They report the customer's
   // own balance: points their delivered order earned, points about to expire,

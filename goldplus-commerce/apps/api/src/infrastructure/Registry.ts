@@ -232,8 +232,11 @@ import { DrizzleSocialIdentityRepository } from './db/repositories/DrizzleSocial
 import { NotificationResetDelivery } from './identity/NotificationResetDelivery';
 import { RequestPasswordResetUseCase, ResetPasswordUseCase } from '../application/use-cases/identity/PasswordResetUseCases';
 import { ChangePasswordUseCase } from '../application/use-cases/identity/ChangePasswordUseCase';
-import { SmsResetCodeDelivery } from './identity/SmsResetCodeDelivery';
+import { SmsResetCodeDelivery, SmsSignInCodeDelivery } from './identity/SmsResetCodeDelivery';
+import { RequestSmsSignInCodeUseCase, SignInWithSmsCodeUseCase } from '../application/use-cases/identity/SmsSignInUseCases';
+import { ChangeEmailUseCase } from '../application/use-cases/identity/ChangeEmailUseCase';
 import { RequestSmsPasswordResetUseCase, ResetPasswordWithSmsCodeUseCase } from '../application/use-cases/identity/SmsPasswordResetUseCases';
+import { OrderTrackingUseCase } from '../application/use-cases/orders/OrderTrackingUseCase';
 import { DrizzleProductCostRepository } from './db/repositories/DrizzleProductCostRepository';
 import { ImportProductCostsUseCase, RefreshCurrentProductCostsUseCase } from '../application/use-cases/products/ProductCostUseCases';
 import { DrizzleHeroRepository } from './db/repositories/DrizzleHeroRepository';
@@ -2459,6 +2462,8 @@ export class Registry {
   public readonly getProductListUseCase = new GetProductListUseCase(this.productRepo);
   public readonly getOrderListUseCase = new GetOrderListUseCase(this.orderRepo);
   public readonly getOrderByIdUseCase = new GetOrderByIdUseCase(this.orderRepo);
+  /** Baymard A6: step dates + rider for the tracking ladders. */
+  public readonly orderTrackingUseCase = new OrderTrackingUseCase(this.orderRepo);
   public readonly verificationCheckUseCase = new VerificationCheckUseCase(this.verificationRepo);
   public readonly dealerApplicationUseCase = new DealerApplicationUseCase(this.dealerRepo);
   public readonly listAdminUsersUseCase = new ListAdminUsersUseCase(this.adminUserReadRepo);
@@ -2724,6 +2729,20 @@ export class Registry {
     this.passwordHasher,
     otpHash,
   );
+
+  // Baymard A3: sign in with the phone and a code by SMS. The reset flow's plumbing with its own code marker.
+  public readonly requestSmsSignInCodeUseCase = new RequestSmsSignInCodeUseCase(
+    this.userRepo,
+    this.loyaltyIdentityRepo,
+    new SmsSignInCodeDelivery(this.smsAdapter, this.recordNotificationAttemptUseCase),
+    otpHash,
+    otpRandom,
+    undefined,
+    new RedisFailureLockout('sms-sign-in-place'),
+  );
+  public readonly signInWithSmsCodeUseCase = new SignInWithSmsCodeUseCase(this.userRepo, this.loyaltyIdentityRepo, this.tokenSigner, otpHash);
+  // Baymard A8: change the account email, proved by the current password.
+  public readonly changeEmailUseCase = new ChangeEmailUseCase(this.userRepo, this.passwordHasher, this.loginAttemptStore);
 
   /** Homepage hero content (0107): the 12-slide library and its settings. */
   public readonly heroRepo = new DrizzleHeroRepository();

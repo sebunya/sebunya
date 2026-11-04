@@ -606,6 +606,36 @@ routes.post('/password/forgot-sms', async (c) => {
   return c.json(res);
 });
 
+/**
+ * Baymard A3: sign in with the phone and a code by SMS. The request answers identically for every number
+ * (no enumeration); the verify step mints the same session as a password sign-in.
+ */
+routes.post('/sms-sign-in/start', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const result = await registry.requestSmsSignInCodeUseCase.execute({ phone: String(body?.phone ?? ''), ip: clientIp(c) });
+  logger.info({ delivery: result.internal.delivery, deliveryDetail: result.internal.deliveryDetail, userFound: result.internal.userFound, throttled: result.internal.throttled }, 'SMS_SIGN_IN_REQUESTED');
+  const res: ApiResponse<{ message: string }> = { success: true, data: { message: result.message } };
+  return c.json(res);
+});
+
+routes.post('/sms-sign-in/verify', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const result = await registry.signInWithSmsCodeUseCase.execute({ phone: String(body?.phone ?? ''), code: String(body?.code ?? '') });
+  if (!result.ok) {
+    const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
+    return c.json(res, result.code === 'TOO_MANY_ATTEMPTS' ? 429 : result.code === 'AUTH_NOT_CONFIGURED' ? 503 : 401);
+  }
+  const tokens = await signInTokens(registry, result.user, c, { token: result.token, expiresAt: result.expiresAt });
+  stitchInBackground({ moment: 'SIGN_IN', accountUserId: result.user.id, fpClientId: fpClientIdFromCookieHeader(c.req.header('cookie')) ?? undefined });
+  const res: ApiResponse<{ token: string; expiresAt: string; refreshToken?: string; refreshExpiresAt?: string; user: { id: string; email: string; phone: string | null } }> = {
+    success: true,
+    data: { ...tokens, user: result.user },
+  };
+  return c.json(res);
+});
+
 /** Complete a reset with the SMS code. Revokes every existing session on success. */
 routes.post('/password/reset-sms', async (c) => {
   const body = await c.req.json().catch(() => null);

@@ -71,20 +71,24 @@ describe('loyalty worked example is computed from the programme config (owner de
   });
 });
 
-describe('sign-in wording matches reality: email, not phone (owner decision 3)', () => {
+describe('sign-in wording matches reality (owner decision 3, then Baymard A3)', () => {
+  // Owner decision 3 (2026-10-15): the email and password sign you in, the phone does not.
+  // Baymard A3 (2026-11-04, PR #271) added sign-in by a code texted to the phone, so the pages
+  // now describe both ways and still never call the number "the account".
   const pages = ['login', 'register', 'forgot-password', 'reset-password'].map((p) => read(`apps/web/src/pages/${p}.astro`));
 
   it('no auth page says the phone number is the account', () => {
     for (const page of pages) {
       expect(page).not.toMatch(/number is (?:your|the) account/i);
-      expect(page).not.toMatch(/sign in with your (?:phone|number)/i);
     }
   });
 
-  it('login and register say the email signs you in and what the phone is for', () => {
-    expect(pages[0]).toMatch(/Sign in with the email address and password/);
-    expect(pages[1]).toMatch(/You sign in with this email address and your password\./);
-    expect(pages[1]).toMatch(/It is not used to sign in\./);
+  it('login and register say both ways in, and what the phone is for', () => {
+    expect(pages[0]).toMatch(/Sign in with your phone and a code by SMS, or with your email and password/);
+    expect(pages[0]).toMatch(/Or with your email and password/);
+    expect(pages[1]).toMatch(/You can sign in with this email address and your password, or with a code we text to your phone\./);
+    expect(pages[1]).toMatch(/the 6 digit code we text you to sign in or reset your password\./);
+    expect(pages[1]).not.toMatch(/It is not used to sign in\./);
   });
 });
 

@@ -1,7 +1,8 @@
 import { db } from '../client';
 import { holdStoreCreditInTx } from '../../credit/DrizzleCreditRepository';
 import { guardedMeasurementWrite, recordOrderPlaced } from '../../measurement/BusinessEventWriter';
-import { orders, orderItems , checkoutIdempotency } from '../schema/commerce';
+import { orders, orderItems , checkoutIdempotency, orderEvents } from '../schema/commerce';
+import { fulfilmentDispatches, fulfilmentDeliveries } from '../schema/fulfilment';
 import { pricingQuotes, promotionRedemptions, promotionReservations } from '../schema/pricing';
 import { products, productPrices } from '../schema/products';
 import { and, eq, desc, inArray, sql } from 'drizzle-orm';
@@ -11,7 +12,7 @@ import { PricingQuote } from '../../../domain/pricing/PricingEvaluator';
 import { decodePricingJsonb, encodePricingJsonb } from '../PricingJsonbCodec';
 import { ICustomerOrderRepository } from '../../../application/ports/ICustomerOrderRepository';
 import { loyaltyEarnSourceFromOrder } from '../../../domain/loyalty/LoyaltyEarnEligibility';
-import { OrderDetailDto, OrderSummaryDto, OrderStatus, normalizeUgandanPhone } from '@goldplus/shared';
+import { OrderDetailDto, OrderSummaryDto, OrderStatus, OrderTrackingDto, normalizeUgandanPhone } from '@goldplus/shared';
 
 export interface AdminOrderFacts {
   reservationState: string | null;
@@ -47,6 +48,69 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
     if (!result) return null;
 
     return this.hydrate(result as typeof orders.$inferSelect & { items: Array<typeof orderItems.$inferSelect> });
+  }
+
+  /**
+   * Baymard A1: attach a guest order to the account created (or signed into) right after it. Only an order with no
+   * owner moves; one that belongs to someone else is reported, never reassigned. See ClaimOrderUseCase.
+   */
+  async claimForUser(orderId: string, userId: string): Promise<'claimed' | 'already_yours' | 'taken' | 'missing'> {
+    const updated = await db
+      .update(orders)
+      .set({ userId, updatedAt: new Date() })
+      .where(and(eq(orders.id, orderId), sql`${orders.userId} is null`))
+      .returning({ id: orders.id });
+    if (updated.length > 0) return 'claimed';
+    const row = await db.query.orders.findFirst({ where: eq(orders.id, orderId), columns: { userId: true } });
+    if (!row) return 'missing';
+    return row.userId === userId ? 'already_yours' : 'taken';
+  }
+
+  /**
+   * Baymard A6: when each tracking step was reached (first real transition into the status, from order_events) and
+   * the latest dispatch's rider or carrier. Null when the order does not exist. See OrderTrackingUseCase.
+   */
+  async trackingFacts(orderId: string): Promise<OrderTrackingDto | null> {
+    const order = await db.query.orders.findFirst({ where: eq(orders.id, orderId), columns: { createdAt: true } });
+    if (!order) return null;
+    const events = await db
+      .select({ toStatus: orderEvents.toStatus, occurredAt: orderEvents.occurredAt })
+      .from(orderEvents)
+      .where(and(eq(orderEvents.orderId, orderId), eq(orderEvents.isSynthetic, false)))
+      .orderBy(orderEvents.occurredAt);
+    const firstInto = (statuses: string[]): string | null => {
+      const hit = events.find((e) => statuses.includes(String(e.toStatus).toLowerCase()));
+      return hit ? hit.occurredAt.toISOString() : null;
+    };
+    const [dispatch] = await db
+      .select({
+        riderName: fulfilmentDispatches.riderName, carrierName: fulfilmentDispatches.carrierName, method: fulfilmentDispatches.method,
+        dispatchTime: fulfilmentDispatches.dispatchTime, estimatedDeliveryAt: fulfilmentDispatches.estimatedDeliveryAt,
+      })
+      .from(fulfilmentDispatches)
+      .where(eq(fulfilmentDispatches.orderId, orderId))
+      .orderBy(desc(fulfilmentDispatches.dispatchTime))
+      .limit(1);
+    const [delivery] = await db
+      .select({ deliveredAt: fulfilmentDeliveries.deliveredAt })
+      .from(fulfilmentDeliveries)
+      .where(and(eq(fulfilmentDeliveries.orderId, orderId), sql`${fulfilmentDeliveries.deliveredAt} is not null`))
+      .orderBy(desc(fulfilmentDeliveries.deliveredAt))
+      .limit(1);
+    // The rider's first name only: a customer needs to know who is coming, not the rider's full identity.
+    const firstName = (v: string | null | undefined) => (v ? v.trim().split(/\s+/)[0] : null);
+    return {
+      placedAt: order.createdAt.toISOString(),
+      confirmedAt: firstInto(['processing']),
+      dispatchedAt: dispatch?.dispatchTime?.toISOString() ?? firstInto(['dispatched']),
+      deliveredAt: delivery?.deliveredAt?.toISOString() ?? firstInto(['delivered', 'completed']),
+      rider: dispatch
+        ? {
+            name: firstName(dispatch.riderName), carrier: dispatch.carrierName ?? null, method: dispatch.method ?? null,
+            estimatedDeliveryAt: dispatch.estimatedDeliveryAt?.toISOString() ?? null,
+          }
+        : null,
+    };
   }
 
   /** How the customer chose to pay ('pesapal' | 'offline'), or null for a legacy/admin order. */

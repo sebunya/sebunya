@@ -1,0 +1,152 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AccountNav from '../../components/AccountNav.astro';
+import FormField from '../../components/FormField.astro';
+import FormFeedback from '../../components/FormFeedback.astro';
+import { apiBase } from '../../lib/api';
+import { readSessionToken } from '../../lib/session';
+import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../../lib/requestOrigin';
+
+/**
+ * Your details (Baymard A8, docs/ux/BAYMARD.md): the email and phone on the account, editable. The email changes
+ * with the current password (PUT /account/email). The phone changes only by proving control of the new number with
+ * a code by SMS, the same flow the Rewards page verifies with, so a phone on an account is always one that answered.
+ * Names and delivery details live on addresses (/account/addresses), as checkout uses them.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/login?returnTo=/account/profile', 303);
+const authed = { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5000) };
+const authedSend = (method: 'POST' | 'PUT', path: string, body: unknown) =>
+  fetch(`${apiBase}${path}`, {
+    method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000),
+  });
+
+let status: 'success' | 'error' | null = null;
+let message: string | undefined;
+let emailValue = '';
+let phoneValue = '';
+
+if (Astro.request.method === 'POST') {
+  const origin = checkRequestOrigin(Astro.request, import.meta.env as unknown as Record<string, string | undefined>);
+  const form = await Astro.request.formData().catch(() => null);
+  const intent = String(form?.get('intent') ?? '');
+  if (!origin.allowed) {
+    status = 'error';
+    message = CROSS_SITE_MESSAGE;
+  } else {
+    try {
+      if (intent === 'email') {
+        emailValue = String(form?.get('email') ?? '').trim();
+        const res = await authedSend('PUT', '/account/email', { email: emailValue, currentPassword: String(form?.get('currentPassword') ?? '') });
+        const json: any = await res.json().catch(() => null);
+        if (res.status === 401 && json?.error?.code !== 'WRONG_PASSWORD') return Astro.redirect('/login?returnTo=/account/profile', 303);
+        if (res.ok && json?.success) {
+          status = 'success';
+          message = `Your email is now ${json.data?.email ?? emailValue}.`;
+          emailValue = '';
+        } else {
+          status = 'error';
+          message = typeof json?.error?.message === 'string' && json.error.message.length < 240 ? json.error.message : 'Your email was not changed. Please try again.';
+        }
+      } else if (intent === 'phone-request') {
+        phoneValue = String(form?.get('phone') ?? '').trim();
+        const res = await authedSend('POST', '/account/phone/request-verification', { phone: phoneValue });
+        const json: any = await res.json().catch(() => null);
+        if (res.status === 401) return Astro.redirect('/login?returnTo=/account/profile', 303);
+        status = json?.success ? 'success' : 'error';
+        message = json?.success ? 'We sent a 6-digit code by SMS to that number. Enter it below.' : (json?.error?.message ?? 'Could not send the code.');
+      } else if (intent === 'phone-verify') {
+        const res = await authedSend('POST', '/account/phone/verify', { code: String(form?.get('code') ?? '') });
+        const json: any = await res.json().catch(() => null);
+        if (res.status === 401) return Astro.redirect('/login?returnTo=/account/profile', 303);
+        status = json?.success ? 'success' : 'error';
+        message = json?.success ? 'Phone verified and saved on your account.' : (json?.error?.message ?? 'That code was not accepted.');
+      }
+    } catch {
+      status = 'error';
+      message = 'We could not reach our servers. Nothing was changed. Please try again.';
+    }
+  }
+}
+
+let me: { email: string; phone: string | null; phoneVerified?: boolean } | null = null;
+let verificationState: any = null;
+try {
+  const [meRes, stateRes] = await Promise.all([
+    fetch(`${apiBase}/account/me`, authed).catch(() => null),
+    fetch(`${apiBase}/account/phone/verification-state`, authed).catch(() => null),
+  ]);
+  if (meRes?.status === 401) return Astro.redirect('/login?returnTo=/account/profile', 303);
+  const meJson: any = await meRes?.json().catch(() => null);
+  if (meJson?.success) me = meJson.data;
+  const stateJson: any = await stateRes?.json().catch(() => null);
+  if (stateJson?.success) verificationState = stateJson.data;
+} catch {
+  me = null;
+}
+// ?change=1: the customer wants to type a (different) number although a code is outstanding.
+const verificationPending = verificationState?.status === 'ACTIVE' && Astro.url.searchParams.get('change') !== '1';
+const asTime = (iso: unknown) => {
+  const t = iso ? new Date(String(iso)).getTime() : NaN;
+  return Number.isFinite(t) ? new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' }) : null;
+};
+const resendAt = asTime(verificationState?.resendAvailableAt);
+---
+
+<BaseLayout robotsMeta="noindex,follow" title="Your details">
+  <div class="container mx-auto px-4 lg:px-8 py-10 lg:py-14">
+    <div class="mb-6 pb-6 border-b border-brand-borderGrey">
+      <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal tracking-tight">Your details</h1>
+      <p class="text-sm text-brand-mutedGrey mt-1">The email and phone on your account. Delivery names and addresses are under <a href="/account/addresses" class="font-bold underline underline-offset-2">Addresses</a>.</p>
+    </div>
+
+    <AccountNav active="profile" />
+
+    <FormFeedback status={status} message={message} />
+
+    <div class="grid gap-6 lg:grid-cols-2 max-w-4xl">
+      <section aria-labelledby="email-h" class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+        <h2 id="email-h" class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Email</h2>
+        <p class="mt-2 text-sm font-bold text-brand-charcoal">{me?.email ?? 'Not loaded'}</p>
+        <p class="mt-1 text-xs text-brand-mutedGrey">Receipts and sign-in. Changing it needs your current password.</p>
+        <form method="POST" action="/account/profile" novalidate class="mt-4 space-y-4">
+          <input type="hidden" name="intent" value="email" />
+          <FormField id="email" name="email" label="New email" type="email" required autocomplete="email" defaultValue={emailValue} />
+          <FormField id="currentPassword" name="currentPassword" label="Current password" type="password" required autocomplete="current-password" />
+          <button type="submit" class="min-h-11 rounded-full bg-brand-charcoal px-5 text-sm font-bold text-white hover:bg-black">Change email</button>
+        </form>
+      </section>
+
+      <section aria-labelledby="phone-h" class="bg-white border border-brand-borderGrey rounded-2xl p-6">
+        <h2 id="phone-h" class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Phone</h2>
+        <p class="mt-2 text-sm font-bold text-brand-charcoal">{me?.phone ?? 'No phone on the account'}{me?.phone && (me.phoneVerified ? <span class="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800">Verified</span> : <span class="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800">Not verified</span>)}</p>
+        <p class="mt-1 text-xs text-brand-mutedGrey">Order updates, the rider's call, and sign-in by SMS code. A new number is saved once it answers a code.</p>
+        {verificationPending ? (
+          <div class="mt-4 space-y-3">
+            <p class="text-sm text-slate-700">We texted a 6-digit code to <span class="font-bold">{verificationState?.maskedPhone}</span>.</p>
+            <form method="POST" action="/account/profile" novalidate class="space-y-3">
+              <input type="hidden" name="intent" value="phone-verify" />
+              <FormField id="code" name="code" label="Code from the SMS" required inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" />
+              <button type="submit" class="min-h-11 rounded-full bg-brand-charcoal px-5 text-sm font-bold text-white hover:bg-black">Verify and save</button>
+            </form>
+            {resendAt ? <p class="text-xs text-brand-mutedGrey">You can ask for another code from {resendAt}.</p> : phoneValue ? (
+              <form method="POST" action="/account/profile" novalidate>
+                <input type="hidden" name="intent" value="phone-request" />
+                <input type="hidden" name="phone" value={phoneValue} />
+                <button type="submit" class="text-xs font-bold underline underline-offset-2 text-slate-700">Send a new code</button>
+              </form>
+            ) : (
+              <p class="text-xs text-brand-mutedGrey">No code? <a href="/account/profile?change=1" class="font-bold underline underline-offset-2 text-slate-700">Enter the number again</a> and we text a new one.</p>
+            )}
+          </div>
+        ) : (
+          <form method="POST" action="/account/profile" novalidate class="mt-4 space-y-4">
+            <input type="hidden" name="intent" value="phone-request" />
+            <FormField id="phone" name="phone" label={me?.phone ? 'New phone number' : 'Phone number'} type="tel" required inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" defaultValue={phoneValue} />
+            <button type="submit" class="min-h-11 rounded-full bg-brand-charcoal px-5 text-sm font-bold text-white hover:bg-black">Text me a code</button>
+          </form>
+        )}
+      </section>
+    </div>
+  </div>
+</BaseLayout>

@@ -89,17 +89,17 @@ Scores: MET, PARTIAL, MISSING, N/A. Line numbers are as of commit 8ff26969.
 
 | # | Guideline | Score | Evidence | Note |
 |---|---|---|---|---|
-| A1 | Account creation offered after the order, one field | PARTIAL | `confirmed.astro:129-135` links to the full register form | Wave 2: inline password field that keeps the order (needs a sealed-receipt exception to `RegisterCustomerUseCase.ts:20`). |
+| A1 | Account creation offered after the order, one field | MET (wave 2b) | `confirmed.astro` one-field form; `POST /account/orders/claim` (`ClaimOrderUseCase.ts`) | The order is claimed on the tracking proof (number + contact on the order), never by registration itself. |
 | A2 | Simple sign-up, no confirm-password | PARTIAL | `register.astro:220` confirm password | Wave 2. |
-| A3 | Phone + SMS code sign-in | MISSING | SMS only for password reset | Wave 2; the code plumbing exists. |
+| A3 | Phone + SMS code sign-in | MET (wave 2b) | `login.astro` phone first; `POST /auth/sms-sign-in/{start,verify}` (`SmsSignInUseCases.ts`, marker `sgn:`) | Same bounds as the reset code; no enumeration; mints the ordinary session. |
 | A4 | Confirmation page essentials: what happens next, delivery window | PARTIAL | `confirmed.astro:65-127` | Wave 1 adds "what happens next" from the messages we actually send. |
 | A5 | First message carries a track link | PARTIAL | `CustomerMessages.ts:286` no link; FAILED/CANCELLED emails point at `/checkout` | Wave 1 fixes both. |
-| A6 | Guest tracking with dated steps and rider details | PARTIAL | `track-order.astro:240-260` no dates per step | Wave 2. |
+| A6 | Guest tracking with dated steps and rider details | MET (wave 2b) | `OrderTrackingUseCase.ts` from `order_events` + `fulfilment_dispatches`; both ladders show the date and the rider's first name | Estimated arrival shown as an estimate only. |
 | A7 | Returns and warranty plain, self-service, refund timeline | PARTIAL | `returns.astro:38` no timeline; `track-order.astro:358` says "contact support before returning", contradicting `/returns/start` | Wave 1 fixes the contradiction. Refund timeline is an owner number. |
-| A8 | Profile editable | PARTIAL | no page edits name, email or phone | Wave 2. |
+| A8 | Profile editable | MET (wave 2b) | `/account/profile`: email with password (`ChangeEmailUseCase.ts`), phone by SMS code (existing verification flow) | Names live on addresses, as checkout uses them. |
 | A9 | Saved addresses reusable | MET | | Edit address: wave 2. |
 | A10 | Opt-out easy and honest | PARTIAL | `preferences.astro:246` says every offer choice is off until turned on; basket reminders default on | Wave 1 fixes the sentence. |
-| A11 | Receipts for guests | PARTIAL | signed-in paid orders only | Wave 2. |
+| A11 | Receipts for guests | MET (wave 2b) | `/receipt` on the tracking proof; linked from confirmation and tracking | Payment receipt, not an EFRIS invoice; paid orders only. |
 | A12 | Error and empty states have a next action | MET | | |
 
 ## Waves
@@ -107,7 +107,7 @@ Scores: MET, PARTIAL, MISSING, N/A. Line numbers are as of commit 8ff26969.
 - Wave 1 (this PR): K4, K6, K7, K11, C8, C10, P5 sale-price bug, Q6, Q8, Q10, A4, A5, A7, A10. No migration.
 - Wave 2 (PR after #269): P3/C6 guest save, P10/P17 see-all, P12 in-page add confirmation, P19 spacer, S4 relevance + Q5,
   Q1/Q3/Q7 normalisation. No migration.
-- Wave 2b (accounts, not built): A1 one-field account after the order, A3 phone sign-in, A6 dated steps, A8 profile edit,
-  A11 guest receipts.
+- Wave 2b (PR after #270): A1 one-field account after the order that keeps the order, A3 phone + SMS-code sign-in, A6 dated
+  steps + rider, A8 your-details page, A11 guest receipts. No migration (the sign-in code shares `phone_verification_codes`).
 - Wave 3 (data model): P1 variants, P9 staff replies, P13 "works with" for every item, lowest delivery fee for P5/C3.
 - Owner decisions: warranty term for own-brand products (P7), refund timeline in days (A7), tax statement (P11).

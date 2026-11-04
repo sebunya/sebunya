@@ -1,0 +1,148 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import FormField from '../components/FormField.astro';
+import { postJson } from '../lib/api';
+import { readClientAddress } from '../lib/forwardClient';
+import { formatUgx } from '../lib/money';
+import { getBusinessInfo } from '../lib/businessInfo';
+import { readGuestMemory, rememberedContact } from '../lib/guestMemory';
+
+/**
+ * A receipt without an account (Baymard A11, docs/ux/BAYMARD.md). Most orders are guest orders, and until now only a
+ * signed-in customer could print one. The proof is the one order tracking uses: the order number plus the phone or
+ * email the order was placed with (the API's lookup, with its lockout). Figures come from the order as the API
+ * states them; nothing is computed here that could disagree with it. It is a payment receipt, not a URA EFRIS
+ * fiscal invoice, and it says so. "Print or save as PDF" is the browser's own print dialog.
+ */
+interface LookupOrder {
+  orderNumber: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  deliveryArea?: string;
+  items: Array<{ name: string; quantity: number; unitPriceUgx: number; lineTotalUgx: number }>;
+  subtotalUgx?: number;
+  deliveryFeeUgx?: number;
+  totalUgx?: number;
+  storeCreditAppliedUgx?: number;
+  paymentStatus?: string;
+  orderStatus?: string;
+  createdAt?: string;
+}
+
+let reference = (Astro.url.searchParams.get('reference') ?? '').trim().slice(0, 80);
+let contact = '';
+let order: LookupOrder | null = null;
+let problem = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  reference = String(form.get('reference') ?? '').trim().slice(0, 80);
+  contact = String(form.get('contact') ?? '').trim().slice(0, 120);
+  if (!reference || !contact) {
+    problem = 'Enter both your order number and the phone number or email used at checkout.';
+  } else {
+    const result = await postJson('/commerce/orders/lookup', { reference, contact }, null, readClientAddress(Astro));
+    if (result.ok) order = result.data as LookupOrder;
+    else problem = result.message;
+  }
+}
+const memory = readGuestMemory(Astro.cookies, Astro.request);
+const rememberedContactValue = contact || rememberedContact(memory);
+const paid = order?.paymentStatus === 'paid';
+const biz = await getBusinessInfo().catch(() => null);
+const fmtDate = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' });
+const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const addsUp = Boolean(order && n(order.subtotalUgx) !== null && n(order.deliveryFeeUgx) !== null && n(order.totalUgx) !== null
+  && (order!.subtotalUgx as number) + (order!.deliveryFeeUgx as number) === order!.totalUgx);
+---
+
+<BaseLayout title={order ? `Receipt ${order.orderNumber} | GoldPlus` : 'Get a receipt | GoldPlus'} description="A receipt for your GoldPlus order." robotsMeta="noindex,nofollow">
+  <style is:global>
+    @media print {
+      header, footer, nav, [data-site-chrome], .print\:hidden { display: none !important; }
+      body { background: #fff !important; }
+    }
+  </style>
+  <div class="mx-auto max-w-2xl px-4 py-8 sm:py-12 print:p-0">
+    {order && paid ? (
+      <article class="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 print:border-0 print:p-0" data-receipt>
+        <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5">
+          <div>
+            <p class="text-2xl font-black tracking-tight text-slate-950">GoldPlus</p>
+            {biz?.addressLine1 && <p class="mt-1 text-xs text-slate-600">{biz.addressLine1}</p>}
+            {biz?.phoneDisplay && <p class="text-xs text-slate-600">Phone {biz.phoneDisplay} · shopgoldplus.com</p>}
+          </div>
+          <div class="text-right">
+            <h1 class="text-lg font-black text-slate-950">Receipt</h1>
+            <p class="text-sm font-bold text-slate-800">{order.orderNumber}</p>
+            {order.createdAt && <p class="text-xs text-slate-600">Ordered {fmtDate(order.createdAt)}</p>}
+          </div>
+        </div>
+
+        <div class="mt-5 grid gap-1 text-sm text-slate-800">
+          {order.customerName && <p><span class="text-slate-500">Customer:</span> {order.customerName}</p>}
+          {order.customerPhone && <p><span class="text-slate-500">Phone:</span> {order.customerPhone}</p>}
+          {order.deliveryArea && <p><span class="text-slate-500">Delivery to:</span> {order.deliveryArea}</p>}
+          <p><span class="text-slate-500">Payment:</span> Paid</p>
+        </div>
+
+        <table class="mt-6 w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-300 text-left text-xs uppercase tracking-wide text-slate-500">
+              <th class="py-2 font-bold">Item</th>
+              <th class="py-2 text-right font-bold">Qty</th>
+              <th class="py-2 text-right font-bold">Unit price</th>
+              <th class="py-2 text-right font-bold">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {order.items.map((item) => (
+              <tr class="border-b border-slate-100 align-top">
+                <td class="py-2 pr-2 text-slate-900">{item.name}</td>
+                <td class="py-2 text-right tabular-nums">{item.quantity}</td>
+                <td class="py-2 text-right tabular-nums">{formatUgx(item.unitPriceUgx)}</td>
+                <td class="py-2 text-right tabular-nums">{formatUgx(item.lineTotalUgx)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot class="text-sm">
+            {addsUp && (
+              <>
+                <tr><td colspan="3" class="pt-3 text-right text-slate-600">Items</td><td class="pt-3 text-right tabular-nums">{formatUgx(order.subtotalUgx as number)}</td></tr>
+                <tr><td colspan="3" class="text-right text-slate-600">Delivery</td><td class="text-right tabular-nums">{(order.deliveryFeeUgx as number) > 0 ? formatUgx(order.deliveryFeeUgx as number) : 'Free'}</td></tr>
+              </>
+            )}
+            {n(order.storeCreditAppliedUgx) !== null && (order.storeCreditAppliedUgx as number) > 0 && (
+              <tr><td colspan="3" class="text-right text-slate-600">Gift card or store credit</td><td class="text-right tabular-nums">&minus;{formatUgx(order.storeCreditAppliedUgx as number)}</td></tr>
+            )}
+            {n(order.totalUgx) !== null && (
+              <tr class="text-base font-black text-slate-950"><td colspan="3" class="pt-2 text-right">Total paid</td><td class="pt-2 text-right tabular-nums">{formatUgx(order.totalUgx as number)}</td></tr>
+            )}
+          </tfoot>
+        </table>
+
+        <p class="mt-6 text-xs text-slate-500">This is a receipt for your payment to GoldPlus. It is not a URA EFRIS e-invoice.{biz?.phoneDisplay && <> For questions about this order call {biz.phoneDisplay}.</>}</p>
+
+        <div class="mt-6 flex flex-wrap gap-3 print:hidden">
+          <button type="button" data-action="print" class="inline-flex min-h-11 items-center rounded-full bg-brand-charcoal px-5 text-sm font-bold text-white hover:bg-black">Print or save as PDF</button>
+          <a href={`/track-order?reference=${encodeURIComponent(order.orderNumber)}`} class="inline-flex min-h-11 items-center rounded-full border border-slate-300 px-5 text-sm font-bold text-slate-800">Track this order</a>
+        </div>
+      </article>
+    ) : (
+      <section class="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
+        <h1 class="text-2xl font-black tracking-tight text-gray-900">Get a receipt</h1>
+        <p class="mt-2 text-sm text-slate-700">Your order number and the phone number or email you used at checkout. No account needed.</p>
+        {order && !paid && <p role="status" class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Order {order.orderNumber} is not paid yet, so there is no receipt for it. <a href={`/track-order?reference=${encodeURIComponent(order.orderNumber)}`} class="font-bold underline">See the order</a></p>}
+        {problem && <p role="alert" class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{problem}</p>}
+        <form method="POST" action="/receipt" class="mt-5 space-y-4">
+          <FormField id="reference" name="reference" label="Order number" required placeholder="GP-202611-XXXXXX" defaultValue={reference} autocomplete="off" />
+          <FormField id="contact" name="contact" label="Phone number or email used at checkout" required defaultValue={rememberedContactValue} autocomplete="on" spellcheck="false" />
+          <button type="submit" class="inline-flex min-h-11 items-center rounded-full bg-brand-charcoal px-6 text-sm font-bold text-white hover:bg-black">Show my receipt</button>
+        </form>
+      </section>
+    )}
+  </div>
+  <script>
+    document.querySelector('[data-action="print"]')?.addEventListener('click', () => window.print());
+  </script>
+</BaseLayout>

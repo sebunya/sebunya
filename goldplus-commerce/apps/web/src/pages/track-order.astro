@@ -1,6 +1,6 @@
 ---
 import { onSitePaymentPath } from '../lib/payOnSite';
-import { orderProgressStage } from '../lib/orderProgress';
+import { orderProgressStage, stageDates, formatStepDate, riderLine } from '../lib/orderProgress';
 import { readClientAddress } from '../lib/forwardClient';
 import { readGuestMemory, rememberedContact } from '../lib/guestMemory';
 import RememberedDetails from '../components/RememberedDetails.astro';
@@ -249,6 +249,8 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
                         <div>
                           <p class={`text-sm font-black ${active ? 'text-brand-primaryInk' : done ? 'text-gray-900' : 'text-slate-700'}`}>{stage.title}{active && <span class="ml-2 rounded-full bg-brand-primary/15 px-2 py-0.5 text-[10px] font-bold text-brand-primaryInk align-middle">Now</span>}</p>
                           <p class="mt-0.5 text-xs leading-relaxed text-slate-600">{stage.desc}</p>
+                          {(done || active) && formatStepDate(stageDates(order.tracking)[i]) && <p class="mt-0.5 text-xs font-semibold text-slate-700"><time datetime={stageDates(order.tracking)[i] ?? undefined}>{formatStepDate(stageDates(order.tracking)[i])}</time></p>}
+                          {i === 2 && (done || active) && riderLine(order.tracking) && <p class="mt-0.5 text-xs text-slate-700">{riderLine(order.tracking)}{active && order.tracking?.rider?.estimatedDeliveryAt && formatStepDate(order.tracking.rider.estimatedDeliveryAt) ? `. Expected around ${formatStepDate(order.tracking.rider.estimatedDeliveryAt)}` : ''}</p>}
                           {active && isDeliveryFailed && <p class="mt-1 text-xs font-semibold text-amber-800">A delivery attempt did not succeed. Our team will try again or contact you.</p>}
                         </div>
                       </li>
@@ -281,6 +283,15 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
                     ))}
                   </ul>
                 </div>
+              )}
+
+              {/* Baymard A11: a paid order gets its receipt here too, on the proof just given. */}
+              {order.paymentStatus === 'paid' && (
+                <form method="POST" action="/receipt" class="mt-4">
+                  <input type="hidden" name="reference" value={submittedRef} />
+                  <input type="hidden" name="contact" value={submittedContact} />
+                  <button type="submit" class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-slate-300 px-5 text-sm font-bold text-slate-800 hover:bg-slate-50">Print or save the receipt</button>
+                </form>
               )}
 
               {/* Delivered: one tap to rate it. The reference and contact are the shopper's own, from this request. */}

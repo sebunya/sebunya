@@ -27,7 +27,7 @@ export class DrizzleLoyaltyIdentityRepository implements ILoyaltyIdentityReposit
     return row?.createdAt ?? null;
   }
 
-  async otpCountSince(userId: string, since: Date, purpose?: 'reset'): Promise<number> {
+  async otpCountSince(userId: string, since: Date, purpose?: 'reset' | 'signin'): Promise<number> {
     const [row] = await db
       .select({ n: sql<number>`count(*)::int` })
       .from(phoneVerificationCodes)
@@ -35,15 +35,20 @@ export class DrizzleLoyaltyIdentityRepository implements ILoyaltyIdentityReposit
         and(
           eq(phoneVerificationCodes.userId, userId),
           gte(phoneVerificationCodes.createdAt, since),
-          purpose === 'reset' ? sql`${phoneVerificationCodes.codeHash} like 'rst:%'` : undefined,
+          purpose === 'reset' ? sql`${phoneVerificationCodes.codeHash} like 'rst:%'`
+            : purpose === 'signin' ? sql`${phoneVerificationCodes.codeHash} like 'sgn:%'`
+            : undefined,
         ),
       );
     return row?.n ?? 0;
   }
 
-  async latestOtp(userId: string, purpose: 'verify' | 'reset' = 'verify') {
-    // Reset codes carry the 'rst:' marker (SmsPasswordResetUseCases.RESET_CODE_MARKER); verification codes never do.
-    const kind = purpose === 'reset' ? sql`${phoneVerificationCodes.codeHash} like 'rst:%'` : sql`${phoneVerificationCodes.codeHash} not like 'rst:%'`;
+  async latestOtp(userId: string, purpose: 'verify' | 'reset' | 'signin' = 'verify') {
+    // Reset codes carry the 'rst:' marker (SmsPasswordResetUseCases.RESET_CODE_MARKER), sign-in codes 'sgn:'
+    // (SmsSignInUseCases.SIGN_IN_CODE_MARKER); verification codes carry neither.
+    const kind = purpose === 'reset' ? sql`${phoneVerificationCodes.codeHash} like 'rst:%'`
+      : purpose === 'signin' ? sql`${phoneVerificationCodes.codeHash} like 'sgn:%'`
+      : sql`${phoneVerificationCodes.codeHash} not like 'rst:%' and ${phoneVerificationCodes.codeHash} not like 'sgn:%'`;
     const row = await db.query.phoneVerificationCodes.findFirst({
       where: and(eq(phoneVerificationCodes.userId, userId), isNull(phoneVerificationCodes.consumedAt), kind),
       orderBy: (t, { desc }) => [desc(t.createdAt)],

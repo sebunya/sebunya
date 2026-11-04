@@ -217,8 +217,8 @@ const focusField = firstErrorField(fieldErrors);
       <SocialSignIn returnTo={Astro.url.searchParams.get('returnTo') ?? '/account'} intent="signup" />
 
       <form method="POST" novalidate class="bg-white p-8 rounded-2xl border border-slate-200/80 space-y-5">
-        <FormField id="email" name="email" label="Email" type="email" required autocomplete="email" helperText="You sign in with this email address and your password." defaultValue={values.email} errorMessage={fieldErrors.email} autofocus={focusField === 'email'} />
-        <FormField id="phone" name="phone" label="Phone (MTN / Airtel)" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" autocomplete="tel" helperText="For delivery calls, and an SMS code if you ever forget your password. It is not used to sign in." defaultValue={values.phone} errorMessage={fieldErrors.phone} autofocus={focusField === 'phone'} />
+        <FormField id="email" name="email" label="Email" type="email" required autocomplete="email" helperText="You can sign in with this email address and your password, or with a code we text to your phone." defaultValue={values.email} errorMessage={fieldErrors.email} autofocus={focusField === 'email'} />
+        <FormField id="phone" name="phone" label="Phone (MTN / Airtel)" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" autocomplete="tel" helperText="For delivery calls, and the 6 digit code we text you to sign in or reset your password." defaultValue={values.phone} errorMessage={fieldErrors.phone} autofocus={focusField === 'phone'} />
         <FormField id="password" name="password" label="Password (at least 8 characters)" type="password" required autocomplete="new-password" errorMessage={fieldErrors.password} autofocus={focusField === 'password'} />
         <FormField id="confirmPassword" name="confirmPassword" label="Confirm password" type="password" required autocomplete="new-password" errorMessage={fieldErrors.confirmPassword} autofocus={focusField === 'confirmPassword'} />
         <FormField
