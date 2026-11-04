@@ -176,6 +176,7 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
         { label: 'Create an account', href: '/register' },
       ] },
       { heading: 'Help', links: [
+        { label: 'About GoldPlus', href: '/about' },
         { label: 'Verify a product', href: '/verification' },
         { label: 'Questions and answers', href: '/faq' },
         { label: 'Get support', href: '/support' },

@@ -63,7 +63,7 @@ const P = (slug: string) => `/products/${slug}.webp`;
 
 export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
   {
-    slideKey: 'flash', position: 1, enabled: true, theme: 'offer', tint: 'a', media: 'stage',
+    slideKey: 'flash', position: 8, enabled: true, theme: 'offer', tint: 'a', media: 'stage',
     kicker: 'Sale on now',
     // "on everything" is not true while a price floor exists: an item already
     // at the floor comes down by nothing, so the campaign takes off less than
@@ -163,7 +163,7 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
     extras: {},
   },
   {
-    slideKey: 'range', position: 8, enabled: true, theme: 'product', tint: 'd', media: 'bleed',
+    slideKey: 'range', position: 1, enabled: true, theme: 'product', tint: 'd', media: 'bleed',
     kicker: 'The full range',
     headline: 'Power, sound, storage, <em>car</em>',
     subcopy: "One shop, one standard. If we wouldn't use it, we don't stock it.",

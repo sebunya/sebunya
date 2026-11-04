@@ -31,6 +31,7 @@ import {
 import { getTaxonomy } from '../lib/taxonomy';
 import { categoryHasUniqueCopy, shopCrawlDirective } from '../lib/crawlPolicy';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
+import { readBrandIntent } from '@goldplus/shared';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { offerPriceUgx } from '../lib/offerPrice';
 import { chargedPriceUgx } from '../lib/productStructuredData';
@@ -44,6 +45,10 @@ import { getBusinessInfo } from '../lib/businessInfo';
 // Operator-editable discovery taxonomy (admin/categories); drives filters + labels.
 const taxonomy = await getTaxonomy();
 const search = normalizeSearchParam(Astro.url.searchParams.get('search') ?? Astro.url.searchParams.get('q'));
+// Sharp L13: "goldplus charger" and "oraimo charger" both mean "a charger". Brand words leave the match; a named
+// competitor is answered openly below with our own line (their buyers are our buyers too).
+const brandIntent = readBrandIntent(search);
+const matchSearch = search ? brandIntent.matchSearch : '';
 const category = normalizeCategoryParam(Astro.url.searchParams.get('category'), taxonomy);
 const subcategory = normalizeSubcategoryParam(Astro.url.searchParams.get('subcategory'), category, taxonomy);
 const sort = normalizeSortParam(Astro.url.searchParams.get('sort'));
@@ -122,7 +127,7 @@ if (rawProducts.length === 0) {
 
 const availableProducts = dedupeProductsById(getCleanCatalog(rawProducts, taxonomy)).filter(isListableProduct);
 // Synonyms, plurals, joined words and typos (2026-10-20): "powerbank", "chager" and "earpods" used to find nothing.
-const searchResult = searchDiscoveryProducts(availableProducts, { search, category, subcategory }, taxonomy);
+const searchResult = searchDiscoveryProducts(availableProducts, { search: matchSearch, category, subcategory }, taxonomy);
 const filteredProducts = searchResult.products;
 // Said, never silent: a fixed typo, or words dropped because nothing matched with them.
 const searchNote = !search || filteredProducts.length === 0
@@ -271,7 +276,7 @@ const pageTitle = search
   ? `Search: ${search}${categoryLabel ? ` in ${categoryLabel}` : ''} | GoldPlus`
   : titleScope
     ? `${titleScope} | Shop | GoldPlus`
-    : 'Shop products | GoldPlus';
+    : 'Shop Chargers, Power Banks, Phone Batteries & Accessories | GoldPlus';
 const pageDescription = search
   ? `GoldPlus products matching "${search}"${categoryLabel ? ` in ${categoryLabel}` : ''}.`
   : titleScope
@@ -497,6 +502,11 @@ const shopBreadcrumb = breadcrumbJsonLd([
     {symptomRoute && (
       <aside class="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm" aria-label="A finder for your problem" data-symptom-route>
         <p class="text-slate-800">That sounds like something to diagnose rather than a product name. <a href={symptomRoute.href} class="font-bold text-gray-900 underline underline-offset-2">{symptomRoute.label}</a>, or <a href={askOnWhatsApp} class="font-bold text-gray-900 underline underline-offset-2">ask us on WhatsApp</a>.</p>
+      </aside>
+    )}
+    {brandIntent.competitor && (
+      <aside class="mt-6 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm" aria-label="About the brand you searched for" data-competitor-route>
+        <p class="text-slate-700">We do not stock {brandIntent.competitor.charAt(0).toUpperCase() + brandIntent.competitor.slice(1)}. GoldPlus makes its own chargers, power banks, cables and more; what matched your search is below, with the same warranty and delivery as everything we sell.</p>
       </aside>
     )}
     {categoryRoute && (
