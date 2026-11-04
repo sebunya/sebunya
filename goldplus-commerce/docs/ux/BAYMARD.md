@@ -22,7 +22,7 @@ Scores: MET, PARTIAL, MISSING, N/A. Line numbers are as of commit 8ff26969.
 | K9 | Delivery cost and date before payment | MET | live quote + cutoff line 920 | |
 | K10 | Total cost shown near the pay button | MET | 1347-1349 (mobile total row) | |
 | K11 | Trust and security near the pay button | MISSING | no line next to 1358 | Wave 1 adds "PesaPal's secure page; your PIN or card never reaches us" + returns link. |
-| K12 | Payment methods named, logos | PARTIAL | label from admin copy, default "Pay now with Mobile Money or card" | One method only (owner decision 2026-10-16); still rendered as a radio. |
+| K12 | Payment methods named, logos | MET | label from admin copy, default "Pay now with Mobile Money or card" | Wave 4: one method shown as a statement with the accepted wallets and cards; the hidden input still posts pesapal. |
 | K13 | Draft survives a dropped connection | MET | draft persistence | |
 | K14 | Address entry fitted to the country (no postcodes) | MET | `UgandaLocationPicker`, landmark field | Will need per-country pickers for expansion. |
 | K15 | Order cut-off as a live countdown | PARTIAL | static sentence 920 | Low priority. |
@@ -34,13 +34,13 @@ Scores: MET, PARTIAL, MISSING, N/A. Line numbers are as of commit 8ff26969.
 | P1 | Variants (capacity, colour) selectable on one page | MET | `ProductPublicDto` has no sibling field; buy form 774-804 | Wave 3 (0218): `variant_group` on products, set on the admin properties form; `siblings` on the DTO; "Also available as" pills on the page. |
 | P2 | In-scale / in-hand image | MISSING | `ProductGallery.astro:24` no image type | Content work. |
 | P3 | Guest save-for-later | MET (wave 2) | `lib/guestSaved.ts`; `pages/api/saved.ts` guest branch; merged into the account at sign-in | Device cookie of product ids; `/account/saved` serves guests. |
-| P4 | Per-piece price for packs | PARTIAL | bundles 827-838 no per-item price | |
+| P4 | Per-piece price for packs | MET | bundles 827-838 no per-item price | Wave 4: each piece of a bundle shows its own price (`data-bundle-item-price`). |
 | P5 | Delivery cost estimate before an area is chosen | MET | 902-915; quote only once an area is known; `subtotalUgx` passed the retail price, not the sale price | Wave 3: "Delivery from UGX …" under the price from GET /delivery/from = bottom ladder rung or the published minimum fee (CONTRACT rule 4: the quoting service's own floor). |
 | P6 | Delivery date on the page | PARTIAL | `deliveryQuotePanel.ts:160-168` only when the API has a window | By design (CONTRACT rule 10). |
 | P7 | Returns and warranty next to the buy button | PARTIAL | returns 919-925 MET; warranty only for batteries 1080 | Own-brand warranty term needs a source of truth: owner decision. |
 | P8 | Gift options | MISSING | | Low priority. |
 | P9 | Staff replies to reviews styled distinctly | MET | `lib/reviews.ts:9` no reply field | Wave 3 (0218): `staff_reply` on reviews, reply form under published reviews in Platform Modules, styled block on the page. |
-| P10 | Reviewer photo gallery | PARTIAL | `?reviews=all` see-all shipped in wave 2 | A photo strip across reviews is still open. |
+| P10 | Reviewer photo gallery | MET | `?reviews=all` see-all shipped in wave 2 | Wave 4: `data-review-photo-strip`, every buyer photo across the reviews, at most 12, before the list. |
 | P11 | Price clarity: tax, real discounts | PARTIAL | 689-717; countdown tied to a real `endsIso` | No tax statement. |
 | P12 | Add-to-cart confirmation without leaving the page | MET (wave 2) | fetch submit + toast; `/cart?added=` stays the no-JavaScript path | Buy now still goes to checkout. |
 | P13 | Compatibility explicit for every item | PARTIAL | 1012-1015 only when staff declared it | Non-battery items show no "works with". |
@@ -68,22 +68,22 @@ Scores: MET, PARTIAL, MISSING, N/A. Line numbers are as of commit 8ff26969.
 | C10 | Payment methods shown in the cart | MISSING | trust strip 772-788 | Wave 1. |
 | C11 | Unavailable lines named, not totalled | MET | 343-347 | |
 | S1 | Category structure and breadcrumbs | MET | /shop has no visible breadcrumb | Wave 3: visible breadcrumb in the shop header (Home › Shop › category › subcategory). |
-| S2 | Cards show a key spec and fit | PARTIAL | `ProductCard.astro` no spec unless short description set | |
+| S2 | Cards show a key spec and fit | MET | `ProductCard.astro` no spec unless short description set | Wave 4: a card without a written line shows its two leading verified specs (`data-card-spec`). |
 | S3 | Filters by compatibility, on hub pages too | PARTIAL | facets only on /shop | |
 | S4 | Relevance sort for search results | MET (wave 2) | `rankDiscoveryProducts`; "Best match" is the default order for a search | |
 | S5 | Pagination keeps state | MET | | |
 | S6 | Honest stock and sale chips | MET | | |
 | Q1 | Exact model code search tolerant of hyphens and spaces | MET (wave 2) | hyphen-stripped sku and model number searched on both engines | |
-| Q2 | Product-type queries route to the category | PARTIAL | | |
+| Q2 | Product-type queries route to the category | MET |  | Wave 4: a query equal to a category or subcategory name offers that shelf (`data-category-route`). |
 | Q3 | Feature queries ("45W", "10000mAh") | PARTIAL | `normalizeSearchWords` joins number + unit (wave 2) | Verified attribute values are still not in the searched text. |
-| Q4 | Symptom queries ("charging slowly") | MISSING | | Wave 2 maps to finders. |
+| Q4 | Symptom queries ("charging slowly") | MET | Wave 2 maps to finders. | Wave 4: symptom phrases ("charging slowly", "battery dies fast") offer the charger or battery finder (`data-symptom-route`). |
 | Q5 | Use-case words; "car" must not match "card" | MET (wave 2) | whole-word tier in `rankDiscoveryProducts` | The card still appears, after the car charger. |
 | Q6 | Compatibility queries ("Samsung A14 charger") | MISSING | `queryExpansion.ts:143` digit words never relax | Wave 1 lets model tokens relax; no-results links the finders. |
 | Q7 | Unit abbreviations (mAh, W, PD) | MET | "watt"→"w", "10,000"→"10000" (wave 2) | Wave 3: "power delivery" → pd, "quick charge" → qc in `normalizeSearchWords`. |
 | Q8 | Non-product queries (returns, delivery, track) route to help pages | MISSING | search covers products only | Wave 1 adds a help card for these words. |
 | Q9 | Autocomplete with products and categories | PARTIAL | products only | |
 | Q10 | No-results page with real next steps | PARTIAL | 446-474 | Wave 1 adds charger and product finders. |
-| Q11 | Mobile search field | PARTIAL | one tap away on phones | |
+| Q11 | Mobile search field | MET | one tap away on phones | Already met: `gpNavMSearch` in the phone bar opens the menu search (register was stale). |
 
 ## Accounts and after the order
 
@@ -112,8 +112,9 @@ Scores: MET, PARTIAL, MISSING, N/A. Line numbers are as of commit 8ff26969.
 - Wave 3 (PR after #271, migration 0218): P1 variant groups, P9 staff replies, P5/C3 "Delivery from" the quoting service's
   floor, A2 one password field, A9 edit an address in place, C5 basket-kept sentence, P17 question search, P18 WhatsApp
   for buyable items, Q7 PD/QC phrases, S1 visible breadcrumb.
-- Still open (content or a second data model): P2 in-scale images, P4 per-piece price for packs, P8 gift options, P10 photo
-  strip across reviews, P13 "works with" for non-battery items (needs declared compatibility per item), P14 gallery cap,
-  K12 payment method as a statement, K15 live cut-off countdown, S2 card spec, S3 hub filters, Q2/Q4/Q9 query routing and
-  category suggestions, Q11 mobile search field, C4 cart delivery date.
+- Wave 4 (PR after #272, no migration): K12 payment statement, S2 card key spec, P10 photo strip, P4 per-piece bundle
+  prices, Q2 category-name queries, Q4 symptom queries; Q11 re-scored MET.
+- Still open (content or a second data model): P2 in-scale images, P8 gift options, P13 "works with" for non-battery items
+  (needs declared compatibility per item), P14 gallery cap, K15 live cut-off countdown, S3 hub filters, Q9 category
+  suggestions in autocomplete, C4 cart delivery date before an area is known (by design, CONTRACT rule 10).
 - Owner decisions: warranty term for own-brand products (P7), refund timeline in days (A7), tax statement (P11).

@@ -1148,16 +1148,19 @@ const checkoutSavingLabel = basketSavingLabel(
               {/* The chosen card is marked by more than a 13px browser-blue dot:
                   the same checked treatment the saved-address cards use, and a
                   radio in the accessible lime ink. */}
-              <fieldset class="space-y-4">
-                <legend class="sr-only">Choose how to pay</legend>
-                <label class="flex items-start gap-3 p-4 border border-slate-200/70 rounded-xl hover:border-brand-primary cursor-pointer select-none bg-slate-50/30 transition-all has-[:checked]:border-brand-primary has-[:checked]:bg-brand-primary/5 has-[:checked]:ring-1 has-[:checked]:ring-brand-primary">
-                  <input type="radio" name="paymentMethod" value="pesapal" checked class="mt-0.5 w-5 h-5 shrink-0 accent-[#456B00] cursor-pointer" />
-                  <div>
-                    <span class="font-bold text-gray-900 text-sm">{paymentCopy.pesapal.label}</span>
-                    <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">{paymentCopy.pesapal.description}</p>
-                  </div>
-                </label>
-              </fieldset>
+              {/* Baymard K12: one way to pay (owner decision 2026-10-16) is a statement, not a radio with one option.
+                  The input stays, hidden, so the form posts the same field as before. */}
+              <div class="flex items-start gap-3 p-4 border border-brand-primary rounded-xl bg-brand-primary/5" data-payment-statement>
+                <input type="radio" name="paymentMethod" value="pesapal" checked class="sr-only" tabindex="-1" aria-hidden="true" />
+                <svg class="mt-0.5 h-5 w-5 shrink-0 text-brand-primaryInk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+                <div>
+                  <span class="font-bold text-gray-900 text-sm">{paymentCopy.pesapal.label}</span>
+                  <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">{paymentCopy.pesapal.description}</p>
+                  <ul class="mt-2 flex flex-wrap gap-1.5" aria-label="Accepted">
+                    {['MTN MoMo', 'Airtel Money', 'Visa', 'Mastercard'].map((m) => <li class="rounded-full border border-slate-300 bg-white px-2.5 py-0.5 text-[11px] font-bold text-slate-700">{m}</li>)}
+                  </ul>
+                </div>
+              </div>
             </div>
 
             {/* One optional question, for attribution only: never required, no

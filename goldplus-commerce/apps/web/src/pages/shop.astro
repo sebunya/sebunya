@@ -145,6 +145,27 @@ const HELP_ROUTES: Array<{ words: RegExp; href: string; label: string }> = [
   { words: /\b(contact|support|help|call|whatsapp)\b/i, href: '/support', label: 'Contact support' },
 ];
 const helpRoute = search ? HELP_ROUTES.find((r) => r.words.test(search)) ?? null : null;
+// Baymard Q4: a symptom ("charging slowly", "battery dies fast") is a diagnosis to make, not a product name to match.
+const SYMPTOM_ROUTES: Array<{ words: RegExp; href: string; label: string }> = [
+  { words: /\b(charg\w*\s+(slow\w*|not\s+work\w*)|not\s+charg\w*|won'?t\s+charge|slow\s+charg\w*|stops?\s+charg\w*)\b/i, href: '/charger-finder', label: 'Find the right charger and cable for your device' },
+  { words: /\b(battery\s+(dies?|drain\w*|swell\w*|swollen|weak|dead|not\s+hold\w*)|dies?\s+fast|drain\w*\s+fast|low\s+battery\s+life|phone\s+dies|(swollen|swelling|bulging|weak|dead)\s+battery)\b/i, href: '/battery-finder', label: 'Find a replacement battery for your phone' },
+];
+const symptomRoute = search && !helpRoute ? SYMPTOM_ROUTES.find((r) => r.words.test(search)) ?? null : null;
+// Baymard Q2: a query that is a category's or subcategory's own name offers that shelf, whatever the word match returns.
+const categoryRoute = (() => {
+  if (!search) return null;
+  const q = search.trim().toLowerCase().replace(/\s+/g, ' ');
+  const singular = q.endsWith('s') ? q.slice(0, -1) : q;
+  for (const c of taxonomy) {
+    const cn = c.name.toLowerCase();
+    if (cn === q || cn === singular || cn === `${q}s` || (c.aliases ?? []).some((a) => a.toLowerCase() === q)) return { href: shopUrl({ search: '', category: c.slug, subcategory: '', page: 1 }), label: c.name };
+    for (const sc of c.subcategories) {
+      const sn = sc.name.toLowerCase();
+      if (sn === q || sn === singular || sn === `${q}s`) return { href: shopUrl({ search: '', category: c.slug, subcategory: sc.slug, page: 1 }), label: `${sc.name} in ${c.name}` };
+    }
+  }
+  return null;
+})();
 // The default browse order leads with what THIS visitor has been looking at.
 // Only for a returning browser (a first visit and every crawler get the
 // standard order), only when nothing else was chosen, and `?order=standard`
@@ -469,6 +490,16 @@ const shopBreadcrumb = breadcrumbJsonLd([
     {helpRoute && (
       <aside class="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm" aria-label="Help with your search">
         <p class="text-slate-700">Looking for help rather than a product? <a href={helpRoute.href} class="font-bold text-gray-900 underline underline-offset-2">{helpRoute.label}</a></p>
+      </aside>
+    )}
+    {symptomRoute && (
+      <aside class="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm" aria-label="A finder for your problem" data-symptom-route>
+        <p class="text-slate-800">That sounds like something to diagnose rather than a product name. <a href={symptomRoute.href} class="font-bold text-gray-900 underline underline-offset-2">{symptomRoute.label}</a>, or <a href={askOnWhatsApp} class="font-bold text-gray-900 underline underline-offset-2">ask us on WhatsApp</a>.</p>
+      </aside>
+    )}
+    {categoryRoute && (
+      <aside class="mt-6 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm" aria-label="Browse the category" data-category-route>
+        <p class="text-slate-700">Every {categoryRoute.label.toLowerCase()} we sell, with filters: <a href={categoryRoute.href} class="font-bold text-gray-900 underline underline-offset-2">browse {categoryRoute.label}</a>.</p>
       </aside>
     )}
     {/* Two compact cards per row on a phone (owner decision 2026-09-24). */}
