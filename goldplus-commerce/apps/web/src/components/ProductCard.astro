@@ -41,6 +41,12 @@ const productType = lowerName.includes("charger") ? "Charger"
   : "Accessory";
 
 const shortDescAttr = product.attributeValues?.find(a => a.name === 'CardShortDescription')?.value;
+// Baymard S2: without a written card line, the two leading verified specs ("10000 mAh · 22.5 W") so a card still says
+// what the item is before the click. Verified values only; nothing is inferred.
+const keySpecs = shortDescAttr ? [] : (product.attributeValues ?? [])
+  .filter((a) => a.isVerified && a.name !== 'CardShortDescription' && String(a.value).trim())
+  .slice(0, 2)
+  .map((a) => (a.unit ? `${a.value} ${a.unit}` : String(a.value)));
 
 // Stock STATE only, never a number (owner decision 2026-09-24): 180 of 183
 // products carried the same imported 200, which read as test data. The count
@@ -133,6 +139,9 @@ const availabilityBadgeClass = (() => {
       <p class="text-[12px] text-slate-500 mb-3 line-clamp-2 leading-relaxed">
         {shortDescAttr}
       </p>
+    )}
+    {keySpecs.length > 0 && (
+      <p class="text-[12px] text-slate-500 mb-3 leading-relaxed tabular-nums" data-card-spec>{keySpecs.join(' · ')}</p>
     )}
     
     <div class="mt-auto pt-3 border-t border-slate-100">

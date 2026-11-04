@@ -377,6 +377,8 @@ const productReviews = await productReviewsP;
 const deliveryFrom = await deliveryFromP.catch(() => ({ fromUgx: null, pickup: null }));
 // Baymard P1: the other capacities or colours of this item, when staff grouped them.
 const siblings = Array.isArray(product.siblings) ? product.siblings : [];
+// Baymard P10: every buyer photo across the published reviews, in review order, at most twelve.
+const reviewPhotoIds = productReviews.reviews.flatMap((r) => (Array.isArray(r.photoIds) ? r.photoIds : [])).slice(0, 12);
 // Answered questions (0208): what other shoppers asked and what the shop said.
 const answeredQuestions = await answeredQuestionsP;
 const askedFlag = Astro.url.searchParams.get('asked');
@@ -864,6 +866,8 @@ if (product) {
                 {b.products.map((bp) => (
                   <li class="flex items-center justify-between gap-2">
                     {bp.id === product.id ? <span class="font-semibold">{bp.name} <span class="text-xs font-normal text-slate-500">(this item)</span></span> : <a href={`/products/${bp.slug}`} class="font-semibold underline">{bp.name}</a>}
+                    {/* Baymard P4: what each piece costs on its own, so the saving can be checked. */}
+                    {bp.retailPriceUgx !== null && <span class="shrink-0 text-xs text-slate-500 tabular-nums" data-bundle-item-price>{formatUgx(bp.retailPriceUgx)} each</span>}
                   </li>
                 ))}
               </ul>
@@ -1153,6 +1157,14 @@ if (product) {
           <section id="reviews" aria-labelledby="reviews-h" class="scroll-mt-24">
             <h2 id="reviews-h" class="text-lg font-black tracking-tight text-gray-900">What buyers say</h2>
             <p class="mt-1 text-sm text-slate-600"><span class="text-amber-500" aria-hidden="true">{starsText(productReviews.aggregate.average)}</span> {productReviews.aggregate.average.toFixed(1)} out of 5 from {productReviews.aggregate.count} verified buyer{productReviews.aggregate.count === 1 ? '' : 's'}. Every review is from a delivered order and checked by our team.</p>
+            {reviewPhotoIds.length > 0 && (
+              <ul class="mt-4 flex gap-2 overflow-x-auto pb-1" aria-label="Photos from buyers" data-review-photo-strip>
+                {/* Baymard P10: every buyer photo in one strip, before the reviews, so the product as it arrives is seen first. */}
+                {reviewPhotoIds.map((pid) => (
+                  <li class="shrink-0"><a href={`/review-photo/${pid}`} target="_blank" rel="noopener"><img src={`/review-photo/${pid}`} alt={`Photo from a buyer of ${product.name}`} width="112" height="112" loading="lazy" decoding="async" class="h-28 w-28 rounded-xl border border-slate-200 object-cover" /></a></li>
+                ))}
+              </ul>
+            )}
             <ul class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
               {productReviews.reviews.slice(0, showAllReviews ? productReviews.reviews.length : 6).map((r) => (
                 <li class="rounded-2xl border border-slate-200 bg-white p-4">
