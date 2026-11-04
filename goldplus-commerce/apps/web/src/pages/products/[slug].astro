@@ -1247,7 +1247,7 @@ if (product) {
               <a href={`${Astro.url.pathname}?questions=all#questions`} class="mt-3 inline-flex min-h-11 items-center text-sm font-bold text-gray-900 underline underline-offset-4">See all {answeredQuestions.length} answered questions</a>
             )}
             {answeredQuestions.length > 3 && (
-              <script is:inline>
+              <script nonce={Astro.locals.cspNonce} is:inline>
                 (() => {
                   const input = document.querySelector('[data-question-filter]');
                   const count = document.querySelector('[data-question-filter-count]');

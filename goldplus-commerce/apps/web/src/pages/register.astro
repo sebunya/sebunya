@@ -249,7 +249,7 @@ const focusField = firstErrorField(fieldErrors);
       </form>
     </div>
   </div>
-  <script is:inline>
+  <script nonce={Astro.locals.cspNonce} is:inline>
     (() => {
       const btn = document.querySelector('[data-password-toggle]');
       const field = document.getElementById('password');
