@@ -158,6 +158,9 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
         { label: 'Shop all', href: '/shop' },
         { label: 'Find the right product', href: '/product-finder' },
         { label: 'Guides & advice', href: '/blog' },
+        { label: 'Gifts', href: '/for/gifts' },
+        { label: 'Fast charging', href: '/for/fast-charging' },
+        { label: 'Travel', href: '/for/travel' },
       ] },
       { heading: 'Buying', links: [
         { label: 'Your cart', href: '/cart' },
@@ -166,6 +169,7 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
         { label: 'Request a quote', href: '/quote-request' },
         { label: 'GoldPlus Rewards', href: '/loyalty' },
         { label: 'Become a dealer', href: '/dealers/apply' },
+        { label: 'Delivery upcountry', href: '/delivery/upcountry' },
       ] },
       { heading: 'Account', links: [
         { label: 'My account', href: '/account' },

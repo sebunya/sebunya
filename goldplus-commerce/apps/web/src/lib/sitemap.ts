@@ -41,6 +41,13 @@ export const STATIC_SITEMAP_PATHS: readonly string[] = [
   '/loyalty-terms',
   // What the machine endpoints are and how an assistant connects (/mcp, /openapi.json).
   '/developers',
+  // Sharp waves 1-2: the brand page, buying-situation pages and upcountry delivery.
+  '/about',
+  '/for/gifts',
+  '/for/fast-charging',
+  '/for/travel',
+  '/for/car-charging',
+  '/delivery/upcountry',
 ];
 
 /** Path prefixes that are noindex and therefore banned from every sitemap. */

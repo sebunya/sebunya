@@ -34,8 +34,8 @@ Part 2 (the scored register) follows.
 
 | # | Row | Before | Fix | After |
 |---|---|---|---|---|
-| D1 | One brand line | MISSING: six variants, all "a shop in Kampala" (BaseLayout default description, manifest, home title, homepage card, invite, email eyebrow) | `BRAND_LINE` in packages/shared/src/brand; read by layout default description, footer, home strip, About, manifest; email eyebrow "GOLDPLUS · PHONE & COMPUTER ACCESSORIES" | MET (invite + referral card copy still own words: wave 2) |
-| D2 | Wordmark on every page | PARTIAL: nav only; footer and receipt bare | Footer wordmark + line | PARTIAL (receipt: wave 2) |
+| D1 | One brand line | MISSING: six variants, all "a shop in Kampala" (BaseLayout default description, manifest, home title, homepage card, invite, email eyebrow) | `BRAND_LINE` in packages/shared/src/brand; read by layout default description, footer, home strip, About, manifest; email eyebrow "GOLDPLUS · PHONE & COMPUTER ACCESSORIES" | MET (invite + referral share copy moved to the line in wave 2) |
+| D2 | Wordmark on every page | PARTIAL: nav only; footer and receipt bare | Footer wordmark + line; receipt logo band (wave 2) | MET |
 | D3 | Brand story page | MISSING | /about, footer link | MET |
 | D4 | Brand named once in titles and shares | PARTIAL: "GoldPlus … at GoldPlus" share line; PDP title brand only if in the name | `brandTitle`, `stripBrandPrefix` | MET |
 | D5 | One greeting on WhatsApp | PARTIAL: "Hi" vs "Hello" | "Hello GoldPlus" everywhere | MET |
@@ -44,10 +44,10 @@ Part 2 (the scored register) follows.
 | M1 | First visible sentence says what we sell | PARTIAL: hidden h1, hero opens on a sale | category strip under the hero; range slide first by default | MET |
 | M2 | Titles lead with category words | PARTIAL: "Shop products" | shop + home titles lead with category words | MET |
 | M3 | Brand and competitor queries | MISSING | brand words leave the match; competitor named openly with our line | MET |
-| M4 | Situation pages (gift, fast charging, travel, car, charger-for-phone) | PARTIAL: guides and finders only | none yet | OPEN: wave 2 |
-| P1 | Where to buy beyond Kampala | PARTIAL: no public upcountry page, no dealer locator | About says it; pages next | OPEN: wave 2 (dealer list needs owner data) |
+| M4 | Situation pages (gift, fast charging, travel, car, charger-for-phone) | PARTIAL: guides and finders only | /for/gifts, /for/fast-charging, /for/travel, /for/car-charging (live catalogue search rows + existing guides), footer + sitemap; charger-for-phone stays the charger finder | MET |
+| P1 | Where to buy beyond Kampala | PARTIAL: no public upcountry page, no dealer locator | /delivery/upcountry (wave 2), footer + sitemap | PARTIAL: dealer locator needs the owner's dealer list |
 | P2 | Second-country readiness | MISSING: no market abstraction, ~300 files | none: a programme, not a wave | OPEN: owner to pick the second country first |
 | P3 | Feeds and ad reach switched on | PARTIAL: feeds built, destinations unconnected | owner-side | OPEN (owner) |
 | G1 | Promotions lead the shop window | PARTIAL: flash slide first, live "On sale" nav | flash moved to slide 8 by default (stored order unchanged) | PARTIAL: owner can reorder in admin hero |
-| G2 | Loyalty weight on light-buyer surfaces | PARTIAL (heavy) | none yet: re-weight, never remove | OPEN: wave 2 |
+| G2 | Loyalty weight on light-buyer surfaces | PARTIAL (heavy) | wave 2: referral slide from 3rd to 11th (trust slide to 3rd); PDP points line for signed-in shoppers only; cart, checkout and accrual unchanged | MET |
 | G3 | Audience capture for non-buyers | PARTIAL: WhatsApp channel only | none yet | OPEN |

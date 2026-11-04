@@ -370,6 +370,7 @@ try {
 // Loyalty earn preview (loyalty brief PART G: visibility at the point of
 // decision). Lower bound, vests on delivery — absent when the programme is off.
 const loyaltyRate = await loyaltyRateP; // preview only: 0 when unavailable
+const pdpSignedIn = Boolean(pdpSessionToken);
 const loyaltyPointValueUgx = (await loyaltyP).pointValueUgx; // 0 = redemption not configured: points only
 
 const bizForPdp = await bizP;
@@ -715,7 +716,9 @@ if (product) {
                 {pdpOnSale && pdpDiscount.endsIso && (
                   <p class="mt-1.5 text-xs font-bold text-amber-700" data-pdp-sale-ends={pdpDiscount.endsIso}>Offer ends soon</p>
                 )}
-                {loyaltyRate > 0 && Math.floor((pdpSaleUgx ?? product.retailPriceUgx) / 1000) * loyaltyRate > 0 && (
+                {/* Sharp L8: points are a reward for buyers we have, so the line shows to signed-in shoppers; a first-time
+                    visitor reads the product, price and delivery first. Points still accrue the same for everyone. */}
+                {pdpSignedIn && loyaltyRate > 0 && Math.floor((pdpSaleUgx ?? product.retailPriceUgx) / 1000) * loyaltyRate > 0 && (
                   <p class="text-xs font-bold text-brand-primaryInk mt-1">Earn {(Math.floor((pdpSaleUgx ?? product.retailPriceUgx) / 1000) * loyaltyRate).toLocaleString('en-UG')} GoldPlus points{loyaltyPointValueUgx > 0
                     ? ` on this order, worth UGX ${(Math.floor((pdpSaleUgx ?? product.retailPriceUgx) / 1000) * loyaltyRate * loyaltyPointValueUgx).toLocaleString('en-UG')} off a later one`
                     : ' on this order'}</p>
