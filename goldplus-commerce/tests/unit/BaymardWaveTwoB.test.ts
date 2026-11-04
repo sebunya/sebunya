@@ -177,8 +177,8 @@ describe('Baymard wave 2b — A3: sign in with the phone and a code by SMS', () 
     expect(login).toContain('autocomplete="one-time-code"');
     expect(login).toContain('<FormField id="email" name="email" label="Email"');
     // One completion path for both ways in (cookies, saved items, visit-token rotation, returnTo).
-    expect(login).toContain('const completeSignIn = async (data: any): Promise<Response> =>');
-    expect(login.match(/return await completeSignIn\(json\.data\)/g)?.length).toBe(2);
+    expect(login).toContain('const completeSignIn = async (json: any): Promise<Response> =>');
+    expect(login.match(/return await completeSignIn\(json\)/g)?.length).toBe(2);
     const auth = src('apps/api/src/interfaces/http/routes/auth.ts');
     expect(auth).toContain("routes.post('/sms-sign-in/start'");
     expect(auth).toContain("routes.post('/sms-sign-in/verify'");

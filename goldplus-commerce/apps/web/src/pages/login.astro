@@ -50,7 +50,8 @@ if (socialError) {
  * Everything a successful sign-in does on this device, whichever way the customer proved who they are
  * (password, or a code by SMS: Baymard A3). Returns the redirect.
  */
-const completeSignIn = async (data: any): Promise<Response> => {
+const completeSignIn = async (json: any): Promise<Response> => {
+  const data = json.data;
   // Via Astro.cookies, NOT a raw Set-Cookie header: Astro drops headers set
   // on Astro.response when the frontmatter returns Astro.redirect(), so the
   // raw-header version signed nobody in — the customer bounced straight
@@ -58,7 +59,7 @@ const completeSignIn = async (data: any): Promise<Response> => {
   // which is why the breakage hid on the customer side only.
   setSignInCookies(Astro.cookies, data); // short token + refresh credential (renewed by the middleware)
   // What they saved for later before the account (Baymard P3) comes with them.
-  await mergeGuestSavedIntoAccount(Astro.cookies, data.token).catch(() => 0);
+  await mergeGuestSavedIntoAccount(Astro.cookies, json.data.token).catch(() => 0);
 
 
   // R9 (M8, fixation): the visit token is ROTATED at the authentication
@@ -130,7 +131,7 @@ if (Astro.request.method === 'POST') {
       });
       const json: any = await res.json().catch(() => null);
       if (res.ok && json?.success && json.data?.token) {
-        return await completeSignIn(json.data);
+        return await completeSignIn(json);
       }
       status = 'error';
       if (json?.error?.code === 'AUTH_NOT_CONFIGURED') notConfigured = true;
@@ -156,7 +157,7 @@ if (Astro.request.method === 'POST') {
       const json: any = await res.json().catch(() => null);
 
       if (res.ok && json?.success && json.data?.token) {
-        return await completeSignIn(json.data);
+        return await completeSignIn(json);
       }
 
       if (json?.error?.code === 'AUTH_NOT_CONFIGURED') {

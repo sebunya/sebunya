@@ -110,8 +110,6 @@ if (Astro.request.method === 'POST' && !userId) {
       joinMessage = 'We could not reach our account service just now. Your order is safe.';
     }
   }
-} else if (userId && receipt && !receipt.orderId) {
-  // Nothing to attach without the order id.
 } else if (userId && receipt?.orderId) {
   // Signed in with the order's receipt on this device: attach it once (idempotent) using the remembered contact.
   const token = readSessionToken(Astro.request);

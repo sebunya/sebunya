@@ -136,7 +136,7 @@ const addsUp = Boolean(order && n(order.subtotalUgx) !== null && n(order.deliver
         {problem && <p role="alert" class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{problem}</p>}
         <form method="POST" action="/receipt" class="mt-5 space-y-4">
           <FormField id="reference" name="reference" label="Order number" required placeholder="GP-202611-XXXXXX" defaultValue={reference} autocomplete="off" />
-          <FormField id="contact" name="contact" label="Phone number or email used at checkout" required defaultValue={rememberedContactValue} autocomplete="tel email" />
+          <FormField id="contact" name="contact" label="Phone number or email used at checkout" required defaultValue={rememberedContactValue} autocomplete="on" spellcheck="false" />
           <button type="submit" class="inline-flex min-h-11 items-center rounded-full bg-brand-charcoal px-6 text-sm font-bold text-white hover:bg-black">Show my receipt</button>
         </form>
       </section>
