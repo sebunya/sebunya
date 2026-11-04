@@ -7,6 +7,8 @@ interface Props {
   label: string;
   type?: FieldType;
   required?: boolean;
+  /** Says "(optional)" in the label. Baymard: mark optional fields as well as required ones, so a shopper never wonders. */
+  optional?: boolean;
   placeholder?: string;
   helperText?: string;
   defaultValue?: string;
@@ -22,7 +24,7 @@ interface Props {
 }
 
 const {
-  id, name, label, type = 'text', required, placeholder,
+  id, name, label, type = 'text', required, optional, placeholder,
   helperText, defaultValue, rows = 4, pattern, inputmode, autocomplete, errorMessage, min, autofocus,
 } = Astro.props;
 
@@ -45,7 +47,7 @@ const describedBy = [helperText ? `${id}-help` : null, errorMessage ? `${id}-err
 ---
 <div>
   <label for={id} class={labelClass}>
-    <slot name="label">{label}</slot>{required && <span class="text-red-600 ml-1" aria-hidden="true">*</span>}
+    <slot name="label">{label}</slot>{required && <span class="text-red-600 ml-1" aria-hidden="true">*</span>}{optional && !required && <span class="ml-1 font-normal text-slate-500">(optional)</span>}
   </label>
   {type === 'textarea' ? (
     <textarea

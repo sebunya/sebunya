@@ -283,7 +283,9 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
   const track = trackOrderUrl(d.orderNumber);
   switch (template as CustomerTemplate) {
     case 'ORDER_RECEIVED_UNPAID':
-      return `${SHOP_NAME}: we have your order${ref} for ${formatUgx(d.totalUgx)}. It is not paid yet. Our team will call you to confirm it. Questions? Call ${phone}.`;
+      // The first text an unpaid order gets. Baymard: every order message carries the way to see the order; this one
+      // did not, and it is the one most customers read first. Kept to one SMS part with the tag (see the tag test).
+      return `${SHOP_NAME}: we have your order${ref} for ${formatUgx(d.totalUgx)}, not paid yet. We will call you to confirm it. See it: ${track}`;
     case 'ORDER_PAYMENT_PENDING':
       return `${SHOP_NAME}: your payment ${forOrder(d)} has started but has not cleared yet. Please do not pay again. We will confirm it shortly. Call ${phone} if you are unsure.`;
     case 'ORDER_PAYMENT_SUCCESS':
@@ -456,7 +458,8 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         preheader: 'The order is saved. You can pay again when you are ready.',
         headline: 'Payment did not go through',
         body: `The payment ${forOrder(d)} did not go through, so the order is not paid. If money left your phone or card, it will come back. Tell us if it does not. Your order is saved, and paying again will not create a second one. If you would like help paying, call ${phone}.`,
-        cta: { label: 'Try payment again', url: `${publicBaseUrl()}/checkout` },
+        // The order page has the Pay now button for this very order; /checkout opened an empty basket.
+        cta: { label: 'Try payment again', url: track },
         tone: 'neutral',
       };
     case 'ORDER_PAYMENT_CANCELLED':
@@ -465,7 +468,7 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         preheader: 'Nothing was charged. The order is saved.',
         headline: 'Payment cancelled',
         body: `You cancelled before paying ${forOrder(d)}. Nothing was charged, and the order is saved. Pay for it when you are ready. It will not create a second order. If you need a hand, call ${phone}.`,
-        cta: { label: 'Pay for this order', url: `${publicBaseUrl()}/checkout` },
+        cta: { label: 'Pay for this order', url: track },
         tone: 'neutral',
       };
     case 'ORDER_FULFILLMENT_PROCESSING':

@@ -909,7 +909,7 @@ if (product) {
                 district={deliverTo?.district ?? null}
                 record={humanVisitor ? { surface: 'pdp' } : null}
                 items={[{ productId: product.id, quantity: 1 }]}
-                subtotalUgx={product.retailPriceUgx ?? 0}
+                subtotalUgx={pdpSaleUgx ?? product.retailPriceUgx ?? 0}
               />
             </div>
           )}

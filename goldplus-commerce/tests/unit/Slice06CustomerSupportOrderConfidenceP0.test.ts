@@ -54,7 +54,8 @@ describe('Slice 06 customer support and order confidence P0', () => {
     for (const label of ['Returns help', 'Warranty help', 'Terms guidance', 'Privacy guidance']) {
       expect(sliceRuntime).toContain(label);
     }
-    expect(sliceRuntime).toContain('Warranty and returns are subject to the applicable GoldPlus policy');
+    // Baymard wave 1: the line used to tell customers to contact support before returning, contradicting /returns/start.
+    expect(sliceRuntime).toContain('Start a return online within the returns window, no call needed');
     expect(orderHelp).toContain('href="/support#terms-guidance"');
     expect(orderHelp).not.toMatch(/href=["']\/(?:terms|privacy)["']/);
     expect(sliceRuntime).not.toMatch(/free returns|money-back guarantee|replacement guarantee|\d+[- ](?:day|month|year) warranty/i);

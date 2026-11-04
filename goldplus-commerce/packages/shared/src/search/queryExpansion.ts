@@ -100,6 +100,11 @@ function singular(term: string): string | null {
   return null;
 }
 
+/** "32gb", "10000mah", "45w", "5v", "2a", "3.5mm": a quantity with its unit, never a device model. */
+function isUnitToken(term: string): boolean {
+  return /^\d+([.,]\d+)?(gb|tb|mb|mah|wh|w|kw|v|a|ma|m|cm|mm|ft|in|hz|khz|k|x|h|ah)$/.test(term);
+}
+
 function split(term: string, vocab: ReadonlyMap<string, number>): string | null {
   if (term.length < 5 || hasDigit(term)) return null;
   for (let k = 2; k <= term.length - 2; k++) {
@@ -149,6 +154,15 @@ export function expandSearchQuery(terms: readonly string[], vocab: ReadonlyMap<s
       continue;
     }
     const term = terms[i++];
+    if (hasDigit(term) && !known(term, vocab) && !isUnitToken(term)) {
+      // A model token the catalogue does not know ("a14", "13" in "iPhone 13 cable"): unknown, so the relaxed search
+      // can drop it and say so, instead of "Samsung A14 charger" finding nothing. A unit ("45w", "10000mah") never
+      // relaxes: it is what the shopper is asking for.
+      groups.push([term]);
+      shown.push(term);
+      unknown.push(term);
+      continue;
+    }
     if (term.length < 3 || hasDigit(term) || known(term, vocab)) {
       groups.push([term]);
       shown.push(term);
