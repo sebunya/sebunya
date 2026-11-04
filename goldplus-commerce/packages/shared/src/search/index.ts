@@ -51,8 +51,15 @@ export function normalizeSearchWords(words: readonly string[]): string[] {
 /** `term` present as a whole word: "car" in "car charger" but not in "memory card". Both inputs lower-cased. */
 export function hasWholeSearchWord(haystack: string, term: string): boolean {
   if (!term) return true;
-  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(haystack);
+  // An index scan, not a built regex: the term is the shopper's own text.
+  const wordChar = (ch: string | undefined) => ch !== undefined && /[a-z0-9]/.test(ch);
+  let from = 0;
+  for (;;) {
+    const at = haystack.indexOf(term, from);
+    if (at < 0) return false;
+    if (!wordChar(haystack[at - 1]) && !wordChar(haystack[at + term.length])) return true;
+    from = at + 1;
+  }
 }
 
 /**
