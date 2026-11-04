@@ -1,0 +1,43 @@
+---
+/**
+ * About GoldPlus. Sharp L5/L14: one place that says, in the brand's own words, what GoldPlus is (an own-brand line of
+ * phone and computer accessories, made for Africa), so every other surface can repeat one line and link here.
+ * Claims kept to what the business has said about itself; no invented history or numbers.
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { BRAND_LINE } from '@goldplus/shared';
+import { getBusinessInfo } from '../lib/businessInfo';
+const biz = await getBusinessInfo().catch(() => null);
+---
+<BaseLayout title="About GoldPlus: our own line of phone and computer accessories" description={`${BRAND_LINE} Who we are, what we make, and where to buy it.`} canonicalUrl="https://shopgoldplus.com/about">
+  <main class="container mx-auto px-4 lg:px-8 py-12 max-w-3xl" data-about-page>
+    <p class="text-xs font-bold uppercase tracking-wider text-brand-primaryInk">About</p>
+    <h1 class="mt-2 text-3xl md:text-4xl font-black tracking-tight text-gray-900">GoldPlus makes its own phone and computer accessories.</h1>
+    <p class="mt-4 text-lg text-slate-700 leading-relaxed">{BRAND_LINE}</p>
+
+    <h2 class="mt-10 text-xl font-black text-gray-900">What we make</h2>
+    <p class="mt-2 text-slate-700 leading-relaxed">Chargers, power banks, cables, phone batteries, earbuds and speakers, flash drives and memory cards, and car accessories, sold under the GoldPlus name with GoldPlus model codes (GP-C03, GP-X01 and so on). The line comes straight from manufacturing to our own shop and website, so the price you pay has no middle traders in it.</p>
+    <ul class="mt-4 flex flex-wrap gap-2 text-xs font-bold">
+      {[['Chargers', '/shop?category=power-devices&subcategory=chargers'], ['Power banks', '/shop?category=power-devices&subcategory=power-banks'], ['Phone batteries', '/battery-finder'], ['Earbuds', '/shop?category=sound-devices&subcategory=earbuds'], ['Storage', '/shop?category=storage-devices'], ['Car', '/shop?category=car-accessories']].map(([label, href]) => (
+        <li><a href={href} class="inline-flex min-h-9 items-center rounded-full border border-slate-300 px-3.5 text-gray-900 hover:border-gray-900">{label}</a></li>
+      ))}
+    </ul>
+
+    <h2 class="mt-10 text-xl font-black text-gray-900">Where we are going</h2>
+    <p class="mt-2 text-slate-700 leading-relaxed">GoldPlus is built for Africa. Today the line is sold from Kampala, delivered across Kampala and Wakiso and shipped upcountry by bus and taxi; dealers across Uganda can stock it. More countries follow as the line grows.</p>
+
+    <h2 class="mt-10 text-xl font-black text-gray-900">How we stand behind it</h2>
+    <ul class="mt-2 list-disc pl-5 text-slate-700 leading-relaxed space-y-1">
+      <li>Every product can be verified before you pay and again when it arrives: <a href="/verification" class="underline">verify a product</a>.</li>
+      <li>Returns and warranty are written down: <a href="/returns" class="underline">returns</a> and <a href="/warranty" class="underline">warranty</a>.</li>
+      <li>A real person answers on WhatsApp and at the shop: <a href="/support" class="underline">get support</a>.</li>
+    </ul>
+
+    <h2 class="mt-10 text-xl font-black text-gray-900">Where to buy</h2>
+    <ul class="mt-2 list-disc pl-5 text-slate-700 leading-relaxed space-y-1">
+      <li>Online, here, with delivery or collection: <a href="/shop" class="underline">shop the range</a>.</li>
+      <li>At the shop{biz?.addressLine1 ? `: ${biz.addressLine1}` : ''}: <a href="/locations/zainab-aziza" class="underline">visit us</a>.</li>
+      <li>In a shop near you: <a href="/dealers/apply" class="underline">dealers stock GoldPlus</a>; buying for a shop? <a href="/bulk" class="underline">bulk prices</a>.</li>
+    </ul>
+  </main>
+</BaseLayout>

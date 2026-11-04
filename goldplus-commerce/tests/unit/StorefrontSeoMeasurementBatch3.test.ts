@@ -102,7 +102,7 @@ describe('policy versions move when the policy does', () => {
 describe('meta descriptions', () => {
   it('the homepage states what the shop is, with no site-default fallback', () => {
     const home = read('apps/web/src/pages/index.astro');
-    expect(home).toMatch(/<BaseLayout title="Phone Accessories in Kampala, Uganda" description="Chargers, cables, power banks, audio and storage from our Kampala shop\. Find a phone battery by model; help choosing\."/);
+    expect(home).toContain('<BaseLayout title="Chargers, Power Banks, Phone Batteries & Accessories in Kampala, Uganda | GoldPlus" description="GoldPlus: our own line of phone and computer accessories, made for Africa. Chargers, power banks, phone batteries, more."');
     // Emitted three times (description, og, twitter) on the home budget.
     const description = home.match(/<BaseLayout title="[^"]*" description="([^"]*)"/)![1];
     expect(description.length).toBeLessThanOrEqual(120);

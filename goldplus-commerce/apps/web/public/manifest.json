@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "GoldPlus Commerce",
+  "name": "GoldPlus",
   "short_name": "GoldPlus",
-  "description": "Quality electronics in Uganda.",
+  "description": "GoldPlus: our own line of phone and computer accessories, made for Africa.",
   "start_url": "/?ch=a.homescreen",
   "scope": "/",
   "display": "standalone",

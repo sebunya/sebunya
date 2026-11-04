@@ -19,7 +19,7 @@ import type { NavConfig } from './types';
 const WA = 'https://wa.me/256705004545';
 // A MESSAGE, not a URL: the header builds the wa.me link around the one
 // admin-owned number. A stored URL is unwrapped by whatsappHref, never nested.
-const WA_BATTERY = 'Hi GoldPlus, I need a battery for my phone. My phone model is: ';
+const WA_BATTERY = 'Hello GoldPlus, I need a battery for my phone. My phone model is: ';
 const FEAT = '/nav/featured-default.png';
 const flashSlide = HERO_SLIDE_LIBRARY.find((s) => s.slideKey === 'flash');
 // No deadline is typed anywhere any more: the header reads the live promotion

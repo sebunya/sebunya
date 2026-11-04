@@ -8,6 +8,7 @@ import ProductJsonLd from '../../components/ProductJsonLd.astro';
 import Notice from '../../components/Notice.astro';
 import { apiBase } from '../../lib/api';
 import { formatUgx } from '../../lib/money';
+import { brandTitle, stripBrandPrefix } from '@goldplus/shared';
 import { getDeliveryFrom } from '../../lib/deliveryFrom';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../../lib/storefrontDiscount';
 import type { ProductPublicDto, ApiEnvelope, ApiResponse } from '@goldplus/shared';
@@ -581,7 +582,7 @@ const humanVisitor = isLikelyHuman(Astro.request.headers.get('user-agent'));
 const metaPriceUgx = product && pdpHasPrice ? (pdpOnSale && pdpSaleUgx !== null ? pdpSaleUgx : product.retailPriceUgx) : null;
 const metaPrice = typeof metaPriceUgx === 'number' ? `UGX ${metaPriceUgx.toLocaleString('en-UG')}` : null;
 const pageTitle = product
-  ? `${product.name} | ${metaPrice ? `${metaPrice} in ` : ''}Kampala, Uganda`
+  ? brandTitle(`${product.name} | ${metaPrice ? `${metaPrice} in ` : ''}Kampala, Uganda`)
   : 'Product unavailable';
 const metaStock: Record<ProductPublicDto['availability']['kind'], string> = {
   in_stock: 'in stock',
@@ -611,7 +612,7 @@ const canonical = `${SITE_ORIGIN}${Astro.url.pathname}`;
 // referral in GA4, our reports and the order's source) and how it went (utm_content). wa.me/?text= has no number: it
 // is a share, never a chat with us (lib/whatsappClicks leaves it alone: no reference code, no lead).
 const sharePrice = product && pdpHasPrice ? (pdpOnSale ? pdpSaleUgx : product.retailPriceUgx) : null;
-const shareLine = product ? `${product.name}${sharePrice ? `, ${formatUgx(sharePrice)}` : ''} at GoldPlus` : '';
+const shareLine = product ? `${stripBrandPrefix(product.name)}${sharePrice ? `, ${formatUgx(sharePrice)}` : ''} at GoldPlus` : '';
 const shareWhatsAppHref = product ? `https://wa.me/?text=${encodeURIComponent(`${shareLine}\n${productShareUrl(canonical, 'whatsapp')}`)}` : null;
 const shareNativeUrl = product ? productShareUrl(canonical, 'share') : null;
 const shareCopyUrl = product ? productShareUrl(canonical, 'copy') : null;

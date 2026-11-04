@@ -1,6 +1,6 @@
 ---
 import '../styles/global.css';
-import { ANALYTICS_REDACTED_PARAMS, loaderRules } from '@goldplus/shared';
+import { ANALYTICS_REDACTED_PARAMS, loaderRules, BRAND_DESCRIPTION, BRAND_LINE } from '@goldplus/shared';
 import { DECLARED } from '../lib/declaredAutomation';
 import GpNav from '../components/GpNav.astro';
 import WebMcpTools from '../components/WebMcpTools.astro';
@@ -50,7 +50,7 @@ interface Props {
 
 const {
   title,
-  description = 'GoldPlus. Premium electronics in Uganda',
+  description = BRAND_DESCRIPTION,
   image = '/og-default.png',
   canonicalUrl,
   robotsMeta: robotsMetaProp,
@@ -415,6 +415,9 @@ const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, 
           {/* Two link columns side by side on a phone (the brand block spans
               both), not 28 links stacked in one ~2,000px column. */}
           <div class="flex flex-col max-lg:col-span-2">
+            {/* Sharp L5: the wordmark and the one brand line on every page's last screen too, not only the first. */}
+            <a href="/" class="inline-block w-fit mb-3" aria-label="GoldPlus home" data-footer-wordmark><img src="/nav/gp-wordmark-cream-160.webp" alt="GoldPlus" width="160" height="46" loading="lazy" decoding="async" class="h-8 w-auto" /></a>
+            <p class="text-sm font-semibold text-slate-200 leading-relaxed mb-6" data-brand-line>{BRAND_LINE}</p>
             <h2 class="text-white text-base font-black tracking-tight">{whatsappChannel.heading}</h2>
             <p class="text-xs text-slate-400 leading-relaxed mt-2 mb-4">{whatsappChannel.body}</p>
             <a href={biz.whatsappChannelUrl} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold w-fit outline-none focus-visible:ring-4 focus-visible:ring-brand-primary transition-colors" style="background:#93D500;color:#0A0A0A">
