@@ -64,9 +64,9 @@ Analysis) and the shop's own data before anything was built.
   compatibility smoke each left a guest cart holding the first catalogue product. A cart created by declared
   automation (its user agent, or the audits' `gp_probe` cookie forwarded by the storefront as `x-goldplus-probe`)
   is now marked `is_probe`, left out of this page, the suggestions, the sales funnel, the abandonment sweep and
-  the reminders, and deleted by the hourly scan an hour after creation. Carts from before 0217 were cleaned up by
-  hand (cron-aligned monitor carts deleted; audit-shaped carts listed for the owner). Numbers before 2026-11-03
-  are not comparable.
+  the reminders, and deleted by the hourly scan an hour after creation. Carts from before 0217 were deleted by hand on
+  2026-11-03 (3,064 probe carts and 3,004 of their abandonment records; 61 real guest baskets kept). Numbers before
+  2026-11-03 are not comparable: the last 7 days went from 245 carts and 198 abandonments to 15 and 11.
 
 - Checkout starts come from the telemetry outbox (`begin_checkout`, one per browser). The outbox is not pruned
   today, so history is complete; if a retention job is ever added, this count shortens with it.
