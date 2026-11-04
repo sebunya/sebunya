@@ -23,6 +23,14 @@ export class GetProductBySlugUseCase {
     }
 
     const dto = toProductPublicDto(source);
-    return { ok: true, dto: { ...dto, slug: trimmed } };
+    // 0218 (Baymard P1): the other capacities or colours of this item, so the page offers them in place.
+    // Only when staff grouped them; a failure here must never cost the product page.
+    const siblings = source.variantGroup && this.products.findSiblings
+      ? await this.products.findSiblings(dto.id).then((rows) => rows.map((r) => {
+          const s = toProductPublicDto(r);
+          return { id: s.id, slug: s.slug, name: s.name, retailPriceUgx: s.retailPriceUgx, availability: s.availability };
+        })).catch(() => [])
+      : [];
+    return { ok: true, dto: { ...dto, slug: trimmed, siblings } };
   }
 }

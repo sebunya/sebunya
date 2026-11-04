@@ -11,7 +11,7 @@
  * something the API would accept (or the reverse).
  */
 
-export type RegisterField = 'email' | 'phone' | 'password' | 'confirmPassword';
+export type RegisterField = 'email' | 'phone' | 'password';
 export type RegisterFieldErrors = Partial<Record<RegisterField, string>>;
 
 /** Same as RegisterCustomerUseCase EMAIL_SHAPE. */
@@ -36,17 +36,17 @@ export const REGISTER_FIELD_MESSAGES = {
   phone: 'Enter a Ugandan mobile number, like 0772 123 456.',
   passwordMissing: 'Choose a password.',
   password: `Use at least ${MIN_PASSWORD_LENGTH} characters.`,
-  confirmPassword: 'The two passwords do not match.',
 } as const;
 
 /** The order fields appear in on the form: the first error gets the focus. */
-export const REGISTER_FIELD_ORDER: RegisterField[] = ['email', 'phone', 'password', 'confirmPassword'];
+export const REGISTER_FIELD_ORDER: RegisterField[] = ['email', 'phone', 'password'];
 
 export interface RegisterInput {
   email: string;
   phone: string;
   password: string;
-  confirmPassword: string;
+  /** Baymard A2 (2026-11-04): the confirm field is gone; a value still sent is ignored. */
+  confirmPassword?: string;
 }
 
 /** Everything the page can check before asking the API. */
@@ -63,7 +63,6 @@ export function validateRegistration(input: RegisterInput): RegisterFieldErrors 
 
   if (!input.password) errors.password = REGISTER_FIELD_MESSAGES.passwordMissing;
   else if (input.password.length < MIN_PASSWORD_LENGTH) errors.password = REGISTER_FIELD_MESSAGES.password;
-  else if (input.password !== input.confirmPassword) errors.confirmPassword = REGISTER_FIELD_MESSAGES.confirmPassword;
 
   return errors;
 }

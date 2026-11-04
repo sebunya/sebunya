@@ -83,6 +83,26 @@ if (Astro.request.method === 'POST') {
         const json: any = await res.json().catch(() => null);
         status = res.ok && json?.success ? 'success' : 'error';
         message = status === 'success' ? 'Address saved. Checkout will offer it from now on.' : json?.error?.message ?? 'Could not save the address.';
+      } else if (action === 'edit') {
+        // Baymard A9: the name, phones and directions change in place. The location itself is picked afresh as a
+        // new address, because the district and area slug feed checkout verbatim and must come from the picker.
+        const id = encodeURIComponent(String(form.get('id') || ''));
+        const res = await fetch(`${apiBase}/account/addresses/${id}`, {
+          method: 'PUT',
+          headers: authHeaders,
+          signal: AbortSignal.timeout(6000),
+          body: JSON.stringify({
+            label: String(form.get('label') || '').trim(),
+            recipientName: String(form.get('recipientName') || '').trim(),
+            phone: String(form.get('phone') || '').trim(),
+            phoneSecondary: String(form.get('phoneSecondary') || '').trim() || null,
+            areaDetails: String(form.get('areaDetails') || '').trim(),
+            landmarkText: String(form.get('areaDetails') || '').trim(),
+          }),
+        });
+        const json: any = await res.json().catch(() => null);
+        status = res.ok && json?.success ? 'success' : 'error';
+        message = status === 'success' ? 'Address updated.' : json?.error?.message ?? 'Could not update the address.';
       } else if (action === 'default') {
         const id = encodeURIComponent(String(form.get('id') || ''));
         const res = await fetch(`${apiBase}/account/addresses/${id}/default`, {
@@ -119,12 +139,13 @@ if (Astro.request.method === 'POST') {
   // refresh (pull-to-refresh on a phone) re-sent the form and saved the same
   // address twice. Errors still render here, beside what was typed.
   if (status === 'success') {
-    const done = message?.startsWith('Address saved') ? 'added' : message?.startsWith('Default') ? 'default' : 'removed';
+    const done = message?.startsWith('Address saved') ? 'added' : message?.startsWith('Address updated') ? 'updated' : message?.startsWith('Default') ? 'default' : 'removed';
     return Astro.redirect(`/account/addresses?done=${done}`, 303);
   }
 } else {
   const DONE: Record<string, string> = {
     added: 'Address saved. Checkout will offer it from now on.',
+    updated: 'Address updated.',
     default: 'Default address updated.',
     removed: 'Address removed.',
   };
@@ -205,6 +226,20 @@ try {
                     <button type="submit" class="rounded-full border border-red-200 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-red-600 hover:bg-red-50 cursor-pointer">Remove</button>
                   </form>
                 </div>
+                <details class="mt-3" data-address-edit>
+                  <summary class="cursor-pointer text-xs font-bold text-brand-charcoal underline underline-offset-4">Edit name, phone or directions</summary>
+                  <form method="POST" novalidate class="mt-3 space-y-3">
+                    <input type="hidden" name="action" value="edit" />
+                    <input type="hidden" name="id" value={a.id} />
+                    <FormField id={`label-${a.id}`} name="label" label="Label" required defaultValue={a.label} />
+                    <FormField id={`recipientName-${a.id}`} name="recipientName" label="Recipient name" required autocomplete="name" defaultValue={a.recipientName} />
+                    <FormField id={`phone-${a.id}`} name="phone" label="Phone" type="tel" required inputmode="tel" autocomplete="tel" defaultValue={a.phone} />
+                    <FormField id={`phoneSecondary-${a.id}`} name="phoneSecondary" label="Alternative phone (optional)" type="tel" inputmode="tel" defaultValue={(a as any).phoneSecondary ?? ''} />
+                    <FormField id={`areaDetails-${a.id}`} name="areaDetails" label="What is nearby? A shop, stage, church or school the rider will know" required defaultValue={a.areaDetails} />
+                    <p class="text-xs text-brand-mutedGrey">To move this address to another area or district, add a new address below and remove this one: the area is what checkout prices on.</p>
+                    <button type="submit" class="rounded-full bg-brand-charcoal px-5 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-black">Save changes</button>
+                  </form>
+                </details>
               </li>
             ))}
           </ul>

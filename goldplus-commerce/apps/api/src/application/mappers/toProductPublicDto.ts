@@ -114,5 +114,6 @@ export function toProductPublicDto(
     primaryImageUrl,
     images: dtoImages,
     attributeValues: dtoAttrs,
+    variantGroup: source.variantGroup ?? null,
   };
 }

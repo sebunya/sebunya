@@ -19,6 +19,15 @@ export interface ProductAttributeValueDto {
   isVerified: boolean;
 }
 
+/** 0218 (Baymard P1): another capacity or colour of the same item, offered on this product's page. */
+export interface ProductSiblingDto {
+  id: string;
+  slug: string;
+  name: string;
+  retailPriceUgx: number | null;
+  availability: ProductAvailability;
+}
+
 export interface ProductPublicDto {
   id: string;
   slug: string;
@@ -52,4 +61,8 @@ export interface ProductPublicDto {
   hasMissingSpecs: boolean;
   images: ProductImageDto[];
   attributeValues: ProductAttributeValueDto[];
+  /** 0218 (Baymard P1): the staff-set variant group, or null. Admin reads it back; the public page uses `siblings`. */
+  variantGroup?: string | null;
+  /** 0218 (Baymard P1): the other products in the same variant group that are listed right now, this one excluded. */
+  siblings?: ProductSiblingDto[];
 }

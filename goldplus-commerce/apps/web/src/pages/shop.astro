@@ -337,6 +337,17 @@ const shopBreadcrumb = breadcrumbJsonLd([
       {/* A customer arriving on a search result should see their own words, not
           a generic shop heading — especially when the link came from outside the
           site and they have no other confirmation of what was searched. */}
+      {/* Baymard S1: where this page sits, visibly, not only in the JSON-LD. */}
+      <nav aria-label="Breadcrumb" class="mb-3 text-xs font-semibold text-slate-300" data-shop-breadcrumb>
+        <ol class="flex flex-wrap items-center gap-1.5">
+          <li><a href="/" class="hover:text-white">Home</a></li>
+          <li aria-hidden="true">›</li>
+          {categoryLabel || search ? <li><a href="/shop" class="hover:text-white">Shop</a></li> : <li aria-current="page">Shop</li>}
+          {categoryLabel && <><li aria-hidden="true">›</li>{subcategoryLabel ? <li><a href={`/shop?category=${encodeURIComponent(category ?? '')}`} class="hover:text-white">{categoryLabel}</a></li> : <li aria-current="page">{categoryLabel}</li>}</>}
+          {categoryLabel && subcategoryLabel && <><li aria-hidden="true">›</li><li aria-current="page">{subcategoryLabel}</li></>}
+          {search && <><li aria-hidden="true">›</li><li aria-current="page">Search</li></>}
+        </ol>
+      </nav>
       <h1 class="text-3xl font-black tracking-tight sm:text-4xl">
         {search ? <>Search results for “{search}”</> : heading}
       </h1>

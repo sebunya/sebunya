@@ -14,7 +14,7 @@ import {
 
 const read = (file: string) => readFileSync(resolve(__dirname, '../..', file), 'utf8');
 
-const ok = { email: 'a@example.com', phone: '0772 123 456', password: 'longenough', confirmPassword: 'longenough' };
+const ok = { email: 'a@example.com', phone: '0772 123 456', password: 'longenough' };
 
 describe('register: every refusal marks the field it is about (jury 2026-09-24)', () => {
   it('accepts exactly what the API accepts', () => {
@@ -26,10 +26,11 @@ describe('register: every refusal marks the field it is about (jury 2026-09-24)'
 
   it('marks the wrong field with the page\'s own words', () => {
     expect(validateRegistration({ ...ok, phone: '12345' })).toEqual({ phone: REGISTER_FIELD_MESSAGES.phone });
-    expect(validateRegistration({ ...ok, password: 'abc', confirmPassword: 'abc' })).toEqual({ password: REGISTER_FIELD_MESSAGES.password });
-    expect(validateRegistration({ ...ok, confirmPassword: 'different1' })).toEqual({ confirmPassword: REGISTER_FIELD_MESSAGES.confirmPassword });
+    expect(validateRegistration({ ...ok, password: 'abc' })).toEqual({ password: REGISTER_FIELD_MESSAGES.password });
+    // Baymard A2 (2026-11-04): no confirm field; a stray confirmPassword value changes nothing.
+    expect(validateRegistration({ ...ok, confirmPassword: 'different1' })).toEqual({});
     expect(validateRegistration({ ...ok, email: 'nope' })).toEqual({ email: REGISTER_FIELD_MESSAGES.email });
-    const empty = validateRegistration({ email: '', phone: '', password: '', confirmPassword: '' });
+    const empty = validateRegistration({ email: '', phone: '', password: '' });
     expect(Object.keys(empty).sort()).toEqual(['email', 'password', 'phone']);
     expect(firstErrorField(empty)).toBe('email');
   });
@@ -49,7 +50,7 @@ describe('register: every refusal marks the field it is about (jury 2026-09-24)'
 
   it('the page passes each error to its field and focuses the first', () => {
     const page = read('apps/web/src/pages/register.astro');
-    for (const f of ['email', 'phone', 'password', 'confirmPassword']) {
+    for (const f of ['email', 'phone', 'password']) {
       expect(page).toContain(`errorMessage={fieldErrors.${f}}`);
       expect(page).toContain(`autofocus={focusField === '${f}'}`);
     }

@@ -95,7 +95,7 @@ describe('sign-in wording matches reality (owner decision 3, then Baymard A3)', 
 describe('phone rules: checkout takes a landline, the account phone stays a mobile', () => {
   it('checkout accepts 0414 123 456; register refuses it with the mobile message', () => {
     expect(normaliseCheckoutPhone('0414 123 456')).toBe('0414123456');
-    const ok = { email: 'a@example.com', phone: '0772 123 456', password: 'longenough', confirmPassword: 'longenough' };
+    const ok = { email: 'a@example.com', phone: '0772 123 456', password: 'longenough' };
     expect(validateRegistration(ok)).toEqual({});
     expect(validateRegistration({ ...ok, phone: '0414 123 456' })).toEqual({ phone: REGISTER_FIELD_MESSAGES.phone });
     expect(REGISTER_FIELD_MESSAGES.phone).toMatch(/mobile/);

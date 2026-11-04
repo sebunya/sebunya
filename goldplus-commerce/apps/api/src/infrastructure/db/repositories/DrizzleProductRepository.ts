@@ -311,6 +311,7 @@ export class DrizzleProductRepository implements IProductRepository {
 
     return {
       entity,
+      variantGroup: row.variantGroup ?? null,
       retailPriceUgx: row.hasRetailPrice && priceRow?.retailPrice ? priceRow.retailPrice : null,
       floorPriceUgx: priceRow?.floorPrice ?? null,
       categoryName: categoryRow?.name ?? row.categoryName ?? null,
@@ -329,6 +330,24 @@ export class DrizzleProductRepository implements IProductRepository {
         })
         .filter((x): x is { attributeName: string; unit: string | null; value: string; isVerified: boolean } => x !== null),
     };
+  }
+
+  /** 0218 (Baymard P1): the listed products in this product's variant group, itself excluded, in name order. */
+  async findSiblings(productId: string): Promise<ProductWithPrice[]> {
+    const self = await db.query.products.findFirst({ where: eq(products.id, productId), columns: { variantGroup: true } });
+    const group = self?.variantGroup?.trim();
+    if (!group) return [];
+    const rows = await db.query.products.findMany({
+      where: and(eq(products.variantGroup, group), eq(products.approvalStatus, 'approved'), eq(products.active, true), sql`${products.id} <> ${productId}`),
+      orderBy: [asc(products.name)],
+      limit: 12,
+    });
+    return Promise.all(rows.map((r) => this.buildView(r)));
+  }
+
+  async setVariantGroup(productId: string, group: string | null): Promise<void> {
+    const value = group?.trim().slice(0, 60) || null;
+    await db.update(products).set({ variantGroup: value, updatedAt: new Date() }).where(eq(products.id, productId));
   }
 
   async findPublicViewList(opts: {

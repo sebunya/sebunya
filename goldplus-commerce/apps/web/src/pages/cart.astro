@@ -5,6 +5,7 @@ import EmptyState from '../components/EmptyState.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
 import { formatUgx } from '../lib/money';
+import { getDeliveryFrom } from '../lib/deliveryFrom';
 import { getStorefrontDiscount, basketSavingUgx, basketSavingLabel } from '../lib/storefrontDiscount';
 import { readCartSessionId } from '../lib/cart-session';
 import type { ApiEnvelope } from '@goldplus/shared';
@@ -462,6 +463,8 @@ const cartSavings = await basketSavingUgx(
   subtotal,
 );
 const saleSubtotal = subtotal - cartSavings;
+// Baymard C3: the lowest fee the quoting service can charge, on the Delivery row until an area is chosen.
+const cartDeliveryFrom = await getDeliveryFrom();
 // A basket the evaluator saves nothing on (every line already at its price
 // floor) must not be announced as a discount. See checkout.astro.
 const cartOnSale = cartSavings > 0;
@@ -749,13 +752,15 @@ const cutoffLine = sameDayLineFor(sameDayCutoffCopy(cut, { now: new Date(), clos
               )}
               <div class="flex items-center justify-between">
                 <dt class="text-slate-500 font-medium">Delivery</dt>
-                <dd class="text-slate-500">Not included yet</dd>
+                <dd class="text-slate-500" data-cart-delivery-from>{cartDeliveryFrom.fromUgx !== null ? <>From <span class="font-semibold text-gray-900 tabular-nums">{formatUgx(cartDeliveryFrom.fromUgx)}</span>, exact at checkout</> : 'Added at checkout'}</dd>
               </div>
               <div class="flex items-center justify-between pt-4 border-t border-slate-100">
                 <dt class="font-black text-gray-900 text-base">Estimated total</dt>
                 <dd class="font-black text-brand-primaryInk text-xl tracking-tight tabular-nums">{formatUgx(saleSubtotal)}</dd>
               </div>
             </dl>
+            {/* Baymard C5: the basket persists, and says so, so nobody rushes to checkout for fear of losing it. */}
+            <p class="mb-4 text-xs text-slate-500" data-cart-persists>{cartCredential ? 'Your basket is saved to your account and waits for you on any device.' : 'Your basket is saved on this device. Sign in to keep it on every device.'}</p>
             {/* Notes are not definition terms: they follow the list (axe definition-list, 2026-09-13). */}
             <div class="mb-6 space-y-1">
               {/* One sentence about the fee, the same one checkout keeps: shown

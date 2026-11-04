@@ -30,10 +30,23 @@ const UNIT_WORDS: Readonly<Record<string, string>> = {
  * become one token ("10000mah", "20w"), "20watts" becomes "20w". Both engines (the API's searchTerms and /shop's
  * expandDiscoveryQuery) call this, so they cannot drift. Input is already lower-cased and split on whitespace.
  */
+/** Two-word charging standards a shopper spells out, in the catalogue's abbreviation (Baymard Q7). */
+const PHRASE_WORDS: ReadonlyArray<readonly [string, string, string]> = [
+  ['power', 'delivery', 'pd'],
+  ['quick', 'charge', 'qc'],
+  ['fast', 'charge', 'fast'],
+];
+
 export function normalizeSearchWords(words: readonly string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < words.length; i++) {
     let w = words[i];
+    const phrase = PHRASE_WORDS.find(([a, b]) => a === w && words[i + 1] === b);
+    if (phrase) {
+      out.push(phrase[2]);
+      i += 1;
+      continue;
+    }
     if (/^\d{1,3}(,\d{3})+[a-z]*$/.test(w)) w = w.replace(/,/g, '');
     const next = words[i + 1];
     if (/^\d+(\.\d+)?$/.test(w) && next !== undefined && Object.prototype.hasOwnProperty.call(UNIT_WORDS, next)) {

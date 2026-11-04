@@ -712,6 +712,9 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
     }
     // Merchant-feed listing is opt-out; only an explicit boolean changes it.
     if (typeof body.isFeedEligible === 'boolean') await registry.productRepo.setFeedEligibility(productId, body.isFeedEligible);
+    // 0218 (Baymard P1): the variant group is a plain label staff give every capacity/colour of one item ("PB-20K").
+    // Sent empty it clears; left out it keeps what is stored.
+    if (typeof body.variantGroup === 'string' && registry.productRepo.setVariantGroup) await registry.productRepo.setVariantGroup(productId, body.variantGroup.trim().slice(0, 60) || null);
 
     // U6 AC6 — a slug change 301s the old product URL to the new one so inbound
     // links keep resolving. Fail-open: the product update already committed and
