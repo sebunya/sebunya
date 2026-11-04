@@ -36,4 +36,10 @@ describe('Sharp wave 2: situations, upcountry, receipt, loyalty weight', () => {
     expect(new Set(positions).size).toBe(positions.length);
     expect(read('apps/web/src/pages/products/[slug].astro')).toContain('{pdpSignedIn && loyaltyRate > 0');
   });
+  it('brand footer links render even when the saved footer predates them, without duplicates', () => {
+    const layout = read('apps/web/src/layouts/BaseLayout.astro');
+    expect(layout).toContain('data-brand-footer-links');
+    expect(layout).toContain('.filter((l) => !footerHrefs.has(l.href))');
+    for (const href of ['/about', '/for/gifts', '/delivery/upcountry']) expect(layout).toContain(`href: '${href}'`);
+  });
 });

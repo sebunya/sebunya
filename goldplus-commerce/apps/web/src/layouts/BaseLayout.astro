@@ -26,6 +26,18 @@ const xHandle = xHandleFromSocials(biz.socials);
 const homepageContentForFooter = await getHomepageContent();
 const whatsappChannel = homepageContentForFooter.whatsappChannel ?? DEFAULT_HOMEPAGE_CONTENT.whatsappChannel;
 const footer = homepageContentForFooter.footer ?? DEFAULT_HOMEPAGE_CONTENT.footer;
+// Sharp waves 1-2: the brand and buying-situation pages are linked on every page even when the footer columns were saved
+// in the admin before these pages existed (stored columns replace the defaults wholesale). Only links the saved columns
+// lack are added, so an owner who adds one in the admin never sees it twice.
+const footerHrefs = new Set(footer.columns.flatMap((c) => c.links.map((l) => l.href)));
+const brandFooterLinks = [
+  { label: 'About GoldPlus', href: '/about' },
+  { label: 'Gifts', href: '/for/gifts' },
+  { label: 'Fast charging', href: '/for/fast-charging' },
+  { label: 'Travel', href: '/for/travel' },
+  { label: 'Car charging', href: '/for/car-charging' },
+  { label: 'Delivery upcountry', href: '/delivery/upcountry' },
+].filter((l) => !footerHrefs.has(l.href));
 
 interface Props {
   title: string;
@@ -452,6 +464,12 @@ const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, 
             </div>
           ))}
         </div>
+
+        {brandFooterLinks.length > 0 && (
+          <nav aria-label="More from GoldPlus" class="mt-12 flex flex-wrap gap-x-6 gap-y-3 text-xs" data-brand-footer-links>
+            {brandFooterLinks.map((l) => <a href={l.href} class="hover:text-brand-primary transition-colors hover:underline">{l.label}</a>)}
+          </nav>
+        )}
 
         {/* SOCIAL, CONTACT & COMMUNITY ICON ROW */}
         <div class="border-t border-zinc-800/50 mt-16 pt-8 flex flex-wrap items-center justify-start gap-3">
