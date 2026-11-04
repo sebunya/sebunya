@@ -53,6 +53,7 @@ export type CustomerTemplate =
   | 'PHONE_VERIFICATION'
   | 'PASSWORD_RESET'
   | 'PASSWORD_RESET_CODE'
+  | 'SIGN_IN_CODE'
   | 'LOYALTY_POINTS_EARNED'
   | 'LOYALTY_EXPIRY_WARNING'
   | 'LOYALTY_REDEMPTION_CONFIRMED'
@@ -349,6 +350,10 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
     case 'PASSWORD_RESET_CODE':
       return d.code
         ? `${SHOP_NAME}: your password reset code is ${d.code}. It works once and expires in ${d.expiresInMinutes ?? 10} minutes. If you did not ask for it, ignore this message and nothing changes. Never share this code.`
+        : null;
+    case 'SIGN_IN_CODE':
+      return d.code
+        ? `${SHOP_NAME}: your sign-in code is ${d.code}. It works once and expires in ${d.expiresInMinutes ?? 10} minutes. If you did not ask for it, ignore this message. Never share this code.`
         : null;
     case 'LOYALTY_POINTS_EARNED':
       if (d.missionTitle) {
@@ -686,6 +691,7 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
       };
     case 'PHONE_VERIFICATION':
     case 'PASSWORD_RESET_CODE':
+    case 'SIGN_IN_CODE':
       // A code proves control of a phone; it has no email form.
       return null;
     default:
@@ -717,6 +723,7 @@ export const CUSTOMER_TRANSACTIONAL_TEMPLATES: readonly string[] = Object.freeze
   'PHONE_VERIFICATION',
   'PASSWORD_RESET',
   'PASSWORD_RESET_CODE',
+  'SIGN_IN_CODE',
   'password_reset',
   'SUPPORT_REQUEST_RECEIVED',
   'QUOTE_REQUEST_RECEIVED',

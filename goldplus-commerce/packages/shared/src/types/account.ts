@@ -79,11 +79,26 @@ export interface OrderReceiptDto {
   paidAt: string | null;
 }
 
+/**
+ * Baymard A6: dates for the tracking steps the order has reached, and who carries it. ISO strings or null.
+ * `rider` is the latest dispatch; `name` is the rider's first name as entered by staff, `carrier` the courier for
+ * bus/courier shipments. `estimatedDeliveryAt` is staff's estimate at dispatch, never a promise.
+ */
+export interface OrderTrackingDto {
+  placedAt: string | null;
+  confirmedAt: string | null;
+  dispatchedAt: string | null;
+  deliveredAt: string | null;
+  rider: { name: string | null; carrier: string | null; method: string | null; estimatedDeliveryAt: string | null } | null;
+}
+
 export interface OrderDetailDto {
   id: string;
   orderNumber: string;
   status: OrderStatus;
   totalAmountUgx: number;
+  /** Baymard A6: step dates and rider details; absent on older API builds. */
+  tracking?: OrderTrackingDto | null;
   /** 0196: what a gift card / store credit paid towards the total (0 when none). The rest is what is due. */
   storeCreditAppliedUgx?: number;
   createdAt: string;

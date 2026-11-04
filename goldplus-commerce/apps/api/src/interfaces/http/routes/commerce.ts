@@ -1164,6 +1164,8 @@ routes.post('/orders/lookup', async (c) => {
       paymentStatus: order.paymentStatus,
       orderStatus: order.orderStatus,
       createdAt: order.createdAt,
+      // Baymard A6: a date on every step reached, and the rider's first name once dispatched.
+      tracking: await registry.orderTrackingUseCase.execute(order.id),
     };
 
     const res: ApiResponse<any> = {

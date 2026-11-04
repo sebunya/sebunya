@@ -54,7 +54,7 @@ const isNewAccount = overview ? overview.orderCount === 0 : false;
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6 pb-6 border-b border-brand-borderGrey">
       <div>
         <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal tracking-tight">My account</h1>
-        {overview && <p class="text-sm text-brand-mutedGrey mt-1">{overview.profile.email}</p>}
+        {overview && <p class="text-sm text-brand-mutedGrey mt-1">{overview.profile.email} · <a href="/account/profile" class="font-bold underline underline-offset-2 hover:text-brand-charcoal">Edit your details</a></p>}
       </div>
       <a href="/logout" class="text-sm font-bold text-brand-mutedGrey hover:text-brand-charcoal">Sign out &rarr;</a>
     </div>

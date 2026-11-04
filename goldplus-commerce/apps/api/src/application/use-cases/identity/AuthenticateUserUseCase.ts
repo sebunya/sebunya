@@ -16,7 +16,7 @@ import { UNKNOWN_CLIENT_IP } from '../../../domain/identity/ClientAddress';
 // the response time does not reveal whether an email is registered.
 const TIMING_DUMMY_PASSWORD = 'timing-equalizer-not-a-real-credential';
 
-const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
+export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 export interface AuthenticateUserInput {
   email: string;
