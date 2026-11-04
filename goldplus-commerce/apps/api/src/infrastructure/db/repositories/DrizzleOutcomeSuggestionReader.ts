@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { TELEMETRY_TRUSTED_FROM } from '../../../domain/measurement/Outcomes';
 import { db } from '../client';
 import type { IOutcomeSuggestionReader, OutcomeSuggestionFacts } from '../../../application/ports/IOutcomeSuggestionReader';
 import { MICRO_CONVERSIONS } from '../../../domain/measurement/Outcomes';
@@ -22,13 +23,16 @@ const KD = (col: string) => sql.raw(`(${col} at time zone 'Africa/Kampala')::dat
  */
 export class DrizzleOutcomeSuggestionReader implements IOutcomeSuggestionReader {
   async facts(now = new Date()): Promise<OutcomeSuggestionFacts> {
+    // The four daily series start at the later of 180 days ago and the trusted telemetry day (TELEMETRY_TRUSTED_FROM):
+    // a "best 28-day window" must never be one our own audits produced.
+    const since = new Date(Math.max(now.getTime() - 180 * 24 * 60 * 60 * 1000, TELEMETRY_TRUSTED_FROM.getTime()));
     const [carts, checkouts, orders, ga4, econ, micro] = await Promise.all([
       db.execute(sql`select ${KD('c.updated_at')} as day, count(*)::int as n from carts c
-        where c.updated_at >= ${now}::timestamptz - interval '180 days' and not c.is_probe and exists (select 1 from cart_items i where i.cart_id = c.id) group by 1`),
+        where c.updated_at >= ${since} and not c.is_probe and exists (select 1 from cart_items i where i.cart_id = c.id) group by 1`),
       db.execute(sql`select ${KD('o.created_at')} as day, count(distinct coalesce(${EV}->'user_data'->>'fp_client_id', o.id::text))::int as n from outbox_events o
-        where o.event_type = 'TELEMETRY_DISPATCH' and ${EV}->>'event_name' = 'begin_checkout' and o.created_at >= ${now}::timestamptz - interval '180 days' group by 1`),
-      db.execute(sql`select ${KD('o.created_at')} as day, count(*)::int as n from orders o where o.created_at >= ${now}::timestamptz - interval '180 days' group by 1`),
-      db.execute(sql`select day::text as day, sum(sessions)::int as n from measurement.ga4_daily_series where report = 'source_medium' and day >= (${now}::timestamptz at time zone 'Africa/Kampala')::date - 180 group by 1`),
+        where o.event_type = 'TELEMETRY_DISPATCH' and ${EV}->>'event_name' = 'begin_checkout' and o.created_at >= ${since} group by 1`),
+      db.execute(sql`select ${KD('o.created_at')} as day, count(*)::int as n from orders o where o.created_at >= ${since} group by 1`),
+      db.execute(sql`select day::text as day, sum(sessions)::int as n from measurement.ga4_daily_series where report = 'source_medium' and day >= (${since}::timestamptz at time zone 'Africa/Kampala')::date group by 1`),
       db.execute(sql`
         with paid as (select o.id, o.total_amount from orders o where o.payment_status = 'paid' and o.created_at >= ${now}::timestamptz - interval '90 days'),
         lines as (select i.order_id, i.quantity, i.unit_price, i.cogs_snapshot_ugx as unit_cost from order_items i join paid on paid.id = i.order_id)

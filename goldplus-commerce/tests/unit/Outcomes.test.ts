@@ -13,7 +13,7 @@ const root = resolve(__dirname, '../..');
 const read = (p: string) => readFileSync(resolve(root, p), 'utf8');
 
 const counts = (over: Partial<OutcomeCounts> = {}): OutcomeCounts => ({
-  cartsWithItems: 200, checkoutsStarted: 60, ordersPlaced: 30, paidTotalsUgx: [], journeys: [], micro: {}, spendUgx: 0,
+  countedFrom: null, cartsWithItems: 200, checkoutsStarted: 60, ordersPlaced: 30, paidTotalsUgx: [], journeys: [], micro: {}, spendUgx: 0,
   ga4: { sessions: 0, directSessions: 0, daysCovered: 0, lastDay: null, ordersInCoveredDays: 0, byChannel: [], byDevice: [] },
   ...over,
 });

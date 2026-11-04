@@ -23,6 +23,16 @@ export const TOUCHES_TO_PURCHASE_BUCKETS = ['1 visit', '2 visits', '3 visits', '
 /** Orders at or above this multiple of the period's average paid order value are whales. */
 export const WHALE_MULTIPLE = 2;
 
+/**
+ * Telemetry is trusted from this Kampala day (2026-10-24). Before it, our own audits ran as shoppers: of 260
+ * checkout starts in the 90 days to 2026-11-03, about 254 came from Playwright's Linux Firefox, Linux WebKit and Mac
+ * WebKit engines, and GA4's September sessions were 98% "direct" for the same reason. The probe cookie has kept
+ * them out of the telemetry since the 23 October deploy (two starts in the following twelve days, across thirty
+ * deploys). A window that reaches further back is counted from this day and says so.
+ */
+export const TELEMETRY_TRUSTED_FROM_DAY = '2026-10-24';
+export const TELEMETRY_TRUSTED_FROM = new Date('2026-10-23T21:00:00Z');
+
 export const MICRO_CONVERSIONS = [
   { key: 'sign_up', label: 'Account sign-ups', help: 'A shopper created an account.' },
   { key: 'product_question', label: 'Product questions asked', help: 'A question on a product page.' },

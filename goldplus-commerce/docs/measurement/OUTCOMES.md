@@ -59,6 +59,13 @@ Analysis) and the shop's own data before anything was built.
 
 ## Known limits (read before trusting a number)
 
+- **Telemetry is trusted from 2026-10-24.** Of 260 checkout starts in the 90 days to 2026-11-03, about 254 were
+  Playwright engines (Linux Firefox, Linux WebKit, Mac WebKit: the server audits and compatibility runs from the
+  owner's Mac), and GA4's September sessions were 98% "direct" for the same reason. The probe cookie has kept them
+  out since the 23 October deploy. Both readers clip every window to that day (`TELEMETRY_TRUSTED_FROM` in
+  domain/measurement/Outcomes.ts); the page says "Counted from 2026-10-24" when a period reached further back, and
+  the goal suggestions' 180-day history starts there, so no "best window" can be one our audits produced.
+
 - **Probe carts are excluded (0217, 2026-11-03).** Before this, 238 of 245 weekly "carts with items" and most of
   the 198 "abandoned baskets" a week were our own automation: the five-minute synthetic monitor and the post-deploy
   compatibility smoke each left a guest cart holding the first catalogue product. A cart created by declared

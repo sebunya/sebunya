@@ -129,6 +129,8 @@ export interface OutcomesData {
   period: { startDay: string; endDay: string; days: number; previousStartDay: string; previousEndDay: string };
   critical: Array<{ key: string; label: string; unit: 'rate' | 'UGX'; value: number | null; previousValue: number | null; state: string; goal: number | null; verdict: 'MET' | 'MISSED' | 'NO_GOAL' | 'NO_VALUE'; lowerIsBetter: boolean; rule: string }>;
   actions: Array<{ key: string; text: string; href: string }>;
+  /** Set when the period reached back before telemetry was trustworthy: every count on the page starts on this day. */
+  countedFrom?: string | null;
   funnel: { cartsWithItems: number; checkoutsStarted: number; ordersPlaced: number; previous: { cartsWithItems: number; checkoutsStarted: number; ordersPlaced: number } };
   whales: { thresholdUgx: number | null; averageUgx: number | null; whaleOrders: number; whaleRevenueUgx: number; paidOrders: number; paidRevenueUgx: number; revenueShare: number | null; orderShare: number | null };
   journeys: {

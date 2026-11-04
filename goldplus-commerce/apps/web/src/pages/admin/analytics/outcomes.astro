@@ -161,6 +161,7 @@ const confidenceTone = (c: string) => c === "MEASURED" ? "bg-emerald-50 text-eme
                 </li>
               ))}
             </ol>
+            {data.countedFrom && <p class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">Counted from {data.countedFrom}: before that day our own test browsers ran as shoppers, so earlier checkout starts and sessions are not used anywhere on this page.</p>}
             {data.funnel.checkoutsStarted === 0 && data.funnel.cartsWithItems > 0 && <p class="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-800">No checkout starts were recorded against {fmtNumber(data.funnel.cartsWithItems)} carts: the checkout feed is not arriving, so neither abandonment rate is shown.</p>}
             <p class="mt-4 text-xs text-slate-500">Checkouts started are browsers that opened the checkout page in the period (begin_checkout). Carts are server carts touched in the period, so a checkout from last week's cart can make the first rate not comparable.</p>
           </article>
