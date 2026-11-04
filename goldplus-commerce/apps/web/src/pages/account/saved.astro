@@ -5,14 +5,30 @@ import ProductCard from '../../components/ProductCard.astro';
 import { apiBase } from '../../lib/api';
 import { readSessionToken, clearSignInCookies } from '../../lib/session';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
+import { readGuestSaved } from '../../lib/guestSaved';
+import { fetchApprovedCatalogue } from '../../lib/catalogue';
 
-/** Saved for later (gap analysis #6): the signed-in customer's list, as each product is sold today. */
+/**
+ * Saved for later (gap analysis #6): the signed-in customer's list, as each product is sold today. A guest (Baymard
+ * P3) sees the list kept on this device, with the account offered as the way to keep it on every device.
+ */
 const token = readSessionToken(Astro.request);
-if (!token) return Astro.redirect('/login?returnTo=/account/saved', 303);
+const guest = !token;
 
 let saved: ProductPublicDto[] = [];
 let problem = '';
-try {
+if (guest) {
+  const ids = readGuestSaved(Astro.cookies);
+  if (ids.length > 0) {
+    try {
+      const catalogue = await fetchApprovedCatalogue(apiBase);
+      const byId = new Map(catalogue.map((p) => [p.id.toLowerCase(), p]));
+      saved = ids.map((id) => byId.get(id)).filter((p): p is ProductPublicDto => Boolean(p)).reverse();
+    } catch {
+      problem = 'We could not load your saved products right now.';
+    }
+  }
+} else try {
   const res = await fetch(`${apiBase}/account/saved`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(6000) });
   if (res.status === 401) {
     clearSignInCookies(Astro.cookies);
@@ -28,7 +44,13 @@ try {
 <BaseLayout title="Saved for later | GoldPlus" description="Products you saved on GoldPlus." robotsMeta="noindex,nofollow">
   <div class="container mx-auto max-w-6xl px-4 py-10">
     <h1 class="text-3xl font-black tracking-tight text-brand-charcoal mb-6">Saved for later</h1>
-    <AccountNav active="saved" />
+    {guest ? (
+      <p class="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+        Saved on this device. <a href="/login?returnTo=/account/saved" class="font-bold underline underline-offset-2 text-gray-900">Sign in</a> or <a href="/register?returnTo=/account/saved" class="font-bold underline underline-offset-2 text-gray-900">create an account</a> to keep them on every device.
+      </p>
+    ) : (
+      <AccountNav active="saved" />
+    )}
     {problem && <p role="alert" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{problem}</p>}
     {!problem && saved.length === 0 && (
       <div class="rounded-2xl border border-slate-200 bg-white p-6 text-center">

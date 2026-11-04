@@ -20,6 +20,41 @@ export function includesSearchTerm(haystack: string, term: string): boolean {
   }
 }
 
+/** Unit words a shopper types after a number, in the spelling the catalogue uses ("20 watt" → "20w"). */
+const UNIT_WORDS: Readonly<Record<string, string>> = {
+  mah: 'mah', w: 'w', watt: 'w', watts: 'w', gb: 'gb', tb: 'tb', mb: 'mb', v: 'v', a: 'a', mm: 'mm', hz: 'hz', ah: 'ah',
+};
+
+/**
+ * Baymard Q1/Q3/Q7: the query words as the catalogue spells them. "10,000" loses its comma, "10000 mah" and "20 watt"
+ * become one token ("10000mah", "20w"), "20watts" becomes "20w". Both engines (the API's searchTerms and /shop's
+ * expandDiscoveryQuery) call this, so they cannot drift. Input is already lower-cased and split on whitespace.
+ */
+export function normalizeSearchWords(words: readonly string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    let w = words[i];
+    if (/^\d{1,3}(,\d{3})+[a-z]*$/.test(w)) w = w.replace(/,/g, '');
+    const next = words[i + 1];
+    if (/^\d+(\.\d+)?$/.test(w) && next !== undefined && Object.prototype.hasOwnProperty.call(UNIT_WORDS, next)) {
+      out.push(`${w}${UNIT_WORDS[next]}`);
+      i += 1;
+      continue;
+    }
+    const unit = /^(\d+(?:\.\d+)?)(watts?|mah|gb|tb|mb)$/.exec(w);
+    if (unit) w = `${unit[1]}${UNIT_WORDS[unit[2]] ?? unit[2]}`;
+    out.push(w);
+  }
+  return out;
+}
+
+/** `term` present as a whole word: "car" in "car charger" but not in "memory card". Both inputs lower-cased. */
+export function hasWholeSearchWord(haystack: string, term: string): boolean {
+  if (!term) return true;
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(haystack);
+}
+
 /**
  * The same rule as a PostgreSQL case-insensitive regular expression (`~*`), or
  * null when the plain ILIKE substring match already says the same thing.

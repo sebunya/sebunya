@@ -39,9 +39,10 @@ describe('Save for later (gap #6)', () => {
     expect(read('apps/api/src/infrastructure/db/repositories/DrizzleWishlistRepository.ts')).toContain("p.approval_status = 'approved' and p.active = true");
   });
 
-  it('a guest is sent to sign in and back to the product; the page offers it on every product', () => {
+  it('a guest keeps the product on the device and comes back to it (Baymard wave 2); the page offers it on every product', () => {
     const relay = read('apps/web/src/pages/api/saved.ts');
-    expect(relay).toContain('if (!token) return redirect(`/login?returnTo=${encodeURIComponent(back)}`, 303);');
+    expect(relay).not.toContain('if (!token) return redirect(`/login');
+    expect(relay).toContain('writeGuestSaved(cookies, toggleGuestSaved(readGuestSaved(cookies), productId, op)');
     expect(relay).toContain('/^\\/(products\\/[a-z0-9-]+|account\\/saved)$/i');
     expect(read('apps/web/src/pages/products/[slug].astro')).toContain('data-save-for-later');
     expect(read('apps/web/src/components/AccountNav.astro')).toContain("{ key: 'saved', href: '/account/saved', label: 'Saved' }");

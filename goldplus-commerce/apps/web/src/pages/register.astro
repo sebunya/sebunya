@@ -1,5 +1,6 @@
 ---
 import { jsonApiHeaders } from '../lib/forwardClient';
+import { mergeGuestSavedIntoAccount } from '../lib/guestSaved';
 import { safeReturnTo } from '../lib/safeReturnTo';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import FormField from '../components/FormField.astro';
@@ -137,6 +138,8 @@ if (Astro.request.method === 'POST') {
         // Via Astro.cookies — a raw Set-Cookie header on Astro.response is DROPPED
         // when the return value is Astro.redirect(), which is exactly this path.
         setSignInCookies(Astro.cookies, json.data); // short token + refresh credential (renewed by the middleware)
+        // What they saved for later before the account (Baymard P3) comes with them.
+        await mergeGuestSavedIntoAccount(Astro.cookies, json.data.token).catch(() => 0);
         // The invite's outcome is said once on the next page (the API answered it; it used to be ignored).
         if (referralCode) {
           forgetInvite(Astro.cookies);

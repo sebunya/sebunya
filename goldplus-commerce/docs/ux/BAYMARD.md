@@ -33,23 +33,23 @@ Scores: MET, PARTIAL, MISSING, N/A. Line numbers are as of commit 8ff26969.
 |---|---|---|---|---|
 | P1 | Variants (capacity, colour) selectable on one page | MISSING | `ProductPublicDto` has no sibling field; buy form 774-804 | Each capacity is its own page. Needs a data model: wave 3. |
 | P2 | In-scale / in-hand image | MISSING | `ProductGallery.astro:24` no image type | Content work. |
-| P3 | Guest save-for-later | MISSING | `pages/api/saved.ts:23` redirects to login | Wave 2. |
+| P3 | Guest save-for-later | MET (wave 2) | `lib/guestSaved.ts`; `pages/api/saved.ts` guest branch; merged into the account at sign-in | Device cookie of product ids; `/account/saved` serves guests. |
 | P4 | Per-piece price for packs | PARTIAL | bundles 827-838 no per-item price | |
 | P5 | Delivery cost estimate before an area is chosen | PARTIAL | 902-915; quote only once an area is known; `subtotalUgx` passed the retail price, not the sale price | Sale-price bug fixed in wave 1. "From UGX" line needs a lowest-fee value from the quoting service (CONTRACT rule 4: no invented numbers): wave 2. |
 | P6 | Delivery date on the page | PARTIAL | `deliveryQuotePanel.ts:160-168` only when the API has a window | By design (CONTRACT rule 10). |
 | P7 | Returns and warranty next to the buy button | PARTIAL | returns 919-925 MET; warranty only for batteries 1080 | Own-brand warranty term needs a source of truth: owner decision. |
 | P8 | Gift options | MISSING | | Low priority. |
 | P9 | Staff replies to reviews styled distinctly | MISSING | `lib/reviews.ts:9` no reply field | Wave 3. |
-| P10 | Reviewer photo gallery | PARTIAL | 1118 six reviews, no see-all | Wave 2. |
+| P10 | Reviewer photo gallery | PARTIAL | `?reviews=all` see-all shipped in wave 2 | A photo strip across reviews is still open. |
 | P11 | Price clarity: tax, real discounts | PARTIAL | 689-717; countdown tied to a real `endsIso` | No tax statement. |
-| P12 | Add-to-cart confirmation without leaving the page | PARTIAL | `cart.astro:286` full redirect | Wave 2. |
+| P12 | Add-to-cart confirmation without leaving the page | MET (wave 2) | fetch submit + toast; `/cart?added=` stays the no-JavaScript path | Buy now still goes to checkout. |
 | P13 | Compatibility explicit for every item | PARTIAL | 1012-1015 only when staff declared it | Non-battery items show no "works with". |
 | P14 | Enough images, "in the box" | PARTIAL | gallery capped at 4 | Content + cap: wave 2. |
 | P15 | Honest stock state | MET | 713-717 | |
 | P16 | Compatibility-based recommendations | MET | `CompleteSetupRail.astro` | |
-| P17 | Q&A complete and searchable | PARTIAL | 1179 eight answers, no see-all | Wave 2. |
+| P17 | Q&A complete and searchable | PARTIAL | `?questions=all` see-all shipped in wave 2 | Search within questions still open. |
 | P18 | Contact and payment methods visible | PARTIAL | WhatsApp only when not buyable 874-879 | |
-| P19 | Sticky buy bar, no horizontal scroll | PARTIAL | 886-896, no bottom spacer | Wave 2. |
+| P19 | Sticky buy bar, no horizontal scroll | MET (wave 2) | body padding reserved while the bar shows | |
 | P20 | No layout shift | MET | eager cover with dimensions | |
 
 ## Cart, shop, search (`cart.astro`, `shop.astro`, `GpNav.astro`, `packages/shared/src/search`)
@@ -61,7 +61,7 @@ Scores: MET, PARTIAL, MISSING, N/A. Line numbers are as of commit 8ff26969.
 | C3 | Delivery cost in the cart total | PARTIAL | 711-718 "Not included yet" | Needs the lowest-fee value (P5). |
 | C4 | Delivery date / pickup in the cart | PARTIAL | only with a known area | |
 | C5 | Basket persists and says so | PARTIAL | 257-262 persists; never said | |
-| C6 | Save for later from the cart | MISSING | | With P3. |
+| C6 | Save for later from the cart | MET (wave 2) | cart line "Save for later" = keep (account or device) + remove with Undo | |
 | C7 | Cross-sells below the summary | MET | 794-799 | |
 | C8 | Checkout button visible on phones; "no account needed" | PARTIAL | 558/697 summary renders AFTER the list on phones | Wave 1: CTA above the list on phones + "No account needed". |
 | C9 | No open coupon field in the cart | MET | 748 | |
@@ -70,16 +70,16 @@ Scores: MET, PARTIAL, MISSING, N/A. Line numbers are as of commit 8ff26969.
 | S1 | Category structure and breadcrumbs | PARTIAL | /shop has no visible breadcrumb | |
 | S2 | Cards show a key spec and fit | PARTIAL | `ProductCard.astro` no spec unless short description set | |
 | S3 | Filters by compatibility, on hub pages too | PARTIAL | facets only on /shop | |
-| S4 | Relevance sort for search results | PARTIAL | search uses taxonomy order | Wave 2. |
+| S4 | Relevance sort for search results | MET (wave 2) | `rankDiscoveryProducts`; "Best match" is the default order for a search | |
 | S5 | Pagination keeps state | MET | | |
 | S6 | Honest stock and sale chips | MET | | |
-| Q1 | Exact model code search tolerant of hyphens and spaces | PARTIAL | `product-discovery.ts:152-158` substring only | Wave 2. |
+| Q1 | Exact model code search tolerant of hyphens and spaces | MET (wave 2) | hyphen-stripped sku and model number searched on both engines | |
 | Q2 | Product-type queries route to the category | PARTIAL | | |
-| Q3 | Feature queries ("45W", "10000mAh") | PARTIAL | attributes not searched | Wave 2. |
+| Q3 | Feature queries ("45W", "10000mAh") | PARTIAL | `normalizeSearchWords` joins number + unit (wave 2) | Verified attribute values are still not in the searched text. |
 | Q4 | Symptom queries ("charging slowly") | MISSING | | Wave 2 maps to finders. |
-| Q5 | Use-case words; "car" must not match "card" | PARTIAL | `search/index.ts:11-13` | A ranking problem (whole-word hits must outrank substring hits), so it ships with S4 in wave 2; a boundary rule alone would break "ear" finding earbuds. |
+| Q5 | Use-case words; "car" must not match "card" | MET (wave 2) | whole-word tier in `rankDiscoveryProducts` | The card still appears, after the car charger. |
 | Q6 | Compatibility queries ("Samsung A14 charger") | MISSING | `queryExpansion.ts:143` digit words never relax | Wave 1 lets model tokens relax; no-results links the finders. |
-| Q7 | Unit abbreviations (mAh, W, PD) | PARTIAL | | Wave 2. |
+| Q7 | Unit abbreviations (mAh, W, PD) | PARTIAL | "watt"→"w", "10,000"→"10000" (wave 2) | PD/QC synonyms still open. |
 | Q8 | Non-product queries (returns, delivery, track) route to help pages | MISSING | search covers products only | Wave 1 adds a help card for these words. |
 | Q9 | Autocomplete with products and categories | PARTIAL | products only | |
 | Q10 | No-results page with real next steps | PARTIAL | 446-474 | Wave 1 adds charger and product finders. |
@@ -105,7 +105,9 @@ Scores: MET, PARTIAL, MISSING, N/A. Line numbers are as of commit 8ff26969.
 ## Waves
 
 - Wave 1 (this PR): K4, K6, K7, K11, C8, C10, P5 sale-price bug, Q6, Q8, Q10, A4, A5, A7, A10. No migration.
-- Wave 2: P3/C6 guest save, P10/P17 see-all, P12 in-page add confirmation, P19 spacer, S4 relevance + Q5, Q1/Q3/Q7
-  normalisation, A1 one-field account after the order, A3 phone sign-in, A6 dated steps, A8 profile edit, A11 guest receipts.
+- Wave 2 (PR after #269): P3/C6 guest save, P10/P17 see-all, P12 in-page add confirmation, P19 spacer, S4 relevance + Q5,
+  Q1/Q3/Q7 normalisation. No migration.
+- Wave 2b (accounts, not built): A1 one-field account after the order, A3 phone sign-in, A6 dated steps, A8 profile edit,
+  A11 guest receipts.
 - Wave 3 (data model): P1 variants, P9 staff replies, P13 "works with" for every item, lowest delivery fee for P5/C3.
 - Owner decisions: warranty term for own-brand products (P7), refund timeline in days (A7), tax statement (P11).

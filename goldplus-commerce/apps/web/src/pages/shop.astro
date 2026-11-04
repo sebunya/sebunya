@@ -25,6 +25,7 @@ import {
   normalizeSortParam,
   normalizeSubcategoryParam,
   sortDiscoveryProducts,
+  rankDiscoveryProducts,
   subcategoryNameForSlug,
 } from '../lib/product-discovery';
 import { getTaxonomy } from '../lib/taxonomy';
@@ -181,7 +182,10 @@ const facetedProducts = applyShopFacets(filteredProducts, facetSelection, shopPr
 const shopFacets = buildShopFacets(filteredProducts, facetSelection, shopPrice);
 const facetsChosen = hasShopFacets(facetSelection);
 const standardLead = sortDiscoveryProducts(facetedProducts, sort, taxonomy, [], shopPrice)[0]?.categoryName;
-const products = sortDiscoveryProducts(facetedProducts, sort, taxonomy, preferredCategories, shopPrice);
+// Baymard S4: a search is listed by best match unless the shopper chose another order; browsing keeps the shelf order.
+const products = search && sort === 'default'
+  ? rankDiscoveryProducts(facetedProducts, searchResult.searchedFor || search, taxonomy)
+  : sortDiscoveryProducts(facetedProducts, sort, taxonomy, preferredCategories, shopPrice);
 // Said plainly, and only when it actually changed what is on top.
 const personalLead = preferredCategories.length > 0 && products[0] && products[0].categoryName !== standardLead ? products[0].categoryName : '';
 // Any personal order is private, not only one that changed the top product:
@@ -442,7 +446,7 @@ const shopBreadcrumb = breadcrumbJsonLd([
         <label class="flex items-center gap-2 text-sm font-bold text-slate-700">
           Sort products
           <select data-navigate-on-change class="min-h-11 rounded-lg border border-slate-300 bg-white px-3" aria-label="Sort products">
-            <option value={shopUrl({ sort: 'default' })} selected={sort === 'default'}>Default order</option>
+            <option value={shopUrl({ sort: 'default' })} selected={sort === 'default'}>{search ? 'Best match' : 'Default order'}</option>
             <option value={shopUrl({ sort: 'price-low-high' })} selected={sort === 'price-low-high'}>Price: low to high</option>
             <option value={shopUrl({ sort: 'price-high-low' })} selected={sort === 'price-high-low'}>Price: high to low</option>
             <option value={shopUrl({ sort: 'name-a-z' })} selected={sort === 'name-a-z'}>Name: A to Z</option>
