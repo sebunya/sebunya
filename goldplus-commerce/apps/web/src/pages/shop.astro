@@ -133,6 +133,17 @@ const searchNote = !search || filteredProducts.length === 0
       : '';
 // A relaxed result is still a miss for what was asked, so demand for the dropped words stays visible.
 const demandResultCount = searchResult.dropped.length > 0 ? 0 : filteredProducts.length;
+// Baymard: a search for "returns", "delivery" or "track my order" is a question, not a product. Said with a link to the
+// page that answers it, above whatever products matched, and not counted as stock demand (nothing to buy was asked for).
+const HELP_ROUTES: Array<{ words: RegExp; href: string; label: string }> = [
+  { words: /\b(return|returns|refund|refunds|exchange)\b/i, href: '/returns', label: 'Returns and refunds' },
+  { words: /\b(warranty|guarantee|faulty)\b/i, href: '/warranty', label: 'Warranty' },
+  { words: /\b(deliver|delivery|shipping|ship|courier|rider)\b/i, href: '/delivery', label: 'Delivery and fees' },
+  { words: /\b(track|tracking|my order|order status|where is my)\b/i, href: '/track-order', label: 'Track your order' },
+  { words: /\b(location|address|directions|where are you|shop address)\b/i, href: '/locations/zainab-aziza', label: 'Our shop and directions' },
+  { words: /\b(contact|support|help|call|whatsapp)\b/i, href: '/support', label: 'Contact support' },
+];
+const helpRoute = search ? HELP_ROUTES.find((r) => r.words.test(search)) ?? null : null;
 // The default browse order leads with what THIS visitor has been looking at.
 // Only for a returning browser (a first visit and every crawler get the
 // standard order), only when nothing else was chosen, and `?order=standard`
@@ -209,14 +220,17 @@ if (search && Astro.locals.gpVisit && !isDeclaredAutomation(Astro.request.header
 // stock to buy, and a crawler or a curl loop is not a customer who wanted
 // something. See lib/humanTraffic.ts.
 if (search && !cataloguePartial && isLikelyHuman(Astro.request.headers.get('user-agent'))) {
-  // Fire-and-forget, like the profile event above it: awaiting this made every
-  // search wait up to half a second on telemetry before rendering results.
-  fetch(`${apiBase}/products/search-events`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: search, resultCount: demandResultCount, rankedProductIds: products.map((product) => product.id) }),
-    signal: AbortSignal.timeout(500),
-  }).catch(() => {});
+  // A help question ("returns", "track my order") is routed above, not stock somebody wanted.
+  if (!helpRoute) {
+    // Fire-and-forget, like the profile event above it: awaiting this made every
+    // search wait up to half a second on telemetry before rendering results.
+    fetch(`${apiBase}/products/search-events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: search, resultCount: demandResultCount, rankedProductIds: products.map((product) => product.id) }),
+      signal: AbortSignal.timeout(500),
+    }).catch(() => {});
+  }
 }
 const hasFilters = Boolean(search || category || subcategory || sort !== 'default' || facetsChosen);
 const categoryLabel = categoryNameForSlug(category, taxonomy);
@@ -437,6 +451,11 @@ const shopBreadcrumb = breadcrumbJsonLd([
       )}
     </div>
 
+    {helpRoute && (
+      <aside class="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm" aria-label="Help with your search">
+        <p class="text-slate-700">Looking for help rather than a product? <a href={helpRoute.href} class="font-bold text-gray-900 underline underline-offset-2">{helpRoute.label}</a></p>
+      </aside>
+    )}
     {/* Two compact cards per row on a phone (owner decision 2026-09-24). */}
     {products.length > 0 ? (
       <section aria-label="Product results" class="mt-6 grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
@@ -465,6 +484,8 @@ const shopBreadcrumb = breadcrumbJsonLd([
             <a href="/shop" class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Clear filters</a>
           )}
           {search && <a href={`/battery-finder?q=${encodeURIComponent(search)}`} class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">Find a battery by phone</a>}
+          {search && <a href="/charger-finder" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">Find a charger for your device</a>}
+          {search && <a href="/product-finder" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">Find what fits your phone</a>}
           {search && <a href="/shop" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">Clear search</a>}
           {browseFallback.length > 0 && (
             <a href="#browse-available-products" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">See what is in stock</a>

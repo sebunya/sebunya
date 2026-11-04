@@ -83,6 +83,22 @@ describe('what must not change', () => {
     expect(hits('chargers')).toHaveLength(3);
   });
 
+  it('"samsung a14 charger": the unknown model token relaxes away and the chargers remain', () => {
+    const q = expand('samsung a14 charger');
+    expect(q.unknown).toContain('a14');
+    const relaxed = relaxSearchQuery(q)!;
+    expect(relaxed.display).toBe('charger');
+    expect(NAMES.filter((n) => matchesExpandedQuery(n.toLowerCase(), relaxed.groups))).toHaveLength(3);
+  });
+
+  it('a quantity with a unit is never relaxed away, and a known model token is kept', () => {
+    expect(expand('32gb card').unknown).toEqual([]);
+    expect(expand('10000mah power bank').unknown).toEqual([]);
+    expect(expand('45w charger').unknown).toEqual([]);
+    expect(expand('a56 battery').unknown).toEqual([]);
+    expect(expand('iphone 13 cable').unknown).toContain('13');
+  });
+
   it('relaxing never drops every word and never runs when nothing was unknown', () => {
     expect(relaxSearchQuery(expand('lapotp'))).toBeNull();
     expect(relaxSearchQuery(expand('charger'))).toBeNull();

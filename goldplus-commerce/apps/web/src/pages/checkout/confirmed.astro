@@ -121,6 +121,17 @@ const helpHref = biz.whatsappUrl
         </p>
       )}
 
+      {/* Baymard: a confirmation page says what happens next. Each step is one we already text about, so none is a promise
+          we do not keep: preparation (ORDER_PAYMENT_SUCCESS), dispatch with a tracking link (ORDER_DISPATCHED), the rider's call. */}
+      <section aria-labelledby="next-heading" class="bg-white border border-slate-200/80 rounded-2xl shadow-sm p-6">
+        <h2 id="next-heading" class="text-base font-black text-gray-900">What happens next</h2>
+        <ol class="mt-3 space-y-2 text-sm text-slate-700 list-decimal pl-5">
+          <li>We prepare your order at our shop. You get a text or WhatsApp message at each step.</li>
+          <li>When it leaves with our rider, or is ready to collect at our shop, we text you.</li>
+          <li>Keep your phone on: the rider reaches you on the number above when they are close.</li>
+        </ol>
+      </section>
+
       <div class="flex flex-col sm:flex-row items-stretch sm:justify-center gap-3">
         <a href={orderHref} class="inline-flex h-12 items-center justify-center rounded-full px-8 text-[15px] font-semibold outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk transition-all active:scale-[0.985]" style="background:#93D500;color:#0A0A0A">{orderLabel}</a>
         <a href="/shop" class="inline-flex h-12 items-center justify-center rounded-full bg-slate-900 px-8 text-[15px] font-semibold text-white outline-none hover:bg-black focus-visible:ring-4 focus-visible:ring-brand-primaryInk transition-all">Continue shopping</a>
