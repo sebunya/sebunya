@@ -152,16 +152,18 @@ const SYMPTOM_ROUTES: Array<{ words: RegExp; href: string; label: string }> = [
 ];
 const symptomRoute = search && !helpRoute ? SYMPTOM_ROUTES.find((r) => r.words.test(search)) ?? null : null;
 // Baymard Q2: a query that is a category's or subcategory's own name offers that shelf, whatever the word match returns.
+// Plain hrefs, not shopUrl(): that helper reads facetSelection/preferredCategories, which are declared further down, and
+// calling it here threw at render time (a 500 on every search equal to a category name, 2026-11-04 16:45 UTC).
 const categoryRoute = (() => {
   if (!search) return null;
   const q = search.trim().toLowerCase().replace(/\s+/g, ' ');
   const singular = q.endsWith('s') ? q.slice(0, -1) : q;
   for (const c of taxonomy) {
     const cn = c.name.toLowerCase();
-    if (cn === q || cn === singular || cn === `${q}s` || (c.aliases ?? []).some((a) => a.toLowerCase() === q)) return { href: shopUrl({ search: '', category: c.slug, subcategory: '', page: 1 }), label: c.name };
+    if (cn === q || cn === singular || cn === `${q}s` || (c.aliases ?? []).some((a) => a.toLowerCase() === q)) return { href: `/shop?category=${encodeURIComponent(c.slug)}`, label: c.name };
     for (const sc of c.subcategories) {
       const sn = sc.name.toLowerCase();
-      if (sn === q || sn === singular || sn === `${q}s`) return { href: shopUrl({ search: '', category: c.slug, subcategory: sc.slug, page: 1 }), label: `${sc.name} in ${c.name}` };
+      if (sn === q || sn === singular || sn === `${q}s`) return { href: `/shop?category=${encodeURIComponent(c.slug)}&subcategory=${encodeURIComponent(sc.slug)}`, label: `${sc.name} in ${c.name}` };
     }
   }
   return null;
