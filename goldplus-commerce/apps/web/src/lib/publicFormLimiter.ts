@@ -35,6 +35,10 @@ export const PUBLIC_FORM_BUDGETS: Readonly<Record<string, FormBudget>> = {
   '/support/issue': { limit: 5, windowMs: TEN_MINUTES },
   '/support/fake': { limit: 5, windowMs: TEN_MINUTES },
   '/track-order': { limit: 20, windowMs: TEN_MINUTES },
+  // Baymard A11: the guest receipt uses the same order proof as /track-order.
+  '/receipt': { limit: 20, windowMs: TEN_MINUTES },
+  // Baymard A1: the one-field account form on the confirmation page registers an account.
+  '/checkout/confirmed': { limit: 10, windowMs: TEN_MINUTES },
   // Bulk builder (docs/bulk-buying/DESIGN.md): the request texts the phone typed on it;
   // the status lookup is an enumeration surface like /track-order; asking for a
   // price code sends an SMS, and checking one is a guessing surface.

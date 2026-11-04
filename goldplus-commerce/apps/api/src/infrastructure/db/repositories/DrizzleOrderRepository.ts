@@ -49,6 +49,22 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
     return this.hydrate(result as typeof orders.$inferSelect & { items: Array<typeof orderItems.$inferSelect> });
   }
 
+  /**
+   * Baymard A1: attach a guest order to the account created (or signed into) right after it. Only an order with no
+   * owner moves; one that belongs to someone else is reported, never reassigned. See ClaimOrderUseCase.
+   */
+  async claimForUser(orderId: string, userId: string): Promise<'claimed' | 'already_yours' | 'taken' | 'missing'> {
+    const updated = await db
+      .update(orders)
+      .set({ userId, updatedAt: new Date() })
+      .where(and(eq(orders.id, orderId), sql`${orders.userId} is null`))
+      .returning({ id: orders.id });
+    if (updated.length > 0) return 'claimed';
+    const row = await db.query.orders.findFirst({ where: eq(orders.id, orderId), columns: { userId: true } });
+    if (!row) return 'missing';
+    return row.userId === userId ? 'already_yours' : 'taken';
+  }
+
   /** How the customer chose to pay ('pesapal' | 'offline'), or null for a legacy/admin order. */
   async findPaymentMethod(id: string): Promise<string | null> {
     const [row] = await db.select({ paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, id)).limit(1);

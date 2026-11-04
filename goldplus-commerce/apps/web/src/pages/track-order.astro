@@ -283,6 +283,15 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
                 </div>
               )}
 
+              {/* Baymard A11: a paid order gets its receipt here too, on the proof just given. */}
+              {order.paymentStatus === 'paid' && (
+                <form method="POST" action="/receipt" class="mt-4">
+                  <input type="hidden" name="reference" value={submittedRef} />
+                  <input type="hidden" name="contact" value={submittedContact} />
+                  <button type="submit" class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-slate-300 px-5 text-sm font-bold text-slate-800 hover:bg-slate-50">Print or save the receipt</button>
+                </form>
+              )}
+
               {/* Delivered: one tap to rate it. The reference and contact are the shopper's own, from this request. */}
               {['delivered', 'completed'].includes(orderStatusKey) && (
                 <form method="POST" action="/review" class="mt-4">

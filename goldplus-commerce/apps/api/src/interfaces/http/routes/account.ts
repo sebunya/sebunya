@@ -4,6 +4,8 @@ import { customerSessionMiddleware } from '../middleware/customerSession';
 import { normaliseReferralCode, referralRefusalWords, referralStage, REFERRAL_STAGE_WORDS, type ReferralStatus } from '../../../domain/loyalty/Referral';
 import { Registry } from '../../../infrastructure/Registry';
 import { ListMyOrdersUseCase, GetMyOrderUseCase } from '../../../application/use-cases/orders/CustomerOrderUseCases';
+import { ClaimOrderUseCase } from '../../../application/use-cases/orders/ClaimOrderUseCase';
+import { RedisFailureLockout } from '../../../infrastructure/security/RedisFailureLockout';
 import {
   ListMyAddressesUseCase,
   AddAddressUseCase,
@@ -184,6 +186,18 @@ routes.get('/orders', async (c) => {
   const data = await uc.execute(userId);
   const res: ApiResponse<OrderSummaryDto[]> = { success: true, data };
   return c.json(res);
+});
+
+// Baymard A1: the account offered after a guest order keeps that order. The same proof and lockout as order
+// tracking ('lockout:order-contact' is shared with /commerce/orders/lookup), so a wrong contact here counts there too.
+const orderClaimLockout = new RedisFailureLockout('lockout:order-contact');
+routes.post('/orders/claim', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const uc = new ClaimOrderUseCase(registry.orderRepo, orderClaimLockout, (reference) => registry.getOrderByIdUseCase.execute(reference));
+  const result = await uc.execute({ userId: c.get('userId') as string, reference: body?.reference, contact: body?.contact });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, result.status);
+  return c.json({ success: true, data: { outcome: result.outcome, orderId: result.orderId, orderNumber: result.orderNumber } });
 });
 
 routes.get('/orders/:id', async (c) => {

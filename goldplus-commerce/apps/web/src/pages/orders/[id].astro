@@ -257,6 +257,10 @@ const helpHref = order
                 )}
                 </div>
 
+                {Astro.url.searchParams.get('claimed') === '1' && (
+                  <p role="status" class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">Your account is ready and this order is in it. You are signed in on this device.</p>
+                )}
+
                 {isUnpaid && (
                 <div id="pay">
                 <Notice kind="info" title="This order is not paid yet">
