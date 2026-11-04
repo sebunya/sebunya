@@ -1,4 +1,4 @@
-import { includesSearchTerm, matchesExpandedQuery } from '@goldplus/shared';
+import { includesSearchTerm, matchesExpandedQuery, normalizeSearchWords } from '@goldplus/shared';
 
 /**
  * Product search domain rules (Slice 4). Pure — no Hono, Drizzle, or adapters.
@@ -32,7 +32,7 @@ export const MAX_SEARCH_TERMS = 6;
 
 export function searchTerms(raw: string): string[] {
   const normalized = normalizeSearchQuery(raw);
-  return normalized ? normalized.split(' ').filter(Boolean).slice(0, MAX_SEARCH_TERMS) : [];
+  return normalized ? normalizeSearchWords(normalized.split(' ').filter(Boolean)).slice(0, MAX_SEARCH_TERMS) : [];
 }
 
 /** Queries below two characters are noise and are never recorded or suggested on. */

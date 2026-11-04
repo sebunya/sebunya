@@ -19,6 +19,7 @@ import { resolveDeliveryPlace } from '../lib/locationSignals';
 import { isLikelyHuman } from '../lib/humanTraffic';
 import { cartClient, cartMessageFor } from '../lib/cartClient';
 import { isDeclaredAutomation } from '../lib/declaredAutomation';
+import { readGuestSaved, toggleGuestSaved, writeGuestSaved } from '../lib/guestSaved';
 import { resolveCartCredential } from '../lib/cartCredential';
 import { requestSession } from '../lib/customerAuth';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
@@ -111,6 +112,7 @@ const cartCredential = cartOrigin.allowed
   : null;
 
 // Handle Add, Update, and Remove POST submissions
+let savedForLater = false;
 if (Astro.request.method === 'POST' && cartOrigin.allowed) {
   try {
     const formData = await Astro.request.formData();
@@ -198,6 +200,22 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
         }
 
       } else if (action === 'remove') {
+        // Baymard C6: "Save for later" from the cart is a remove that first keeps the product, in the account when
+        // signed in, on the device otherwise (lib/guestSaved). The Undo below still restores the line.
+        if (formData.get('saveForLater')?.toString() === '1' && isCartProductId(productId)) {
+          const sessionToken = Astro.cookies.get('goldplus_session')?.value ?? null;
+          if (sessionToken) {
+            await fetch(`${apiBase}/account/saved`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+              body: JSON.stringify({ productId }),
+              signal: AbortSignal.timeout(3000),
+            }).catch(() => null);
+          } else {
+            writeGuestSaved(Astro.cookies, toggleGuestSaved(readGuestSaved(Astro.cookies), productId, 'add'), import.meta.env.PROD);
+          }
+          savedForLater = true;
+        }
         // Keep what is being removed, for one Undo. The device's copy of the
         // line first; the server's basket when this device never held it.
         let snapshot: RemovedLine | null = null;
@@ -284,7 +302,7 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
         // name is never read from the URL). Remove: offer one Undo. +/−: come
         // back to the same line instead of the top of the page.
         if (action === 'add' && isCartProductId(productId)) return Astro.redirect(`/cart?added=${productId}`, 303);
-        if (action === 'remove' && isCartProductId(productId)) return Astro.redirect(`/cart?removed=${productId}`, 303);
+        if (action === 'remove' && isCartProductId(productId)) return Astro.redirect(`/cart?removed=${productId}${savedForLater ? '&saved=1' : ''}`, 303);
         if (quantityCapped) return Astro.redirect(lineAnchor(productId).replace('/cart', '/cart?capped=1'), 303);
         return Astro.redirect(lineAnchor(productId), 303);
       }
@@ -425,6 +443,7 @@ const addedLine = isCartProductId(addedParam) ? items.find((i) => i.productId ==
 const addedHref = addedLine ? lineView(addedLine).href : null;
 // "Removed X · Undo": only when the id in the URL is the line our cookie holds.
 const removedParam = Astro.url.searchParams.get('removed');
+const removedWasSaved = Astro.url.searchParams.get('saved') === '1';
 const removedCandidate = readRemovedLine(Astro.cookies.get(REMOVED_COOKIE)?.value);
 const removedLine = removedCandidate && removedCandidate.productId === removedParam
   && !items.some((i) => i.productId === removedCandidate.productId)
@@ -518,7 +537,9 @@ const cutoffLine = sameDayLineFor(sameDayCutoffCopy(cut, { now: new Date(), clos
     )}
     {removedLine && (
       <div role="status" class="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm">
-        <p class="text-slate-700">Removed <span class="font-bold text-gray-900">{removedLine.name}</span> from your cart.</p>
+        <p class="text-slate-700">
+          {removedWasSaved ? <>Saved <span class="font-bold text-gray-900">{removedLine.name}</span> for later and took it out of your cart. <a href="/account/saved" class="font-bold underline underline-offset-2 text-gray-900">See saved</a></> : <>Removed <span class="font-bold text-gray-900">{removedLine.name}</span> from your cart.</>}
+        </p>
         <form method="POST" action="/cart">
           <input type="hidden" name="action" value="restore" />
           <input type="hidden" name="productId" value={removedLine.productId} />
@@ -693,6 +714,12 @@ const cutoffLine = sameDayLineFor(sameDayCutoffCopy(cut, { now: new Date(), clos
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
                         </button>
+                      </form>
+                      <form method="POST" action="/cart" class="ml-1">
+                        <input type="hidden" name="action" value="remove" />
+                        <input type="hidden" name="productId" value={item.productId} />
+                        <input type="hidden" name="saveForLater" value="1" />
+                        <button type="submit" class="inline-flex min-h-11 items-center px-2 text-xs font-bold text-slate-600 underline underline-offset-4 hover:text-gray-900" aria-label={`Save ${item.name} for later`}>Save for later</button>
                       </form>
                     </div>
 

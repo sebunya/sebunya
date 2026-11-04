@@ -400,7 +400,14 @@ export class DrizzleProductRepository implements IProductRepository {
           ),
           matches(products.subcategory),
           matches(products.modelNumber),
-          matches(products.sku)
+          matches(products.sku),
+          // Baymard Q1: "gpc03" finds GP-C03. The same hyphen-stripped copy /shop's discoveryHaystack reads.
+          numeric
+            ? sql`replace(coalesce(${products.sku}, ''), '-', '') ~* ${numeric}`
+            : sql`replace(coalesce(${products.sku}, ''), '-', '') ilike ${needle}`,
+          numeric
+            ? sql`replace(coalesce(${products.modelNumber}, ''), '-', '') ~* ${numeric}`
+            : sql`replace(coalesce(${products.modelNumber}, ''), '-', '') ilike ${needle}`
         );
       };
       for (const group of groups) {

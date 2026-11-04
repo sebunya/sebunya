@@ -3,6 +3,8 @@ import {
   DEFAULT_TAXONOMY,
   buildSearchVocabulary,
   expandSearchQuery,
+  hasWholeSearchWord,
+  normalizeSearchWords,
   includesSearchTerm,
   inferSubcategory,
   matchesExpandedQuery,
@@ -151,7 +153,8 @@ function termMatches(term: string, haystack: string): boolean {
 
 function discoveryHaystack(product: ProductPublicDto, taxonomy: Taxonomy): string {
   const subcategory = subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy);
-  return [product.name, product.categoryName, subcategory, product.sku, product.modelNumber]
+  // The hyphen-stripped identifiers too (Baymard Q1): "gpc03" finds GP-C03, as the API's SQL does.
+  return [product.name, product.categoryName, subcategory, product.sku, product.modelNumber, product.sku?.replace(/-/g, ''), product.modelNumber?.replace(/-/g, '')]
     .filter((value): value is string => typeof value === 'string')
     .join(' ')
     .toLocaleLowerCase('en');
@@ -183,8 +186,37 @@ export function discoveryVocabulary(products: ProductPublicDto[], taxonomy: Taxo
 }
 
 export function expandDiscoveryQuery(products: ProductPublicDto[], query: string, taxonomy: Taxonomy = DEFAULT_TAXONOMY): ExpandedSearchQuery {
-  const terms = query.toLocaleLowerCase('en').split(/\s+/).filter(Boolean).slice(0, 6);
+  const terms = normalizeSearchWords(query.toLocaleLowerCase('en').split(/\s+/).filter(Boolean)).slice(0, 6);
   return expandSearchQuery(terms, discoveryVocabulary(products, taxonomy));
+}
+
+/**
+ * Baymard S4/Q5: search results in order of how well they match, the tiers the header dropdown already ranks by
+ * (ProductSearchService.rankSuggestions), plus a whole-word tier so "car" leads with the car charger, not the memory
+ * card. Ties: what can be bought first, then the name, so the order is stable. Never drops a product it was given.
+ */
+export function rankDiscoveryProducts(products: ProductPublicDto[], query: string, taxonomy: Taxonomy = DEFAULT_TAXONOMY): ProductPublicDto[] {
+  const q = query.toLocaleLowerCase('en').replace(/\s+/g, ' ').trim();
+  const terms = normalizeSearchWords(q.split(' ').filter(Boolean)).slice(0, 6);
+  if (!q) return [...products];
+  const score = (product: ProductPublicDto): number => {
+    const name = product.name.toLocaleLowerCase('en');
+    const identifiers = `${product.sku ?? ''} ${product.modelNumber ?? ''} ${(product.sku ?? '').replace(/-/g, '')} ${(product.modelNumber ?? '').replace(/-/g, '')}`.toLocaleLowerCase('en');
+    const ids = identifiers.split(/\s+/);
+    if (name.startsWith(q)) return 7;
+    // Whole words before prefixes: "car" is the car charger before it is the memory card.
+    if (terms.length > 0 && terms.every((t: string) => hasWholeSearchWord(name, t))) return 6;
+    if (terms.length > 0 && terms.every((t: string) => ids.includes(t))) return 5;
+    if (name.split(/\s+/).some((w) => w.startsWith(q))) return 4;
+    if (name.includes(q)) return 3;
+    if (terms.length > 0 && terms.every((t: string) => termMatches(t, name))) return 2;
+    return 1;
+  };
+  const soldOut = (p: ProductPublicDto) => (p.availability?.kind === 'out_of_stock' ? 1 : 0);
+  return products
+    .map((p, i) => ({ p, s: score(p), i }))
+    .sort((a, b) => b.s - a.s || soldOut(a.p) - soldOut(b.p) || a.p.name.localeCompare(b.p.name) || a.i - b.i)
+    .map((x) => x.p);
 }
 
 export function filterDiscoveryProducts(

@@ -1,5 +1,6 @@
 ---
 import { jsonApiHeaders } from '../lib/forwardClient';
+import { mergeGuestSavedIntoAccount } from '../lib/guestSaved';
 import { safeReturnTo } from '../lib/safeReturnTo';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import FormField from '../components/FormField.astro';
@@ -75,6 +76,8 @@ if (Astro.request.method === 'POST') {
         // back to this page. Admin login always used Astro.cookies and worked,
         // which is why the breakage hid on the customer side only.
         setSignInCookies(Astro.cookies, json.data); // short token + refresh credential (renewed by the middleware)
+        // What they saved for later before the account (Baymard P3) comes with them.
+        await mergeGuestSavedIntoAccount(Astro.cookies, json.data.token).catch(() => 0);
 
 
         // R9 (M8, fixation): the visit token is ROTATED at the authentication
