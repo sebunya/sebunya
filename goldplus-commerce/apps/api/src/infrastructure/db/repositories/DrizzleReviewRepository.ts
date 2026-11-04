@@ -97,9 +97,9 @@ export class DrizzleReviewRepository implements IReviewRepository {
   }
 
   /** The moderation queue. Carries the product's name and slug so a moderator sees WHAT the review is about. */
-  async listByStatus(status: ReviewStatus, limit = 100): Promise<Array<{ id: string; productId: string; productName: string | null; productSlug: string | null; photoIds: string[]; rating: number; title: string | null; body: string | null; status: string; isVerifiedPurchase: boolean; flagReason: string | null; createdAt: Date }>> {
+  async listByStatus(status: ReviewStatus, limit = 100): Promise<Array<{ id: string; productId: string; productName: string | null; productSlug: string | null; photoIds: string[]; rating: number; title: string | null; body: string | null; status: string; isVerifiedPurchase: boolean; flagReason: string | null; createdAt: Date; staffReply: string | null }>> {
     const rows = await db
-      .select({ id: reviews.id, productId: reviews.productId, productName: products.name, productSlug: products.slug, rating: reviews.rating, title: reviews.title, body: reviews.body, status: reviews.status, photoIds: PHOTO_IDS, isVerifiedPurchase: reviews.isVerifiedPurchase, flagReason: reviews.flagReason, createdAt: reviews.createdAt })
+      .select({ id: reviews.id, productId: reviews.productId, productName: products.name, productSlug: products.slug, rating: reviews.rating, title: reviews.title, body: reviews.body, status: reviews.status, photoIds: PHOTO_IDS, isVerifiedPurchase: reviews.isVerifiedPurchase, flagReason: reviews.flagReason, createdAt: reviews.createdAt, staffReply: reviews.staffReply })
       .from(reviews)
       .leftJoin(products, eq(products.id, reviews.productId))
       .where(eq(reviews.status, status))
@@ -148,12 +148,27 @@ export class DrizzleReviewRepository implements IReviewRepository {
   async listPublished(productId: string, limit: number): Promise<PublicReview[]> {
     const helpful = sql<number>`(select count(*)::int from review_votes v where v.review_id = ${reviews.id} and v.vote = 'helpful')`;
     const rows = await db
-      .select({ id: reviews.id, rating: reviews.rating, title: reviews.title, body: reviews.body, isVerifiedPurchase: reviews.isVerifiedPurchase, createdAt: reviews.createdAt, helpfulCount: helpful, photoIds: PHOTO_IDS })
+      .select({ id: reviews.id, rating: reviews.rating, title: reviews.title, body: reviews.body, isVerifiedPurchase: reviews.isVerifiedPurchase, createdAt: reviews.createdAt, helpfulCount: helpful, photoIds: PHOTO_IDS, staffReply: reviews.staffReply, staffRepliedAt: reviews.staffRepliedAt })
       .from(reviews)
       .where(and(eq(reviews.productId, productId), eq(reviews.status, 'published')))
       .orderBy(desc(helpful), desc(reviews.createdAt))
       .limit(Math.max(1, Math.min(limit, 50)));
-    return rows.map((r) => ({ ...r, helpfulCount: Number(r.helpfulCount ?? 0), photoIds: Array.isArray(r.photoIds) ? r.photoIds.map(String) : [] }));
+    return rows.map(({ staffReply, staffRepliedAt, ...r }) => ({
+      ...r,
+      helpfulCount: Number(r.helpfulCount ?? 0),
+      photoIds: Array.isArray(r.photoIds) ? r.photoIds.map(String) : [],
+      staffReply: staffReply && staffRepliedAt ? { body: staffReply, at: staffRepliedAt } : null,
+    }));
+  }
+
+  async reply(input: { reviewId: string; body: string; now: Date }): Promise<{ productId: string } | null> {
+    const body = input.body.trim();
+    const [row] = await db
+      .update(reviews)
+      .set(body ? { staffReply: body, staffRepliedAt: input.now, updatedAt: input.now } : { staffReply: null, staffRepliedAt: null, updatedAt: input.now })
+      .where(eq(reviews.id, input.reviewId))
+      .returning({ productId: reviews.productId });
+    return row ? { productId: row.productId } : null;
   }
 
   async recordVote(input: { reviewId: string; voterIdentityHash: string; vote: 'helpful' | 'not_helpful' }): Promise<'recorded' | 'not_found'> {

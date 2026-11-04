@@ -63,6 +63,20 @@ routes.post('/reviews/:id/moderate', requirePermissions([PERMISSIONS.REVIEWS_MOD
   return ok(c, { productId: result.productId, status });
 });
 
+/** 0218 (Baymard P9): the shop's reply under a review. An empty reply clears it. */
+routes.post('/reviews/:id/reply', requirePermissions([PERMISSIONS.REVIEWS_MODERATE]), async (c) => {
+  const id = String(c.req.param('id'));
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return bad(c, 'NOT_FOUND', 'Review not found.', 404);
+  const body = await c.req.json().catch(() => null);
+  const reply = String(body?.reply ?? '').trim();
+  if (reply.length > 1000) return bad(c, 'TOO_LONG', 'Keep the reply under 1000 characters.');
+  const registry = Registry.getInstance();
+  const result = await registry.reviewRepo.reply({ reviewId: id, body: reply, now: new Date() });
+  if (!result) return bad(c, 'NOT_FOUND', 'Review not found.', 404);
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({ actorId: (c.get('user') as any).id, action: reply ? 'REVIEW_REPLIED' : 'REVIEW_REPLY_CLEARED', entity: 'review', entityId: id, newState: { reply } });
+  return ok(c, { productId: result.productId, reply: reply || null });
+});
+
 /** 0209: a review's photo for the moderator, published or not. */
 routes.get('/reviews/photos/:id', requirePermissions([PERMISSIONS.REVIEWS_MODERATE]), async (c) => {
   const image = await Registry.getInstance().reviewPhotoUseCases.image(String(c.req.param('id')), true);

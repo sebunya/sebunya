@@ -44,6 +44,18 @@ export function parseFeeLadder(raw: string | null | undefined): number[] | null 
   return distinct;
 }
 
+/**
+ * Baymard P5/C3: the lowest fee the quoting service can charge, for a "Delivery from UGX …" line before an area is
+ * known. The ladder shape's bottom rung, else the published minimum fee the continuous shape never goes under.
+ * Null when neither is configured: the line is then not shown (CONTRACT rule 4, no invented numbers).
+ */
+export function lowestDeliveryFeeUgx(raw: Readonly<Record<string, string>>): number | null {
+  const ladder = (raw.fee_shape ?? '') === 'ladder' ? parseFeeLadder(raw.fee_ladder) : null;
+  if (ladder) return ladder[0];
+  const min = Number(String(raw.minimum_fee_ugx ?? '').replace(/[^\d]/g, ''));
+  return Number.isInteger(min) && min > 0 ? min : null;
+}
+
 export interface LadderPlacement {
   rungUgx: number;
   /** False when even the top rung is below the cost the model worked out: the alarm case. */

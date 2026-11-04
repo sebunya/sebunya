@@ -26,6 +26,8 @@ export interface PublicReview {
   helpfulCount: number;
   /** 0209: the review's photos, newest last (absent from fakes that predate photos). */
   photoIds?: string[];
+  /** 0218 (Baymard P9): the shop's reply, when a person at the shop wrote one. */
+  staffReply?: { body: string; at: Date } | null;
 }
 
 export interface IReviewRepository {
@@ -47,4 +49,6 @@ export interface IReviewRepository {
   listPublished(productId: string, limit: number): Promise<PublicReview[]>;
   /** One vote per voter per review (a second vote replaces the first); only on a published review. */
   recordVote(input: { reviewId: string; voterIdentityHash: string; vote: 'helpful' | 'not_helpful' }): Promise<'recorded' | 'not_found'>;
+  /** 0218 (Baymard P9): write (or clear, with an empty body) the shop's reply under a review. Null = no such review. */
+  reply(input: { reviewId: string; body: string; now: Date }): Promise<{ productId: string } | null>;
 }

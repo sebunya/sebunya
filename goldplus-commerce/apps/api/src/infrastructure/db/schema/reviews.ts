@@ -25,6 +25,9 @@ export const reviews = pgTable('reviews', {
   rejectionReason: varchar('rejection_reason', { length: 120 }),
   flagReason: varchar('flag_reason', { length: 120 }),
   helpfulCount: integer('helpful_count').notNull().default(0),
+  /** 0218 (Baymard P9): the shop's reply, shown under the review in its own voice. */
+  staffReply: text('staff_reply'),
+  staffRepliedAt: timestamp('staff_replied_at', { withTimezone: true }),
   language: varchar('language', { length: 8 }).notNull().default('en'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

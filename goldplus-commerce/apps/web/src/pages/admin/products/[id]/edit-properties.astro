@@ -62,6 +62,8 @@ if (Astro.request.method === 'POST') {
   const categoryId = String(form.get('categoryId') ?? '').trim();
   // Always sent (empty = clear): the API keeps a stored value only when the key is absent.
   const subcategory = String(form.get('subcategory') ?? '').trim();
+  // 0218 (Baymard P1): always sent; empty clears the group.
+  const variantGroup = String(form.get('variantGroup') ?? '').trim().slice(0, 60);
   const shortDescription = String(form.get('shortDescription') ?? '').trim();
   const longDescription = String(form.get('longDescription') ?? '').trim();
   const priceUgx = Number(form.get('priceUgx') ?? 0);
@@ -83,7 +85,7 @@ if (Astro.request.method === 'POST') {
     body: JSON.stringify({
       name, sku, modelNumber, slug, categoryId, subcategory,
       shortDescription, longDescription, priceUgx, floorPriceUgx, tierBPriceUgx, tierCPriceUgx, stockStatus,
-      stockQuantity, expectedStockQuantity, active, approvalStatus, isFeedEligible
+      stockQuantity, expectedStockQuantity, active, variantGroup, approvalStatus, isFeedEligible
     }),
   });
 
@@ -183,6 +185,14 @@ if (Astro.request.method === 'POST') {
             label="Subcategory"
             defaultValue={product.subcategory}
             placeholder="e.g. Travel Adapters"
+          />
+          <FormField
+            id="variantGroup"
+            name="variantGroup"
+            label="Variant group (same label on every capacity or colour of this item)"
+            defaultValue={product.variantGroup ?? ''}
+            placeholder="e.g. PB-SLIM"
+            helperText="Products sharing a label offer each other on the product page as 'Also available as'. Leave empty if this item has no other version."
           />
         </div>
       </div>

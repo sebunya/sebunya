@@ -21,6 +21,13 @@ if (Astro.request.method === "POST") {
       const res = await fetch(`${apiBase}/admin/modules/reviews/${encodeURIComponent(id)}/moderate`, { method: "POST", headers, body: JSON.stringify({ status }) });
       const json = await res.json().catch(() => null);
       notice = json?.success ? { kind: "success", text: `Review ${status}.` } : { kind: "error", text: json?.error?.message || "Moderation failed." };
+    } else if (intent === "reply_review") {
+      // 0218 (Baymard P9): the shop's reply under a published review; empty clears it.
+      const id = String(form.get("id") || "");
+      const reply = String(form.get("reply") || "").trim();
+      const res = await fetch(`${apiBase}/admin/modules/reviews/${encodeURIComponent(id)}/reply`, { method: "POST", headers, body: JSON.stringify({ reply }) });
+      const json = await res.json().catch(() => null);
+      notice = json?.success ? { kind: "success", text: reply ? "Reply published under the review." : "Reply removed." } : { kind: "error", text: json?.error?.message || "Could not save the reply." };
     } else if (intent === "answer_question") {
       const id = String(form.get("id") || "");
       const res = await fetch(`${apiBase}/admin/modules/questions/${encodeURIComponent(id)}/answer`, { method: "POST", headers, body: JSON.stringify({ answer: String(form.get("answer") || "") }) });
@@ -155,6 +162,13 @@ const HUB_CARDS = hub?.counts
                     <button name="status" value="published" class="rounded bg-emerald-600 px-2 py-1 text-xs font-bold text-white">Publish</button>
                     <button name="status" value="rejected" class="rounded bg-rose-600 px-2 py-1 text-xs font-bold text-white">Reject</button>
                   </form>
+                  {r.status === "published" && (
+                    <form method="POST" class="mt-2 space-y-1">
+                      <input type="hidden" name="intent" value="reply_review" /><input type="hidden" name="id" value={r.id} />
+                      <textarea name="reply" rows="2" maxlength="1000" placeholder="Reply as GoldPlus (shown under the review)" class="w-48 rounded border border-slate-300 px-2 py-1 text-xs">{r.staffReply ?? ""}</textarea>
+                      <button class="rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">{r.staffReply ? "Update reply" : "Reply"}</button>
+                    </form>
+                  )}
                 </td>
               </tr>
             ))}

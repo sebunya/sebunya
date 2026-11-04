@@ -6,6 +6,7 @@ import { quoteCacheKey } from '../../../domain/delivery/DeliveryQuoteCache';
 import { REASON_COPY_KEY } from '../../../domain/delivery/DeliveryModel';
 import { toEatParts, normalizeUgandaDistrict } from '@goldplus/shared';
 import { normalizeDistrict } from '../../../domain/commerce/DeliveryFee';
+import { lowestDeliveryFeeUgx } from '../../../domain/delivery/DeliveryFeeLadder';
 
 /**
  * The PUBLIC delivery quote (brief PART 8 / customer surfaces).
@@ -40,6 +41,22 @@ function cacheSet(key: string, body: unknown, at: number) {
   }
   CACHE.set(key, { at, body });
 }
+
+/**
+ * Baymard P5/C3: "Delivery from UGX …" before any area is chosen. The figure is the quoting service's own floor
+ * (bottom ladder rung or the published minimum fee), never a number typed on a page; null when none is published.
+ */
+let FROM_CACHE: { at: number; body: unknown } | null = null;
+routes.get('/from', async (c) => {
+  const now = Date.now();
+  if (FROM_CACHE && now - FROM_CACHE.at < 5 * 60_000) return c.json({ success: true, data: FROM_CACHE.body } satisfies ApiResponse<unknown>);
+  const registry = Registry.getInstance();
+  const raw = await registry.deliveryConfigReader.currentValues().catch(() => ({} as Record<string, string>));
+  const body = { fromUgx: lowestDeliveryFeeUgx(raw), pickup: raw.copy_pickup_offer ?? null };
+  FROM_CACHE = { at: now, body };
+  c.header('Cache-Control', 'public, max-age=300');
+  return c.json({ success: true, data: body } satisfies ApiResponse<unknown>);
+});
 
 routes.post('/quote', async (c) => {
   const body = await c.req.json().catch(() => null);

@@ -56,6 +56,8 @@ export const products = pgTable('products', {
    * Bulk orders are supplied to order and never read or hold website stock.
    */
   bulkUnit: varchar('bulk_unit', { length: 8 }).default('carton').notNull(),
+  /** 0218 (Baymard P1): products that are one item in several capacities or colours share a group; each page offers the others. */
+  variantGroup: varchar('variant_group', { length: 60 }),
   unitsPerCarton: integer('units_per_carton'),
   stockQuantity: integer('stock_quantity').default(0).notNull(),
   // Inventory ledger (Section 12): reserved holds stock committed to open orders;
