@@ -1,4 +1,5 @@
 ---
+import { BRAND_LINE } from '@goldplus/shared';
 /**
  * The friend's welcome (2026-10-22): who invited them, what they get, and one button. /r/<code> lands here with the
  * code remembered in this browser, so there is nothing to type: "Create my account" and the invite is on it. A
@@ -25,7 +26,7 @@ const title = invite ? `${invite.inviter} invited you to GoldPlus` : 'GoldPlus';
 const points = invite?.refereePoints ? invite.refereePoints.toLocaleString('en-UG') : null;
 ---
 
-<BaseLayout robotsMeta="noindex,follow" title={title} description={invite ? `Genuine batteries, chargers and electronics in Kampala. ${points ? `Join with ${invite.inviter}'s invite and get ${points} points after your first delivery.` : `Join with ${invite.inviter}'s invite.`}` : 'Genuine batteries, chargers and electronics in Kampala.'}>
+<BaseLayout robotsMeta="noindex,follow" title={title} description={invite ? `${BRAND_LINE} ${points ? `Join with ${invite.inviter}'s invite and get ${points} points after your first delivery.` : `Join with ${invite.inviter}'s invite.`}` : BRAND_LINE}>
   <div class="container mx-auto px-4 lg:px-8 py-12 md:py-20">
     <div class="max-w-md mx-auto bg-white border border-slate-200/80 rounded-2xl p-8" data-invite>
       {invite ? (
@@ -33,7 +34,7 @@ const points = invite?.refereePoints ? invite.refereePoints.toLocaleString('en-U
           <p class="text-xs font-bold uppercase tracking-widest text-slate-500 mb-3">You have been invited</p>
           <h1 class="text-2xl md:text-3xl font-black text-gray-900 tracking-tight mb-3">{invite.inviter} invited you to GoldPlus</h1>
           <p class="text-sm text-slate-700 leading-relaxed mb-6">
-            Genuine batteries, chargers and electronics, delivered in Kampala.
+            {BRAND_LINE}
             {points ? <> Create your account and you get <strong>{points} points</strong> when your first order is delivered.</> : null}
             {' '}Your invite is saved on this phone, so there is no code to type.
           </p>

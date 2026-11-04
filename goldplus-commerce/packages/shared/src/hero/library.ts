@@ -91,7 +91,7 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
     extras: {},
   },
   {
-    slideKey: 'referral', position: 3, enabled: true, theme: 'loyalty', tint: 'c', media: 'stage',
+    slideKey: 'referral', position: 11, enabled: true, theme: 'loyalty', tint: 'c', media: 'stage',
     kicker: 'Welcome back',
     headline: 'Introduce a friend. <em>You both earn points</em>',
     subcopy: 'Someone you know has been sold a fake. Send them here. When their first order is delivered, you both get points.',
@@ -211,7 +211,7 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
     },
   },
   {
-    slideKey: 'nostories', position: 11, enabled: true, theme: 'trust', tint: 'a', media: 'stage',
+    slideKey: 'nostories', position: 3, enabled: true, theme: 'trust', tint: 'a', media: 'stage',
     kicker: 'The no stories campaign',
     headline: 'No stories. <em>Just real specs.</em>',
     subcopy: 'If a capacity isn’t verified, we say so on the page. Real numbers, real warranty, a real person on the phone.',

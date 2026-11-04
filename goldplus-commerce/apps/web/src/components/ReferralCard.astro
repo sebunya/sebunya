@@ -36,7 +36,7 @@ const { referral, bonus = null, bonusPaid = false } = Astro.props;
 const link = (via: string) => `${SITE_ORIGIN}/r/${referral.code}?via=${via}`;
 const points = (n: number) => n.toLocaleString('en-UG');
 const message = (via: string) =>
-  `I shop for genuine electronics at GoldPlus. Join with my invite${referral.refereePoints ? ` and get ${points(referral.refereePoints)} points after your first delivery` : ''}: ${link(via)}`;
+  `I buy my chargers and accessories from GoldPlus, their own line made for Africa. Join with my invite${referral.refereePoints ? ` and get ${points(referral.refereePoints)} points after your first delivery` : ''}: ${link(via)}`;
 const bonusLeft = bonus ? Math.max(0, bonus.friends - referral.awarded) : 0;
 const invites = referral.invites ?? [];
 const inProgress = (referral.joined ?? 0) + (referral.ordered ?? 0) + (referral.checking ?? 0);
