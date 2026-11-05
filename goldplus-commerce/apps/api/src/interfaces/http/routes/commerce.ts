@@ -1370,9 +1370,12 @@ routes.get('/questions/products/:productId', async (c) => {
   const productId = c.req.param('productId');
   if (!UUID_RE.test(productId)) return c.json({ success: true, data: { questions: [] } });
   try {
+    const questions = await registry.productQuestionRepo.listAnswered(productId, 20);
+    // Cacheable only once the read succeeded: a failed read used to be cached as "no questions" for two minutes.
     c.header('Cache-Control', 'public, max-age=120');
-    return c.json({ success: true, data: { questions: await registry.productQuestionRepo.listAnswered(productId, 20) } });
+    return c.json({ success: true, data: { questions } });
   } catch {
+    c.header('Cache-Control', 'no-store');
     return c.json({ success: true, data: { questions: [] } });
   }
 });

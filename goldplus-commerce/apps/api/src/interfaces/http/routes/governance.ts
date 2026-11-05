@@ -16,6 +16,7 @@ import { canTransitionOrder } from '../../../domain/commerce/OrderStateMachine';
 import type { OrderStatus } from '../../../domain/commerce/Order';
 import { DealerApplicationValidationError } from '../../../application/use-cases/DealerApplicationUseCase';
 import { logger } from '../../../infrastructure/logging/logger';
+import { VERIFICATION_CODE_PATTERN } from '../../../application/use-cases/VerificationCheckUseCase';
 
 /** The admin transition's idempotency key: the move itself plus a nonce, so a later identical move is not a replay. */
 export function adminTransitionKey(orderId: string, from: string, to: string, clientKey?: string | null): string {
@@ -221,6 +222,12 @@ routes.post('/verification/check', async (c) => {
   const code = typeof body?.code === 'string' ? body.code.trim() : '';
   if (!code) {
     const res: ApiResponse<never> = { success: false, error: { code: 'BAD_INPUT', message: 'A verification code is required.' } };
+    return c.json(res, 400);
+  }
+  // Codes are varchar(50). A longer value (or control characters) can never
+  // match and used to 500 on the attempt insert; it is a caller error.
+  if (!VERIFICATION_CODE_PATTERN.test(code)) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'BAD_INPUT', message: 'That does not look like a GoldPlus code. Check the code on the hologram and try again.' } };
     return c.json(res, 400);
   }
   const ip = clientIp(c);

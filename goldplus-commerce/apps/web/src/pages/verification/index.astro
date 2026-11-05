@@ -26,14 +26,24 @@ if (Astro.request.method === 'POST') {
         ? 'Cannot reach the verification service right now. Please try again shortly.'
         : result.message;
     } else {
-      const data = result.data as { success?: boolean; loyaltyPoints?: number } | undefined;
+      const data = result.data as { success?: boolean; status?: string; firstCheckedAt?: string | null; loyaltyPoints?: number } | undefined;
       if (data?.success) {
         status = 'success';
         const points = typeof data.loyaltyPoints === 'number' && data.loyaltyPoints > 0 ? data.loyaltyPoints : 0;
         message = `Verification code recognised. This product is registered with GoldPlus.${points ? ` You earned ${points.toLocaleString('en-UG')} points.` : ''}`;
       } else {
         status = 'received';
-        message = 'Code not recognised, or already used. If you believe this is wrong, please report a fake product.';
+        if (data?.status === 'already_checked') {
+          // Registered code, checked before. Not a counterfeit verdict: it may
+          // be this buyer's own earlier check or a retry after a timeout.
+          const when = data.firstCheckedAt ? new Date(data.firstCheckedAt) : null;
+          const date = when && !Number.isNaN(when.getTime())
+            ? when.toLocaleString('en-GB', { timeZone: 'Africa/Kampala', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+            : null;
+          message = `This code is registered with GoldPlus and was already checked${date ? ` on ${date} (Kampala time)` : ''}. If you checked it yourself, there is nothing more to do. If you did not, the package may have been opened before you bought it: tell us and we will look into it.`;
+        } else {
+          message = 'We could not find this code. Check that you typed it exactly as printed on the hologram. If it still does not match, please report it.';
+        }
       }
     }
   }
@@ -83,7 +93,7 @@ if (Astro.request.method === 'POST') {
         </div>
         <div class="bg-slate-50 border border-slate-200/70 rounded-xl p-5">
           <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Single use</p>
-          <p class="text-xs text-slate-600 leading-relaxed font-medium">Codes can only be verified once. If a code is already used, it usually means the package was opened before you bought it.</p>
+          <p class="text-xs text-slate-600 leading-relaxed font-medium">Codes can only be verified once. A later check of the same code shows when it was first checked. If that first check was not yours, tell us.</p>
         </div>
       </div>
 

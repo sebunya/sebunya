@@ -1,6 +1,7 @@
 import { defineMiddleware } from "astro:middleware";
 import { SITE_ORIGIN } from './lib/sitemap';
 import { prefersMarkdown, markdownResponse } from "./lib/agentMarkdown";
+import { keepCookiesOutOfSharedCaches, hasPendingCookies } from "./lib/sharedCacheGuard";
 import { agentDocumentFor, agentRepresentablePath } from "./lib/agentDocuments";
 import { resolveRequestIdentity } from "./lib/requestIdentity";
 import { isSignedVisitToken, mintSignedVisitToken } from "./lib/visitToken";
@@ -234,7 +235,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
       // Note what is NOT here: rendering the HTML page to measure it. Reporting
       // a saving is not worth doing the work the agent asked us to skip.
       const markdown = await agentDocumentFor(context.url);
-      if (markdown) return markdownResponse(markdown);
+      // Session renewal may have queued auth cookies that Astro attaches to
+      // this response: then it must not be publicly cacheable (N4).
+      if (markdown) return keepCookiesOutOfSharedCaches(markdownResponse(markdown), hasPendingCookies(context.cookies));
     } catch {
       // An agent asking for Markdown must never be worse off than one asking
       // for HTML: fall through and serve the page.
@@ -381,6 +384,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
     response.headers.append('Link', `<${SITE_ORIGIN}/openapi.json>; rel="service-desc"; type="application/openapi+json"`);
     response.headers.append('Link', `<${SITE_ORIGIN}/llms.txt>; rel="describedby"; type="text/plain"`);
   }
+  // N4: a public response must not carry this visitor's cookies (lib/sharedCacheGuard).
+  response = keepCookiesOutOfSharedCaches(response, hasPendingCookies(context.cookies));
   return withStrictScriptPolicyReport(response, cspNonce);
 });
 

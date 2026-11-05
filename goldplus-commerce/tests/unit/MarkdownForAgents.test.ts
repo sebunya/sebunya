@@ -73,7 +73,8 @@ describe('markdown content negotiation', () => {
     expect(mw).toContain("context.request.method === 'GET'");
     expect(mw).toContain("!context.url.pathname.startsWith('/admin')");
     expect(mw).toContain("!context.url.pathname.startsWith('/api/')");
-    expect(mw).toContain('if (markdown) return markdownResponse(markdown);');
+    // N4 (2026-11-05): wrapped so a response carrying queued cookies is never publicly cacheable.
+    expect(mw).toContain('if (markdown) return keepCookiesOutOfSharedCaches(markdownResponse(markdown), hasPendingCookies(context.cookies));');
     expect(mw).toContain('} catch {');
   });
 

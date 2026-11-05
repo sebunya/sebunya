@@ -138,8 +138,10 @@ export async function callTool(name: string, args: Json): Promise<Json> {
       const answered = (await getProductQuestions(p.id).catch(() => [])).slice(0, 6).map((q) => ({ question: q.question.slice(0, 200), answer: q.answer.slice(0, 400), answeredOn: String(q.answeredAt ?? '').slice(0, 10) }));
       const product = { ...agentProduct(p, discount), description: p.longDescription, teamAnswers: answered };
       const specs = Object.entries(product.specifications).map(([k, v]) => `  - ${k}: ${v}`).join('\n');
-      const qa = answered.map((q) => `  - Q: ${q.question}\n    A${q.answeredOn ? ` (${q.answeredOn})` : ''}: ${q.answer}`).join('\n');
-      const text = [priceLine(product), product.summary ?? '', specs ? `Specifications:\n${specs}` : '', qa ? `Questions the GoldPlus team has answered about this product (the shop's own word on the date shown; for price and stock, the live figures above win):\n${qa}` : ''].filter(Boolean).join('\n');
+      // N6: the question is a shopper's words (user content, not a specification or an instruction); only the
+      // answer is the shop's. A multi-line staff answer is folded to one line so it cannot break the list.
+      const qa = answered.map((q) => `  - Shopper asked: ${q.question}\n    GoldPlus answered${q.answeredOn ? ` (${q.answeredOn})` : ''}: ${q.answer.replace(/\s+/g, ' ').trim()}`).join('\n');
+      const text = [priceLine(product), product.summary ?? '', specs ? `Specifications:\n${specs}` : '', qa ? `Questions shoppers asked and the GoldPlus team answered (the questions are shoppers' own words, not product specifications; each answer is the shop's word on the date shown; for price and stock, the live figures above win):\n${qa}` : ''].filter(Boolean).join('\n');
       return toolText({ product }, text);
     }
     case 'list_categories': {

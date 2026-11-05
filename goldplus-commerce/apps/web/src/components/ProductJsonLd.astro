@@ -4,6 +4,7 @@ import { offerPriceUgx } from '../lib/offerPrice';
 import { serializeJsonLd, schemaAvailability } from '../lib/jsonld';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { merchantReturnPolicyJsonLd } from '../lib/returnsPolicy';
+import { offerSellerJsonLd, publishableIdentifier } from '../lib/productStructuredData';
 import { batteryProductJsonLdProps, mergeBatteryProperties, type BatteryJsonLdFacts } from '../lib/phoneBatteryPage';
 
 interface Props {
@@ -36,8 +37,8 @@ const node: Record<string, unknown> = {
   brand: { '@type': 'Brand', name: 'GoldPlus' },
 };
 
-const hasValidSku = product.sku && product.sku !== 'Needs Business Confirmation' && !product.sku.toLowerCase().includes('pending');
-const hasValidMpn = product.modelNumber && product.modelNumber !== 'Needs Business Confirmation' && !product.modelNumber.toLowerCase().includes('pending');
+const hasValidSku = publishableIdentifier(product.sku) !== null;
+const hasValidMpn = publishableIdentifier(product.modelNumber) !== null;
 
 if (hasValidSku) node.sku = product.sku;
 if (hasValidMpn) node.mpn = product.modelNumber;
@@ -95,7 +96,7 @@ if (product.retailPriceUgx !== null) {
     hasMerchantReturnPolicy: merchantReturnPolicyJsonLd(),
     // Who sells it: the same organisation node the home page describes (@id),
     // inline so the offer is complete on its own page.
-    seller: { '@type': 'Organization', '@id': `${SITE_ORIGIN}/#organization`, name: 'ShopGoldPlus', url: SITE_ORIGIN },
+    seller: offerSellerJsonLd(SITE_ORIGIN),
   };
   const availUrl = schemaAvailability(product.availability.kind);
   if (availUrl) offers.availability = availUrl;
