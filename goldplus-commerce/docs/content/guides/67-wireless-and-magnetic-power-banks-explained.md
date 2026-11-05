@@ -49,7 +49,7 @@ Wireless charging works through most thin phone cases. Thick cases, metal plates
 
 Using only what each listing states:
 
-- [GP-P05W](/products/goldplus-power-bank-gp-p05w-pb): 10,000mAh, snaps onto the back of a phone with a magnetic ring and charges it wirelessly at up to 15W. It also has USB-C and Lightning cables built in and lists 22.5W wired.
+- [GP-P05W](/products/goldplus-power-bank-gp-p05w-pb): 10,000mAh. Its magnets hold it on the back of the phone; it charges wirelessly at up to 15W only if the phone supports wireless charging. A magnetic case or ring alone does not make a phone wirelessly chargeable. It also has USB-C and Lightning cables built in and lists 22.5W wired.
 - [GP-P02W](/products/goldplus-power-bank-gp-p02w-pb): 20,000mAh with a wireless charging pad on top, four built-in cables (Lightning, USB-C, Micro-USB and USB-A), a camping lamp, a lanyard loop and a digital charge display.
 
 The built-in cables mean you are covered if your phone does not support wireless charging, or when you want the faster wired option.

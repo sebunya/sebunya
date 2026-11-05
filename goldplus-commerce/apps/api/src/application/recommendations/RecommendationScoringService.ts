@@ -135,7 +135,7 @@ export class RecommendationScoringService {
       ...candidate,
       score,
       reasonCodes: uniqueReasons,
-      displayReason: this.resolveDisplayReason(context.placement, uniqueReasons),
+      displayReason: this.resolveDisplayReason(context.placement, uniqueReasons, candidate.candidateSource),
     };
   }
 
@@ -177,8 +177,13 @@ export class RecommendationScoringService {
   private resolveDisplayReason(
     placement: RecommendationPlacement,
     reasons: RecommendationReasonCode[],
+    candidateSource?: RecommendationCandidate["candidateSource"],
   ): string | undefined {
-    if (reasons.includes("COMPATIBLE_ACCESSORY")) return "Works with this product";
+    // Brief A3: COMPATIBLE_ACCESSORY is also scored for heuristic candidates
+    // (inferred from names). Only a staff-recorded mapping says "works with".
+    if (reasons.includes("COMPATIBLE_ACCESSORY")) {
+      return candidateSource === "EXACT_PRODUCT_COMPATIBILITY" ? "Works with this product" : "Related accessory";
+    }
     if (reasons.includes("MATCHING_CONNECTOR")) return "Works with your device";
     if (reasons.includes("POPULAR_NOW")) return "Recently popular";
     if (reasons.includes("SAME_CATEGORY")) return "You may also like";

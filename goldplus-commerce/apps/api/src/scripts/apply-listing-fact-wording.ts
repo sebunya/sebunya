@@ -11,7 +11,8 @@ import { actorUserId, rowsOf } from './lib/scriptHelpers';
 /**
  * Applies domain/products/ListingFactWording to every product's short and long
  * description: flash drives name the USB-A plug their spec records instead of
- * "any USB port". The same-day delivery line is left as it is: the owner's
+ * "any USB port"; GP-P05W says wireless charging needs a wireless-capable phone and the magnets only
+ * hold it in place (brief A2). The same-day delivery line is left as it is: the owner's
  * promise is same-day dispatch AND delivery (2026-11-05). The seed data files
  * were edited in the same commit.
  *
@@ -26,7 +27,7 @@ async function main(): Promise<void> {
   const actorId = actorUserId(apply);
   const rows = rowsOf(await db.execute(sql`
     select id, sku, short_description, long_description from products
-    where short_description ~* 'any USB port|same-day delivery' or long_description ~* 'any USB port|same-day delivery'
+    where short_description ~* 'any USB port|same-day delivery|magnetic ring' or long_description ~* 'any USB port|same-day delivery|magnetic ring'
     order by sku`));
   const changes: Array<{ id: string; sku: string; short?: [string, string]; long?: [string, string] }> = [];
   for (const r of rows) {
@@ -51,7 +52,7 @@ async function main(): Promise<void> {
   }
   if (done.length) await new CreateAuditLogUseCase(registry.auditRepo).execute({
     actorId, action: 'PRODUCT_DESCRIPTIONS_EDITED', entity: 'product_bulk_edit', entityId: randomUUID(),
-    newState: { reason: 'brief WP3 2026-11-05: flash drives name their USB-A connector', count: done.length, productIds: done },
+    newState: { reason: 'brief WP3/A2 2026-11-05: flash drives name their USB-A connector; GP-P05W wireless needs a wireless-capable phone', count: done.length, productIds: done },
   });
   console.log(`descriptions rewritten for ${done.length} of ${changes.length} products`);
 }

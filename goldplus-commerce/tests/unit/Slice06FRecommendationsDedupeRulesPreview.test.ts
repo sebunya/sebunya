@@ -283,7 +283,8 @@ describe('Slice 06-F elite recommendations intelligence', () => {
   });
 
   it('uses only the approved honest public rail labels', () => {
-    const publicRails = `${relatedRail}\n${completeRail}\n${popularRail}\n${categoryRail}\n${pdp}`;
+    // The setup rail's headings live in completeSetupHeading (brief A3: wording follows the relationship shown).
+    const publicRails = `${relatedRail}\n${completeRail}\n${read('apps/web/src/lib/recommendation-display.ts')}\n${popularRail}\n${categoryRail}\n${pdp}`;
     expect(publicRails).toContain('Similar products');
     expect(publicRails).toContain('You may also need');
     expect(publicRails).toContain('More from this category');
