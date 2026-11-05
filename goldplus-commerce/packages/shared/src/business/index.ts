@@ -116,3 +116,22 @@ export function xHandleFromSocials(socials: ReadonlyArray<{ key: string; href: s
     return null;
   }
 }
+
+/*
+ * Delivery terms in ONE wording for every surface that states them (FAQ, hub FAQs, the shop assistant, the
+ * Markdown documents, llms.txt, MCP store_info). Before this, the FAQ said an "estimated" fee was "confirmed
+ * before the rider leaves" while the agent documents said it was "never added afterwards", and the Markdown
+ * buying section promised dispatch only. What the code does (docs/delivery/CONTRACT.md #5, CheckoutUseCase):
+ * the fee quoted at checkout is the one the order records and charges; an address the quote cannot price
+ * is placed with an UNCONFIRMED fee that the team settles by phone before dispatch, never as free delivery.
+ */
+export const DELIVERY_FEE_TERMS =
+  'The delivery fee for your address is shown at checkout before you pay, and that is the fee you are charged. If an address cannot be priced online, we agree the fee with you by phone before dispatch.';
+
+/** Upcountry treatment, as the owner-approved hero slide words it (0220). */
+export const UPCOUNTRY_TERMS = 'Upcountry orders go by bus to a parcel office for collection.';
+
+/** Owner 2026-11-05: same-day dispatch AND delivery in Kampala and Wakiso on orders before the cut-off, on open days. */
+export function sameDayDeliveryTerms(cutoff: string, openDays: string): string {
+  return `Order before ${cutoff}, ${openDays}, and it is dispatched and delivered the same day in Kampala and Wakiso; later orders go on the next working day.`;
+}

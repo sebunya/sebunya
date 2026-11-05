@@ -2,6 +2,7 @@ import { defineMiddleware } from "astro:middleware";
 import { SITE_ORIGIN } from './lib/sitemap';
 import { prefersMarkdown, markdownResponse } from "./lib/agentMarkdown";
 import { agentDocumentFor, agentRepresentablePath } from "./lib/agentDocuments";
+import { getStorefrontDiscount } from "./lib/storefrontDiscount";
 import { resolveRequestIdentity } from "./lib/requestIdentity";
 import { isSignedVisitToken, mintSignedVisitToken } from "./lib/visitToken";
 import { apiBase } from "./lib/api";
@@ -234,7 +235,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
       // Note what is NOT here: rendering the HTML page to measure it. Reporting
       // a saving is not worth doing the work the agent asked us to skip.
       const markdown = await agentDocumentFor(context.url);
-      if (markdown) return markdownResponse(markdown);
+      if (markdown) {
+        // N8: a document priced under a running sale is not cached past the sale's end.
+        const sale = await getStorefrontDiscount();
+        return markdownResponse(markdown, sale.active ? sale.endsIso : null);
+      }
     } catch {
       // An agent asking for Markdown must never be worse off than one asking
       // for HTML: fall through and serve the page.

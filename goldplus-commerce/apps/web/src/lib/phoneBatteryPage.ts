@@ -78,7 +78,7 @@ export function phonePageDescription(
   // "Dispatch", never "arrives": the day's run is a condition the page body states (docs/growth/README.md §5). And
   // only when something is in stock: an out-of-stock page promised a same-day run it could not make.
   const buy = results.some((r) => r.inStock)
-    ? 'Order online for same-day dispatch in Kampala and Wakiso, or collect at the shop.'
+    ? 'Order online for same-day dispatch and delivery in Kampala and Wakiso, or collect at the shop.'
     : 'Out of stock right now: ask us when it is back.';
   return `Replacement battery for the ${device.label}: pack code ${codes}${price}, ${provenance}. ${buy}`;
 }

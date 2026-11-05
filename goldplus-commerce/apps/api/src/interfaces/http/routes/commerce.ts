@@ -1158,6 +1158,8 @@ routes.post('/orders/lookup', async (c) => {
       })),
       subtotalUgx: order.subtotalUgx,
       deliveryFeeUgx: order.deliveryFeeUgx,
+      // N8: a 0 fee on an address we could not price is "to be agreed", not free; the receipt needs to tell them apart.
+      deliveryFeeConfirmed: order.deliveryFeeConfirmed,
       totalUgx: order.totalUgx,
       // 0196: the gift card / store credit part, so the page can say what is still to pay.
       storeCreditAppliedUgx: order.storeCreditAppliedUgx,

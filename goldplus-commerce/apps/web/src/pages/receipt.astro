@@ -3,7 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import FormField from '../components/FormField.astro';
 import { postJson } from '../lib/api';
 import { readClientAddress } from '../lib/forwardClient';
-import { formatUgx } from '../lib/money';
+import { formatUgx, deliveryFeeCell } from '../lib/money';
 import { getBusinessInfo } from '../lib/businessInfo';
 import { readGuestMemory, rememberedContact } from '../lib/guestMemory';
 
@@ -23,6 +23,7 @@ interface LookupOrder {
   items: Array<{ name: string; quantity: number; unitPriceUgx: number; lineTotalUgx: number }>;
   subtotalUgx?: number;
   deliveryFeeUgx?: number;
+  deliveryFeeConfirmed?: boolean;
   totalUgx?: number;
   storeCreditAppliedUgx?: number;
   paymentStatus?: string;
@@ -109,7 +110,7 @@ const addsUp = Boolean(order && n(order.subtotalUgx) !== null && n(order.deliver
             {addsUp && (
               <>
                 <tr><td colspan="3" class="pt-3 text-right text-slate-600">Items</td><td class="pt-3 text-right tabular-nums">{formatUgx(order.subtotalUgx as number)}</td></tr>
-                <tr><td colspan="3" class="text-right text-slate-600">Delivery</td><td class="text-right tabular-nums">{(order.deliveryFeeUgx as number) > 0 ? formatUgx(order.deliveryFeeUgx as number) : 'Free'}</td></tr>
+                <tr><td colspan="3" class="text-right text-slate-600">Delivery</td><td class="text-right tabular-nums">{deliveryFeeCell(order.deliveryFeeUgx as number, order.deliveryFeeConfirmed)}</td></tr>
               </>
             )}
             {n(order.storeCreditAppliedUgx) !== null && (order.storeCreditAppliedUgx as number) > 0 && (
