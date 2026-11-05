@@ -426,7 +426,11 @@ export class DrizzleProductRepository implements IProductRepository {
             : sql`replace(coalesce(${products.sku}, ''), '-', '') ilike ${needle}`,
           numeric
             ? sql`replace(coalesce(${products.modelNumber}, ''), '-', '') ~* ${numeric}`
-            : sql`replace(coalesce(${products.modelNumber}, ''), '-', '') ilike ${needle}`
+            : sql`replace(coalesce(${products.modelNumber}, ''), '-', '') ilike ${needle}`,
+          // Brief N2: a box code that lives only in the name ("GP-W2 (PD-W2)") found by "pdw2", as /shop does.
+          numeric
+            ? sql`replace(${products.name}, '-', '') ~* ${numeric}`
+            : sql`replace(${products.name}, '-', '') ilike ${needle}`
         );
       };
       for (const group of groups) {

@@ -154,7 +154,8 @@ function termMatches(term: string, haystack: string): boolean {
 function discoveryHaystack(product: ProductPublicDto, taxonomy: Taxonomy): string {
   const subcategory = subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy);
   // The hyphen-stripped identifiers too (Baymard Q1): "gpc03" finds GP-C03, as the API's SQL does.
-  return [product.name, product.categoryName, subcategory, product.sku, product.modelNumber, product.sku?.replace(/-/g, ''), product.modelNumber?.replace(/-/g, '')]
+  // The name too (brief N2): the box code lives only in the name ("GP-W2 (PD-W2)"), so "pdw2" found nothing.
+  return [product.name, product.categoryName, subcategory, product.sku, product.modelNumber, product.sku?.replace(/-/g, ''), product.modelNumber?.replace(/-/g, ''), product.name.replace(/-/g, '')]
     .filter((value): value is string => typeof value === 'string')
     .join(' ')
     .toLocaleLowerCase('en');

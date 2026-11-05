@@ -33,6 +33,16 @@ export const SEARCH_SYNONYM_GROUPS: ReadonlyArray<ReadonlyArray<string>> = [
   ['cable', 'cord'],
 ];
 
+/**
+ * Brief N2 (2026-11-05): "power bank by carton" and "wholesale flash disk" found nothing, because no product name
+ * says wholesale or carton. These words ask HOW to buy (the shop sells cartons at /bulk), not WHAT, so when the
+ * query also names a product they are set aside and the product words search on their own. A query made only of
+ * them is left as it is (nothing matches, and the results page's bulk link answers it). No product, price or
+ * carton size is inferred from them.
+ */
+export const BULK_INTENT_WORDS: ReadonlySet<string> = new Set(['wholesale', 'wholesaler', 'bulk', 'carton', 'cartons', 'dealer', 'dealers']);
+const BULK_FILLER_WORDS: ReadonlySet<string> = new Set(['by', 'in', 'the', 'per', 'a']);
+
 export interface SearchCorrection {
   from: string;
   to: string;
@@ -47,6 +57,8 @@ export interface ExpandedSearchQuery {
   corrections: SearchCorrection[];
   /** Words nothing in the catalogue explains. */
   unknown: string[];
+  /** The shopper asked to buy in bulk (wholesale, by the carton); those words were set aside. */
+  bulkIntent?: boolean;
 }
 
 /** Word -> how often it occurs, from the text a search can match (names, categories, SKUs, models). */
@@ -137,7 +149,11 @@ function catalogueVariant(group: ReadonlyArray<string>, vocab: ReadonlyMap<strin
  * `terms` are the normalised query words (searchTerms). Synonym phrases are found first, longest first, so
  * "wireless earphones" is the earbuds meaning before "earphones" alone is considered.
  */
-export function expandSearchQuery(terms: readonly string[], vocab: ReadonlyMap<string, number>): ExpandedSearchQuery {
+export function expandSearchQuery(rawTerms: readonly string[], vocab: ReadonlyMap<string, number>): ExpandedSearchQuery {
+  const asksBulk = rawTerms.some((w) => BULK_INTENT_WORDS.has(w) && !vocab.has(w));
+  const productWords = asksBulk ? rawTerms.filter((w) => !BULK_INTENT_WORDS.has(w) && !BULK_FILLER_WORDS.has(w)) : rawTerms;
+  const bulkIntent = asksBulk && productWords.length > 0;
+  const terms = bulkIntent ? productWords : rawTerms;
   const groups: string[][] = [];
   const shown: string[] = [];
   const corrections: SearchCorrection[] = [];
@@ -191,7 +207,7 @@ export function expandSearchQuery(terms: readonly string[], vocab: ReadonlyMap<s
     shown.push(term);
     unknown.push(term);
   }
-  return { groups, display: shown.join(' '), corrections, unknown };
+  return { groups, display: shown.join(' '), corrections, unknown, ...(bulkIntent ? { bulkIntent } : {}) };
 }
 
 /** The query without its unknown words, or null when that would leave nothing (or nothing was unknown). */
@@ -200,7 +216,7 @@ export function relaxSearchQuery(q: ExpandedSearchQuery): ExpandedSearchQuery | 
   const groups = q.groups.filter((g) => !(g.length === 1 && q.unknown.includes(g[0])));
   if (groups.length === 0) return null;
   const display = q.display.split(' ').filter((w) => !q.unknown.includes(w)).join(' ');
-  return { groups, display, corrections: q.corrections, unknown: [] };
+  return { groups, display, corrections: q.corrections, unknown: [], ...(q.bulkIntent ? { bulkIntent: true } : {}) };
 }
 
 /**

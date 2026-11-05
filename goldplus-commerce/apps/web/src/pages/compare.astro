@@ -156,6 +156,22 @@ const generateRemoveLink = (idToRemove: string) => {
               {compareItems.length < 3 && <td class="p-4 bg-brand-softGrey"></td>}
             </tr>
 
+            {/* Brief A1/N3: a product with no checked specification says so, instead of
+                the comparison silently showing only the other product's values. */}
+            {compareItems.some((item) => Object.keys(item.verifiedSpecs || {}).length === 0) && (
+              <tr class="border-b border-brand-borderGrey" data-compare-specs-not-recorded>
+                <td class="p-4 border-r border-brand-borderGrey font-bold text-brand-charcoal bg-brand-softGrey">Checked specifications</td>
+                {compareItems.map(item => (
+                  <td class="p-4 text-center">
+                    {Object.keys(item.verifiedSpecs || {}).length > 0
+                      ? <span>{Object.keys(item.verifiedSpecs).length} recorded</span>
+                      : <span class="text-brand-mutedGrey">None yet. Capacity, input, output, ports and cables are unknown.</span>}
+                  </td>
+                ))}
+                {compareItems.length < 3 && <td class="p-4 bg-brand-softGrey"></td>}
+              </tr>
+            )}
+
             {/* Section Divider for Verified Specifications */}
             {specKeys.length > 0 && (
               <tr class="bg-brand-charcoal text-white">
@@ -170,7 +186,7 @@ const generateRemoveLink = (idToRemove: string) => {
                  <td class="p-4 border-r border-brand-borderGrey font-bold text-brand-charcoal bg-brand-softGrey">{key}</td>
                  {compareItems.map(item => (
                    <td class="p-4 text-center">
-                      {item.verifiedSpecs[key] ?? <span class="text-brand-mutedGrey font-light italic">N/A</span>}
+                      {item.verifiedSpecs[key] ?? <span class="text-brand-mutedGrey font-light italic">Not recorded</span>}
                    </td>
                  ))}
                  {compareItems.length < 3 && <td class="p-4 bg-brand-softGrey"></td>}
