@@ -180,7 +180,7 @@ const shareSource = opened ? {
 
         <div class={`mt-6 rounded-2xl border p-4 text-sm ${opened.usable ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`} role="status">
           {opened.usable
-            ? <p><strong>{formatUgx(opened.balanceUgx)}</strong> ready to spend. Type the code in the "Gift card or store credit" box at checkout, or show it in our shop on Burton Street, Kampala. Anyone with the code can spend it, so keep it to yourself.</p>
+            ? <p><strong>{formatUgx(opened.balanceUgx)}</strong> ready to spend. Type the code in the "Gift card or store credit" box at checkout, or show it in our shop on Wilson Road, Kampala. Anyone with the code can spend it, so keep it to yourself.</p>
             : <p>{opened.reason ?? 'This card cannot be used.'} Balance: <strong>{formatUgx(opened.balanceUgx)}</strong>.</p>}
         </div>
         <p class="mt-6 text-sm text-slate-600">Want to send one too? <a class="font-bold underline" href="/gift-card/buy">Send a gift card</a>.</p>

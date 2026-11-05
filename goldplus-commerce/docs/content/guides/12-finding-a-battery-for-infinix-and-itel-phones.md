@@ -74,4 +74,4 @@ Many itel feature phones and basic models use small removable batteries. The sam
 
 # Find your battery
 
-Search by model or code in the [battery finder](/battery-finder), or browse all [phone batteries](/phone-batteries). Not sure? WhatsApp your model number or a photo of your old battery to 0705 004545, and we confirm the fit before you pay. You can also collect from our shop in the [Zainab Aziza Building](/locations/zainab-aziza) on Burton Street.
+Search by model or code in the [battery finder](/battery-finder), or browse all [phone batteries](/phone-batteries). Not sure? WhatsApp your model number or a photo of your old battery to 0705 004545, and we confirm the fit before you pay. You can also collect from our shop in the [Zainab Aziza Building](/locations/zainab-aziza) on Wilson Road.

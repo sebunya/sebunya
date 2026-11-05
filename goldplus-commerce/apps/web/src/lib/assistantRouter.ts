@@ -148,7 +148,7 @@ export async function answerDeterministically(c: Classification, ci?: CareInput)
       const out = await callTool('store_info', {});
       const s = structured(out);
       const b = biz as { openDays?: string; shopHours?: string; phoneDisplay?: string };
-      const text = `We are on the 4th floor of the Zainab Aziza Building on Burton Street, opposite Pioneer Mall and next to Uhuru Restaurant.${b.openDays && b.shopHours ? ` We are open ${b.openDays}, ${b.shopHours}.` : ''}${b.phoneDisplay ? ` Call or WhatsApp us on ${b.phoneDisplay} before you come and we will have it ready.` : ''}`;
+      const text = `We are on the 4th floor of the Zainab Aziza Building on Wilson Road, opposite Pioneer Mall and next to Uhuru Restaurant.${b.openDays && b.shopHours ? ` We are open ${b.openDays}, ${b.shopHours}.` : ''}${b.phoneDisplay ? ` Call or WhatsApp us on ${b.phoneDisplay} before you come and we will have it ready.` : ''}`;
       return { intent: c.intent, text, products: [], links: [{ label: 'Open the map', url: String(s.map ?? biz.mapUrl) }, wa] };
     }
     case 'DELIVERY': {

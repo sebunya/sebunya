@@ -66,4 +66,4 @@ All our wall chargers fit Ugandan sockets directly. A few examples:
 
 # Choose yours
 
-A built-in UK plug, a clear input line, and a socket in good condition are the basics. See every [charger we stock](/power/chargers), or visit us at the Zainab Aziza Building, 4th Floor, Burton Street, opposite Pioneer Mall. Details are on our [shop page](/locations/zainab-aziza).
+A built-in UK plug, a clear input line, and a socket in good condition are the basics. See every [charger we stock](/power/chargers), or visit us at the Zainab Aziza Building, 4th Floor, Wilson Road, opposite Pioneer Mall. Details are on our [shop page](/locations/zainab-aziza).

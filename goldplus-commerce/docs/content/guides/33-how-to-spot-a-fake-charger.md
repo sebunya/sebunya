@@ -79,4 +79,4 @@ If you have seen or bought a product you think is a counterfeit, use our [report
 
 # Where to buy
 
-You can see the full label details for every [charger we stock](/power/chargers) on its product page, such as the [GP-C08](/products/goldplus-charger-gp-c08) with its listed output of 5V⎓2A and 9V⎓1A. Or come and look before you buy at our shop in the Zainab Aziza Building, 4th Floor, Burton Street, Kampala, opposite Pioneer Mall, Monday to Saturday, 8:30am to 6:00pm.
+You can see the full label details for every [charger we stock](/power/chargers) on its product page, such as the [GP-C08](/products/goldplus-charger-gp-c08) with its listed output of 5V⎓2A and 9V⎓1A. Or come and look before you buy at our shop in the Zainab Aziza Building, 4th Floor, Wilson Road, Kampala, opposite Pioneer Mall, Monday to Saturday, 8:30am to 6:00pm.

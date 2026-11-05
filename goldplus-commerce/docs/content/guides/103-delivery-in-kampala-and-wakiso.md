@@ -46,7 +46,7 @@ A GoldPlus gift card or store credit pays first, and you pay any rest with Mobil
 
 You can pick up your order at the GoldPlus shop instead of paying for delivery:
 
-**Zainab Aziza Building, 4th Floor, Burton Street, Kampala**, opposite Pioneer Mall, next to Uhuru Restaurant. Open Monday to Saturday, 8:30am to 6:00pm. Call or WhatsApp 0705 004545 before you come.
+**Zainab Aziza Building, 4th Floor, Wilson Road, Kampala**, opposite Pioneer Mall, next to Uhuru Restaurant. Open Monday to Saturday, 8:30am to 6:00pm. Call or WhatsApp 0705 004545 before you come.
 
 See our [shop page](/locations/zainab-aziza) for directions.
 

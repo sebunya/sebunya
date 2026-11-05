@@ -68,4 +68,4 @@ Some of our [power banks](/power/power-banks) have a Micro-USB (V8) cable built 
 
 # Choose yours
 
-Pick by length first, then by how hard the cable will be used. See every [charging cable we stock](/power/charging-cables), or collect from our shop in the Zainab Aziza Building on Burton Street, open Monday to Saturday, 8:30am to 6:00pm.
+Pick by length first, then by how hard the cable will be used. See every [charging cable we stock](/power/charging-cables), or collect from our shop in the Zainab Aziza Building on Wilson Road, open Monday to Saturday, 8:30am to 6:00pm.
