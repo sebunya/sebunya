@@ -55,7 +55,10 @@ describe("the rails trust the engine's ladder (AC33/AC36)", () => {
 
   it("complete_setup renders nothing rather than pretending unrelated products complete a setup", () => {
     const setup = read(RAILS[1]);
-    expect(setup).toContain("finalItems.length > 0 && (");
+    // Brief A3: completeSetupHeading returns null for an empty list, and the rail renders only with a heading.
+    expect(setup).toContain("const heading = completeSetupHeading(finalItems);");
+    expect(setup).toContain("{heading && (");
+    expect(setup).not.toContain("compatibility records");
   });
 });
 

@@ -1,7 +1,7 @@
 ---
 import type { RecommendationItemDto, RecommendationPlacement } from "@goldplus/shared";
 import { productSrcset, CARD_SIZES } from '../../lib/imageSrcset';
-import { supportedRecommendationReason } from "../../lib/recommendation-display";
+import { supportedRecommendationReason, recommendationRelationship, recommendationRelationshipLabel } from "../../lib/recommendation-display";
 import { formatUgx } from "../../lib/money";
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from "../../lib/storefrontDiscount";
 
@@ -43,7 +43,11 @@ const availabilityLabel = item.availability?.kind === "in_stock"
   : item.availability?.kind === "out_of_stock" ? "Sold out"
   : item.availability?.kind === "pre_order" ? "Pre-order"
   : "Confirm availability";
-const displayReason = showReason ? supportedRecommendationReason(item.reasonCode) : undefined;
+// Brief A3: on the setup rail the card names the item's real relationship
+// (a heuristic suggestion is not shown as a product-details fit).
+const displayReason = !showReason ? undefined
+  : placement === "complete_setup" ? recommendationRelationshipLabel(recommendationRelationship(item))
+  : supportedRecommendationReason(item.reasonCode);
 
 const lowerName = item.name.toLowerCase();
 const productType = lowerName.includes("charger") ? "Charger"

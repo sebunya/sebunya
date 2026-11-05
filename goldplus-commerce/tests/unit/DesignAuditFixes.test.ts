@@ -198,7 +198,8 @@ describe('the home page', () => {
     expect(rail).toContain('const evidenceBased = popularOnly.length >= POPULAR_MIN;');
     expect(rail.match(/showReasons=\{!evidenceBased\}/g)?.length).toBe(3);
     expect(read(`${WEB}components/recommendations/RecommendationCard.astro`))
-      .toContain('const displayReason = showReason ? supportedRecommendationReason(item.reasonCode) : undefined;');
+      // Brief A3: the setup rail labels by relationship; every other rail keeps the reason-code label, and showReason still gates both.
+      .toContain('const displayReason = !showReason ? undefined\n  : placement === "complete_setup" ? recommendationRelationshipLabel(recommendationRelationship(item))\n  : supportedRecommendationReason(item.reasonCode);');
   });
 
   it('the cart rail decodes the cookie Astro wrote URL-encoded (it hid itself for every cart)', () => {

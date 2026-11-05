@@ -523,3 +523,77 @@ export function recommendedItemSubcategory(
   const own = typeof item.categoryName === "string" ? item.categoryName : undefined;
   return getProductSubcategory({ name: item.name, categoryName: own } as Parameters<typeof getProductSubcategory>[0], taxonomy);
 }
+
+/**
+ * Brief A3 (2026-11-05): the "You may also need" rail said every suggestion was
+ * "chosen from the compatibility records" while the engine filled it from a
+ * name-based heuristic (a power bank page showed microSD cards). The wording now
+ * follows the relationship each item actually has, read from the engine's own
+ * candidate source and reason code:
+ *
+ * - verified_fit: a staff-recorded product-to-product fit (EXACT_PRODUCT_COMPATIBILITY).
+ * - supplier_listed_fit: a fit the supplier lists that staff have not checked
+ *   (reason SUPPLIER_LISTED_FIT; no engine source emits it today, the wording is ready).
+ * - same_category_substitute: same category, an alternative rather than an add-on.
+ * - complementary: inferred from product type (COMPLEMENTARY_HEURISTIC), not a checked fit.
+ * - generic_fallback: bestseller or catalogue fallback; no relationship is claimed.
+ */
+export type RecommendationRelationship =
+  | "verified_fit"
+  | "supplier_listed_fit"
+  | "same_category_substitute"
+  | "complementary"
+  | "generic_fallback";
+
+export function recommendationRelationship(item: {
+  candidateSource?: string | null;
+  reasonCode?: string | null;
+  reasonCodes?: readonly string[] | null;
+}): RecommendationRelationship {
+  const codes = new Set([item.reasonCode ?? "", ...(item.reasonCodes ?? [])].filter(Boolean));
+  if (codes.has("SUPPLIER_LISTED_FIT")) return "supplier_listed_fit";
+  if (item.candidateSource === "EXACT_PRODUCT_COMPATIBILITY") return "verified_fit";
+  if (item.candidateSource === "COMPLEMENTARY_HEURISTIC") return "complementary";
+  if (item.candidateSource === "SAME_CATEGORY_ATTRIBUTE_MATCH") return "same_category_substitute";
+  if (codes.has("SAME_CATEGORY") || codes.has("SAME_SUBCATEGORY") || codes.has("CATEGORY_FALLBACK")) return "same_category_substitute";
+  return "generic_fallback";
+}
+
+/** The small label on one card. A generic fallback claims nothing, so it gets none. */
+export function recommendationRelationshipLabel(relationship: RecommendationRelationship): string | undefined {
+  if (relationship === "verified_fit") return "Fit on record";
+  if (relationship === "supplier_listed_fit") return "Supplier-listed fit";
+  if (relationship === "same_category_substitute") return "Similar product";
+  if (relationship === "complementary") return "Related accessory";
+  return undefined;
+}
+
+export interface RecommendationRailHeading {
+  title: string;
+  subtitle: string;
+}
+
+/**
+ * The rail's heading, from the relationships of the items actually shown.
+ * null = nothing to show, so no rail (and no heading) renders.
+ */
+export function completeSetupHeading(
+  items: ReadonlyArray<Parameters<typeof recommendationRelationship>[0]>,
+): RecommendationRailHeading | null {
+  if (items.length === 0) return null;
+  const kinds = new Set(items.map(recommendationRelationship));
+  if (kinds.size === 1) {
+    const [only] = [...kinds];
+    if (only === "verified_fit") return { title: "Fits this product", subtitle: "Our staff recorded each of these as a fit for this product. Read the fit note on each product page before you order." };
+    if (only === "supplier_listed_fit") return { title: "Listed by the supplier as a fit", subtitle: "The supplier lists these as fitting. Our staff have not checked them yet." };
+    if (only === "complementary") return { title: "Related accessories", subtitle: "Suggested by product type, not a checked fit. Check the fit on each product page before you order." };
+    if (only === "same_category_substitute") return { title: "Similar products", subtitle: "Other products in the same category." };
+    return { title: "More from the shop", subtitle: "Other products we sell. These are not matched to this product." };
+  }
+  return {
+    title: "You may also need",
+    subtitle: kinds.has("verified_fit")
+      ? "Each card says why it is shown. Only cards marked \"Fit on record\" are recorded fits for this product."
+      : "Each card says why it is shown. None of these is a checked fit for this product.",
+  };
+}

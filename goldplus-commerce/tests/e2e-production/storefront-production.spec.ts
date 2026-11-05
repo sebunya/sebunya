@@ -87,7 +87,8 @@ test.describe("product pages — truthful rails", () => {
   // name were retired demo products, and the spec failed on every run against
   // production (6 of 27 checks) while asserting nothing about the live shop.
   const API = process.env.E2E_API_BASE ?? "https://api.shopgoldplus.com";
-  const RAIL = "You may also need";
+  // The setup rail's heading now follows the relationship shown (brief A3), so the rail is found by its placement.
+  const RAIL = '[data-recommendation-rail][data-placement="complete_setup"]';
 
   async function liveSlugs(request: import("@playwright/test").APIRequestContext): Promise<string[]> {
     const res = await request.get(`${API}/products?limit=24`);
@@ -137,7 +138,7 @@ test.describe("product pages — truthful rails", () => {
       if (p!.primaryImageUrl) expect(product.image, `${slug}: image in JSON-LD`).toBeTruthy(); else expect(product.image).toBeUndefined();
       // Recommendation UI agrees with the engine, and the agreement is not a tautology:
       // the counts are accumulated so the suite can see whether it ever observed items.
-      const railCount = await page.getByText(RAIL).count();
+      const railCount = await page.locator(RAIL).count();
       expect(railCount > 0, `${slug}: api items=${apiItems} rail=${railCount}`).toBe(apiItems > 0);
       railsSeen += railCount > 0 ? 1 : 0; itemsSeen += apiItems > 0 ? 1 : 0;
       expect(failures, `${slug}: server errors during render`).toEqual([]);

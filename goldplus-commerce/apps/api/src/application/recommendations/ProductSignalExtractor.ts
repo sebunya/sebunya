@@ -64,7 +64,9 @@ export class ProductSignalExtractor {
     if (combined.includes("car charger")) return "car_charger";
     if (combined.includes("wall charger") || combined.includes("charger")) return "wall_charger";
     if (combined.includes("power bank") || combined.includes("powerbank")) return "power_bank";
-    if (combined.includes("cable") || combined.includes("cord")) return "cable";
+    // "cord" as a word only: a memory card's "recording" made it a cable, so a
+    // power bank's setup rail offered microSD cards as fitting (brief A3, 2026-11-05).
+    if (combined.includes("cable") || /\bcords?\b/.test(combined)) return "cable";
     if (combined.includes("earbud") || combined.includes("buds")) return "earbuds";
     if (combined.includes("earphone")) return "earphones";
     if (combined.includes("headphone") || combined.includes("headset")) return "headphones";
