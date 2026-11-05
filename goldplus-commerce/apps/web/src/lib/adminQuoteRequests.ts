@@ -22,13 +22,13 @@ export interface AdminQuoteLine {
   availability: string;
 }
 
-/** "12 cartons (600 pieces)", "40 pieces", "3 cartons (size to confirm)". */
+/** "12 cartons (600 pieces)", "40 pieces", "3 cartons, size pending" (no verified carton size: confirm it before quoting pieces). */
 export function adminCountLabel(l: Pick<AdminQuoteLine, 'unitKind' | 'unitCount' | 'quantity'>): string {
   const n = (v: number) => formatCount(v);
   if (l.unitCount === null) return `${n(l.quantity ?? 0)} pieces`;
   if (l.unitKind === 'piece') return `${n(l.unitCount)} ${l.unitCount === 1 ? 'piece' : 'pieces'}`;
   const cartons = `${n(l.unitCount)} ${l.unitCount === 1 ? 'carton' : 'cartons'}`;
-  return l.quantity === null ? `${cartons} (size to confirm)` : `${cartons} (${n(l.quantity)} pieces)`;
+  return l.quantity === null ? `${cartons}, size pending` : `${cartons} (${n(l.quantity)} pieces)`;
 }
 
 export interface AdminQuoteRequest {

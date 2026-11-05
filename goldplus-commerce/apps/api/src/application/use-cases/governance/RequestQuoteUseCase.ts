@@ -44,11 +44,16 @@ export class RequestQuoteUseCase {
     if (!quantityRaw) return { ok: false, code: 'BAD_INPUT', message: 'Quantity is required.' };
     if (!isMaxLength(quantityRaw, 100)) return { ok: false, code: 'BAD_INPUT', message: 'Quantity input is too long.' };
 
-    const message = text(input.message);
+    const typedMessage = text(input.message);
+    // The count column holds a number, so "2 cartons" would reach staff as "2".
+    // Anything that is not a plain number is kept word for word for the team.
+    const message = /^\d+$/.test(quantityRaw.replace(/[,\s]/g, ''))
+      ? typedMessage
+      : [`[Quantity as typed: ${quantityRaw}]`, typedMessage].filter(Boolean).join('\n');
     if (!isMaxLength(message, 5000)) return { ok: false, code: 'BAD_INPUT', message: 'Message exceeds 5000 character limit.' };
 
     // Convert quantity string to number for domain logic compatibility
-    const quantity = parseInt(quantityRaw, 10) || 1;
+    const quantity = parseInt(quantityRaw.replace(/[,\s]/g, ''), 10) || 1; // "1,200" is 1200, not 1
 
     const id = randomUUID();
     const quote = Quote.request(

@@ -59,6 +59,8 @@ export const POST: APIRoute = async (context) => {
   body.lines = (Array.isArray(raw.lines) ? raw.lines : []).slice(0, MAX_LINES * 2).map((l) => ({
     productId: typeof (l as { productId?: unknown })?.productId === 'string' ? (l as { productId: string }).productId : '',
     count: Number((l as { count?: unknown })?.count),
+    // The unit the buyer's screen showed; the API refuses a stale one (UNIT_CHANGED).
+    ...(((l as { unit?: unknown })?.unit === 'carton' || (l as { unit?: unknown })?.unit === 'piece') ? { unit: (l as { unit: string }).unit } : {}),
   }));
   const accessToken = readAccessCookie(cookies.get(BULK_ACCESS_COOKIE)?.value);
   if (accessToken) body.priceAccessToken = accessToken;

@@ -573,6 +573,11 @@ const shopBreadcrumb = breadcrumbJsonLd([
       </nav>
     )}
 
+    {/* Brief WP2 (2026-11-05): resellers browsing a category find the bulk list and the quote form. */}
+    <p class="mt-8 text-center text-sm text-slate-600">
+      Buying for your shop? <a href="/bulk" class="font-bold underline">Order by the carton</a> or <a href="/quote-request?kind=wholesale" class="font-bold underline">ask for a quote</a>.
+    </p>
+
     {browseFallback.length > 0 && (
       <section id="browse-available-products" class="mt-10" aria-labelledby="browse-available-heading">
         <h2 id="browse-available-heading" class="text-xl font-black text-slate-900">Browse available products</h2>

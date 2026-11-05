@@ -130,7 +130,7 @@ export type SubmitBulkQuoteResult =
   /** contactPhone: the number the team will call, for the submitter's own receipt (it may come from the verified code). */
   | { ok: true; replayed: boolean; quoteId: string; contactPhone: string; request: BuyerQuoteView }
   | { ok: false; code: 'BAD_INPUT' | 'NO_LINES' | 'TOO_MANY_LINES' | 'BAD_LINE'; message: string; field?: string }
-  | { ok: false; code: 'PRODUCTS_UNAVAILABLE' | 'COUNT_TOO_LARGE'; message: string; productIds: string[] }
+  | { ok: false; code: 'PRODUCTS_UNAVAILABLE' | 'COUNT_TOO_LARGE' | 'UNIT_CHANGED'; message: string; productIds: string[] }
   | { ok: false; code: 'IDEMPOTENCY_CONFLICT'; message: string };
 
 export class SubmitBulkQuoteUseCase {
@@ -231,6 +231,14 @@ export class SubmitBulkQuoteUseCase {
     });
     const snapshot = snapshotBulkLines(validated.lines, catalogue);
     if (!snapshot.ok) {
+      if (snapshot.code === 'UNIT_CHANGED') {
+        return {
+          ok: false,
+          code: 'UNIT_CHANGED',
+          message: 'We changed how some products in your list are sold (by carton or by piece). Check the marked lines, confirm the number, and send the list again.',
+          productIds: snapshot.productIds,
+        };
+      }
       return snapshot.code === 'PRODUCTS_UNAVAILABLE'
         ? {
             ok: false,

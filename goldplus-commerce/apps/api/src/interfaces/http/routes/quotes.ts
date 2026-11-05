@@ -40,7 +40,7 @@ routes.post('/bulk', async (c) => {
 
   const result = await registry.submitBulkQuoteUseCase.execute(body);
   if (!result.ok) {
-    const status = result.code === 'IDEMPOTENCY_CONFLICT' ? 409 : result.code === 'PRODUCTS_UNAVAILABLE' || result.code === 'COUNT_TOO_LARGE' ? 422 : 400;
+    const status = result.code === 'IDEMPOTENCY_CONFLICT' ? 409 : result.code === 'PRODUCTS_UNAVAILABLE' || result.code === 'COUNT_TOO_LARGE' || result.code === 'UNIT_CHANGED' ? 422 : 400;
     const details = 'productIds' in result
       ? { productIds: result.productIds }
       : 'field' in result && result.field ? { field: result.field } : undefined;

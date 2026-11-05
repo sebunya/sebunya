@@ -68,6 +68,8 @@ export const GET: APIRoute = async () => {
     '## Pages',
     '',
     `- [Shop, all products](${SITE_ORIGIN}/shop)`,
+    `- [Wholesale and bulk orders for shops](${SITE_ORIGIN}/bulk): order by the carton (flash drives and memory cards by the piece); supplied to order; the team confirms quantities, price and supply`,
+    `- [Request a quote](${SITE_ORIGIN}/quote-request): a short form; the sales team calls back with a price and a delivery time`,
     `- [Phone battery finder](${SITE_ORIGIN}/battery-finder): find the battery that fits a phone`,
     `- [Product finder](${SITE_ORIGIN}/product-finder)`,
     `- [Questions and answers](${SITE_ORIGIN}/faq): delivery, shop hours, battery fitment, payment, faults`,

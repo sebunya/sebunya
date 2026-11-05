@@ -29,6 +29,12 @@ export interface BulkLine {
   /** What the buyer saw, kept for a product that leaves the catalogue. */
   name: string;
   code: string | null;
+  /**
+   * The unit the count was chosen in. Missing on lists saved before it was kept;
+   * those take the page's unit. When the page now sells the product in another
+   * unit, the buyer reconfirms the line (unitChanged) before it can be sent.
+   */
+  unit?: BulkUnit;
 }
 
 export interface BulkListState {
@@ -105,6 +111,7 @@ export function parseStoredState(raw: string | null | undefined): BulkListState 
       count,
       name: typeof line.name === 'string' ? line.name.slice(0, 200) : '',
       code: typeof line.code === 'string' && line.code ? line.code.slice(0, 120) : null,
+      ...(line.unit === 'carton' || line.unit === 'piece' ? { unit: line.unit } : {}),
     });
     if (lines.length >= MAX_BULK_LINES) break;
   }
@@ -126,7 +133,7 @@ export function setLine(state: BulkListState, item: Pick<CatalogueItem, 'product
   const n = clampCount(count, item.bulkUnit);
   if (n === null) return { ...state, lines: others };
   const existingIndex = state.lines.findIndex((line) => line.productId === id);
-  const next: BulkLine = { productId: id, count: n, name: item.name, code: item.code };
+  const next: BulkLine = { productId: id, count: n, name: item.name, code: item.code, unit: item.bulkUnit };
   if (existingIndex >= 0) {
     const lines = [...state.lines];
     lines[existingIndex] = next;
@@ -134,6 +141,19 @@ export function setLine(state: BulkListState, item: Pick<CatalogueItem, 'product
   }
   if (state.lines.length >= MAX_BULK_LINES) return state;
   return { ...state, lines: [...others, next] };
+}
+
+/** True when the line was counted in a unit the product is no longer sold by (a stale saved list). */
+export function unitChanged(line: Pick<BulkLine, 'unit'>, item: Pick<CatalogueItem, 'bulkUnit'>): boolean {
+  return line.unit !== undefined && line.unit !== item.bulkUnit;
+}
+
+/** What the page sends for each line: id, count and the unit the buyer counted in. Never a price, name or code. */
+export function requestLines(state: BulkListState, catalogue: ReadonlyMap<string, Pick<CatalogueItem, 'bulkUnit'>>): Array<{ productId: string; count: number; unit?: BulkUnit }> {
+  return state.lines.map((l) => {
+    const unit = l.unit ?? catalogue.get(l.productId)?.bulkUnit;
+    return unit ? { productId: l.productId, count: l.count, unit } : { productId: l.productId, count: l.count };
+  });
 }
 
 export function removeLine(state: BulkListState, productId: string): BulkListState {
@@ -155,20 +175,23 @@ export function piecesOf(item: Pick<CatalogueItem, 'bulkUnit' | 'unitsPerCarton'
   return item.unitsPerCarton && item.unitsPerCarton > 0 ? count * item.unitsPerCarton : null;
 }
 
-/** "12 cartons (600 pieces)", "40 pieces", "3 cartons (size to confirm)". */
+/** "12 cartons (600 pieces)", "40 pieces", "3 cartons (pieces confirmed with your quote)". */
 export function countLabel(item: Pick<CatalogueItem, 'bulkUnit' | 'unitsPerCarton'>, count: number): string {
   const n = (v: number) => v.toLocaleString('en-US');
   if (item.bulkUnit === 'piece') return `${n(count)} ${count === 1 ? 'piece' : 'pieces'}`;
   const pieces = piecesOf(item, count);
   const cartons = `${n(count)} ${count === 1 ? 'carton' : 'cartons'}`;
-  return pieces === null ? `${cartons} (size to confirm)` : `${cartons} (${n(pieces)} pieces)`;
+  return pieces === null ? `${cartons} (pieces confirmed with your quote)` : `${cartons} (${n(pieces)} pieces)`;
 }
 
-/** What one unit is: "Carton of 50 pieces", "Carton, size to confirm", "Sold by the piece". */
+/** What one unit is: "Carton of 50 pieces", the unknown-size sentence, "Sold by the piece". */
 export function unitLabel(item: Pick<CatalogueItem, 'bulkUnit' | 'unitsPerCarton'>): string {
   if (item.bulkUnit === 'piece') return 'Sold by the piece';
-  return item.unitsPerCarton ? `Carton of ${item.unitsPerCarton.toLocaleString('en-US')} pieces` : 'Carton, size to confirm';
+  return item.unitsPerCarton ? `Carton of ${item.unitsPerCarton.toLocaleString('en-US')} pieces` : CARTON_SIZE_PENDING;
 }
+
+/** A carton whose size staff have not entered from verified packing records. The order still goes through. */
+export const CARTON_SIZE_PENDING = "Order by carton. We'll confirm how many pieces are in a carton with your quote.";
 
 export interface BulkEstimate {
   lineCount: number;

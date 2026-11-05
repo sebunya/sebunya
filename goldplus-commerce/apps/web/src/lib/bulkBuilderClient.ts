@@ -23,10 +23,12 @@ import {
   parseStoredState,
   pasteMissMessage,
   removeLine,
+  requestLines,
   serializeState,
   setBudget,
   setLine,
   submissionFingerprint,
+  unitChanged,
   type BulkListState,
   type BulkUnit,
   type CatalogueItem,
@@ -336,7 +338,11 @@ export function initBulkBuilder(): void {
       if (!listed || !item) {
         meta.append(el('span', 'font-bold text-red-700', 'No longer on sale. Remove it to send your list.'));
       } else {
-        meta.append(document.createTextNode(countLabel(item, line.count)));
+        if (unitChanged(line, item)) {
+          meta.append(el('span', 'font-bold text-red-700', `Now sold by the ${item.bulkUnit}. Check the number of ${item.bulkUnit === 'piece' ? 'pieces' : 'cartons'} below, then press Confirm.`));
+        } else {
+          meta.append(document.createTextNode(countLabel(item, line.count)));
+        }
         if (item.bulkUnit === 'carton' && line.count > SELF_SERVE_MAX_CARTONS) meta.append(document.createTextNode(` · over ${SELF_SERVE_MAX_CARTONS}: team confirms supply`));
       }
       info.append(meta);
@@ -374,6 +380,17 @@ export function initBulkBuilder(): void {
           syncRowInputs();
         });
         qtyWrap.append(label, input);
+        if (unitChanged(line, item)) {
+          const confirm = el('button', 'min-h-11 rounded-full bg-slate-900 px-4 text-sm font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2', 'Confirm');
+          confirm.type = 'button';
+          confirm.setAttribute('aria-label', `Confirm ${plural(line.count, item.bulkUnit, `${item.bulkUnit}s`)} of ${item.name}`);
+          confirm.addEventListener('click', () => {
+            const n = clampCount(input.value.replace(/\D/g, ''), item.bulkUnit) ?? 0;
+            commitRow(line.productId, n, true);
+            syncRowInputs();
+          });
+          qtyWrap.append(confirm);
+        }
         const pieces = item.bulkUnit === 'piece' ? line.count : item.unitsPerCarton ? line.count * item.unitsPerCarton : null;
         if (unlocked && item.bulkPriceUgx && pieces !== null) qtyWrap.append(el('span', 'ml-auto text-sm text-slate-800', formatUgx(item.bulkPriceUgx * pieces)));
         li.append(qtyWrap);
@@ -580,6 +597,12 @@ export function initBulkBuilder(): void {
       document.getElementById('bulk-review-heading')?.scrollIntoView({ block: 'start' });
       return;
     }
+    const stale = state.lines.filter((l) => { const item = catalogue.get(l.productId); return item ? unitChanged(l, item) : false; });
+    if (stale.length > 0) {
+      if (formError) formError.textContent = `We changed how ${plural(stale.length, 'product', 'products')} in your list ${stale.length === 1 ? 'is' : 'are'} sold. Check the marked ${stale.length === 1 ? 'line' : 'lines'} and press Confirm, then send your list.`;
+      document.getElementById('bulk-review-heading')?.scrollIntoView({ block: 'start' });
+      return;
+    }
     if (errors.length > 0) {
       for (const [field, message] of errors) fieldError(field, message);
       if (formError) formError.textContent = errors.length === 1 ? 'Check the highlighted field.' : `Check the ${errors.length} highlighted fields.`;
@@ -587,7 +610,7 @@ export function initBulkBuilder(): void {
       return;
     }
 
-    const lines = state.lines.map((l) => ({ productId: l.productId, count: l.count }));
+    const lines = requestLines(state, catalogue);
     const keyed = idempotencyKeyFor(state, submissionFingerprint(value('phone') || 'confirmed', lines, state.budgetUgx), mintKey);
     state = keyed.state;
     save();
@@ -628,6 +651,19 @@ export function initBulkBuilder(): void {
       if (code === 'PRODUCTS_UNAVAILABLE') {
         for (const id of json?.error?.details?.productIds ?? []) refusedIds.add(String(id).toLowerCase());
         renderReview();
+      }
+      if (code === 'UNIT_CHANGED') {
+        // This page is older than the product's unit: a reload shows the new unit and marks the lines to confirm.
+        state = { ...state, pending: null };
+        save();
+        if (formError) {
+          formError.textContent = 'We changed how some products in your list are sold (by carton or by piece). Your list is saved. ';
+          const reload = el('button', 'underline underline-offset-4', 'Reload the page to check them');
+          reload.type = 'button';
+          reload.addEventListener('click', () => window.location.reload());
+          formError.append(reload);
+        }
+        return;
       }
       if (code === 'IDEMPOTENCY_CONFLICT') {
         state = { ...state, pending: null };
