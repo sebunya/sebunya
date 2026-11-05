@@ -20,6 +20,7 @@ export interface VerificationCheckResult {
 }
 
 /** Codes are stored as varchar(50): a longer value (or control characters) can never match and used to fail the attempt insert with a 500. */
+// eslint-disable-next-line no-control-regex -- deliberately refuses control characters
 export const VERIFICATION_CODE_PATTERN = /^[^\u0000-\u001f\u007f]{1,50}$/;
 
 type Repo = Pick<DrizzleVerificationRepository, 'claimCode' | 'findCode' | 'saveAttempt'>;
