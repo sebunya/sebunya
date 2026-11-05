@@ -13,3 +13,13 @@ import { formatMoney } from '@goldplus/shared/src/markets';
 export function formatUgx(value: unknown): string {
   return formatMoney(value, 'UGX');
 }
+
+/**
+ * The receipt's Delivery cell. A 0 fee is "Free" only when the fee was confirmed (a waiver, or collection); an
+ * address the quote could not price is stored as 0 UNCONFIRMED and the team agrees the fee by phone, so it must
+ * never read as free delivery (visibility gaps N8). An unknown flag (an older API) keeps the old reading.
+ */
+export function deliveryFeeCell(feeUgx: number, confirmed: boolean | null | undefined): string {
+  if (feeUgx > 0) return formatUgx(feeUgx);
+  return confirmed === false ? 'To be agreed by phone' : 'Free';
+}

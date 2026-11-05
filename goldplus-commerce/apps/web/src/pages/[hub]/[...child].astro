@@ -4,7 +4,8 @@ import ProductCard from '../../components/ProductCard.astro';
 import { apiBase } from '../../lib/api';
 import { getCleanCatalog } from '../../lib/catalog/catalog';
 import { getTaxonomy } from '../../lib/taxonomy';
-import { getBusinessInfo } from '../../lib/businessInfo';
+import { getBusinessInfo, cutoffPhrase } from '../../lib/businessInfo';
+import { DELIVERY_FEE_TERMS, sameDayDeliveryTerms } from '@goldplus/shared';
 import { serializeJsonLd, breadcrumbJsonLd, schemaAvailability } from '../../lib/jsonld';
 import { SITE_ORIGIN } from '../../lib/sitemap';
 import {
@@ -72,7 +73,7 @@ const showWarrantyFaq = hasVerifiedWarrantyFact(products);
 const faqs = [...(child?.faqs ?? []), ...hub.faqs]
   .map((f) => {
     if (f.source === 'delivery') {
-      const answer = `Yes. ${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. An estimated fee for your address is shown at checkout before you pay and confirmed before the rider leaves.`;
+      const answer = `Yes. ${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. ${sameDayDeliveryTerms(cutoffPhrase(biz.sameDayCutoffHour), biz.openDays)} ${DELIVERY_FEE_TERMS}`;
       return { question: f.question, answer };
     }
     if (f.source === 'warranty') {

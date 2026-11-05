@@ -73,6 +73,8 @@ export interface OrderReceiptDto {
   customerName: string;
   subtotalUgx: number;
   deliveryFeeUgx: number;
+  /** False when the address could not be priced: a 0 fee then means "to be agreed", never free delivery (N8). */
+  deliveryFeeConfirmed?: boolean;
   discountUgx: number;
   deliveryArea: string;
   /** When the payment cleared, if it was paid online; null otherwise. */

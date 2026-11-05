@@ -1,6 +1,6 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
-import { formatUgx } from '../../../lib/money';
+import { formatUgx, deliveryFeeCell } from '../../../lib/money';
 import { apiBase } from '../../../lib/api';
 import { readSessionToken, SESSION_COOKIE_NAME } from '../../../lib/session';
 import { getBusinessInfo } from '../../../lib/businessInfo';
@@ -117,7 +117,7 @@ const method = order?.paymentMethod === 'pesapal' ? 'Paid online (Mobile Money o
             {addsUp && r && (
               <>
                 <tr><td colspan="3" class="pt-3 text-right text-slate-600">Items</td><td class="pt-3 text-right tabular-nums">{formatUgx(r.subtotalUgx)}</td></tr>
-                <tr><td colspan="3" class="text-right text-slate-600">Delivery</td><td class="text-right tabular-nums">{r.deliveryFeeUgx > 0 ? formatUgx(r.deliveryFeeUgx) : 'Free'}</td></tr>
+                <tr><td colspan="3" class="text-right text-slate-600">Delivery</td><td class="text-right tabular-nums">{deliveryFeeCell(r.deliveryFeeUgx, r.deliveryFeeConfirmed)}</td></tr>
               </>
             )}
             <tr class="text-base font-black text-slate-950"><td colspan="3" class="pt-2 text-right">Total paid</td><td class="pt-2 text-right tabular-nums">{formatUgx(order.totalAmountUgx)}</td></tr>

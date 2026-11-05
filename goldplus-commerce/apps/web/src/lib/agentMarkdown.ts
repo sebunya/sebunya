@@ -67,12 +67,23 @@ export function renderAgentMarkdown(doc: AgentDocument): string {
  * hand. We would have to render the page we were asked NOT to render, so the
  * saving goes unreported rather than being paid for twice.
  */
-export function markdownResponse(markdown: string): Response {
+/**
+ * Seconds a public cache may keep a Markdown document: 15 minutes, but never past the end of the running sale, so
+ * a sale price is not served from a cache after the promotion has ended (visibility gaps N8). An end already
+ * passed (the in-process discount cache can lag by a minute) gives 0.
+ */
+export function markdownMaxAgeSeconds(saleEndsIso: string | null | undefined, now: Date = new Date()): number {
+  const ends = saleEndsIso ? Date.parse(saleEndsIso) : NaN;
+  if (!Number.isFinite(ends)) return 900;
+  return Math.max(0, Math.min(900, Math.floor((ends - now.getTime()) / 1000)));
+}
+
+export function markdownResponse(markdown: string, saleEndsIso: string | null = null): Response {
   const headers: Record<string, string> = {
     'Content-Type': 'text/markdown; charset=utf-8',
     // Caches must keep Markdown and HTML as separate variants.
     Vary: 'Accept',
-    'Cache-Control': 'public, max-age=900',
+    'Cache-Control': `public, max-age=${markdownMaxAgeSeconds(saleEndsIso)}`,
     'x-markdown-tokens': String(estimateTokens(markdown)),
     // Citation is welcome; training is not. Mirrors the zone's content signals,
     // and Cloudflare treats an origin content-signal as authoritative.

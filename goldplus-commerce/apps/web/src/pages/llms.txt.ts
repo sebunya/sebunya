@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { apiBase } from '../lib/api';
 import { getBusinessInfo, cutoffPhrase } from '../lib/businessInfo';
+import { DELIVERY_FEE_TERMS, sameDayDeliveryTerms } from '@goldplus/shared';
 import { fetchApprovedCatalogueWithStatus } from '../lib/catalogue';
 import { getStorefrontDiscount } from '../lib/storefrontDiscount';
 import { chargedPriceUgx } from '../lib/productStructuredData';
@@ -54,7 +55,7 @@ export const GET: APIRoute = async () => {
     `- Shop: ${esc(biz.addressLine1)}. ${esc(biz.addressLine2)}`,
     `- Opening hours: ${esc(biz.openDays)}, ${esc(biz.shopHours)}`,
     `- Phone and WhatsApp: ${esc(biz.phoneDisplay)}`,
-    `- Delivery: ${esc(biz.deliveryNote)} Delivery runs ${esc(biz.deliveryHours)}; order before ${cutoffPhrase(biz.sameDayCutoffHour)} for the same-day run.`,
+    `- Delivery: ${esc(biz.deliveryNote)} Delivery runs ${esc(biz.deliveryHours)}. ${esc(sameDayDeliveryTerms(cutoffPhrase(biz.sameDayCutoffHour), biz.openDays))} ${esc(DELIVERY_FEE_TERMS)}`,
     '- Currency: Ugandan shilling (UGX). Prices on the site are what is charged.',
     '',
     ...(complete

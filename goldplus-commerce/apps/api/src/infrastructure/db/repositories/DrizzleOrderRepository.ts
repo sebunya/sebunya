@@ -423,6 +423,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
         customerName: row.customerName,
         subtotalUgx: row.subtotalAmount,
         deliveryFeeUgx: row.deliveryFee ?? 0,
+        deliveryFeeConfirmed: row.deliveryFeeConfirmed ?? false,
         discountUgx: (row as any).pricingDiscountTotal ?? 0,
         deliveryArea: row.deliveryArea,
         paidAt,

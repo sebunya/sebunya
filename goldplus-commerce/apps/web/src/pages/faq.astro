@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { getBusinessInfo, cutoffPhrase } from '../lib/businessInfo';
+import { DELIVERY_FEE_TERMS, UPCOUNTRY_TERMS, sameDayDeliveryTerms } from '@goldplus/shared';
 import { getStorefrontCopy } from '../lib/storefrontCopy';
 import { serializeJsonLd, breadcrumbJsonLd } from '../lib/jsonld';
 import { RETURNS_POLICY } from '../lib/returnsPolicy';
@@ -23,7 +24,7 @@ const cutoff = cutoffPhrase(biz.sameDayCutoffHour);
 const faqs: Array<{ q: string; a: string; links?: Array<{ label: string; href: string }> }> = [
   {
     q: 'Do you deliver, and how long does it take?',
-    a: `${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. Order before ${cutoff} and your order goes out on the same day's run; after that it goes on the next one. An estimated delivery fee for your address is shown at checkout before you pay, and confirmed before the rider leaves; nothing is added after delivery.`,
+    a: `${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. ${sameDayDeliveryTerms(cutoff, biz.openDays)} ${DELIVERY_FEE_TERMS} ${UPCOUNTRY_TERMS}`,
     links: [{ label: 'Delivery details', href: '/delivery/kampala-wakiso' }],
   },
   {

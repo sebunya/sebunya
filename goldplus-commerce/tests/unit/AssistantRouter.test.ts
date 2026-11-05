@@ -82,7 +82,8 @@ describe('assistant router: deterministic answers come from shop data', () => {
     expect(store.text).toMatch(/Zainab Aziza/);
     expect(store.links.map((l) => l.label)).toEqual(['Open the map', 'Chat on WhatsApp']);
     const delivery = await answerDeterministically(classify('do you deliver to Mbarara?'));
-    expect(delivery.text).toMatch(/shown at checkout before you pay and confirmed before the rider leaves/);
+    // One fee wording everywhere (DELIVERY_FEE_TERMS): the checkout fee is the charged fee; unpriceable = agreed by phone.
+    expect(delivery.text).toMatch(/shown at checkout before you pay, and that is the fee you are charged/);
     expect(delivery.text).toMatch(/outside Kampala and Wakiso/);
     const pay = await answerDeterministically(classify('how do I pay with MTN?'));
     expect(pay.text).toMatch(/MTN or Airtel Mobile Money/);

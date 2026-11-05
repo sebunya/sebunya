@@ -103,6 +103,14 @@ try {
     // unless the path has a recorded redirect (a changed slug): handing over
     // to 404.astro cannot redirect, because Astro keeps this 404 status.
     {
+      // N7: slugs are lower case, so a hand-typed or re-cased link (/products/GoldPlus-Power-Bank-GP-W2-PB) was a
+      // 404. One 301 to the lower-case slug, only when that product exists: never a redirect to a 404, and no loop
+      // (the target has no capitals to fold).
+      const folded = (slug ?? '').toLowerCase();
+      if (slug && folded !== slug) {
+        const lc = await fetch(`${apiBase}/products/${encodeURIComponent(folded)}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(3000) }).catch(() => null);
+        if (lc?.ok) return Astro.redirect(carryQuery(`/products/${folded}`, Astro.url.search), 301);
+      }
       const recorded = await findRecordedRedirect(Astro.url.pathname);
       if (recorded) return Astro.redirect(carryQuery(recorded.target, Astro.url.search), recorded.status);
       const unlisted = await notListedResponse(res);

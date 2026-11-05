@@ -73,7 +73,9 @@ describe('markdown content negotiation', () => {
     expect(mw).toContain("context.request.method === 'GET'");
     expect(mw).toContain("!context.url.pathname.startsWith('/admin')");
     expect(mw).toContain("!context.url.pathname.startsWith('/api/')");
-    expect(mw).toContain('if (markdown) return markdownResponse(markdown);');
+    // N8 (2026-11-05): the response also carries the running sale's end, so the cache never outlives it.
+    expect(mw).toContain('if (markdown) {');
+    expect(mw).toContain('return markdownResponse(markdown, sale.active ? sale.endsIso : null);');
     expect(mw).toContain('} catch {');
   });
 
