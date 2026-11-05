@@ -31,10 +31,11 @@ describe('site copy agrees with itself', () => {
   it('hub parents redirect to their one child instead of a 404', () => {
     const pairs: Array<[string, string]> = [
       ['delivery', '/delivery/kampala-wakiso'],
-      ['dealers', '/dealers/apply'],
     ];
     // /locations: MOVED_PATHS in the middleware since review 2026-11.
     expect(read('apps/web/src/middleware.ts')).toContain("'/locations': '/locations/zainab-aziza'");
+    // /dealers is its own page since 0219 (the dealer locator), no longer a redirect.
+    expect(read('apps/web/src/pages/dealers/index.astro')).toContain('data-dealer-locator');
     for (const [dir, target] of pairs) {
       expect(read(`apps/web/src/pages/${dir}/index.astro`)).toMatch(new RegExp(`Astro\\.redirect\\('${target}', 301\\)`));
     }

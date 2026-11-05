@@ -694,10 +694,40 @@ routes.patch('/admin/support/:id', requirePermissions([PERMISSIONS.ORDERS_MANAGE
   return c.json({ success: true, data: result.ticket });
 });
 
+// Dealer locator (0219): the public list. Only what a dealer agreed to show: name, town, address, shop phone.
+routes.get('/dealers/public', async (c) => {
+  const country = /^[A-Z]{2}$/.test(String(c.req.query('country') ?? '')) ? String(c.req.query('country')) : undefined;
+  const dealers = await registry.dealerRepo.listPublic(country).catch(() => null);
+  if (!dealers) return c.json({ success: false, error: { code: 'UNAVAILABLE', message: 'The dealer list is unavailable just now.' } }, 503);
+  c.header('Cache-Control', 'public, max-age=300');
+  return c.json({ success: true, data: dealers });
+});
+
+routes.post('/admin/dealers/:id/listing', requirePermissions([PERMISSIONS.DEALER_APPROVE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body.listed !== 'boolean') return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Send { listed: true|false, town, address, phone, country }.' } }, 400);
+  const clean = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
+  const town = clean(body.town, 120);
+  if (body.listed && !town) return c.json({ success: false, error: { code: 'TOWN_REQUIRED', message: 'A listed dealer needs a town, so shoppers can find the nearest one.' } }, 400);
+  const country = /^[A-Z]{2}$/.test(String(body.country ?? '')) ? String(body.country) : 'UG';
+  const id = String(c.req.param('id') ?? '');
+  const ok = await registry.dealerRepo.setListing(id, { listed: body.listed, town, address: clean(body.address, 500), phone: clean(body.phone, 50), country }, new Date());
+  if (!ok) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No such application.' } }, 404);
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: (c.get('user') as any).id,
+    action: body.listed ? 'DEALER_LISTED' : 'DEALER_UNLISTED',
+    entity: 'dealer_application',
+    entityId: id,
+    newState: { listed: body.listed, town, country },
+  });
+  return c.json({ success: true, data: { id, listed: body.listed } });
+});
+
 routes.get('/admin/dealers', requirePermissions([PERMISSIONS.DEALER_READ_PRIVATE]), async (c) => {
   try {
     const dealers = await registry.dealerRepo.findAll();
-    return c.json({ success: true, data: dealers });
+    const listing = await registry.dealerRepo.listingById().catch(() => new Map());
+    return c.json({ success: true, data: dealers.map((d: any) => ({ ...d, ...(listing.get(d.id) ?? {}) })) });
   } catch (err: any) {
     if (err.message.includes('DATABASE_URL')) {
       return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
