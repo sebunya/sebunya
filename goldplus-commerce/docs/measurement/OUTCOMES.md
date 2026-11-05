@@ -119,3 +119,24 @@ Kaushik defines the economic value), or set goals above what the shop has done o
 - GA4: 44 days of series since 2026-09-19, ~13 sessions a day. The best-window floor is 300 sessions.
 - Direct is 65% of landing touches: the alarm is right; the shop's own links (texts, WhatsApp, printed) are
   going out untagged. That is the next data-quality job.
+
+## Wholesale path: what is measured where (2026-11-05)
+
+No new events were added; each step already has one owner.
+
+| Step | Event / record | Fires when | Owner |
+|---|---|---|---|
+| Bulk visit | `page_seen` / GA4 `page_view` on `/bulk` | page load | telemetry (`lib/telemetry`), GA4 |
+| Quote start | none | not tracked: no report reads it; add only when a consumer exists | - |
+| WhatsApp tap | `generate_lead` `{method:'whatsapp'}` + `whatsapp_ref` (code, page path) | tap on a chat-with-us link | `lib/whatsappClicks` (intent only, not a sale) |
+| Confirmed quote / bulk request | `quote_requests` row (truth); then `generate_lead` `{method:'quote_request', ref}` | only after the API returned a reference: the page renders `data-lead-ref` only on success, so a validation failure sends nothing | `lib/leadSignals` on `/quote-request` and `/bulk/submitted` |
+
+Bulk and quote leads share `method:'quote_request'`; the reference prefix tells them apart (`BQ-` = bulk). The event
+carries the reference only: no name, phone, email, message, lines or prices go to analytics. It is sent from the
+browser after the server has stored the request, so a blocked or failed analytics call never loses the enquiry,
+and one reference sends one lead per device (`leadAlreadySent`).
+
+Confirmed submissions by landing page and referral: GA4 Explore, event `generate_lead`, dimension `lead method` (if
+registered as a custom dimension) with Landing page and Session source / medium; `(not set)` / `(direct)` rows are
+the unknown share and stay in the total. Count the confirmed total from `quote_requests` (or /admin/quotes) for the
+same dates: GA4 can only be lower (blocked tags), never the source of the number.

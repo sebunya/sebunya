@@ -48,6 +48,9 @@ export const STATIC_SITEMAP_PATHS: readonly string[] = [
   '/for/travel',
   '/for/car-charging',
   '/delivery/upcountry',
+  // 2026-11-05: the finder page (no answers) renders indexable and 13 guide links point at it; d30040b4 meant to list
+  // it ("in the sitemap") but put it under NON_INDEXABLE_PREFIXES. Answered views (?need=…) stay noindex,follow.
+  '/charger-finder',
 ];
 
 /** Path prefixes that are noindex and therefore banned from every sitemap. */
@@ -62,7 +65,6 @@ export const NON_INDEXABLE_PREFIXES: readonly string[] = [
   '/reset-password',
   '/logout',
   '/compare',
-  '/charger-finder',
   '/track-order',
 ];
 

@@ -76,7 +76,8 @@ describe('2026-10-22 review: small fixes', () => {
   it('a category with its own hub is one indexable URL: the shop view names the hub, the categories sitemap leaves it out', () => {
     expect(hubForCategory('power-devices')).toBe('/power');
     expect(hubForCategory('no-such-category')).toBeNull();
-    expect(read('apps/web/src/pages/sitemaps/categories.xml.ts')).toContain('.filter((cat) => !hubForCategory(cat.slug))');
+    // 2026-11-05: only a hub that is itself indexable (gate passes) replaces the category URL (CrawlFixtures.test.ts).
+    expect(read('apps/web/src/pages/sitemaps/categories.xml.ts')).toContain('.filter((cat) => !indexableHubForCategory(cat.slug, catalogue, taxonomy))');
     expect(read('apps/web/src/pages/shop.astro')).toContain('canonicalUrl={shopCanonicalUrl}');
   });
 
