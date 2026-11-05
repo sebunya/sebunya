@@ -1,14 +1,15 @@
 /**
  * Markets: the countries GoldPlus sells in (owner 2026-11-05: Kenya is next). One record per country holds what used
  * to be hard-coded to Uganda across the codebase: currency, phone shape, dialling code, locale, timezone, tax label.
- * Uganda is live. Kenya is configured but NOT live: it switches on only when the owner has the four things listed in
- * docs/markets/KENYA.md (KES prices, a Kenyan payment account, a delivery partner, KRA registration).
+ * Uganda is live. Kenya and Rwanda are configured but NOT live: each switches on only when the owner has the things
+ * listed in docs/markets/KENYA.md and docs/markets/RWANDA.md (local prices, a local payment account, a delivery partner,
+ * tax registration).
  *
  * New code reads a market from here instead of typing 'UGX', '+256' or 'Africa/Kampala'. Existing Uganda-only helpers
  * (normalizeUgandanPhone, formatUgx, EAT) stay and are now the Uganda case of these.
  */
-export type MarketCode = 'UG' | 'KE';
-export type CurrencyCode = 'UGX' | 'KES';
+export type MarketCode = 'UG' | 'KE' | 'RW';
+export type CurrencyCode = 'UGX' | 'KES' | 'RWF';
 
 export interface Market {
   code: MarketCode;
@@ -40,7 +41,17 @@ export const MARKETS: Readonly<Record<MarketCode, Market>> = {
     nationalShape: /^[17]\d{8}$/, locale: 'en-KE', timezone: 'Africa/Nairobi', vatPercent: 16, taxAuthority: 'KRA',
     mobileMoney: ['M-Pesa', 'Airtel Money'],
   },
+  RW: {
+    // Rwanda: mobile numbers 072/073 (Airtel) and 078/079 (MTN). Kigali is UTC+02:00 (CAT), ONE HOUR BEHIND Kampala:
+    // the EAT time module is NOT correct for Rwanda (cut-offs, delivery windows); see docs/markets/RWANDA.md.
+    code: 'RW', name: 'Rwanda', live: false, currency: 'RWF', currencyDecimals: 0, dialCode: '250',
+    nationalShape: /^7[2389]\d{7}$/, locale: 'en-RW', timezone: 'Africa/Kigali', vatPercent: 18, taxAuthority: 'RRA',
+    mobileMoney: ['MTN MoMo', 'Airtel Money'],
+  },
 };
+
+/** UTC offset in minutes per market (none of the three observes daylight saving). */
+export const MARKET_UTC_OFFSET_MINUTES: Readonly<Record<MarketCode, number>> = { UG: 180, KE: 180, RW: 120 };
 
 export const HOME_MARKET: MarketCode = 'UG';
 export const LIVE_MARKETS: readonly Market[] = Object.values(MARKETS).filter((m) => m.live);
@@ -70,7 +81,7 @@ export function marketForPhone(raw: string | null | undefined): Market | null {
 
 /** "UGX 45,000" / "KES 1,250": the ISO code, a non-breaking space, grouped digits. The code, never a locale symbol. */
 export function formatMoney(value: unknown, currency: CurrencyCode = 'UGX'): string {
-  const decimals = currency === 'KES' ? MARKETS.KE.currencyDecimals : MARKETS.UG.currencyDecimals;
+  const decimals = Object.values(MARKETS).find((m) => m.currency === currency)?.currencyDecimals ?? 0;
   const n = Number(value) || 0;
   return `${currency}\u00A0${new Intl.NumberFormat('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(decimals === 0 ? Math.round(n) : n)}`;
 }
