@@ -70,7 +70,8 @@ export function rankSuggestions<T extends SuggestionCandidate>(
   const scored = candidates.map((c) => {
     const name = c.name.toLowerCase();
     const identifiers = `${(c.sku ?? '').toLowerCase()} ${(c.modelNumber ?? '').toLowerCase()}`;
-    const haystack = `${name} ${identifiers} ${(c.categoryName ?? '').toLowerCase()} ${(c.subcategory ?? '').toLowerCase()}`;
+    // The hyphen-stripped name too (brief N2): "pdw2" reaches "GP-W2 (PD-W2)", as the SQL and /shop do.
+    const haystack = `${name} ${identifiers} ${(c.categoryName ?? '').toLowerCase()} ${(c.subcategory ?? '').toLowerCase()} ${name.replace(/-/g, '')}`;
     let score = 0;
     if (name.startsWith(q)) score = 5;
     else if (name.split(/\s+/).some((w) => w.startsWith(q))) score = 4;

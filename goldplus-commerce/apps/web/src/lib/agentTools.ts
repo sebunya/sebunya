@@ -3,7 +3,7 @@ import { getBusinessInfo } from './businessInfo';
 import { fetchApprovedCatalogueWithStatus } from './catalogue';
 import { getStorefrontDiscount } from './storefrontDiscount';
 import { SITE_ORIGIN } from './sitemap';
-import { AVAILABILITY_TEXT, agentProduct, batteryFinderSearch, productBySlug, searchCatalogue, type AgentProduct } from './agentCatalog';
+import { AVAILABILITY_TEXT, SPECS_NOT_RECORDED, agentProduct, batteryFinderSearch, productBySlug, searchCatalogue, type AgentProduct } from './agentCatalog';
 import { getProductQuestions } from './questions';
 
 /**
@@ -139,7 +139,7 @@ export async function callTool(name: string, args: Json): Promise<Json> {
       const product = { ...agentProduct(p, discount), description: p.longDescription, teamAnswers: answered };
       const specs = Object.entries(product.specifications).map(([k, v]) => `  - ${k}: ${v}`).join('\n');
       const qa = answered.map((q) => `  - Q: ${q.question}\n    A${q.answeredOn ? ` (${q.answeredOn})` : ''}: ${q.answer}`).join('\n');
-      const text = [priceLine(product), product.summary ?? '', specs ? `Specifications:\n${specs}` : '', qa ? `Questions the GoldPlus team has answered about this product (the shop's own word on the date shown; for price and stock, the live figures above win):\n${qa}` : ''].filter(Boolean).join('\n');
+      const text = [priceLine(product), product.summary ?? '', specs ? `Specifications:\n${specs}` : `Specifications: ${SPECS_NOT_RECORDED}`, qa ? `Questions the GoldPlus team has answered about this product (the shop's own word on the date shown; for price and stock, the live figures above win):\n${qa}` : ''].filter(Boolean).join('\n');
       return toolText({ product }, text);
     }
     case 'list_categories': {

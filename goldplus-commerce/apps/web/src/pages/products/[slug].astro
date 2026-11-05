@@ -1034,9 +1034,11 @@ if (product) {
                     </td>
                   </tr>
                 ))}
-                {!hasValidSku && verifiedAttributes.length === 0 && (
-                  <tr>
-                    <td class="px-5 py-6 text-slate-500 italic text-center text-sm" colspan="2">No specifications published yet.</td>
+                {/* Brief A1: a table with the SKU alone read as a complete spec sheet. With no
+                    checked specification, the table says the ratings are not recorded. */}
+                {verifiedAttributes.length === 0 && (
+                  <tr data-specs-not-recorded>
+                    <td class="px-5 py-4 text-slate-600 text-sm" colspan="2">Capacity, input, output, ports and cables are not checked yet. Ask us before you buy.</td>
                   </tr>
                 )}
               </tbody>

@@ -4,7 +4,7 @@ import { getBusinessInfo } from '../lib/businessInfo';
 import { fetchApprovedCatalogueWithStatus } from '../lib/catalogue';
 import { getStorefrontDiscount } from '../lib/storefrontDiscount';
 import { SITE_ORIGIN } from '../lib/sitemap';
-import { AVAILABILITY_TEXT, agentProduct } from '../lib/agentCatalog';
+import { AVAILABILITY_TEXT, SPECS_NOT_RECORDED, agentProduct } from '../lib/agentCatalog';
 
 /**
  * /llms-full.txt — the whole catalogue as one Markdown document, for an
@@ -55,6 +55,7 @@ export const GET: APIRoute = async () => {
       if (p.sku) lines.push(`- SKU: ${p.sku}`);
       if (p.model) lines.push(`- Model: ${p.model}`);
       for (const [k, v] of Object.entries(p.specifications)) lines.push(`- ${one(k)}: ${one(String(v))}`);
+      if (!p.specifications_recorded) lines.push(`- Specifications: ${SPECS_NOT_RECORDED}`);
       if (p.summary) lines.push('', one(p.summary));
       lines.push('');
     }

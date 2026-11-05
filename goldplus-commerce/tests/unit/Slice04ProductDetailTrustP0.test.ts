@@ -22,7 +22,9 @@ describe('Slice 04 product detail trust P0 protected contract', () => {
 
   it('publishes only verified attributes and identifies missing specifications', () => {
     expect(pdp).toContain('product.attributeValues.filter((v) => v.isVerified');
-    expect(pdp).toContain('No specifications published yet.');
+    // Brief A1: the SKU row alone no longer reads as a full spec sheet; an empty table says what is unchecked.
+    expect(pdp).toContain('Capacity, input, output, ports and cables are not checked yet. Ask us before you buy.');
+    expect(pdp).toContain('{verifiedAttributes.length === 0 && (');
   });
 
   it('does not invent warranty, delivery or universal compatibility guarantees', () => {
