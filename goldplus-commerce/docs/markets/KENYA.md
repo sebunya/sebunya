@@ -1,6 +1,6 @@
 # Kenya: second market readiness
 
-Owner decision 2026-11-05: Kenya is the next country. This file is the plan and the register of what is done in code,
+Owner decision 2026-11-05: Kenya and Rwanda are next (Rwanda: docs/markets/RWANDA.md). This file is the plan and the register of what is done in code,
 what still names Uganda, and what only the owner can do. Kenya switches on by setting `live: true` on `MARKETS.KE` in
 packages/shared/src/markets/index.ts, and only after every owner item below is done.
 
@@ -11,7 +11,7 @@ packages/shared/src/markets/index.ts, and only after every owner item below is d
 | One record per country: currency, dialling code, phone shape, locale, timezone, VAT %, tax authority, mobile money | packages/shared/src/markets | Uganda live, Kenya configured and off |
 | Phone normalisation per market (Kenya 07/01 numbers, +254) | `normalizeMarketPhone`, `marketForPhone` | Done, tested against the Uganda helper |
 | Money formatting per currency, ISO code shown (`KES 1,250`) | `formatMoney`; the storefront's `formatUgx` now calls it | Done, output for UGX unchanged |
-| Time | Kenya is UTC+03:00 with no DST, the same as Kampala | Nothing to change: the EAT module is correct for Nairobi |
+| Time | Kenya is UTC+03:00 with no DST, the same as Kampala | Nothing to change for Kenya: the EAT module is correct for Nairobi (not for Kigali, UTC+02:00) |
 | Dealer listings carry a country (UG/KE) | 0219, /dealers | Done |
 
 ## Still Uganda-only in code (the refactor, in order)
@@ -41,4 +41,5 @@ packages/shared/src/markets/index.ts, and only after every owner item below is d
 - [ ] KRA PIN and VAT/eTIMS registration, or a local distributor who holds them.
 - [ ] Import route and duties for stock entering Kenya (or stock held by a Kenyan dealer).
 - [ ] Domain choice: .co.ke or /ke.
-- [ ] Ad accounts targeting Kenya (Meta, Google, TikTok all accept Kenya; TikTok does not accept Uganda).
+- [ ] Ad accounts targeting Kenya (Meta and Google serve Kenya; check the TikTok and Snapchat sign-up lists for Kenya,
+      as both refused Uganda).
