@@ -618,15 +618,7 @@ const nbaJson = escNav(JSON.stringify(nba));
 </header>
 
 <style is:global>
-/* Poppins — reuse the self-hosted files the hero already ships (CSP font-src 'self') */
-/* Metric-matched local fallback for Poppins (2026-09-13). Until the woff2 arrives the text
-   renders in Arial (or its metric twins Liberation Sans / Arimo on Linux) scaled to Poppins'
-   advance widths and vertical metrics, so the swap does not rewrap the hero copy — the
-   swap was a layout shift of 0.006–0.26 on mobile Lighthouse. Computed from the shipped
-   poppins-*.woff2 against Arial / Arial Bold; nothing is downloaded. */
-@font-face{font-family:'Poppins Fallback';font-style:normal;font-weight:400;src:local('Arial'),local('ArialMT'),local('Liberation Sans'),local('LiberationSans'),local('Arimo'),local('Helvetica');size-adjust:110.02%;ascent-override:95.44%;descent-override:31.81%;line-gap-override:9.09%;}
-@font-face{font-family:'Poppins Fallback';font-style:normal;font-weight:600;src:local('Arial Bold'),local('Arial-BoldMT'),local('Liberation Sans Bold'),local('LiberationSans-Bold'),local('Arimo Bold'),local('Helvetica Bold');size-adjust:104.36%;ascent-override:100.61%;descent-override:33.54%;line-gap-override:9.58%;}
-@font-face{font-family:'Poppins Fallback';font-style:normal;font-weight:700;src:local('Arial Bold'),local('Arial-BoldMT'),local('Liberation Sans Bold'),local('LiberationSans-Bold'),local('Arimo Bold'),local('Helvetica Bold');size-adjust:105%;ascent-override:100%;descent-override:33.33%;line-gap-override:9.52%;}
+/* Montserrat (the one brand face) comes from /fonts/faces.css; its metric-matched fallback lives in global.css. */
 
 /* =====================================================================
    GOLDPLUS NAVIGATION v2
@@ -661,7 +653,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   --gpn-ease:cubic-bezier(.22,.9,.28,1);
   position:relative;z-index:60;background:var(--gpn-ink);
   box-shadow:0 1px 0 rgba(147,213,0,.14), 0 18px 40px -26px rgba(10,10,10,.6);
-  font-family:'Poppins','Poppins Fallback',system-ui,sans-serif;color:var(--gpn-cream);
+  font-family:'Montserrat','Montserrat Fallback',system-ui,sans-serif;color:var(--gpn-cream);
 }
 .gp-nav,.gp-nav *,.gp-nav *::before,.gp-nav *::after{box-sizing:border-box;}
 /* The reset must NOT outweigh component rules: `.gp-nav a` is (0,1,1) and
@@ -744,7 +736,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav__search input{
   width:100%;height:44px;padding:0 44px;
   background:rgba(243,239,228,.045);border:1px solid var(--gpn-line);border-radius:999px;
-  color:var(--gpn-cream);font:400 14.5px 'Poppins',sans-serif;
+  color:var(--gpn-cream);font:400 14.5px 'Montserrat','Montserrat Fallback',sans-serif;
   transition:border-color .3s var(--gpn-ease),background .3s var(--gpn-ease);
 }
 .gp-nav__search input::placeholder{color:rgba(243,239,228,.42);}
@@ -942,7 +934,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   .gp-nav__msearch input{
     width:100%;height:50px;padding:0 16px 0 44px;border-radius:14px;
     background:rgba(243,239,228,.06);border:1px solid var(--gpn-line);
-    color:var(--gpn-cream);font:400 16px 'Poppins',sans-serif;
+    color:var(--gpn-cream);font:400 16px 'Montserrat','Montserrat Fallback',sans-serif;
   }
   .gp-nav__msearch input:focus{outline:none;border-color:rgba(147,213,0,.5);}
   .gp-nav__msearch > svg{position:absolute;left:16px;top:25px;transform:translateY(-50%);width:17px;height:17px;color:rgba(243,239,228,.45);}
@@ -1079,7 +1071,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav__join input{
   height:44px;padding:0 14px;border-radius:11px;
   background:rgba(243,239,228,.05);border:1px solid var(--gpn-line);
-  color:var(--gpn-cream);font:400 13.5px 'Poppins',sans-serif;
+  color:var(--gpn-cream);font:400 13.5px 'Montserrat','Montserrat Fallback',sans-serif;
 }
 .gp-nav__join input::placeholder{color:rgba(243,239,228,.34);}
 .gp-nav__join input:focus{outline:none;border-color:rgba(147,213,0,.55);background:rgba(243,239,228,.07);}
@@ -1112,14 +1104,14 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav__mjoin input{
   flex:1;min-width:0;height:52px;padding:0 15px;border-radius:12px;
   background:rgba(243,239,228,.05);border:1px solid var(--gpn-line);
-  color:var(--gpn-cream);font:400 16px 'Poppins',system-ui,sans-serif;
+  color:var(--gpn-cream);font:400 16px 'Montserrat','Montserrat Fallback',system-ui,sans-serif;
 }
 .gp-nav__mjoin input::placeholder{color:rgba(243,239,228,.34);}
 .gp-nav__mjoin input:focus{outline:none;border-color:rgba(147,213,0,.55);background:rgba(243,239,228,.07);}
 .gp-nav__mjoin button{
   flex:none;height:52px;padding:0 22px;border-radius:12px;border:0;
   background:var(--gpn-green);color:var(--gpn-ink);
-  font:600 14px 'Poppins',system-ui,sans-serif;cursor:pointer;
+  font:600 14px 'Montserrat','Montserrat Fallback',system-ui,sans-serif;cursor:pointer;
 }
 /* a real touch target, not a bare text link: 44px box, margin trimmed so the
    visual gap below "Claim it" stays at ~12px */
@@ -1214,7 +1206,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav__finder input{
   width:100%;height:42px;padding:0 15px;margin-bottom:12px;
   background:rgba(243,239,228,.05);border:1px solid var(--gpn-line);border-radius:10px;
-  color:var(--gpn-cream);font:400 13.5px 'Poppins',sans-serif;
+  color:var(--gpn-cream);font:400 13.5px 'Montserrat','Montserrat Fallback',sans-serif;
 }
 .gp-nav__finder input::placeholder{color:rgba(243,239,228,.4);}
 .gp-nav__finder input:focus{outline:none;border-color:rgba(147,213,0,.5);}
@@ -1273,7 +1265,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   .gp-nav__mfinder input{
     width:calc(100% - 15px);height:48px;padding:0 15px;border-radius:11px;
     background:rgba(243,239,228,.05);border:1px solid var(--gpn-line);
-    color:var(--gpn-cream);font:400 14px 'Poppins',sans-serif;
+    color:var(--gpn-cream);font:400 14px 'Montserrat','Montserrat Fallback',sans-serif;
   }
   .gp-nav__mfinder input:focus{outline:none;border-color:rgba(147,213,0,.5);}
   .gp-nav__acc .gp-nav__ask{margin:2px 0 16px 15px;line-height:1.45;}
