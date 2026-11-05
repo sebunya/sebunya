@@ -2,7 +2,7 @@ import type { ProductPublicDto } from '@goldplus/shared';
 import { apiBase } from './api';
 import { fetchApprovedCatalogueWithStatus } from './catalogue';
 import { getStorefrontDiscount, type StorefrontDiscount } from './storefrontDiscount';
-import { chargedPriceUgx, realProductImageUrls } from './productStructuredData';
+import { chargedPriceUgx, realProductImageUrls, offerSellerJsonLd, publishableIdentifier } from './productStructuredData';
 import { getBusinessInfo, cutoffPhrase } from './businessInfo';
 import { DELIVERY_FEE_TERMS, UPCOUNTRY_TERMS, sameDayDeliveryTerms } from '@goldplus/shared';
 import { getTaxonomy } from './taxonomy';
@@ -76,7 +76,7 @@ function termsBlock(): string[] {
 }
 
 /** The Product node the HTML page publishes, so the Markdown carries the same structured data. */
-function productJsonLd(p: ProductPublicDto, discount: StorefrontDiscount | null): Record<string, unknown> {
+export function productJsonLd(p: ProductPublicDto, discount: StorefrontDiscount | null): Record<string, unknown> {
   const node: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -85,8 +85,11 @@ function productJsonLd(p: ProductPublicDto, discount: StorefrontDiscount | null)
     brand: { '@type': 'Brand', name: 'GoldPlus' },
     category: p.categoryName,
   };
-  if (p.sku) node.sku = p.sku;
-  if (p.modelNumber) node.mpn = p.modelNumber;
+  // Same identity rule as the PDP JSON-LD: placeholders are not identifiers.
+  const sku = publishableIdentifier(p.sku);
+  const mpn = publishableIdentifier(p.modelNumber);
+  if (sku) node.sku = sku;
+  if (mpn) node.mpn = mpn;
   // Real photographs only, as ProductJsonLd.astro publishes them: the cover of
   // a photo-less product is the 'SAMPLE IMAGE · REAL PHOTO COMING' card, and a
   // placeholder is not a picture of the product. None real → no image at all.
@@ -110,6 +113,8 @@ function productJsonLd(p: ProductPublicDto, discount: StorefrontDiscount | null)
       itemCondition: 'https://schema.org/NewCondition',
       availability: schemaAvailability(p.availability?.kind ?? 'unknown'),
       hasMerchantReturnPolicy: merchantReturnPolicyJsonLd(),
+      // The same seller the HTML Offer names (A5: the Markdown omitted it).
+      seller: offerSellerJsonLd(SITE_ORIGIN),
     };
   }
   return node;
@@ -123,8 +128,10 @@ function productDocument(p: ProductPublicDto, discount: StorefrontDiscount | nul
   if (price != null) facts.push(`- **Price:** ${ugx(price)}`);
   facts.push(`- **Availability:** ${availabilityWord(p.availability?.kind ?? 'unknown')}`);
   if (p.categoryName) facts.push(`- **Category:** ${p.categoryName}`);
-  if (p.sku) facts.push(`- **SKU:** ${p.sku}`);
-  if (p.modelNumber) facts.push(`- **Model:** ${p.modelNumber}`);
+  const skuFact = publishableIdentifier(p.sku);
+  const modelFact = publishableIdentifier(p.modelNumber);
+  if (skuFact) facts.push(`- **SKU:** ${skuFact}`);
+  if (modelFact) facts.push(`- **Model:** ${modelFact}`);
   facts.push('- **Brand:** GoldPlus', '- **Condition:** New');
   lines.push(...facts, '');
 

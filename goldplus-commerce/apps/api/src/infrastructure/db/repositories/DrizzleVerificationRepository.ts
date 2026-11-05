@@ -5,7 +5,21 @@ import { products } from '../schema/products';
 import { VerificationAttempt } from '../../../domain/verification/VerificationAttempt';
 
 export class DrizzleVerificationRepository {
-  async findCode(code: string): Promise<{ productId: string; isUsed: boolean } | null> {
+  /**
+   * The ONE state transition: unused -> used, as a single conditional UPDATE.
+   * Two simultaneous checks of the same code cannot both claim it: exactly one
+   * gets the row back, the other sees it already used. Returns null when the
+   * code is unknown OR was already used; findCode tells those apart.
+   */
+  async claimCode(code: string): Promise<{ productId: string } | null> {
+    const rows = await db.update(verificationCodes)
+      .set({ isUsed: true, usedAt: new Date() })
+      .where(and(eq(verificationCodes.code, code), eq(verificationCodes.isUsed, false)))
+      .returning({ productId: verificationCodes.productId });
+    return rows[0] ? { productId: rows[0].productId } : null;
+  }
+
+  async findCode(code: string): Promise<{ productId: string; isUsed: boolean; usedAt?: Date | null } | null> {
     const result = await db.query.verificationCodes.findFirst({
       where: eq(verificationCodes.code, code),
     });
@@ -15,6 +29,7 @@ export class DrizzleVerificationRepository {
     return {
       productId: result.productId,
       isUsed: result.isUsed,
+      usedAt: result.usedAt ?? null,
     };
   }
 

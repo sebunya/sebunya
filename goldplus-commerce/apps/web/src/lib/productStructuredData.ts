@@ -43,3 +43,23 @@ export function chargedPriceUgx(
   const sale = salePriceUgx(retail, discount.percentBps, effectiveFloorUgx(discount.priceFloorUgx, p.floorPriceUgx, retail));
   return offerPriceUgx(retail, sale);
 }
+
+/**
+ * Who sells it: the organisation node the home page describes (@id), inline so
+ * an Offer is complete on its own. ONE definition for the PDP JSON-LD and the
+ * Markdown for agents, which used to omit the seller (brief A5, 2026-11-05).
+ */
+export function offerSellerJsonLd(origin: string): Record<string, unknown> {
+  return { '@type': 'Organization', '@id': `${origin}/#organization`, name: 'ShopGoldPlus', url: origin };
+}
+
+/**
+ * A SKU or model number is published only when it is a real identifier, not a
+ * placeholder ("Needs Business Confirmation", "... pending"). The PDP applied
+ * this; the Markdown did not, so the two could disagree on identity.
+ */
+export function publishableIdentifier(v: string | null | undefined): string | null {
+  const t = (v ?? '').trim();
+  if (!t || t === 'Needs Business Confirmation' || t.toLowerCase().includes('pending')) return null;
+  return t;
+}
