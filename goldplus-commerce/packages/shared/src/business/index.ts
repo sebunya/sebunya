@@ -60,7 +60,8 @@ export const DEFAULT_BUSINESS_INFO: BusinessInfo = {
   mapUrl: SHOP_LOCATION.mapUrl,
   shopHours: '8:30am to 6:00pm',
   deliveryHours: '8:30am to 8:00pm',
-  deliveryNote: 'Same-day in Kampala & Wakiso. Fee shown before you pay.',
+  // Owner 2026-11-05: the promise is same-day dispatch AND delivery, for orders before the cut-off.
+  deliveryNote: 'Same-day dispatch and delivery in Kampala & Wakiso on orders before 5pm. Fee shown before you pay.',
   openDays: 'Monday to Saturday',
   sameDayCutoffHour: 17,
   closedDays: [0],

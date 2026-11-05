@@ -9,7 +9,7 @@ import { actorUserId, rowsOf } from './lib/scriptHelpers';
 
 /**
  * A factual one-line description for every product that has none: what it
- * is, its model as the price list writes it, and the same-day dispatch
+ * is, its model as the price list writes it, and the same-day delivery
  * promise the shop already makes everywhere else (Kampala and Wakiso).
  * Nothing about the product is invented; anything an operator has already
  * written is left alone. Audited as one batch.
@@ -30,12 +30,12 @@ async function main(): Promise<void> {
   for (const r of rows) {
     const name = String(r.name); const model = String(r.model_number ?? '').trim();
     const kind = KIND.find(([re]) => re.test(name))?.[1] ?? 'accessory';
-    const text = `GoldPlus ${kind}${model ? `, model ${model}` : ''}. Same-day dispatch in Kampala and Wakiso.`;
+    const text = `GoldPlus ${kind}${model ? `, model ${model}` : ''}. Same-day delivery in Kampala and Wakiso.`;
     const result = await listing.execute({ productId: String(r.id), shortDescription: text });
     if (!result.ok) { console.log(`  FAILED ${name}: ${result.message}`); continue; }
     done.push(String(r.id));
   }
-  if (done.length) await new CreateAuditLogUseCase(registry.auditRepo).execute({ actorId, action: 'PRODUCT_DESCRIPTIONS_FILLED', entity: 'product_bulk_edit', entityId: randomUUID(), newState: { count: done.length, productIds: done, template: 'GoldPlus <kind>, model <model>. Same-day dispatch in Kampala and Wakiso.' } });
+  if (done.length) await new CreateAuditLogUseCase(registry.auditRepo).execute({ actorId, action: 'PRODUCT_DESCRIPTIONS_FILLED', entity: 'product_bulk_edit', entityId: randomUUID(), newState: { count: done.length, productIds: done, template: 'GoldPlus <kind>, model <model>. Same-day delivery in Kampala and Wakiso.' } });
   console.log(`descriptions written for ${done.length} of ${rows.length} products`);
 }
 main().then(() => endDbConnection()).catch(async (e) => { console.error(e); await endDbConnection(); process.exit(1); });

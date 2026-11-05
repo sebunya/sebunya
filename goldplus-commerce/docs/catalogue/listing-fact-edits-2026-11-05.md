@@ -14,16 +14,17 @@ A USB-A plug does not fit a USB-C-only laptop or phone.
 | GP-2GB-F, GP-4GB-F, GP-8GB-F, GP-16GB-F, GP-32GB-F, GP-64GB-F, GP-128GB-F, GP-256GB-F | Short description | `works in any USB port.` | `plugs into a USB-A port.` |
 | GP-2GB-F, GP-4GB-F, GP-8GB-F, GP-256GB-F | Long description | `Plugs into any USB port on a laptop, a desktop, a car radio or a TV.` | `Plugs into a USB-A port on a laptop, a desktop, a car radio or a TV.` |
 
-## 2. Delivery: dispatch, not arrival
+## 2. Delivery: no description edit (owner decision)
 
-All 77 public products end their long description with `Same-day delivery in Kampala and Wakiso.`
-The checkout, hero (migrations 0186, 0188), shop page and FAQ promise when an order goes out, not when it
-arrives (delivery contract #10, `apps/web/src/lib/checkout.ts`).
+Owner 2026-11-05: the promise is same-day dispatch AND delivery in Kampala and Wakiso for orders before the
+cut-off. The descriptions' `Same-day delivery in Kampala and Wakiso.` and guide 103 already say that and stay.
+Delivery contract guarantee 10 forbids a point-in-time promise ("by 3pm"), not a same-day one.
 
-| Records | Field | Replace | With |
+The one record to change is the footer and MCP delivery note (business info, admin-editable):
+
+| Record | Field | Replace | With |
 |---|---|---|---|
-| all products | Long (and short, where present) description | `Same-day delivery in Kampala and Wakiso` | `Same-day dispatch in Kampala and Wakiso` |
-| Blog: `/blog/delivery-in-kampala-and-wakiso-how-it-works` | Summary and first Article paragraph | `GoldPlus delivers same-day in Kampala and Wakiso` | `GoldPlus dispatches orders the same day in Kampala and Wakiso` (source file `docs/content/guides/103-delivery-in-kampala-and-wakiso.md` already changed) |
+| `/admin/business-info` | Delivery note | `Same-day in Kampala & Wakiso. Fee shown before you pay.` | `Same-day dispatch and delivery in Kampala & Wakiso on orders before 5pm. Fee shown before you pay.` |
 
 ## How to apply
 
