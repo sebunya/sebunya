@@ -36,4 +36,21 @@ describe('Sharp wave 2: situations, upcountry, receipt, loyalty weight', () => {
     expect(new Set(positions).size).toBe(positions.length);
     expect(read('apps/web/src/pages/products/[slug].astro')).toContain('{pdpSignedIn && loyaltyRate > 0');
   });
+  it('brand footer links render even when the saved footer predates them, without duplicates', () => {
+    const layout = read('apps/web/src/layouts/BaseLayout.astro');
+    expect(layout).toContain('data-brand-footer-links');
+    expect(layout).toContain('.filter((l) => !footerHrefs.has(l.href))');
+    for (const href of ['/about', '/for/gifts', '/delivery/upcountry']) expect(layout).toContain(`href: '${href}'`);
+  });
+});
+
+describe('Sharp: the hero rail leads with the range for a first visit', async () => {
+  const { selectHeroSlides, HERO_SELECTION_TUNING } = await import('@goldplus/shared');
+  it('range comes before a live sale, and no loyalty slide shows to a new visitor', () => {
+    const ctx = { isNew: true, isReturning: false, isRegular: false, hasOrdered: false, saleLive: true, beforeCutoff: true, cartItems: 0, scratched: true, referred: false, serverCats: [] };
+    const rail = selectHeroSlides(HERO_SLIDE_LIBRARY.filter((s) => s.enabled), ctx as never, HERO_SELECTION_TUNING).map((s) => s.slideKey);
+    expect(rail[0]).toBe('range');
+    expect(rail).toContain('flash');
+    expect(rail.some((k) => k === 'referral' || k === 'loyalty')).toBe(false);
+  });
 });

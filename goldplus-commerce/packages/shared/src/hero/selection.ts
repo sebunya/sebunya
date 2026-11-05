@@ -61,7 +61,8 @@ export interface HeroSelectionTuning {
 export const HERO_SELECTION_TUNING: HeroSelectionTuning = {
   show: 4,
   themeCap: { offer: 2, logistics: 1, loyalty: 1, product: 1, brand: 1, trust: 1 },
-  funnel: { offer: 1, product: 2, logistics: 3, loyalty: 4, brand: 5, trust: 6 },
+  // Sharp L9/L14: what GoldPlus makes leads the rail; a live sale follows it (it still always makes the rail at score 100).
+  funnel: { product: 1, offer: 2, logistics: 3, loyalty: 4, brand: 5, trust: 6 },
   priorityWeight: 0.5,
 };
 

@@ -36,7 +36,7 @@ Part 2 (the scored register) follows.
 |---|---|---|---|---|
 | D1 | One brand line | MISSING: six variants, all "a shop in Kampala" (BaseLayout default description, manifest, home title, homepage card, invite, email eyebrow) | `BRAND_LINE` in packages/shared/src/brand; read by layout default description, footer, home strip, About, manifest; email eyebrow "GOLDPLUS · PHONE & COMPUTER ACCESSORIES" | MET (invite + referral share copy moved to the line in wave 2) |
 | D2 | Wordmark on every page | PARTIAL: nav only; footer and receipt bare | Footer wordmark + line; receipt logo band (wave 2) | MET |
-| D3 | Brand story page | MISSING | /about, footer link | MET |
+| D3 | Brand story page | MISSING | /about; footer link via a fixed row because saved footer columns replace defaults (PR #277) | MET |
 | D4 | Brand named once in titles and shares | PARTIAL: "GoldPlus … at GoldPlus" share line; PDP title brand only if in the name | `brandTitle`, `stripBrandPrefix` | MET |
 | D5 | One greeting on WhatsApp | PARTIAL: "Hi" vs "Hello" | "Hello GoldPlus" everywhere | MET |
 | D6 | Typography | PARTIAL: three faces (Jakarta, Poppins, Montserrat) | none yet: owner design call | OPEN |
@@ -48,6 +48,6 @@ Part 2 (the scored register) follows.
 | P1 | Where to buy beyond Kampala | PARTIAL: no public upcountry page, no dealer locator | /delivery/upcountry (wave 2), footer + sitemap | PARTIAL: dealer locator needs the owner's dealer list |
 | P2 | Second-country readiness | MISSING: no market abstraction, ~300 files | none: a programme, not a wave | OPEN: owner to pick the second country first |
 | P3 | Feeds and ad reach switched on | PARTIAL: feeds built, destinations unconnected | owner-side | OPEN (owner) |
-| G1 | Promotions lead the shop window | PARTIAL: flash slide first, live "On sale" nav | flash moved to slide 8 by default (stored order unchanged) | PARTIAL: owner can reorder in admin hero |
-| G2 | Loyalty weight on light-buyer surfaces | PARTIAL (heavy) | wave 2: referral slide from 3rd to 11th (trust slide to 3rd); PDP points line for signed-in shoppers only; cart, checkout and accrual unchanged | MET |
+| G1 | Promotions lead the shop window | PARTIAL: flash slide first, live "On sale" nav | Correction: slide positions do not order the live rail; HERO_SELECTION_TUNING.funnel does. Product theme now ahead of offer (PR #277), so a first visit opens on the range and the sale follows | MET |
+| G2 | Loyalty weight on light-buyer surfaces | PARTIAL (heavy) | referral/loyalty slides were already never shown to new visitors (selection rules); wave 2 position change is cosmetic. PDP points line for signed-in shoppers only; cart, checkout and accrual unchanged | MET |
 | G3 | Audience capture for non-buyers | PARTIAL: WhatsApp channel only | none yet | OPEN |
