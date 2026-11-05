@@ -557,7 +557,7 @@ describe('the Merchant feed stays well-formed and approvable', () => {
 describe('quote requests, fake reports and dealer applications accept a phone number without email', () => {
   it('a quote with no email is saved with an empty email; a mistyped one is still caught', async () => {
     const saved: Array<{ email: string }> = [];
-    const uc = new RequestQuoteUseCase({ async save(q: { email: string }) { saved.push(q); } } as never);
+    const uc = new RequestQuoteUseCase({ async save(q: { email: string }) { saved.push(q); }, async saveUnlessRecentDuplicate(q: { id: string; email: string }) { saved.push(q); return { id: q.id, duplicate: false }; } } as never);
     const ok = await uc.execute({ customerName: 'Mbale Traders', email: '', phone: '0772123456', productName: 'Power banks', quantity: '20', kind: 'wholesale' });
     expect(ok.ok).toBe(true);
     expect(saved[0].email).toBe('');

@@ -11,9 +11,9 @@ import { actorUserId, rowsOf } from './lib/scriptHelpers';
 /**
  * Applies domain/products/ListingFactWording to every product's short and long
  * description: flash drives name the USB-A plug their spec records instead of
- * "any USB port", and "Same-day delivery in Kampala and Wakiso" becomes
- * "Same-day dispatch ..." (the shop promises when an order goes out, not when
- * it arrives). The seed data files were edited in the same commit.
+ * "any USB port". The same-day delivery line is left as it is: the owner's
+ * promise is same-day dispatch AND delivery (2026-11-05). The seed data files
+ * were edited in the same commit.
  *
  * Dry run by default (prints what would change). APPLY=1 writes through the
  * admin listing use case, audited as one PRODUCT_DESCRIPTIONS_EDITED batch.
@@ -51,7 +51,7 @@ async function main(): Promise<void> {
   }
   if (done.length) await new CreateAuditLogUseCase(registry.auditRepo).execute({
     actorId, action: 'PRODUCT_DESCRIPTIONS_EDITED', entity: 'product_bulk_edit', entityId: randomUUID(),
-    newState: { reason: 'brief WP3 2026-11-05: USB-A connector named; same-day dispatch, not arrival (delivery contract #10)', count: done.length, productIds: done },
+    newState: { reason: 'brief WP3 2026-11-05: flash drives name their USB-A connector', count: done.length, productIds: done },
   });
   console.log(`descriptions rewritten for ${done.length} of ${changes.length} products`);
 }
