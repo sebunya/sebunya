@@ -401,7 +401,7 @@ export function sameDayCutoffCopy(
   }
   // When it goes OUT, never when it arrives (delivery contract #10): not every Wakiso area is in rider range, so
   // "same-day delivery" was a promise the shop cannot keep everywhere it named.
-  const outside = `Same-day dispatch is for ${SAME_DAY_AREA_LABEL}. We confirm your delivery day by phone`;
+  const outside = `Same-day dispatch and delivery is for ${SAME_DAY_AREA_LABEL}. We confirm your delivery day by phone`;
   if (cut.minsToCutoff <= 60) {
     return {
       scoped: `${SAME_DAY_AREA_LABEL}: only ${cut.minsToCutoff} minutes left for it to go out today`,

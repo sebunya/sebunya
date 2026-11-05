@@ -47,12 +47,21 @@ async function fetchDiscount(): Promise<StorefrontDiscount> {
   return NONE;
 }
 
+/** False once a sale's end instant has passed (the evaluator's window is [startsAt, endsAt)). */
+export function saleStillRunning(d: StorefrontDiscount, nowMs: number): boolean {
+  if (!d.active || !d.endsIso) return true;
+  const ends = Date.parse(d.endsIso);
+  return !Number.isFinite(ends) || nowMs < ends;
+}
+
 export async function getStorefrontDiscount(): Promise<StorefrontDiscount> {
   const now = Date.now();
-  if (cached && now - cachedAt < TTL_MS) return cached;
+  // N8: a sale whose end has passed is over NOW, not when the 60-second cache next refreshes; the evaluator stops
+  // charging it at endsAt, so the display must not show a sale price the checkout no longer gives.
+  if (cached && now - cachedAt < TTL_MS) return saleStillRunning(cached, now) ? cached : NONE;
   if (inflight) return inflight;
   inflight = fetchDiscount()
-    .then((d) => { cached = d; cachedAt = Date.now(); inflight = null; return d; })
+    .then((d) => { cached = d; cachedAt = Date.now(); inflight = null; return saleStillRunning(d, Date.now()) ? d : NONE; })
     .catch(() => { inflight = null; return cached ?? NONE; });
   return inflight;
 }

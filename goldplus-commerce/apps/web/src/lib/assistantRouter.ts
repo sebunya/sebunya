@@ -1,4 +1,5 @@
 import { getBusinessInfo } from './businessInfo';
+import { DELIVERY_FEE_TERMS } from '@goldplus/shared';
 import { getStorefrontCopy } from './storefrontCopy';
 import { SITE_ORIGIN } from './sitemap';
 import { callTool, type Json } from './agentTools';
@@ -161,7 +162,7 @@ export async function answerDeterministically(c: Classification, ci?: CareInput)
         const q = await quoteDelivery(place.replace(/\b\w/g, (m) => m.toUpperCase()), ci.care);
         if (q.ok) return { intent: c.intent, text: q.text, products: [], links: [...q.links, wa] };
       }
-      const text = `Yes, we deliver. ${String(s.delivery ?? biz.deliveryNote)} An estimated delivery fee for your address is shown at checkout before you pay and confirmed before the rider leaves.${elsewhere ? ' For places outside Kampala and Wakiso, message us on WhatsApp first and we will tell you what is possible.' : ''}`;
+      const text = `Yes, we deliver. ${String(s.delivery ?? biz.deliveryNote)} ${DELIVERY_FEE_TERMS}${elsewhere ? ' For places outside Kampala and Wakiso, message us on WhatsApp first and we will tell you what is possible.' : ''}`;
       return { intent: c.intent, text, products: [], links: [link('Delivery in Kampala and Wakiso', '/delivery/kampala-wakiso'), wa] };
     }
     case 'PAYMENT': {

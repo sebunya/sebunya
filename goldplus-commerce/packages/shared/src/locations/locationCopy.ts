@@ -45,7 +45,7 @@ export function sameDayAreaLine(areaName: string, minsToCutoff: number): string 
 
 /** Outside the same-day zone: what is actually true for them. */
 export function outsideSameDayLine(areaName: string): string {
-  return `Same-day dispatch is for Kampala & Wakiso. We confirm your ${areaName} delivery day by phone`;
+  return `Same-day dispatch and delivery is for Kampala & Wakiso. We confirm your ${areaName} delivery day by phone`;
 }
 
 /** The header line for a customer whose area is outside the same-day zone (instead of saying nothing). */

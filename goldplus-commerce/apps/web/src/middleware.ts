@@ -3,6 +3,7 @@ import { SITE_ORIGIN } from './lib/sitemap';
 import { prefersMarkdown, markdownResponse } from "./lib/agentMarkdown";
 import { keepCookiesOutOfSharedCaches, hasPendingCookies } from "./lib/sharedCacheGuard";
 import { agentDocumentFor, agentRepresentablePath } from "./lib/agentDocuments";
+import { getStorefrontDiscount } from "./lib/storefrontDiscount";
 import { resolveRequestIdentity } from "./lib/requestIdentity";
 import { isSignedVisitToken, mintSignedVisitToken } from "./lib/visitToken";
 import { apiBase } from "./lib/api";
@@ -235,9 +236,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
       // Note what is NOT here: rendering the HTML page to measure it. Reporting
       // a saving is not worth doing the work the agent asked us to skip.
       const markdown = await agentDocumentFor(context.url);
-      // Session renewal may have queued auth cookies that Astro attaches to
-      // this response: then it must not be publicly cacheable (N4).
-      if (markdown) return keepCookiesOutOfSharedCaches(markdownResponse(markdown), hasPendingCookies(context.cookies));
+      if (markdown) {
+        // N8: a document priced under a running sale is not cached past the sale's end.
+        const sale = await getStorefrontDiscount();
+        // N4: session renewal may have queued auth cookies that Astro attaches to this response: then it must not
+        // be publicly cacheable.
+        return keepCookiesOutOfSharedCaches(markdownResponse(markdown, sale.active ? sale.endsIso : null), hasPendingCookies(context.cookies));
+      }
     } catch {
       // An agent asking for Markdown must never be worse off than one asking
       // for HTML: fall through and serve the page.

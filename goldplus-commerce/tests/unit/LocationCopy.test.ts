@@ -39,7 +39,7 @@ describe('location copy is relevant without feeling creepy', () => {
     expect(deliveringToLine('Najjera, Wakiso')).toBe('Delivering to Najjera');
     expect(sameDayAreaLine('Najjera', 185)).toBe('Order in 3h 5m and it goes out to Najjera today');
     expect(sameDayAreaLine('Najjera', 40)).toBe('Only 40 minutes left for this to go out to Najjera today');
-    expect(outsideSameDayLine('Mbarara')).toBe('Same-day dispatch is for Kampala & Wakiso. We confirm your Mbarara delivery day by phone');
+    expect(outsideSameDayLine('Mbarara')).toBe('Same-day dispatch and delivery is for Kampala & Wakiso. We confirm your Mbarara delivery day by phone');
   });
 
   it('cart and checkout lines name the area when known, and stay general when not', () => {

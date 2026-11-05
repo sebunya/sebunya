@@ -4,6 +4,7 @@ import { fetchApprovedCatalogueWithStatus } from './catalogue';
 import { getStorefrontDiscount, type StorefrontDiscount } from './storefrontDiscount';
 import { chargedPriceUgx, realProductImageUrls, offerSellerJsonLd, publishableIdentifier } from './productStructuredData';
 import { getBusinessInfo, cutoffPhrase } from './businessInfo';
+import { DELIVERY_FEE_TERMS, UPCOUNTRY_TERMS, sameDayDeliveryTerms } from '@goldplus/shared';
 import { getTaxonomy } from './taxonomy';
 import { SITE_ORIGIN } from './sitemap';
 import { RETURNS_POLICY, merchantReturnPolicyJsonLd } from './returnsPolicy';
@@ -67,7 +68,7 @@ function termsBlock(): string[] {
   return [
     '## Buying from GoldPlus',
     '',
-    '- **Delivery:** orders before the daily cut-off go out the same day in Kampala and Wakiso; the fee is calculated for the address and shown before payment.',
+    `- **Delivery:** orders before the daily cut-off (Monday to Saturday) are dispatched and delivered the same day in Kampala and Wakiso. ${DELIVERY_FEE_TERMS} ${UPCOUNTRY_TERMS} Collection from the shop is free.`,
     '- **Payment:** paid online when you order: MTN or Airtel Mobile Money, or Visa or Mastercard.',
     `- **Returns:** ${RETURNS_POLICY.windowDays} days for a change of mind (unused and complete; customer covers return carriage). A faulty product is replaced or refunded with GoldPlus covering the carriage. ${RETURNS_POLICY.policyUrl}`,
     '',
@@ -287,7 +288,7 @@ async function faqDocument(): Promise<AgentDocument> {
   const cutoff = cutoffPhrase(biz.sameDayCutoffHour);
   const qa: Array<[string, string]> = [
     ['Do you deliver, and how long does it take?',
-      `${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. Order before ${cutoff} for the same day's run. The fee is calculated for the address and shown before payment.`],
+      `${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. ${sameDayDeliveryTerms(cutoff, biz.openDays)} ${DELIVERY_FEE_TERMS} ${UPCOUNTRY_TERMS}`],
     ['Where is the GoldPlus shop and when is it open?',
       `${biz.addressLine1.replace(/\.$/, '')} — ${biz.addressLine2.replace(/\.$/, '')}. Open ${biz.openDays}, ${biz.shopHours}. Phone and WhatsApp ${biz.phoneDisplay}. Online orders can be collected at the shop.`],
     ['How do I know which replacement battery fits my phone?',
@@ -412,8 +413,9 @@ async function policyDocument(kind: 'returns' | 'warranty' | 'delivery'): Promis
     const body = [
       '# Delivery to Kampala and Wakiso', '',
       `${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}.`, '',
-      `- Order before ${cutoff} for the same day's run; later orders go on the next one.`,
-      '- The fee is calculated for the delivery address and shown before payment — never added afterwards.',
+      `- ${sameDayDeliveryTerms(cutoff, biz.openDays)}`,
+      `- ${DELIVERY_FEE_TERMS}`,
+      `- ${UPCOUNTRY_TERMS}`,
       `- Collection from the shop is free: ${biz.addressLine1.replace(/\.$/, '')}, open ${biz.openDays}, ${biz.shopHours}.`,
       `- Questions: ${biz.phoneDisplay} on phone or WhatsApp.`, '',
       `Page: ${SITE_ORIGIN}/delivery/kampala-wakiso`, '',

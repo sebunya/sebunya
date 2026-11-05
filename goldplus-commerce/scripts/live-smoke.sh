@@ -13,6 +13,20 @@ check() { # name, expected-ok (0/1), detail
 echo "live smoke: $SITE / $API"
 h=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$SITE/"); check "home page" "$([ "$h" = 200 ] && echo 1 || echo 0)" "HTTP $h"
 h=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$API/health/ready"); check "api ready" "$([ "$h" = 200 ] && echo 1 || echo 0)" "HTTP $h"
+# Visibility gaps N12 (2026-11-05): three read-only GETs, no crawl. The product sitemap must be a complete XML
+# document, list the same product URLs as llms-full.txt (a ghost or missing offer shows as a difference), and /bulk
+# must keep its canonical. Owner: whoever runs the deploy (deploy-prod.sh calls this script).
+sm=$(curl -s --max-time 20 "$SITE/sitemaps/products.xml")
+sm_urls=$(printf '%s' "$sm" | grep -o '<loc>[^<]*/products/[^<]*</loc>' | sed 's#<loc>\(.*\)</loc>#\1#' | sort -u)
+sm_n=$(printf '%s' "$sm_urls" | grep -c . || true)
+if printf '%s' "$sm" | head -c 200 | grep -q '<?xml' && printf '%s' "$sm" | grep -q '</urlset>' && [ "$sm_n" -gt 0 ]; then check "product sitemap is XML ($sm_n products)" 1 ""
+else check "product sitemap is XML" 0 "not a complete urlset with product URLs"; fi
+lf_urls=$(curl -s --max-time 20 "$SITE/llms-full.txt" | grep -o "$SITE/products/[a-z0-9-]*" | sort -u)
+lf_n=$(printf '%s' "$lf_urls" | grep -c . || true)
+if [ "$sm_urls" = "$lf_urls" ]; then check "sitemap and llms-full list the same $lf_n products" 1 ""
+else check "sitemap and llms-full list the same products" 0 "sitemap $sm_n, llms-full $lf_n; differ: $(printf '%s\n%s\n' "$sm_urls" "$lf_urls" | sort | uniq -u | head -3 | tr '\n' ' ')"; fi
+if curl -s --max-time 15 "$SITE/bulk" | grep -q "<link rel=\"canonical\" href=\"$SITE/bulk\""; then check "/bulk canonical" 1 ""
+else check "/bulk canonical" 0 "missing or wrong canonical on /bulk"; fi
 warn=0
 hdr=$(mktemp); trap 'rm -f "$hdr"' EXIT
 # post <path> <origin>: sets $code, $body and $challenged (Cloudflare answered with a challenge, not the shop).

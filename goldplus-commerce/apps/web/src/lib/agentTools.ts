@@ -1,5 +1,6 @@
 import { apiBase } from './api';
-import { getBusinessInfo } from './businessInfo';
+import { getBusinessInfo, cutoffPhrase } from './businessInfo';
+import { DELIVERY_FEE_TERMS, UPCOUNTRY_TERMS, sameDayDeliveryTerms } from '@goldplus/shared';
 import { fetchApprovedCatalogueWithStatus } from './catalogue';
 import { getStorefrontDiscount } from './storefrontDiscount';
 import { SITE_ORIGIN } from './sitemap';
@@ -181,7 +182,7 @@ export async function callTool(name: string, args: Json): Promise<Json> {
         open: `${biz.openDays}, ${biz.shopHours}`,
         phone: biz.phoneDisplay,
         whatsapp: biz.whatsappUrl,
-        delivery: `${biz.deliveryNote} Delivery runs ${biz.deliveryHours}.`,
+        delivery: `${biz.deliveryNote} Delivery runs ${biz.deliveryHours}. ${sameDayDeliveryTerms(cutoffPhrase(biz.sameDayCutoffHour), biz.openDays)} ${DELIVERY_FEE_TERMS} ${UPCOUNTRY_TERMS}`,
         currency: 'UGX',
         pages: {
           shop: `${SITE_ORIGIN}/shop`,
