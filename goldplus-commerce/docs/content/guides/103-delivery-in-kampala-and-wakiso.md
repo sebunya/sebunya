@@ -1,6 +1,6 @@
 Title: Delivery in Kampala and Wakiso: how it works
 
-Summary: GoldPlus delivers same-day in Kampala and Wakiso, Monday to Saturday. Order before 5pm and it goes out on that day's run. The fee for your address is shown before you pay. Here is how it works.
+Summary: GoldPlus dispatches orders the same day in Kampala and Wakiso, Monday to Saturday. Order before 5pm and it goes out on that day's run. The fee for your address is shown before you pay. Here is how it works.
 
 Meta title: Delivery in Kampala and Wakiso | GoldPlus
 
@@ -12,7 +12,7 @@ Related SKUs:
 
 ---- Article (paste everything below this line into the Article box) ----
 
-GoldPlus delivers same-day in Kampala and Wakiso. Order before 5pm and your order goes out on that day's run; after that it goes on the next one. The delivery fee for your address is shown at checkout before you pay, and nothing is added after delivery.
+GoldPlus dispatches orders the same day in Kampala and Wakiso. Order before 5pm and your order goes out on that day's run; after that it goes on the next one. The delivery fee for your address is shown at checkout before you pay, and nothing is added after delivery.
 
 Here is the detail.
 
