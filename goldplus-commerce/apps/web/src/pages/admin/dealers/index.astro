@@ -100,7 +100,7 @@ const submitted = (at: unknown) => {
                     <input name="town" required placeholder="Town" value={d.publicTown ?? ''} class="w-full border border-gray-300 rounded-lg p-1.5" />
                     <input name="address" placeholder="Street / building" value={d.publicAddress ?? ''} class="w-full border border-gray-300 rounded-lg p-1.5" />
                     <input name="phone" placeholder="Shop phone" value={d.publicPhone ?? d.phone ?? ''} class="w-full border border-gray-300 rounded-lg p-1.5" />
-                    <select name="country" class="w-full border border-gray-300 rounded-lg p-1.5"><option value="UG" selected={(d.country ?? 'UG') === 'UG'}>Uganda</option><option value="KE" selected={d.country === 'KE'}>Kenya</option></select>
+                    <select name="country" class="w-full border border-gray-300 rounded-lg p-1.5"><option value="UG" selected={(d.country ?? 'UG') === 'UG'}>Uganda</option><option value="KE" selected={d.country === 'KE'}>Kenya</option><option value="RW" selected={d.country === 'RW'}>Rwanda</option></select>
                     <div class="flex gap-2">
                       <button name="intent" value="list" class="rounded-lg bg-brand-charcoal px-3 py-1.5 font-bold text-white">{d.listedPublicly ? 'Update listing' : 'List publicly'}</button>
                       {d.listedPublicly && <button name="intent" value="unlist" formnovalidate class="rounded-lg border border-gray-300 px-3 py-1.5 font-bold">Remove</button>}
