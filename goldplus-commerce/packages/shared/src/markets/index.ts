@@ -72,5 +72,5 @@ export function marketForPhone(raw: string | null | undefined): Market | null {
 export function formatMoney(value: unknown, currency: CurrencyCode = 'UGX'): string {
   const decimals = currency === 'KES' ? MARKETS.KE.currencyDecimals : MARKETS.UG.currencyDecimals;
   const n = Number(value) || 0;
-  return `${currency} ${new Intl.NumberFormat('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(decimals === 0 ? Math.round(n) : n)}`;
+  return `${currency}\u00A0${new Intl.NumberFormat('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(decimals === 0 ? Math.round(n) : n)}`;
 }
