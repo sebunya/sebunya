@@ -18,7 +18,7 @@ try {
   else unavailable = true;
 } catch { unavailable = true; }
 
-const COUNTRY = { UG: 'Uganda', KE: 'Kenya' } as Record<string, string>;
+const COUNTRY = { UG: 'Uganda', KE: 'Kenya', RW: 'Rwanda' } as Record<string, string>;
 const byCountry = new Map<string, Map<string, PublicDealer[]>>();
 for (const d of dealers) {
   const towns = byCountry.get(d.country) ?? new Map<string, PublicDealer[]>();
