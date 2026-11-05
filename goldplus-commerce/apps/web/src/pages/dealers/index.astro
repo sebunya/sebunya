@@ -1,8 +1,71 @@
 ---
-// /dealers has no page of its own; send it to the one page below it rather than a 404.
-// Permanent, but kept by a browser for a day only (a bare 301 is kept for ever): if this ever becomes a page of its
-// own, returning visitors see it the next day, not never (2026-10-29).
-const moved = Astro.redirect('/dealers/apply', 301);
-moved.headers.set('Cache-Control', 'public, max-age=86400');
-return moved;
+/**
+ * Where to buy GoldPlus in a shop (Sharp P1, physical availability). Dealers appear only when staff list them in the
+ * admin (0219). Owner 2026-11-05: none are listed yet, so the page says so plainly and points to the ways to buy today.
+ * It stays out of the index until at least one dealer is listed: an empty locator is thin content.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { apiBase } from '../../lib/api';
+import { SITE_ORIGIN } from '../../lib/sitemap';
+
+type PublicDealer = { id: string; name: string; town: string; address: string | null; phone: string | null; country: string };
+let dealers: PublicDealer[] = [];
+let unavailable = false;
+try {
+  const res = await fetch(`${apiBase}/governance/dealers/public`, { headers: { Accept: 'application/json' } });
+  const json = await res.json().catch(() => null);
+  if (res.ok && json?.success && Array.isArray(json.data)) dealers = json.data;
+  else unavailable = true;
+} catch { unavailable = true; }
+
+const COUNTRY = { UG: 'Uganda', KE: 'Kenya' } as Record<string, string>;
+const byCountry = new Map<string, Map<string, PublicDealer[]>>();
+for (const d of dealers) {
+  const towns = byCountry.get(d.country) ?? new Map<string, PublicDealer[]>();
+  towns.set(d.town, [...(towns.get(d.town) ?? []), d]);
+  byCountry.set(d.country, towns);
+}
+const tel = (p: string) => `tel:${p.replace(/[^0-9+]/g, '')}`;
 ---
+<BaseLayout
+  title="Where to Buy GoldPlus: Dealers and Shops"
+  description="Find a shop that stocks GoldPlus chargers, power banks and accessories, or buy online with delivery in Kampala and upcountry."
+  canonicalUrl={`${SITE_ORIGIN}/dealers`}
+  robotsMeta={dealers.length === 0 ? 'noindex,follow' : undefined}
+>
+  <div class="container mx-auto px-4 lg:px-8 py-10 max-w-4xl" data-dealer-locator>
+    <h1 class="text-3xl md:text-4xl font-black tracking-tight text-gray-900">Where to buy GoldPlus</h1>
+    {dealers.length > 0 ? (
+      <>
+        <p class="mt-3 text-slate-700">Shops that stock GoldPlus, by town. Call ahead to check what they have in.</p>
+        {[...byCountry].map(([country, towns]) => (
+          <section class="mt-10" aria-label={COUNTRY[country] ?? country}>
+            {byCountry.size > 1 && <h2 class="text-xl font-black text-gray-900">{COUNTRY[country] ?? country}</h2>}
+            {[...towns].map(([town, list]) => (
+              <div class="mt-6">
+                <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500">{town}</h3>
+                <ul class="mt-2 grid gap-3 sm:grid-cols-2">
+                  {list.map((d) => (
+                    <li class="rounded-2xl border border-slate-200 bg-white p-5" data-dealer>
+                      <p class="font-black text-gray-900">{d.name}</p>
+                      {d.address && <p class="mt-1 text-sm text-slate-600">{d.address}</p>}
+                      {d.phone && <a href={tel(d.phone)} class="mt-2 inline-block text-sm font-bold underline">{d.phone}</a>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </section>
+        ))}
+      </>
+    ) : (
+      <p class="mt-3 text-slate-700" data-dealer-empty>{unavailable ? 'The dealer list is unavailable just now.' : 'No shops are listed yet.'} Today you can buy GoldPlus online, with delivery in Kampala and Wakiso and by bus or taxi upcountry, or at our shop in Kampala.</p>
+    )}
+    <ul class="mt-8 flex flex-wrap gap-3 text-sm font-bold">
+      <li><a href="/shop" class="inline-flex min-h-11 items-center rounded-full bg-brand-charcoal px-5 text-white">Shop online</a></li>
+      <li><a href="/delivery/upcountry" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 px-5">Delivery upcountry</a></li>
+      <li><a href="/locations/zainab-aziza" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 px-5">Our shop in Kampala</a></li>
+      <li><a href="/dealers/apply" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 px-5">Stock GoldPlus in your shop</a></li>
+    </ul>
+  </div>
+</BaseLayout>

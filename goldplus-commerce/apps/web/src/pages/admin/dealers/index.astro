@@ -1,7 +1,7 @@
 ---
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
-import { tryFetchAdminList } from "../../../lib/api";
+import { tryFetchAdminList, postJson } from "../../../lib/api";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -11,6 +11,17 @@ if (!token) {
 // Live data only. A fabricated fallback list (two invented businesses) used to
 // sit here; tryFetchAdminList never rendered it, but invented records do not
 // belong in an admin page — removed 2026-09-12.
+// Dealer locator (0219): list or unlist an application on the public /dealers page.
+let notice: { ok: boolean; text: string } | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const id = String(form.get('id') ?? '');
+  const listed = form.get('intent') === 'list';
+  const res = await postJson(`/governance/admin/dealers/${encodeURIComponent(id)}/listing`, {
+    listed, town: String(form.get('town') ?? ''), address: String(form.get('address') ?? ''), phone: String(form.get('phone') ?? ''), country: String(form.get('country') ?? 'UG'),
+  }, token);
+  notice = res.ok ? { ok: true, text: listed ? 'Listed on /dealers.' : 'Removed from /dealers.' } : { ok: false, text: res.message };
+}
 const result = await tryFetchAdminList<any>('/governance/admin/dealers', [], undefined, token);
 // Oldest first: applicants are promised a call, so the longest wait leads.
 const dealers = [...result.items].sort((a: any, b: any) => String(a.appliedAt ?? '').localeCompare(String(b.appliedAt ?? '')));
@@ -32,7 +43,8 @@ const submitted = (at: unknown) => {
     <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
       <div>
         <h2 class="text-2xl font-black text-brand-dark tracking-tight">B2B Dealer Applications</h2>
-        <p class="text-sm text-gray-500 mt-1">Applicants are told the team will call them on the number they gave — oldest first below. The admin has no approve/reject action, so every application reads as pending.</p>
+        <p class="text-sm text-gray-500 mt-1">Applicants are told the team will call them on the number they gave — oldest first below. Listing a dealer approves it and shows its name, town, address and shop phone on the public <a href="/dealers" class="underline">/dealers</a> page. Nothing else is shown.</p>
+        {notice && <p class={`mt-3 text-sm font-bold ${notice.ok ? 'text-green-700' : 'text-red-700'}`} role="status">{notice.text}</p>}
       </div>
       <div class="flex items-center gap-2">
         <span class="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-bold px-3 py-1.5 rounded-lg font-mono">
@@ -58,6 +70,7 @@ const submitted = (at: unknown) => {
               <th class="p-6">Location · TIN</th>
               <th class="p-6">Submitted (Kampala)</th>
               <th class="p-6 text-center">Status</th>
+              <th class="p-6">Public listing</th>
             </tr>
           </thead>
           <tbody class="text-xs divide-y divide-gray-50">
@@ -81,11 +94,24 @@ const submitted = (at: unknown) => {
                     {d.status}
                   </span>
                 </td>
+                <td class="p-6 min-w-[260px]">
+                  <form method="post" class="space-y-1.5" data-dealer-listing>
+                    <input type="hidden" name="id" value={d.id} />
+                    <input name="town" required placeholder="Town" value={d.publicTown ?? ''} class="w-full border border-gray-300 rounded-lg p-1.5" />
+                    <input name="address" placeholder="Street / building" value={d.publicAddress ?? ''} class="w-full border border-gray-300 rounded-lg p-1.5" />
+                    <input name="phone" placeholder="Shop phone" value={d.publicPhone ?? d.phone ?? ''} class="w-full border border-gray-300 rounded-lg p-1.5" />
+                    <select name="country" class="w-full border border-gray-300 rounded-lg p-1.5"><option value="UG" selected={(d.country ?? 'UG') === 'UG'}>Uganda</option><option value="KE" selected={d.country === 'KE'}>Kenya</option></select>
+                    <div class="flex gap-2">
+                      <button name="intent" value="list" class="rounded-lg bg-brand-charcoal px-3 py-1.5 font-bold text-white">{d.listedPublicly ? 'Update listing' : 'List publicly'}</button>
+                      {d.listedPublicly && <button name="intent" value="unlist" formnovalidate class="rounded-lg border border-gray-300 px-3 py-1.5 font-bold">Remove</button>}
+                    </div>
+                  </form>
+                </td>
               </tr>
             ))}
             {dealers.length === 0 && (
               <tr>
-                <td colspan="5" class="p-20 text-center text-gray-500 italic text-xs leading-relaxed">
+                <td colspan="6" class="p-20 text-center text-gray-500 italic text-xs leading-relaxed">
                   {result.isSample ? 'Dealer applications could not be loaded — see the notice above.' : 'No dealer applications yet.'}
                 </td>
               </tr>

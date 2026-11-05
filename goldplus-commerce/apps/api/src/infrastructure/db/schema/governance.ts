@@ -21,6 +21,14 @@ export const dealerApplications = pgTable('dealer_applications', {
   browserId: varchar('browser_id', { length: 160 }),
   sessionId: varchar('session_id', { length: 160 }),
   attributionId: uuid('attribution_id'),
+
+  // 0219 dealer locator: public only when staff list it.
+  listedPublicly: boolean('listed_publicly').default(false).notNull(),
+  publicTown: varchar('public_town', { length: 120 }),
+  publicAddress: text('public_address'),
+  publicPhone: varchar('public_phone', { length: 50 }),
+  country: varchar('country', { length: 2 }).default('UG').notNull(),
+  listedAt: timestamp('listed_at', { withTimezone: true }),
 }, (table) => ({
   anonymousIdx: index('dealer_applications_anonymous_idx').on(table.anonymousId),
   browserIdx: index('dealer_applications_browser_idx').on(table.browserId),
