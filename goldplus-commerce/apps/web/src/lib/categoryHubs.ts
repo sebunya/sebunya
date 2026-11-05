@@ -1,6 +1,7 @@
 import type { ProductPublicDto, Taxonomy } from '@goldplus/shared';
 import { DEFAULT_TAXONOMY } from '@goldplus/shared';
 import { categoryNameForSlug, getProductSubcategory } from './product-discovery';
+import { hubForCategory } from './indexableLinks';
 
 /**
  * CATEGORY AUTHORITY ENGINE — hub registry + release-gate logic.
@@ -533,6 +534,23 @@ export function gatePassingHubPaths(
     }
   }
   return paths;
+}
+
+/**
+ * The hub that may stand in for /shop?category=<slug>: only a hub that is itself indexable (release gate passes,
+ * so it is in the hubs sitemap). 2026-11-05: pc-accessories mapped to /computer-accessories, which renders
+ * noindex while its gate fails, so the described category page named a noindex canonical AND was left out of
+ * categories.xml: neither URL was submitted. With no catalogue (outage) the static mapping is kept, unchanged.
+ */
+export function indexableHubForCategory(
+  slug: string,
+  products: ProductPublicDto[],
+  taxonomy: Taxonomy = DEFAULT_TAXONOMY,
+): string | null {
+  const hub = hubForCategory(slug);
+  if (!hub) return null;
+  if (products.length === 0) return hub;
+  return gatePassingHubPaths(products, taxonomy).includes(hub) ? hub : null;
 }
 
 /** The two local pages, sitemap-listed only when the business-info gate passes. */

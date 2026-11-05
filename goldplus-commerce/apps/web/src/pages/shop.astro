@@ -35,7 +35,7 @@ import { readBrandIntent } from '@goldplus/shared';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { offerPriceUgx } from '../lib/offerPrice';
 import { chargedPriceUgx } from '../lib/productStructuredData';
-import { hubForCategory } from '../lib/indexableLinks';
+import { indexableHubForCategory } from '../lib/categoryHubs';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../lib/storefrontDiscount';
 import { fetchApprovedCatalogueWithStatus } from '../lib/catalogue';
 import { isListableProduct } from '../lib/product-discovery';
@@ -82,10 +82,7 @@ const { robotsMeta: shelfRobotsMeta, canonicalUrl } = shopCrawlDirective({
 const robotsMeta = hasShopFacets(facetSelection) ? 'noindex,follow' : shelfRobotsMeta;
 // A plain category view that has its own hub page (/power, /audio …) names the hub as canonical: one indexable URL per
 // category, not two competing for the same searches (2026-10-22).
-const categoryHub = category && !search && !subcategory && (!sort || sort === 'default') && requestedPage <= 1 && !hasShopFacets(facetSelection)
-  ? hubForCategory(category)
-  : null;
-const shopCanonicalUrl = categoryHub ? `${SITE_ORIGIN}${categoryHub}` : canonicalUrl;
+const wantsCategoryHub = Boolean(category) && !search && !subcategory && (!sort || sort === 'default') && requestedPage <= 1 && !hasShopFacets(facetSelection);
 
 function shopUrl(overrides: Partial<{ search: string; category: string; subcategory: string; sort: string; page: number; facets: ShopFacetSelection }> = {}) {
   // Changing any filter returns to page 1; only an explicit page keeps one.
@@ -125,6 +122,11 @@ if (rawProducts.length === 0) {
   catalogueNotice = 'The live catalogue is temporarily unavailable. Please try again shortly.';
 }
 
+// Only a hub that is itself indexable (gate passes) may be named canonical; the same rule as the categories sitemap.
+const categoryHub = wantsCategoryHub
+  ? indexableHubForCategory(category, dedupeProductsById(getCleanCatalog(rawProducts, taxonomy)).filter((p) => isApprovedDiscoveryProduct(p, taxonomy)), taxonomy)
+  : null;
+const shopCanonicalUrl = categoryHub ? `${SITE_ORIGIN}${categoryHub}` : canonicalUrl;
 const availableProducts = dedupeProductsById(getCleanCatalog(rawProducts, taxonomy)).filter(isListableProduct);
 // Synonyms, plurals, joined words and typos (2026-10-20): "powerbank", "chager" and "earpods" used to find nothing.
 const searchResult = searchDiscoveryProducts(availableProducts, { search: matchSearch, category, subcategory }, taxonomy);
