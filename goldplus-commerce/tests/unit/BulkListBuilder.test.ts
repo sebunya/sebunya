@@ -13,12 +13,15 @@ import {
   parseBudgetInput,
   parsePaste,
   parseStoredState,
+  piecesOf,
   removeLine,
+  requestLines,
   serializeState,
   setBudget,
   setLine,
   splitPasteLine,
   submissionFingerprint,
+  unitChanged,
   unitLabel,
   type CatalogueItem,
 } from '../../apps/web/src/lib/bulkList';
@@ -110,10 +113,11 @@ describe('the saved list', () => {
   it('describes counts the way a buyer says them', () => {
     expect(countLabel(byId(A), 12)).toBe('12 cartons (600 pieces)');
     expect(countLabel(byId(A), 1)).toBe('1 carton (50 pieces)');
-    expect(countLabel(byId(B), 3)).toBe('3 cartons (size to confirm)');
+    expect(countLabel(byId(B), 3)).toBe('3 cartons (pieces confirmed with your quote)');
     expect(countLabel(byId(F), 40)).toBe('40 pieces');
     expect(unitLabel(byId(A))).toBe('Carton of 50 pieces');
-    expect(unitLabel(byId(B))).toBe('Carton, size to confirm');
+    // Brief WP1 (2026-11-05): an unknown carton size is said plainly and the order stays possible.
+    expect(unitLabel(byId(B))).toBe("Order by carton. We'll confirm how many pieces are in a carton with your quote.");
     expect(unitLabel(byId(F))).toBe('Sold by the piece');
   });
 });
@@ -190,5 +194,49 @@ describe('page rows', () => {
   it('default to a carton of unknown size when terms are missing', () => {
     const [row] = toBulkRows([dto({})], DEFAULT_TAXONOMY);
     expect(row).toMatchObject({ bulkUnit: 'carton', unitsPerCarton: null, bulkPriceUgx: null });
+  });
+});
+
+/* Brief WP1 acceptance scenarios (2026-11-05), synthetic fixtures. */
+describe('WP1: the buyer sees the unit they order in', () => {
+  it('two cartons of a known size of 12: 2 cartons and 24 pieces, and only id, count and unit are sent', () => {
+    const twelve: CatalogueItem = { ...byId(A), unitsPerCarton: 12 };
+    const s = setLine(emptyState(), twelve, 2);
+    expect(countLabel(twelve, 2)).toBe('2 cartons (24 pieces)');
+    expect(unitLabel(twelve)).toBe('Carton of 12 pieces');
+    expect(requestLines(s, new Map([[A, twelve]]))).toEqual([{ productId: A, count: 2, unit: 'carton' }]);
+  });
+
+  it('two cartons of unknown size: orderable, no piece total, never zero', () => {
+    const s = setLine(emptyState(), byId(B), 2);
+    expect(s.lines).toHaveLength(1);
+    expect(piecesOf(byId(B), 2)).toBeNull();
+    expect(countLabel(byId(B), 2)).toBe('2 cartons (pieces confirmed with your quote)');
+    const est = estimate(s, catalogue);
+    expect(est.totalCartons).toBe(2);
+    expect(est.totalPieces).toBe(0);
+    expect(est.piecesUnknownLineCount).toBe(1);
+    expect(requestLines(s, catalogue)).toEqual([{ productId: B, count: 2, unit: 'carton' }]);
+  });
+
+  it('three flash drives by the piece stay 3 pieces, with no carton minimum', () => {
+    const s = setLine(emptyState(), byId(F), 3);
+    expect(countLabel(byId(F), 3)).toBe('3 pieces');
+    expect(requestLines(s, catalogue)).toEqual([{ productId: F, count: 3, unit: 'piece' }]);
+  });
+
+  it('a saved line counted in cartons is marked when the page now sells it by the piece, until the buyer confirms', () => {
+    const s = setLine(emptyState(), byId(A), 2);
+    const nowPiece: CatalogueItem = { ...byId(A), bulkUnit: 'piece', unitsPerCarton: null };
+    const restored = parseStoredState(serializeState(s));
+    expect(restored.lines[0].unit).toBe('carton');
+    expect(unitChanged(restored.lines[0], nowPiece)).toBe(true);
+    // The stale unit is what is sent, so the server refuses it rather than reading 2 cartons as 2 pieces.
+    expect(requestLines(restored, new Map([[A, nowPiece]]))).toEqual([{ productId: A, count: 2, unit: 'carton' }]);
+    const confirmed = setLine(restored, nowPiece, 2);
+    expect(unitChanged(confirmed.lines[0], nowPiece)).toBe(false);
+    // A list saved before units were kept takes the page's unit.
+    const legacy = parseStoredState(JSON.stringify({ v: 2, lines: [{ productId: A, count: 2, name: 'a', code: null }], budgetUgx: null, pending: null }));
+    expect(unitChanged(legacy.lines[0], nowPiece)).toBe(false);
   });
 });

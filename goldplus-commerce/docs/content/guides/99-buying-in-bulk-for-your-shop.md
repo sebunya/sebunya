@@ -19,7 +19,7 @@ If you run a shop, a stall or a business, you can order GoldPlus products by the
 - **By the carton.** For most products you choose a number of cartons.
 - **Flash drives and memory cards by the piece.** For these, the number you enter is pieces, not cartons.
 - **Supplied to order.** Your bulk order is not limited by what happens to be on our shelf.
-- **Check carton sizes.** Where the bulk page says "Carton, size to confirm", ask our team how many pieces are in a carton before you rely on it.
+- **Check carton sizes.** Where the bulk page says "We'll confirm how many pieces are in a carton with your quote", you can still order by the carton. Our team tells you the number of pieces in a carton when they confirm your quote.
 
 # Three ways to build your list
 

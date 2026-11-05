@@ -138,7 +138,7 @@ const heading = checkedKind === 'corporate' ? 'Get a quote for your organisation
 
           <div class="grid grid-cols-1 sm:grid-cols-[1fr_9rem] gap-4">
             <FormField id="productName" name="productName" label="What do you need?" required defaultValue={values.productName} placeholder="e.g. Type-C chargers, 20,000mAh power banks" errorMessage={errors.productName} />
-            <FormField id="quantity" name="quantity" label="How many?" required defaultValue={values.quantity} placeholder="e.g. 50" inputmode="text" errorMessage={errors.quantity} />
+            <FormField id="quantity" name="quantity" label="How many?" required defaultValue={values.quantity} placeholder="e.g. 5 cartons or 50 pieces" inputmode="text" errorMessage={errors.quantity} />
           </div>
 
           <div id="orgField" hidden={checkedKind !== 'corporate'}>

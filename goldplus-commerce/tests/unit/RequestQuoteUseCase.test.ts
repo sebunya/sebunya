@@ -75,4 +75,14 @@ describe('RequestQuoteUseCase', () => {
     const r = await uc.execute({ ...valid, message: '' });
     expect(r.ok).toBe(true);
   });
+
+  it('keeps the unit a buyer typed, so staff read "2 cartons", not "2" (brief WP1, no-JS path)', async () => {
+    const repo = makeFake();
+    const uc = new RequestQuoteUseCase(repo);
+    await uc.execute({ ...valid, quantity: '2 cartons', message: '' });
+    expect(repo.saved[0].message).toBe('[Quantity as typed: 2 cartons]');
+    await uc.execute({ ...valid, quantity: '1,200' });
+    expect(repo.saved[1].message).toBe('Need by end of month.');
+    expect(repo.saved[1].quantity).toBe(1200);
+  });
 });

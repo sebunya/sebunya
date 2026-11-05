@@ -47,6 +47,12 @@ export interface BulkLineInput {
   productId: string;
   /** In the product's bulk unit: cartons, or pieces for a piece product. */
   count: number;
+  /**
+   * The unit the buyer's screen showed when they chose the count. Optional (older
+   * pages do not send it). When it differs from the product's current unit the
+   * request is refused with UNIT_CHANGED, so the buyer reconfirms the count.
+   */
+  unit?: BulkUnit;
 }
 
 /** What the server reads about one product. Never from the client. */
@@ -118,6 +124,7 @@ export function validateBulkLines(raw: unknown, opts: { allowEmpty?: boolean } =
     return { ok: false, code: 'TOO_MANY_LINES', message: `A bulk request can hold up to ${MAX_BULK_LINES} products.` };
   }
   const merged = new Map<string, number>();
+  const units = new Map<string, BulkUnit>();
   for (const item of raw) {
     const productId = typeof (item as { productId?: unknown })?.productId === 'string'
       ? ((item as { productId: string }).productId).trim().toLowerCase()
@@ -129,12 +136,23 @@ export function validateBulkLines(raw: unknown, opts: { allowEmpty?: boolean } =
     if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > MAX_COUNT_ANY_UNIT) {
       return { ok: false, code: 'BAD_LINE', message: 'Each line needs a whole number of cartons, or of pieces for flash drives and memory cards.' };
     }
+    const unit = (item as { unit?: unknown })?.unit;
+    if (unit !== undefined && unit !== null && unit !== 'carton' && unit !== 'piece') {
+      return { ok: false, code: 'BAD_LINE', message: 'One of the products could not be read. Reload the page and try again.' };
+    }
+    if ((unit === 'carton' || unit === 'piece') && !units.has(productId)) units.set(productId, unit);
     merged.set(productId, Math.min(MAX_COUNT_ANY_UNIT, (merged.get(productId) ?? 0) + count));
   }
   if (merged.size > MAX_BULK_LINES) {
     return { ok: false, code: 'TOO_MANY_LINES', message: `A bulk request can hold up to ${MAX_BULK_LINES} products.` };
   }
-  return { ok: true, lines: [...merged.entries()].map(([productId, count]) => ({ productId, count })) };
+  return {
+    ok: true,
+    lines: [...merged.entries()].map(([productId, count]) => {
+      const unit = units.get(productId);
+      return unit ? { productId, count, unit } : { productId, count };
+    }),
+  };
 }
 
 /** Pieces for a count in a product's unit; null when a carton's size is not known. */
@@ -146,7 +164,8 @@ export function piecesFor(unit: BulkUnit, count: number, unitsPerCarton: number 
 export type SnapshotResult =
   | { ok: true; lines: BulkQuoteLine[]; totals: BulkQuoteTotals }
   | { ok: false; code: 'PRODUCTS_UNAVAILABLE'; productIds: string[] }
-  | { ok: false; code: 'COUNT_TOO_LARGE'; productIds: string[] };
+  | { ok: false; code: 'COUNT_TOO_LARGE'; productIds: string[] }
+  | { ok: false; code: 'UNIT_CHANGED'; productIds: string[] };
 
 const positiveInt = (n: number | null | undefined): number | null =>
   typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.round(n) : null;
@@ -162,6 +181,11 @@ export function snapshotBulkLines(lines: BulkLineInput[], catalogue: CatalogueEn
   const byId = new Map(catalogue.map((entry) => [entry.productId.toLowerCase(), entry]));
   const missing = lines.filter((line) => !byId.has(line.productId)).map((line) => line.productId);
   if (missing.length > 0) return { ok: false, code: 'PRODUCTS_UNAVAILABLE', productIds: missing };
+
+  // A stale screen: the buyer counted in a unit the product is no longer sold by.
+  // Never convert silently (3 cartons is not 3 pieces); the buyer reconfirms.
+  const changed = lines.filter((line) => line.unit !== undefined && line.unit !== (byId.get(line.productId) as CatalogueEntry).bulkUnit);
+  if (changed.length > 0) return { ok: false, code: 'UNIT_CHANGED', productIds: changed.map((l) => l.productId) };
 
   const tooLarge = lines.filter((line) => {
     const entry = byId.get(line.productId) as CatalogueEntry;
@@ -224,13 +248,13 @@ export function parseBudget(raw: unknown): number | null | 'INVALID' {
   return n;
 }
 
-/** One line for a person: "12 cartons (600 pieces)", "40 pieces", "3 cartons (carton size to confirm)". */
+/** One line for the buyer: "12 cartons (600 pieces)", "40 pieces", "3 cartons (pieces confirmed with your quote)". */
 export function describeLineCount(line: Pick<BulkQuoteLine, 'unitKind' | 'unitCount' | 'quantity'>): string {
   const n = (v: number) => v.toLocaleString('en-US');
   if (line.unitCount === null) return `${n(line.quantity ?? 0)} ${line.quantity === 1 ? 'piece' : 'pieces'}`;
   if (line.unitKind === 'piece') return `${n(line.unitCount)} ${line.unitCount === 1 ? 'piece' : 'pieces'}`;
   const cartons = `${n(line.unitCount)} ${line.unitCount === 1 ? 'carton' : 'cartons'}`;
-  return line.quantity === null ? `${cartons} (carton size to confirm)` : `${cartons} (${n(line.quantity)} pieces)`;
+  return line.quantity === null ? `${cartons} (pieces confirmed with your quote)` : `${cartons} (${n(line.quantity)} pieces)`;
 }
 
 /** The legacy one-line summary columns, kept true for any older reader. */
@@ -240,7 +264,15 @@ export function legacySummary(lines: BulkQuoteLine[]): { productName: string; qu
   const rest = lines.length - 1;
   const name = rest > 0 ? `Bulk list: ${first} and ${rest} more` : `Bulk list: ${first}`;
   const totals = totalsOf(lines);
-  const quantity = totals.totalCartons > 0 ? `${totals.totalCartons} cartons, ${totals.totalUnits} pieces` : String(totals.totalUnits);
+  // Never "0 pieces" for cartons of unknown size: staff read this column as the order.
+  const sizePending = lines.some((l) => l.unitKind === 'carton' && l.quantity === null);
+  const quantity = totals.totalCartons === 0
+    ? String(totals.totalUnits)
+    : !sizePending
+      ? `${totals.totalCartons} cartons, ${totals.totalUnits} pieces`
+      : totals.totalUnits > 0
+        ? `${totals.totalCartons} cartons, ${totals.totalUnits} pieces + size pending`
+        : `${totals.totalCartons} cartons, size pending`;
   return { productName: name.slice(0, 255), quantity: quantity.slice(0, 50) };
 }
 

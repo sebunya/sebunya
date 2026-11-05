@@ -127,7 +127,7 @@ describe('snapshots: cartons, pieces and the bulk price come from the server', (
 
   it('describes a line the way a buyer says it', () => {
     expect(describeLineCount({ unitKind: 'carton', unitCount: 12, quantity: 600 })).toBe('12 cartons (600 pieces)');
-    expect(describeLineCount({ unitKind: 'carton', unitCount: 1, quantity: null })).toBe('1 carton (carton size to confirm)');
+    expect(describeLineCount({ unitKind: 'carton', unitCount: 1, quantity: null })).toBe('1 carton (pieces confirmed with your quote)');
     expect(describeLineCount({ unitKind: 'piece', unitCount: 40, quantity: 40 })).toBe('40 pieces');
     // A line from before cartons: pieces only.
     expect(describeLineCount({ unitKind: 'piece', unitCount: null, quantity: 120 })).toBe('120 pieces');
@@ -475,6 +475,94 @@ describe('SubmitBulkQuoteUseCase', () => {
     // No phone and no valid code: the phone is required.
     const none = setup();
     expect(await none.uc.execute({ idempotencyKey: KEY, customerName: 'Grace', priceAccessToken: 'forged', lines: valid().lines })).toMatchObject({ code: 'BAD_INPUT', field: 'phone' });
+  });
+});
+
+describe('WP1 acceptance (brief 2026-11-05): staff see the unit the buyer asked for', () => {
+  const T12: BulkTerms[] = [
+    { productId: A, bulkUnit: 'carton', unitsPerCarton: 12, dealerPriceUgx: null },
+    { productId: B, bulkUnit: 'carton', unitsPerCarton: null, dealerPriceUgx: null },
+    { productId: F, bulkUnit: 'piece', unitsPerCarton: null, dealerPriceUgx: null },
+  ];
+  function setup12() {
+    const repo = fakeRepo();
+    const uc = new SubmitBulkQuoteUseCase(
+      repo,
+      fakeProducts([product(A, { sku: 'FIX-CTN-12' }), product(B, { sku: 'FIX-CTN-UNK' }), product(F, { sku: 'FIX-PCS' })]),
+      fakeTerms(T12),
+      null,
+      () => null,
+      () => new Date('2026-09-25T09:00:00Z'),
+      () => 0,
+      () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    );
+    return { repo, uc };
+  }
+
+  it('two cartons of a fixture size of 12: 2 cartons and 24 pieces', async () => {
+    const { repo, uc } = setup12();
+    const r = await uc.execute({ ...valid(), lines: [{ productId: A, count: 2, unit: 'carton' }] });
+    expect(r.ok).toBe(true);
+    expect(repo.saved[0].lines[0]).toMatchObject({ unitKind: 'carton', unitCount: 2, unitsPerCarton: 12, quantity: 24 });
+    expect(describeLineCount(repo.saved[0].lines[0])).toBe('2 cartons (24 pieces)');
+    expect(repo.saved[0].quantity).toBe('2 cartons, 24 pieces');
+  });
+
+  it('two cartons of unknown size: accepted, size pending, no piece total and never 0 pieces', async () => {
+    const { repo, uc } = setup12();
+    const r = await uc.execute({ ...valid(), lines: [{ productId: B, count: 2, unit: 'carton' }] });
+    expect(r.ok).toBe(true);
+    const line = repo.saved[0].lines[0];
+    expect(line).toMatchObject({ unitKind: 'carton', unitCount: 2, unitsPerCarton: null, quantity: null, lineTotalUgx: null });
+    expect(repo.saved[0].quantity).toBe('2 cartons, size pending');
+    expect(repo.saved[0].totals.totalUnits).toBe(0);
+  });
+
+  it('a mixed list says which part is known', () => {
+    const r = snapshotBulkLines(
+      [{ productId: A, count: 2 }, { productId: B, count: 3 }],
+      [
+        { productId: A, name: 'a', code: null, bulkUnit: 'carton', unitsPerCarton: 12, bulkPriceUgx: null, availability: 'unknown' },
+        { productId: B, name: 'b', code: null, bulkUnit: 'carton', unitsPerCarton: null, bulkPriceUgx: null, availability: 'unknown' },
+      ],
+    );
+    if (!r.ok) throw new Error('expected ok');
+    expect(legacySummary(r.lines).quantity).toBe('5 cartons, 24 pieces + size pending');
+  });
+
+  it('three flash drives by the piece: 3 pieces, no carton', async () => {
+    const { repo, uc } = setup12();
+    expect((await uc.execute({ ...valid(), lines: [{ productId: F, count: 3, unit: 'piece' }] })).ok).toBe(true);
+    expect(repo.saved[0].lines[0]).toMatchObject({ unitKind: 'piece', unitCount: 3, unitsPerCarton: null, quantity: 3 });
+    expect(repo.saved[0].quantity).toBe('3');
+  });
+
+  it('a stale screen that counted in another unit is refused for reconfirmation, and nothing is saved', async () => {
+    const { repo, uc } = setup12();
+    expect(await uc.execute({ ...valid(), lines: [{ productId: F, count: 3, unit: 'carton' }, { productId: A, count: 1, unit: 'carton' }] }))
+      .toMatchObject({ ok: false, code: 'UNIT_CHANGED', productIds: [F] });
+    expect(await uc.execute({ ...valid(), lines: [{ productId: A, count: 1, unit: 'box' }] })).toMatchObject({ ok: false, code: 'BAD_LINE' });
+    expect(repo.saved).toHaveLength(0);
+    // An older page that sends no unit still works: the server's unit applies.
+    expect((await uc.execute({ ...valid(), lines: [{ productId: F, count: 3 }] })).ok).toBe(true);
+  });
+
+  it('a tampered price, name or unit size in the payload changes nothing the team sees', async () => {
+    const { repo, uc } = setup12();
+    await uc.execute({ ...valid(), lines: [{ productId: B, count: 2, unit: 'carton', unitsPerCarton: 100, unitPriceUgx: 1, name: 'free' }] });
+    expect(repo.saved[0].lines[0]).toMatchObject({ unitsPerCarton: null, quantity: null, unitPriceUgx: null, productName: 'Product 2222' });
+  });
+
+  it('a double tap with one key gives one request; a new key later gives a new one', async () => {
+    const { repo, uc } = setup12();
+    const body = { ...valid(), lines: [{ productId: A, count: 2, unit: 'carton' }] };
+    const [a, b] = await Promise.all([uc.execute(body), uc.execute(body)]);
+    expect(a.ok && b.ok).toBe(true);
+    expect(repo.saved).toHaveLength(1);
+    const ids = ['cccccccc-cccc-4ccc-8ccc-cccccccccccc'];
+    const later = new SubmitBulkQuoteUseCase(repo, fakeProducts([product(A)]), fakeTerms(T12), null, () => null, () => new Date('2026-09-26T09:00:00Z'), () => 1, () => ids[0]);
+    expect(await later.execute({ ...body, idempotencyKey: 'k_fedcba9876543210fedc' })).toMatchObject({ ok: true, replayed: false });
+    expect(repo.saved).toHaveLength(2);
   });
 });
 

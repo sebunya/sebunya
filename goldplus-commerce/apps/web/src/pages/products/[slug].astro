@@ -961,6 +961,12 @@ if (product) {
             </div>
           )}
 
+          {/* Brief WP2 (2026-11-05): a reseller on a product page finds the bulk list and the
+              quote form in plain HTML, before any script runs. */}
+          <p class="mb-6 text-sm text-slate-600">
+            Buying for your shop? <a href="/bulk" class="font-semibold text-gray-900 underline underline-offset-2 hover:text-brand-primaryInk">Order by the carton</a> or <a href={`/quote-request?kind=wholesale&productName=${encodeURIComponent(product.name)}`} class="font-semibold text-gray-900 underline underline-offset-2 hover:text-brand-primaryInk">ask for a quote</a>.
+          </p>
+
           {/* Returns and payment, next to the decision. Both lines come from their
               single sources (returnsPolicy.ts, the checkout's payment copy). */}
           <ul class="mb-8 space-y-3">

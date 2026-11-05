@@ -98,6 +98,7 @@ const openCount = result.items.filter((q) => q.status === 'new').length;
                     <td class="p-4 text-right font-mono font-black text-brand-dark">
                       {bulk ? (q.totals.totalCartons > 0 ? `${formatCount(q.totals.totalCartons)} ctn` : '') : q.quantity}
                       {bulk && q.totals.totalUnits > 0 && <div class="text-[11px] font-normal text-gray-600">{formatCount(q.totals.totalUnits)} pcs</div>}
+                      {bulk && q.lines.some((l) => l.unitKind === 'carton' && l.quantity === null) && <div class="text-[11px] font-normal text-orange-700">carton size pending</div>}
                     </td>
                     <td class="p-4 text-right font-mono text-gray-700">
                       {bulk && q.totals.lineCount > 0 ? formatUgx(q.totals.estimatedTotalUgx) : '—'}
