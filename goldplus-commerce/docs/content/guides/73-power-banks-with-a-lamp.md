@@ -60,4 +60,4 @@ The built-in cables mean that during an outage you are not also searching for a 
 
 # Be ready for the next outage
 
-Keep the lamp power bank charged and in a place everyone in the house knows. See every [power bank we stock](/power/power-banks), or visit the shop at the Zainab Aziza Building, 4th Floor, Burton Street, Kampala, Monday to Saturday, 8:30am to 6:00pm. Directions are on our [shop page](/locations/zainab-aziza).
+Keep the lamp power bank charged and in a place everyone in the house knows. See every [power bank we stock](/power/power-banks), or visit the shop at the Zainab Aziza Building, 4th Floor, Wilson Road, Kampala, Monday to Saturday, 8:30am to 6:00pm. Directions are on our [shop page](/locations/zainab-aziza).

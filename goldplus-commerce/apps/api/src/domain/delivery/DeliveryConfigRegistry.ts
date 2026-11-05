@@ -527,7 +527,7 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: null,
     mandatory: false,
     defaultValue:
-      'Collect free from GoldPlus, 4th Floor, Zainab Aziza Building, Burton Street, next to Uhuru Restaurant, opposite Pioneer Mall.',
+      'Collect free from GoldPlus, 4th Floor, Zainab Aziza Building, Wilson Road, next to Uhuru Restaurant, opposite Pioneer Mall.',
     label: 'Pickup offer',
     help: 'Shown alongside every quote. Building and floor first, then Uhuru Restaurant, then Pioneer Mall as the wider fallback.',
   },

@@ -63,4 +63,4 @@ Power at your destination may be patchy or switched off in the evenings.
 
 # Get ready before you go
 
-See every [power bank we stock](/power/power-banks) and our [charging cables](/power/charging-cables). If you are passing through town before the trip, collect from our shop in the Zainab Aziza Building on Burton Street, Monday to Saturday, 8:30am to 6:00pm. Directions are on our [shop page](/locations/zainab-aziza).
+See every [power bank we stock](/power/power-banks) and our [charging cables](/power/charging-cables). If you are passing through town before the trip, collect from our shop in the Zainab Aziza Building on Wilson Road, Monday to Saturday, 8:30am to 6:00pm. Directions are on our [shop page](/locations/zainab-aziza).

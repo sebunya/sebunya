@@ -45,7 +45,7 @@ export const SHOP_LOCATION = {
   plusCode: '8H7H+M5M Kampala',
   building: 'Zainab Aziza Building',
   floor: '4th Floor',
-  street: 'Burton Street',
+  street: 'Wilson Road', // owner 2026-11-05: the shop's address is Wilson Road
   mapUrl: 'https://maps.google.com/?cid=2567724259551649466',
 } as const;
 
@@ -55,7 +55,7 @@ export const DEFAULT_BUSINESS_INFO: BusinessInfo = {
   whatsappNumber: '256705004545',
   whatsappUrl: 'https://wa.me/256705004545',
   whatsappChannelUrl: 'https://whatsapp.com/channel/0029VbByb56KmCPSiisvMs44',
-  addressLine1: 'Zainab Aziza Building, 4th Floor, Burton Street, Kampala',
+  addressLine1: 'Zainab Aziza Building, 4th Floor, Wilson Road, Kampala',
   addressLine2: 'Opposite Pioneer Mall, next to Uhuru Restaurant.',
   mapUrl: SHOP_LOCATION.mapUrl,
   shopHours: '8:30am to 6:00pm',

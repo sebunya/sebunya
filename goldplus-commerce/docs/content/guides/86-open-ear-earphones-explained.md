@@ -46,7 +46,7 @@ If any of these matter most to you, earbuds that sit in the ear may be the bette
 - **Clip:** compact and quick to put on. Good if you wear glasses or a cap, since there is less over the top of the ear.
 - **Hook:** wraps over the ear, which many people find steadier when walking or moving around.
 
-Try the style on if you can. You are welcome to visit the shop on Burton Street to see them before you buy.
+Try the style on if you can. You are welcome to visit the shop on Wilson Road to see them before you buy.
 
 # What our open-ear models list
 

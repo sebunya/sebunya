@@ -1,10 +1,10 @@
-Title: Visiting the GoldPlus shop on Burton Street
+Title: Visiting the GoldPlus shop on Wilson Road
 
-Summary: The GoldPlus shop is on the 4th floor of the Zainab Aziza Building on Burton Street, Kampala, opposite Pioneer Mall. It is open Monday to Saturday, 8:30am to 6:00pm. Here is how to find it.
+Summary: The GoldPlus shop is on the 4th floor of the Zainab Aziza Building on Wilson Road, Kampala, opposite Pioneer Mall. It is open Monday to Saturday, 8:30am to 6:00pm. Here is how to find it.
 
-Meta title: Visit the GoldPlus Shop on Burton Street | GoldPlus
+Meta title: Visit the GoldPlus Shop on Wilson Road | GoldPlus
 
-Meta description: Find the GoldPlus shop: Zainab Aziza Building, 4th Floor, Burton Street, Kampala, opposite Pioneer Mall. Open Monday to Saturday, 8:30am to 6:00pm.
+Meta description: Find the GoldPlus shop: Zainab Aziza Building, 4th Floor, Wilson Road, Kampala, opposite Pioneer Mall. Open Monday to Saturday, 8:30am to 6:00pm.
 
 Related products: anything in the GoldPlus range, from the same stock as our online shop.
 
@@ -12,17 +12,17 @@ Related SKUs:
 
 ---- Article (paste everything below this line into the Article box) ----
 
-The GoldPlus shop is on the **4th floor of the Zainab Aziza Building, Burton Street, Kampala**, opposite Pioneer Mall and next to Uhuru Restaurant. We are open **Monday to Saturday, 8:30am to 6:00pm**. You can call or WhatsApp us on **0705 004545**.
+The GoldPlus shop is on the **4th floor of the Zainab Aziza Building, Wilson Road, Kampala**, opposite Pioneer Mall and next to Uhuru Restaurant. We are open **Monday to Saturday, 8:30am to 6:00pm**. You can call or WhatsApp us on **0705 004545**.
 
 # Where we are
 
-Zainab Aziza Building, 4th Floor, Burton Street, Kampala.
+Zainab Aziza Building, 4th Floor, Wilson Road, Kampala.
 
 - **Landmarks:** opposite Pioneer Mall, next to Uhuru Restaurant.
 - **Plus Code:** 8H7H+M5M Kampala. Type it into Google Maps to drop a pin right on the building.
-- **Which side:** the shop is on the Burton Street side of the building, between Wilson Road and Burton Street.
+- **Street:** the shop is on Wilson Road.
 
-A tip if you are giving directions to a boda rider: say "Zainab Aziza Building, Burton Street, opposite Pioneer Mall". Make sure it is Pioneer Mall, not a similarly named mall, so you end up on the right street.
+A tip if you are giving directions to a boda rider: say "Zainab Aziza Building, Wilson Road, opposite Pioneer Mall". Make sure it is Pioneer Mall, not a similarly named mall, so you end up on the right street.
 
 Our [shop page](/locations/zainab-aziza) has a link to open the location in Google Maps.
 
@@ -69,7 +69,7 @@ Bought something here? Bring it back to the shop with your receipt for a return 
 
 # Before you come
 
-1. Note the address: Zainab Aziza Building, 4th Floor, Burton Street.
+1. Note the address: Zainab Aziza Building, 4th Floor, Wilson Road.
 2. Check the time: Monday to Saturday, 8:30am to 6:00pm.
 3. Bring what helps: the old item if you are replacing one, or your receipt or order details if you are returning something.
 4. Call or WhatsApp 0705 004545 if you want to check before setting off.

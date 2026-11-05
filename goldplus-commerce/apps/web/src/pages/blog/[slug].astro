@@ -4,6 +4,8 @@ import { fetchPost, formatArticleDate } from '../../lib/blog';
 import { renderArticle, articlePlainText } from '../../lib/articleMarkup';
 import { serializeJsonLd, breadcrumbJsonLd } from '../../lib/jsonld';
 import { SITE_ORIGIN } from '../../lib/sitemap';
+import { findRecordedRedirect } from '../../lib/recordedRedirect';
+import { carryQuery } from '../../lib/carryQuery';
 import { formatUgx } from '../../lib/money';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../../lib/storefrontDiscount';
 
@@ -18,6 +20,10 @@ const post = await fetchPost(slug ?? '');
 // renders the 404 page, rather than a hand-rolled Response carrying a Location
 // header that a 404 never acts on.
 if (!post) {
+  // A renamed article keeps its old address through a recorded redirect (e.g. 0221, the shop guide moved from
+  // .../on-burton-street to .../on-wilson-road), the same way hub pages honour them.
+  const recorded = await findRecordedRedirect(Astro.url.pathname);
+  if (recorded) return Astro.redirect(carryQuery(recorded.target, Astro.url.search), recorded.status);
   return Astro.redirect('/404', 404);
 }
 

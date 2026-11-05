@@ -148,7 +148,7 @@ const FAQ_CAR_INPUT: HubFaq = { question: 'Which car-charger input and port does
 const SHOP_FAQ: HubFaq = {
   question: 'Where is the GoldPlus shop?',
   answer:
-    'The GoldPlus shop is on the 4th floor of the Zainab Aziza Building, Burton Street, central Kampala, opposite Pioneer Mall. You can buy online on this site or visit the shop in person. Contact details and directions are in the footer of every page.',
+    'The GoldPlus shop is on the 4th floor of the Zainab Aziza Building, Wilson Road, central Kampala, opposite Pioneer Mall. You can buy online on this site or visit the shop in person. Contact details and directions are in the footer of every page.',
 };
 
 /**

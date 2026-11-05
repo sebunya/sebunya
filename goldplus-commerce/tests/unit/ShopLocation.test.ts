@@ -35,7 +35,9 @@ describe('SHOP_LOCATION', () => {
     expect(sql).toContain(`longitude = ${SHOP_LOCATION.longitude.toFixed(6)}`);
     // 0168 named the building wrongly; 0173 (owner, 2026-10-06) corrects the name only.
     const fix = read('apps/api/src/infrastructure/db/migrations/0173_shop_building_zainab_aziza.sql');
-    expect(fix).toContain(`jsonb_build_object('addressLine1', '${DEFAULT_BUSINESS_INFO.addressLine1}')`);
+    expect(fix).toContain(`jsonb_build_object('addressLine1', 'Zainab Aziza Building, 4th Floor, Burton Street, Kampala')`);
+    // ...and 0221 (owner, 2026-11-05) moves the street to Wilson Road: the default and the last migration agree.
+    expect(read('apps/api/src/infrastructure/db/migrations/0221_shop_address_wilson_road.sql')).toContain(`jsonb_build_object('addressLine1', '${DEFAULT_BUSINESS_INFO.addressLine1}')`);
     expect(fix).toContain("config->>'addressLine1' = 'New Pioneer Mall Building, 4th Floor, Burton Street, Kampala'");
     expect(fix).toContain("AND street = 'New Pioneer Mall Building, 4th Floor, Burton Street'");
     expect(sql).toContain(`'mapUrl', '${SHOP_LOCATION.mapUrl}'`);
@@ -58,7 +60,7 @@ describe('SHOP_LOCATION', () => {
 
   it('tells a collecting customer the building and floor', () => {
     const reg = read('apps/api/src/domain/delivery/DeliveryConfigRegistry.ts');
-    expect(reg).toContain("'Collect free from GoldPlus, 4th Floor, Zainab Aziza Building, Burton Street, next to Uhuru Restaurant, opposite Pioneer Mall.'");
+    expect(reg).toContain("'Collect free from GoldPlus, 4th Floor, Zainab Aziza Building, Wilson Road, next to Uhuru Restaurant, opposite Pioneer Mall.'");
   });
 
   it('sends the old Wilson Road slug to the new shop page with a 301, in the middleware', () => {
@@ -69,5 +71,32 @@ describe('SHOP_LOCATION', () => {
     expect(mw).toContain("'/locations/new-pioneer-mall': '/locations/zainab-aziza'");
     expect(mw).toMatch(/context\.redirect\(`\$\{moved\}\$\{context\.url\.search\}`, 301\)/);
     expect(read('apps/web/astro.config.mjs')).not.toContain('wilson-road');
+  });
+});
+
+describe('0221: the shop street is Wilson Road (owner 2026-11-05)', () => {
+  const sql = read('apps/api/src/infrastructure/db/migrations/0221_shop_address_wilson_road.sql');
+  it('rewrites only the exact old values and is registered', () => {
+    expect(sql).toContain("WHERE id = true AND config->>'addressLine1' = 'Zainab Aziza Building, 4th Floor, Burton Street, Kampala'");
+    expect(sql).toContain("WHERE origin_code = 'HUB-CBD-WILSON' AND street = 'Zainab Aziza Building, 4th Floor, Burton Street'");
+    // The pickup line: never edited in place; a new published version only when the live one stored Burton Street.
+    expect(sql).not.toMatch(/UPDATE delivery_config_value/);
+    expect(sql).toContain("x.config_key = 'copy_pickup_offer' AND x.config_value LIKE '%Burton Street%'");
+    expect(sql).toContain("SET status = 'superseded' WHERE status = 'published' AND EXISTS (SELECT 1 FROM _gp0221_new)");
+    const journal = JSON.parse(read('apps/api/src/infrastructure/db/migrations/meta/_journal.json'));
+    expect(journal.entries.map((e: { tag: string }) => e.tag)).toContain('0221_shop_address_wilson_road');
+  });
+  it('renames the shop guide in place and redirects its old address; the blog page honours recorded redirects', () => {
+    expect(sql).toContain("SET\n  slug = 'visiting-the-goldplus-shop-on-wilson-road'");
+    expect(sql).toContain("VALUES ('/blog/visiting-the-goldplus-shop-on-burton-street', '/blog/visiting-the-goldplus-shop-on-wilson-road', 301");
+    expect(read('apps/web/src/pages/blog/[slug].astro')).toContain('const recorded = await findRecordedRedirect(Astro.url.pathname);');
+    // The guide file's title produces the new slug, so the publish script updates the renamed row, never a second post.
+    expect(read('docs/content/guides/102-visiting-the-goldplus-shop.md')).toMatch(/^Title: Visiting the GoldPlus shop on Wilson Road$/m);
+  });
+  it('no customer-facing source names Burton Street', () => {
+    for (const f of ['packages/shared/src/business/index.ts', 'packages/shared/src/hero/library.ts', 'apps/web/src/pages/locations/zainab-aziza.astro', 'apps/api/src/domain/delivery/DeliveryConfigRegistry.ts', 'apps/web/src/lib/assistantRouter.ts', 'apps/api/src/infrastructure/notifications/email/generatedEmailTemplates.ts']) {
+      const code = read(f).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      expect(code, f).not.toContain('Burton Street');
+    }
   });
 });
