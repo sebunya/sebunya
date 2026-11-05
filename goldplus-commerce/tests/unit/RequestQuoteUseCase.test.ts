@@ -11,6 +11,14 @@ function makeFake(): IQuoteRepository & { saved: Quote[] } {
       saved.push(q);
     },
     findAll: async () => saved,
+    // Same rule as the Drizzle repository: same phone, product, quantity and message inside the window.
+    saveUnlessRecentDuplicate: async (q, windowMs) => {
+      const earlier = [...saved].reverse().find((s) => s.phone === q.phone && s.productName === q.productName
+        && s.quantity === q.quantity && s.message === q.message && q.createdAt.getTime() - s.createdAt.getTime() <= windowMs);
+      if (earlier) return { id: earlier.id, duplicate: true };
+      saved.push(q);
+      return { id: q.id, duplicate: false };
+    },
   };
 }
 
@@ -84,5 +92,24 @@ describe('RequestQuoteUseCase', () => {
     await uc.execute({ ...valid, quantity: '1,200' });
     expect(repo.saved[1].message).toBe('Need by end of month.');
     expect(repo.saved[1].quantity).toBe(1200);
+  });
+
+  it('a double tap or retry of the plain form yields ONE enquiry with the same id', async () => {
+    const repo = makeFake();
+    const uc = new RequestQuoteUseCase(repo);
+    const a = await uc.execute(valid);
+    const b = await uc.execute(valid);
+    expect(a.ok && b.ok).toBe(true);
+    if (a.ok && b.ok) expect(b.quoteId).toBe(a.quoteId);
+    expect(repo.saved).toHaveLength(1);
+  });
+
+  it('a genuinely different request is a new enquiry', async () => {
+    const repo = makeFake();
+    const uc = new RequestQuoteUseCase(repo);
+    await uc.execute(valid);
+    await uc.execute({ ...valid, quantity: '60' });
+    await uc.execute({ ...valid, productName: 'Power banks' });
+    expect(repo.saved).toHaveLength(3);
   });
 });

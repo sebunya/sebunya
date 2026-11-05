@@ -19,6 +19,9 @@ export type RequestQuoteResult =
   | { ok: true; quoteId: string }
   | { ok: false; code: 'BAD_INPUT'; message: string };
 
+/** A repeat of the same request inside this window is the same enquiry (double tap, browser retry, back-and-resend). */
+export const QUOTE_DUPLICATE_WINDOW_MS = 10 * 60_000;
+
 export class RequestQuoteUseCase {
   constructor(private readonly quotes: IQuoteRepository) {}
 
@@ -66,7 +69,9 @@ export class RequestQuoteUseCase {
       message
     );
 
-    await this.quotes.save(quote);
-    return { ok: true, quoteId: id };
+    // One intentional submission = one enquiry; a genuinely new request (different product, quantity or note, or
+    // the same one after the window) is saved as new.
+    const saved = await this.quotes.saveUnlessRecentDuplicate(quote, QUOTE_DUPLICATE_WINDOW_MS);
+    return { ok: true, quoteId: saved.id };
   }
 }
