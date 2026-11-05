@@ -33,6 +33,7 @@ export * from './analytics';
 export * from './hero';
 export * from './nav';
 export * from './brand';
+export * from './markets';
 export * from './business';
 export * from './taxonomy';
 export * from './search';

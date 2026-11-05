@@ -6,7 +6,10 @@
  * why cart/checkout disagreed with the header. We render the CODE, once, here:
  * `UGX` + non-breaking space + grouped digits, no decimals. Matches /^UGX\u00A0[\d,]+$/.
  */
+// Direct path, not the package root: this file runs in the browser too, and the root pulls in node:crypto.
+import { formatMoney } from '@goldplus/shared/src/markets';
+
+/** The Uganda case of the shared market formatter (packages/shared/src/markets): same output as before. */
 export function formatUgx(value: unknown): string {
-  const n = Math.round(Number(value) || 0);
-  return `UGX\u00A0${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n)}`;
+  return formatMoney(value, 'UGX');
 }
