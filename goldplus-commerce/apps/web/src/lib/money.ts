@@ -19,7 +19,14 @@ export function formatUgx(value: unknown): string {
  * address the quote could not price is stored as 0 UNCONFIRMED and the team agrees the fee by phone, so it must
  * never read as free delivery (visibility gaps N8). An unknown flag (an older API) keeps the old reading.
  */
-export function deliveryFeeCell(feeUgx: number, confirmed: boolean | null | undefined): string {
+export function deliveryFeeCell(
+  feeUgx: number,
+  confirmed: boolean | null | undefined,
+  fareAtCollection?: 'bus' | 'taxi' | null,
+): string {
   if (feeUgx > 0) return formatUgx(feeUgx);
-  return confirmed === false ? 'To be agreed by phone' : 'Free';
+  if (confirmed === false) return 'To be agreed by phone';
+  // Owner 2026-11-06: a pay-at-collection parcel is not free; the fare is paid at the parcel office.
+  if (fareAtCollection) return `Pay ${fareAtCollection} fare at collection`;
+  return 'Free';
 }

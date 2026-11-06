@@ -41,6 +41,9 @@ describe('the 5pm Kampala cut-off', () => {
 describe('fee semantics: an unknown fee is never free', () => {
   it('a priced fee shows the amount', () => expect(deliveryFeeCell(6500, true)).toMatch(/^UGX 6,500$/));
   it('pickup or a waiver (0, confirmed) is free', () => expect(deliveryFeeCell(0, true)).toBe('Free'));
+  it('a pay-at-collection bus parcel names the fare, not free', () => expect(deliveryFeeCell(0, true, 'bus')).toBe('Pay bus fare at collection'));
+  it('a pay-at-collection taxi parcel names the taxi fare', () => expect(deliveryFeeCell(0, true, 'taxi')).toBe('Pay taxi fare at collection'));
+  it('an unpriced fee stays to be agreed even with a fare flag', () => expect(deliveryFeeCell(0, false, 'bus')).toBe('To be agreed by phone'));
   it('an address that could not be priced (0, unconfirmed) is to be agreed, not free', () => {
     expect(deliveryFeeCell(0, false)).toBe('To be agreed by phone');
   });

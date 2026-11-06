@@ -24,6 +24,7 @@ interface LookupOrder {
   subtotalUgx?: number;
   deliveryFeeUgx?: number;
   deliveryFeeConfirmed?: boolean;
+  tracking?: { fareAtCollection?: 'bus' | 'taxi' | null } | null;
   totalUgx?: number;
   storeCreditAppliedUgx?: number;
   paymentStatus?: string;
@@ -110,7 +111,7 @@ const addsUp = Boolean(order && n(order.subtotalUgx) !== null && n(order.deliver
             {addsUp && (
               <>
                 <tr><td colspan="3" class="pt-3 text-right text-slate-600">Items</td><td class="pt-3 text-right tabular-nums">{formatUgx(order.subtotalUgx as number)}</td></tr>
-                <tr><td colspan="3" class="text-right text-slate-600">Delivery</td><td class="text-right tabular-nums">{deliveryFeeCell(order.deliveryFeeUgx as number, order.deliveryFeeConfirmed)}</td></tr>
+                <tr><td colspan="3" class="text-right text-slate-600">Delivery</td><td class="text-right tabular-nums">{deliveryFeeCell(order.deliveryFeeUgx as number, order.deliveryFeeConfirmed, order.tracking?.fareAtCollection)}</td></tr>
               </>
             )}
             {n(order.storeCreditAppliedUgx) !== null && (order.storeCreditAppliedUgx as number) > 0 && (
