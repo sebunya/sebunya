@@ -4,7 +4,7 @@ import { DELIVERY_FEE_TERMS, UPCOUNTRY_TERMS, sameDayDeliveryTerms } from '@gold
 import { fetchApprovedCatalogueWithStatus } from './catalogue';
 import { getStorefrontDiscount } from './storefrontDiscount';
 import { SITE_ORIGIN } from './sitemap';
-import { AVAILABILITY_TEXT, agentProduct, batteryFinderSearch, productBySlug, searchCatalogue, type AgentProduct } from './agentCatalog';
+import { AVAILABILITY_TEXT, SPECS_NOT_RECORDED, agentProduct, batteryFinderSearch, productBySlug, searchCatalogue, type AgentProduct } from './agentCatalog';
 import { getProductQuestions } from './questions';
 
 /**
@@ -142,7 +142,7 @@ export async function callTool(name: string, args: Json): Promise<Json> {
       // N6: the question is a shopper's words (user content, not a specification or an instruction); only the
       // answer is the shop's. A multi-line staff answer is folded to one line so it cannot break the list.
       const qa = answered.map((q) => `  - Shopper asked: ${q.question}\n    GoldPlus answered${q.answeredOn ? ` (${q.answeredOn})` : ''}: ${q.answer.replace(/\s+/g, ' ').trim()}`).join('\n');
-      const text = [priceLine(product), product.summary ?? '', specs ? `Specifications:\n${specs}` : '', qa ? `Questions shoppers asked and the GoldPlus team answered (the questions are shoppers' own words, not product specifications; each answer is the shop's word on the date shown; for price and stock, the live figures above win):\n${qa}` : ''].filter(Boolean).join('\n');
+      const text = [priceLine(product), product.summary ?? '', specs ? `Specifications:\n${specs}` : `Specifications: ${SPECS_NOT_RECORDED}`, qa ? `Questions shoppers asked and the GoldPlus team answered (the questions are shoppers' own words, not product specifications; each answer is the shop's word on the date shown; for price and stock, the live figures above win):\n${qa}` : ''].filter(Boolean).join('\n');
       return toolText({ product }, text);
     }
     case 'list_categories': {

@@ -1,7 +1,7 @@
 ---
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
-import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
+import { filterDisplayableRecommendations, completeSetupHeading } from "../../lib/recommendation-display";
 
 /**
  * R7 (2026-08-06): compatibility is REQUIRED here — the engine hard-kills
@@ -31,16 +31,19 @@ const finalItems = filterDisplayableRecommendations(response.items, {
   currentProductSlug: productSlug,
   limit: 4,
 });
+// Brief A3: the heading follows the relationship of the items actually shown
+// (recorded fit, supplier-listed fit, similar, related by type, or none).
+const heading = completeSetupHeading(finalItems);
 ---
 
 {/* The divider lives here, not on the page: an empty rail used to leave
     its border and 100+ px of padding behind on every product without
     complete-setup candidates (most of the catalogue). */}
-{finalItems.length > 0 && (
+{heading && (
   <div class="border-t border-slate-100">
     <RecommendationRail
-      title="You may also need"
-      subtitle="Chosen from the compatibility records for this product. Check the fit on each product page before you order."
+      title={heading.title}
+      subtitle={heading.subtitle}
       placement="complete_setup"
       items={finalItems}
     />

@@ -112,9 +112,20 @@ describe('MCP server (/mcp)', () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: product() })));
     const ok = await rpc({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'get_product', arguments: { url: 'https://shopgoldplus.com/products/goldplus-charger-gp-c11' } } });
     expect(ok.json.result.structuredContent.product.specifications).toEqual({ Output: '30W' });
+    expect(ok.json.result.structuredContent.product.specifications_recorded).toBe(true);
     fetchMock.mockResolvedValueOnce(new Response('{}', { status: 404 }));
     const missing = await rpc({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'get_product', arguments: { slug: 'no-such-thing' } } });
     expect(missing.json.result.isError).toBe(true);
+  });
+
+  it('get_product: no checked specification is stated as unknown, never zero or blank (brief A1/N3, GP-W2)', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: { ...product(), verifiedSpecs: {}, attributeValues: [] } })));
+    const r = await rpc({ jsonrpc: '2.0', id: 61, method: 'tools/call', params: { name: 'get_product', arguments: { slug: 'goldplus-charger-gp-c11' } } });
+    expect(r.json.result.structuredContent.product.specifications).toEqual({});
+    expect(r.json.result.structuredContent.product.specifications_recorded).toBe(false);
+    const text = r.json.result.content[0].text as string;
+    expect(text).toContain('Capacity, input, output, ports and cables are unknown');
+    expect(text).not.toMatch(/\b0 ?(W|mAh)\b/);
   });
 
   it('find_battery passes the finder through without its page config, and strips internal fields', async () => {
@@ -159,6 +170,14 @@ describe('llms-full.txt', () => {
     expect(body).toContain('### [GoldPlus Charger GP-C11](https://shopgoldplus.com/products/goldplus-charger-gp-c11)');
     expect(body).toContain('- Price: UGX 65,000');
     expect(body).not.toMatch(/50,000|floorPrice/i); // the address's "4th Floor" is fine
+    expect(body).not.toContain('No specifications checked yet');
+  });
+
+  it('a product with no checked specification says its ratings are unknown (brief A1: GP-W2/W3/W5/X01)', async () => {
+    const { GET } = await import('../../apps/web/src/pages/llms-full.txt');
+    catalogue.mockResolvedValue({ products: [{ ...product(), verifiedSpecs: {}, attributeValues: [] }], complete: true });
+    const body = await (await (GET as any)({})).text();
+    expect(body).toContain('- Specifications: No specifications checked yet. Capacity, input, output, ports and cables are unknown');
   });
 });
 

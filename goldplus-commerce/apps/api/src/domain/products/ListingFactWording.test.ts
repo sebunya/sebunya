@@ -16,4 +16,21 @@ describe('rewordListingFacts', () => {
     expect(rewordListingFacts(once)).toBe(once);
     expect(LISTING_FACT_CLAIM.test(once)).toBe(false);
   });
+  it('GP-P05W: wireless charging needs a wireless-capable phone; magnets only hold it; wired and wireless ratings stay separate (brief A2)', () => {
+    const short = '10000mAh power bank that snaps onto the back of a phone with a magnetic ring and charges it wirelessly at up to 15W. Type-C and iPhone cables built in, 22.5W wired.';
+    const long = 'No cable, no holding it in place. The GP-P05W snaps magnetically onto the back of a phone that has a magnetic ring or a magnetic case and charges it wirelessly at up to 15W while you keep using the phone. For any other phone, a Type-C cable and a Lightning cable are built into the back, with wired charging up to 22.5W. 10000mAh capacity. Same-day delivery in Kampala and Wakiso.';
+    const s = rewordListingFacts(short); const l = rewordListingFacts(long);
+    for (const out of [s, l]) {
+      expect(out).toMatch(/only if the phone (itself )?supports wireless charging/);
+      expect(LISTING_FACT_CLAIM.test(out)).toBe(false);
+      expect(rewordListingFacts(out)).toBe(out);
+      expect(out).toContain('15W'); expect(out).toContain('22.5W');
+    }
+    expect(LISTING_FACT_CLAIM.test(short)).toBe(true);
+    expect(LISTING_FACT_CLAIM.test(long)).toBe(true);
+    expect(l).toContain('does not make a phone wirelessly chargeable');
+    expect(l).toContain('For a phone with a Type-C or Lightning port');
+    expect(l.endsWith('10000mAh capacity. Same-day delivery in Kampala and Wakiso.')).toBe(true);
+    expect(s.length).toBeLessThanOrEqual(500);
+  });
 });

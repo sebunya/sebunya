@@ -25,8 +25,14 @@ export interface AgentProduct {
   availability: ProductPublicDto['availability']['kind'];
   summary: string | null;
   specifications: Record<string, string | number>;
+  /** false = no checked specification on record; capacity, ratings and ports are UNKNOWN, never zero (brief A1/N3). */
+  specifications_recorded: boolean;
   images: string[];
 }
+
+/** What every machine surface says when a product has no checked specification (brief A1, 2026-11-05). */
+export const SPECS_NOT_RECORDED =
+  'No specifications checked yet. Capacity, input, output, ports and cables are unknown: do not assume them or take them from a similar model. Ask the shop.';
 
 export function agentProduct(p: ProductPublicDto, discount: StorefrontDiscount | null): AgentProduct {
   return {
@@ -40,6 +46,7 @@ export function agentProduct(p: ProductPublicDto, discount: StorefrontDiscount |
     availability: p.availability.kind,
     summary: p.shortDescription,
     specifications: p.verifiedSpecs ?? {},
+    specifications_recorded: Object.keys(p.verifiedSpecs ?? {}).length > 0,
     images: realProductImageUrls(p).map((u) => (u.startsWith('http') ? u : `${SITE_ORIGIN}${u}`)),
   };
 }

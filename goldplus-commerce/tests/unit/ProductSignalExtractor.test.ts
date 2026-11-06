@@ -69,4 +69,14 @@ describe("ProductSignalExtractor", () => {
     });
     expect(lightning.connectorTypes).toContain("lightning");
   });
+
+  it('a memory card whose copy says "recording" is storage, not a cable (brief A3: microSD cards offered as power bank fits)', () => {
+    const card = extractor.extract({
+      id: "mc", slug: "goldplus-memory-card-128gb", name: "GoldPlus 128GB Memory Card (microSD, Class 10)",
+      description: "Keep a CCTV or dashcam recording around the clock.", categoryName: "Storage Devices", isActive: true,
+    });
+    expect(card.productType).toBe("storage");
+    const cord = extractor.extract({ id: "c", slug: "x", name: "GoldPlus braided charging cord", isActive: true });
+    expect(cord.productType).toBe("cable");
+  });
 });
