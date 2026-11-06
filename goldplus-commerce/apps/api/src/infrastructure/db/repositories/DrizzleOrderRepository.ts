@@ -99,6 +99,13 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       .limit(1);
     // The rider's first name only: a customer needs to know who is coming, not the rider's full identity.
     const firstName = (v: string | null | undefined) => (v ? v.trim().split(/\s+/)[0] : null);
+    // A pay-on-collection rate card: the order charges 0 and the customer pays the carrier at the parcel office.
+    const fareRows = (await db.execute(sql`
+      select rc.carrier_kind from delivery_quote_capture q
+      join delivery_bus_rate_card rc on rc.id = q.rate_card_id
+      where q.order_id = ${orderId} and rc.charged_at = 'collection'
+      limit 1`).catch(() => [])) as unknown as Array<{ carrier_kind: string }>;
+    const fareKind = fareRows[0]?.carrier_kind;
     return {
       placedAt: order.createdAt.toISOString(),
       confirmedAt: firstInto(['processing']),
@@ -110,6 +117,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
             estimatedDeliveryAt: dispatch.estimatedDeliveryAt?.toISOString() ?? null,
           }
         : null,
+      fareAtCollection: fareKind === 'taxi' ? 'taxi' : fareKind ? 'bus' : null,
     };
   }
 

@@ -92,6 +92,8 @@ export interface OrderTrackingDto {
   dispatchedAt: string | null;
   deliveredAt: string | null;
   rider: { name: string | null; carrier: string | null; method: string | null; estimatedDeliveryAt: string | null } | null;
+  /** Owner 2026-11-06: the carrier fare is paid at the parcel office ('bus' | 'taxi'), not in the order. Absent on older API builds. */
+  fareAtCollection?: 'bus' | 'taxi' | null;
 }
 
 export interface OrderDetailDto {
