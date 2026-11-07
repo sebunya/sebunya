@@ -54,6 +54,7 @@ import { getStorefrontDiscount, basketSavingUgx, basketSavingLabel } from '../li
 import { getBusinessInfo } from '../lib/businessInfo';
 import { getStorefrontCopy } from '../lib/storefrontCopy';
 import { RETURNS_POLICY } from '../lib/returnsPolicy';
+import { getPayInPartsTerms, startLaybyDeposit, termsInWords } from '../lib/payInParts';
 import type { ApiEnvelope } from '@goldplus/shared';
 
 interface CartItem {
@@ -217,6 +218,9 @@ let previewQuoteIdValue = '';
 // Owner decision 2026-10-16: storefront orders are paid online; pay on delivery confused customers.
 let paymentMethodValue: 'offline' | 'pesapal' = 'pesapal';
 let redeemPointsValue = '';
+// 0222: pay in parts, chosen on this checkout (offered only when the goods total qualifies; the API checks again).
+let payInPartsValue = false;
+const payInParts = await getPayInPartsTerms();
 
 // The checkout intent is resolved on EVERY render, including the initial GET.
 //
@@ -401,6 +405,7 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
     previewQuoteIdValue = /^[0-9a-f-]{36}$/i.test(q) ? q : '';
   }
   paymentMethodValue = 'pesapal';
+  payInPartsValue = String(formData.get('payInParts') || '') === '1';
   {
     const rp = parseInt(String(formData.get('redeemPoints') || ''), 10);
     redeemPointsValue = Number.isInteger(rp) && rp > 0 ? String(rp) : '';
@@ -618,7 +623,19 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
         // Payment starts ONLY when the server says the order is payable. The
         // previous condition was just "we have an order id", which would start a
         // payment for a stock-blocked or already-paid order.
-        if (paymentMethod === 'pesapal' && mayStartPayment(dto)) {
+        if (paymentMethod === 'pesapal' && payInPartsValue && mayStartPayment(dto)) {
+           // 0222: the deposit only. The order stays unpaid (items held) until every part is in.
+           const dep = await startLaybyDeposit({ orderId: dto.orderId, intentToken: activeIntentToken, sessionToken: Astro.cookies.get('goldplus_session')?.value ?? null });
+           if (dep.ok) {
+              await clearBasketAfterOrder();
+              rememberPaymentOrder(dto.orderNumber);
+              return Astro.redirect(dep.redirectUrl, 303);
+           }
+           status = 'error';
+           reference = dto.orderNumber || dto.orderId;
+           message = `${dep.message} Your order ${dto.orderNumber} is saved. You can pay the deposit from the pay in parts page, or pay in full from the order page.`;
+           feedbackAction = { href: `/pay-in-parts?reference=${encodeURIComponent(dto.orderNumber || '')}`, label: 'Pay the deposit' };
+        } else if (paymentMethod === 'pesapal' && mayStartPayment(dto)) {
            // Typed, and the intent is forwarded: the API cannot authorize this
            // caller without it. The previous untyped call also showed the API's
            // own error text to the customer on failure.
@@ -1162,6 +1179,24 @@ const checkoutSavingLabel = basketSavingLabel(
                 </div>
               </div>
             </div>
+
+            {/* 0222: pay in parts. Shown only when the goods total qualifies, with every term stated before the choice;
+                off by default (paying in full stays the plain path). The API checks eligibility again on the order. */}
+            {checkoutSaleSubtotal >= payInParts.terms.minGoodsUgx && (
+              <div class="bg-white p-6 md:p-8 rounded-2xl border border-slate-200/80" data-pay-in-parts>
+                <label class="flex items-start gap-3 cursor-pointer">
+                  <input type="checkbox" name="payInParts" value="1" checked={payInPartsValue} class="mt-1 h-5 w-5 accent-brand-primaryInk" />
+                  <span>
+                    <span class="font-bold text-gray-900 text-sm">Pay in parts</span>
+                    <span class="block text-xs text-slate-600 mt-1">Pay {payInParts.terms.depositPercent}% now (about {formatUgx(Math.ceil(checkoutSaleSubtotal * payInParts.terms.depositPercent / 100))} plus {payInParts.terms.depositPercent}% of any delivery fee), the rest within {payInParts.terms.termDays} days.</span>
+                  </span>
+                </label>
+                <ul class="mt-3 list-disc pl-5 text-xs text-slate-600 space-y-1">
+                  {termsInWords(payInParts.terms).map((line) => <li>{line}</li>)}
+                </ul>
+                <a href="/pay-in-parts" class="mt-2 inline-block text-xs font-bold underline text-brand-primaryInk">How pay in parts works</a>
+              </div>
+            )}
 
             {/* One optional question, for attribution only: never required, no
                 default answer. A neutral first line; "prefer not to say" is the LAST

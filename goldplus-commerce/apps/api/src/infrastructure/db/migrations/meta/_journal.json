@@ -1548,6 +1548,13 @@
       "when": 1790140000107,
       "tag": "0221_shop_address_wilson_road",
       "breakpoints": true
+    },
+    {
+      "idx": 221,
+      "version": "5",
+      "when": 1790140000108,
+      "tag": "0222_pay_in_parts",
+      "breakpoints": true
     }
   ]
 }

@@ -7,6 +7,7 @@ import { clientKey, isInternalCall } from '../clientAddress';
 import { GIFT_CARD_PHOTO_MAX_BYTES, type GiftCardPhotoRefusal } from '../../../domain/credit/GiftCardPhoto';
 import { GIFT_CARD_PHOTO_REFUSAL_WORDS, type RemoveGiftCardPhotoResult } from '../../../application/use-cases/credit/GiftCardPhotoUseCases';
 import { isGiftCardPurchaseReference } from '../../../domain/credit/GiftCardPurchase';
+import { isLaybyPaymentReference } from '../../../domain/layby/PayInParts';
 import { z } from 'zod';
 import { Registry } from '../../../infrastructure/Registry';
 import { normalizeCreditCode } from '../../../domain/credit/CreditInstrument';
@@ -1537,6 +1538,65 @@ routes.post('/orders/lookup/pay', async (c) => {
   return respondToStartOutcome(c, outcome, traceId);
 });
 
+/**
+ * 0222: pay in parts. Thin: the use case decides eligibility, amounts and every state change.
+ * terms: the owner's numbers, for checkout and the /pay-in-parts page.
+ * start: the deposit for the order this checkout just created (the same checkout-intent proof as paying in full).
+ * lookup / pay: later, with the order number and the phone or email used at checkout (the same proof and lockout as
+ * /orders/lookup), see the balance and pay any amount up to it.
+ */
+routes.get('/pay-in-parts/terms', async (c) => {
+  const goods = Number(c.req.query('goodsUgx'));
+  const total = Number(c.req.query('totalUgx'));
+  const data = Number.isFinite(goods) && Number.isFinite(total) && goods > 0
+    ? await registry.payInPartsUseCases.quote(goods, total)
+    : { eligible: false, depositUgx: 0, terms: await registry.payInPartsUseCases.terms() };
+  return c.json({ success: true, data });
+});
+
+routes.post('/pay-in-parts/start', async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const intent = await resolveCheckoutIntent(c);
+  if (!intent.ok) return c.json({ success: false, error: { code: 'CHECKOUT_INTENT_REQUIRED', message: 'Your checkout session expired. Please reload and try again.' } }, 401);
+  const body = (await c.req.json().catch(() => null)) as { orderId?: unknown } | null;
+  const orderId = String(body?.orderId ?? '').trim();
+  const checkout = orderId ? await registry.checkoutIdempotencyRepo.findByOrderId(orderId) : null;
+  if (!checkout || checkout.principalKey !== intentPrincipalKey(intent.claims)) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'We could not find that order.' } }, 404);
+  }
+  return layByStartResponse(c, await registry.payInPartsUseCases.startDeposit(orderId));
+});
+
+routes.post('/pay-in-parts/lookup', async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const verified = await verifyOrderRequest(c);
+  if (!verified.ok) return c.json({ success: false, error: { code: verified.code, message: verified.message } }, verified.status);
+  const data = await registry.payInPartsUseCases.view(verified.order.id);
+  if (!data) return c.json({ success: false, error: { code: 'NOT_PAY_IN_PARTS', message: 'This order is not being paid in parts.' } }, 404);
+  return c.json({ success: true, data });
+});
+
+routes.post('/pay-in-parts/pay', async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const raw = await c.req.raw.clone().json().catch(() => null) as { amountUgx?: unknown } | null;
+  const verified = await verifyOrderRequest(c);
+  if (!verified.ok) return c.json({ success: false, error: { code: verified.code, message: verified.message } }, verified.status);
+  return layByStartResponse(c, await registry.payInPartsUseCases.startInstalment(verified.order.id, raw?.amountUgx));
+});
+
+routes.get('/pay-in-parts/payment/:reference', async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const data = await registry.payInPartsUseCases.paymentStatus(c.req.param('reference'));
+  if (!data) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No payment has that reference.' } }, 404);
+  return c.json({ success: true, data });
+});
+
+function layByStartResponse(c: Context, result: Awaited<ReturnType<typeof registry.payInPartsUseCases.startDeposit>>) {
+  if (result.ok) return c.json({ success: true, data: { reference: result.reference, redirectUrl: result.redirectUrl } });
+  const status = result.code === 'NOT_FOUND' ? 404 : result.code === 'NOT_CONFIGURED' || result.code === 'PROVIDER' ? 503 : result.code === 'CLOSED' ? 409 : 400;
+  return c.json({ success: false, error: { code: result.code, message: result.message } }, status);
+}
+
 routes.post('/payments/pesapal/start', async (c) => {
   const traceId = createHash('sha256')
     .update(`${Date.now()}:${Math.random()}`)
@@ -1609,6 +1669,11 @@ routes.get('/payments/pesapal/callback', async (c) => {
     await registry.giftCardPurchaseUseCases.settle({ trackingId, reference, source: 'callback' }).catch((err) => console.error('[API_ERROR] gift card settlement failed:', err));
     return c.redirect(`${new URL(frontendCallbackUrl).origin}/gift-card/bought?ref=${encodeURIComponent(reference)}`);
   }
+  // 0222: a pay-in-parts payment (LB- reference) settles through its own use case and returns to its own page.
+  if (isLaybyPaymentReference(reference)) {
+    await registry.payInPartsUseCases.settle({ trackingId, reference, source: 'callback' }).catch((err) => console.error('[API_ERROR] pay in parts settlement failed:', err));
+    return c.redirect(`${new URL(frontendCallbackUrl).origin}/pay-in-parts?ref=${encodeURIComponent(reference)}`);
+  }
   const { kind, code } = await describeSettlement(trackingId, reference, traceId);
   if (!trackingId || !reference) return c.redirect(`${frontendCallbackUrl}?status=unknown_attempt`);
   const ids = `&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}`;
@@ -1645,6 +1710,11 @@ const handleIpn = async (c: any) => {
     // 0199: a gift card purchase settles through its own use case; the acknowledgement is the same.
     if (isGiftCardPurchaseReference(reference)) {
       await registry.giftCardPurchaseUseCases.settle({ trackingId, reference, source: 'ipn' });
+      return c.json({ orderNotificationType: notificationType || 'IPNCHANGE', orderTrackingId: trackingId, orderMerchantReference: reference, status: 200 });
+    }
+    // 0222: a pay-in-parts payment; counted once however often Pesapal repeats it.
+    if (isLaybyPaymentReference(reference)) {
+      await registry.payInPartsUseCases.settle({ trackingId, reference, source: 'ipn' });
       return c.json({ orderNotificationType: notificationType || 'IPNCHANGE', orderTrackingId: trackingId, orderMerchantReference: reference, status: 200 });
     }
     // Same single settlement path as the browser callback. An IPN for an

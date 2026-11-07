@@ -84,7 +84,7 @@ describe('F19: a refund that cancels the order closes its fulfilment task', () =
 
   it('both refund doors (provider poll and operator resolution) and the unpaid-order abandonment are wired to it', () => {
     const registry = read('apps/api/src/infrastructure/Registry.ts');
-    expect(registry.match(/new CancelFulfilmentTaskForCancelledOrderUseCase\(this\.fulfilmentRepo, this\.transitionFulfilmentTaskUseCase\)/g)?.length).toBe(3);
+    expect(registry.match(/new CancelFulfilmentTaskForCancelledOrderUseCase\(this\.fulfilmentRepo, this\.transitionFulfilmentTaskUseCase\)/g)?.length).toBe(4); // +1 pay in parts cancel and lapse (0222)
   });
 });
 

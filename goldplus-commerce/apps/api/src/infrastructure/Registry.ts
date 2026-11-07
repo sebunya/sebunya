@@ -118,6 +118,8 @@ import { DrizzleGiftCardPhotoRepository } from './credit/DrizzleGiftCardPhotoRep
 import { piiHasher } from './security/PiiHashingService';
 import { GiftCardPhotoUseCases } from '../application/use-cases/credit/GiftCardPhotoUseCases';
 import { GiftCardPurchaseUseCases } from '../application/use-cases/credit/GiftCardPurchaseUseCases';
+import { PayInPartsUseCases } from '../application/use-cases/layby/PayInPartsUseCases';
+import { DrizzleLaybyRepository } from './layby/DrizzleLaybyRepository';
 import { GiftCardOccasionUseCases } from '../application/use-cases/credit/GiftCardOccasionUseCases';
 import { DrizzleOccasionSettingsRepository } from './credit/DrizzleOccasionSettingsRepository';
 import { storefrontOrigin } from './config/storefrontOrigin';
@@ -3009,6 +3011,61 @@ export class Registry {
     { hashCode: creditCodeHash, visitorKey: (raw) => piiHasher.hashName(raw) },
     (event, detail) => logger.info({ event, ...detail }, `[gift-card-photo] ${event}`),
   );
+  /**
+   * 0222: pay in parts. Payments go through Pesapal under their own LB- references; the ORDER is settled (the same
+   * doors as an order paid by gift card) only once the plan is paid in full. Cancel and lapse use the canonical
+   * transition, give the stock back and close the fulfilment task, as an abandoned order does.
+   */
+  public readonly payInPartsUseCases = new PayInPartsUseCases(
+    new DrizzleLaybyRepository(),
+    {
+      findById: async (orderId) => {
+        const { db } = await import('./db/client');
+        const { sql } = await import('drizzle-orm');
+        const rows = (await db.execute(sql`
+          select id, order_number, customer_name, customer_phone, subtotal_amount, total_amount, store_credit_applied_ugx, payment_status, status, payment_method
+            from orders where id = ${orderId} limit 1`)) as unknown as Array<Record<string, any>>;
+        const r = (Array.isArray(rows) ? rows : ((rows as any)?.rows ?? []))[0];
+        return r ? {
+          id: String(r.id), orderNumber: r.order_number, customerName: r.customer_name ?? null, customerPhone: r.customer_phone,
+          subtotalUgx: Number(r.subtotal_amount), totalUgx: Number(r.total_amount), storeCreditAppliedUgx: Number(r.store_credit_applied_ugx ?? 0),
+          paymentStatus: r.payment_status, orderStatus: r.status, paymentMethod: r.payment_method ?? null,
+        } : null;
+      },
+      settlePaid: async (orderId, traceId) => {
+        await this.orderTransitionService.transition(orderId, 'processing', {
+          actorType: 'payment_provider', source: 'payment', reasonCode: 'paid_in_parts', paymentStatus: 'paid',
+          idempotencyKey: `layby:paid:${orderId}`, correlationId: orderId,
+        });
+        await this.reconcileOrderPaymentUseCase.execute({ verification: { ok: true, orderId, status: 'paid', lifecycleConflict: false, superseded: false }, traceId });
+        await this.settlePaymentUseCase.runCreditPaidEffects(orderId);
+      },
+      cancel: async (orderId, reasonCode, note) => {
+        await this.orderTransitionService.transition(orderId, 'cancelled', {
+          actorId: null, actorType: 'system', source: 'system', reasonCode, note, idempotencyKey: `layby:cancel:${orderId}`,
+        });
+        await this.inventoryRepo.releaseForOrder(orderId).catch(() => ({ released: false }));
+        await new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase)
+          .execute({ orderId, actorId: null, reason: note }).catch(() => undefined);
+      },
+      openTask: async (t) => {
+        const last = await this.careDeskUseCases.lastTitled(t.title, { exact: true });
+        if (last?.status === 'open') return;
+        await this.careDeskUseCases.openTask({
+          kind: 'order_problem', urgent: t.urgent, openedBy: 'pay-in-parts', title: t.title, detail: t.detail,
+          orderNumber: t.orderNumber, customerName: t.customerName, customerPhone: t.customerPhone,
+        });
+      },
+    },
+    this.pesapalClient,
+    { randomIndexes: creditRandomIndexes },
+    () => ({
+      ipnId: process.env.PESAPAL_IPN_ID || null,
+      callbackUrl: providerCallbackUrl(),
+      resultPageUrl: `${storefrontOrigin() ?? 'http://localhost:4321'}/pay-in-parts`,
+    }),
+    (event, detail) => logger.info({ event, ...detail }, `[pay-in-parts] ${event}`),
+  );
   /** 0196: an order paid entirely by store credit / a gift card, settled through the same doors as Pesapal. */
   public readonly settleByStoreCreditUseCase = new SettleByStoreCreditUseCase(this.orderRepo, this.orderTransitionService, this.reconcileOrderPaymentUseCase, this.settlePaymentUseCase);
 
@@ -3090,6 +3147,9 @@ export class Registry {
               -- attempt write and the order transition), it is never cancelled or released by time.
               and a.status in ('pending', 'verification_pending', 'verification_failed', 'completed')
           )
+          -- 0222: an order being paid in parts (deposit in) is unpaid by design until its balance is in; the plan
+          -- holds its stock and closes it on its own date (PayInPartsUseCases.sweep).
+          and not exists (select 1 from layby_plans lp where lp.order_id = o.id and lp.status in ('active', 'paid'))
         order by o.created_at limit ${limit}`)) as unknown as Array<{
         id: string; orderNumber: string; status: string; createdAt: Date;
       }>;
@@ -3114,6 +3174,9 @@ export class Registry {
               -- attempt write and the order transition), it is never cancelled or released by time.
               and a.status in ('pending', 'verification_pending', 'verification_failed', 'completed')
           )
+          -- 0222: an order being paid in parts (deposit in) is unpaid by design until its balance is in; the plan
+          -- holds its stock and closes it on its own date (PayInPartsUseCases.sweep).
+          and not exists (select 1 from layby_plans lp where lp.order_id = o.id and lp.status in ('active', 'paid'))
         order by o.created_at limit ${limit}`)) as unknown as Array<{
         id: string; orderNumber: string; createdAt: Date;
       }>;
@@ -3277,6 +3340,7 @@ export class Registry {
    */
   public readonly startOrderPaymentUseCase = new StartOrderPaymentUseCase({
     settleByStoreCredit: this.settleByStoreCreditUseCase,
+    paidInParts: (orderId) => this.payInPartsUseCases.blocksFullPayment(orderId),
     idempotency: this.checkoutIdempotencyRepo,
     orders: {
       findById: async (orderId) => {

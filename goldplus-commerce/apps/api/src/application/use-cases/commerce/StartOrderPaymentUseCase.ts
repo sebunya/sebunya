@@ -112,6 +112,11 @@ export interface StartOrderPaymentDeps {
   settleByStoreCredit?: { execute(orderId: string, traceId: string): Promise<'settled' | 'not_fully_covered' | 'already_paid' | 'not_found'> };
   idempotency: ICheckoutIdempotencyRepository;
   orders: StartPaymentOrderReader;
+  /**
+   * 0222: true when the order is being paid in parts (deposit paid). Its balance is paid from the pay-in-parts page;
+   * a full-price Pesapal page here would take the whole total again on top of the parts. Optional for older suites.
+   */
+  paidInParts?: (orderId: string) => Promise<boolean>;
   attempts: PaymentAttemptReader;
   provider: PaymentProviderStarter;
   sideEffectRecorder: ICheckoutSideEffectRecorder;
@@ -200,6 +205,10 @@ export class StartOrderPaymentUseCase {
 
     if (order.paymentStatus === 'paid') {
       return { kind: 'ALREADY_PAID', reason: 'ORDER_ALREADY_PAID' };
+    }
+    if (this.deps.paidInParts && (await this.deps.paidInParts(orderId))) {
+      this.deps.observer?.onNotPayable(orderId, command.traceId, 'pay_in_parts');
+      return { kind: 'NOT_PAYABLE', reason: 'ORDER_NOT_PAYABLE' };
     }
     if (order.orderStatus && CLOSED_ORDER_STATUSES.has(order.orderStatus)) {
       this.deps.observer?.onNotPayable(orderId, command.traceId, `order:${order.orderStatus}`);

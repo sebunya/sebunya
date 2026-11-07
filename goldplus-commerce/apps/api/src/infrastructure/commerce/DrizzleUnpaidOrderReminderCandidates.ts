@@ -37,6 +37,10 @@ export class DrizzleUnpaidOrderReminderCandidates implements IUnpaidOrderReminde
          and not exists (
            select 1 from care_tasks t
             where t.order_number = o.order_number and t.status = 'open')
+         -- 0222: a pay-in-parts order gets its own reminders, never "please pay the whole order".
+         and not exists (
+           select 1 from layby_plans lp
+            where lp.order_id = o.id)
          and not exists (
            select 1 from outbox_events x
             where x.idempotency_key = 'customer-order-message:' || o.id::text || ':ORDER_PAYMENT_REMINDER')
