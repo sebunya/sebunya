@@ -37,6 +37,8 @@ export const PUBLIC_FORM_BUDGETS: Readonly<Record<string, FormBudget>> = {
   '/track-order': { limit: 20, windowMs: TEN_MINUTES },
   // Baymard A11: the guest receipt uses the same order proof as /track-order.
   '/receipt': { limit: 20, windowMs: TEN_MINUTES },
+  // 0222: pay in parts uses the same order proof, and opens payment pages.
+  '/pay-in-parts': { limit: 20, windowMs: TEN_MINUTES },
   // Baymard A1: the one-field account form on the confirmation page registers an account.
   '/checkout/confirmed': { limit: 10, windowMs: TEN_MINUTES },
   // Bulk builder (docs/bulk-buying/DESIGN.md): the request texts the phone typed on it;

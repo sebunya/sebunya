@@ -41,6 +41,7 @@ const SENSITIVE_ROUTES = [
   '/orders',
   '/track-order',
   '/receipt',
+  '/pay-in-parts',
 ];
 
 // Precache as an anonymous visitor. Adding a bare URL string sends the session

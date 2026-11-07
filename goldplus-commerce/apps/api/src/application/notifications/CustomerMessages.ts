@@ -49,6 +49,10 @@ export type CustomerTemplate =
   | 'CREDIT_EXPIRING'
   | 'GIFT_CARD_RECEIVED'
   | 'GIFT_CARD_PAID'
+  | 'LAYBY_PAYMENT_RECEIVED'
+  | 'LAYBY_REMINDER'
+  | 'LAYBY_LAPSED'
+  | 'LAYBY_CANCELLED'
   | 'ORDER_CANCELLED_BY_SHOP'
   | 'PHONE_VERIFICATION'
   | 'PASSWORD_RESET'
@@ -170,6 +174,12 @@ export function giftCardOpenUrl(code: string | null | undefined): string {
 /** Where a buyer follows their gift card purchase (the GC- reference is unguessable and shows nothing in full). */
 export function giftCardStatusUrl(reference: string | null | undefined): string {
   return `${publicBaseUrl()}/gift-card/bought${reference ? `?ref=${encodeURIComponent(reference)}` : ''}`;
+}
+
+/** 0222: where a pay-in-parts customer sees the balance and pays more (they prove the order with its phone there). */
+export function payInPartsUrl(orderNumber: string | null | undefined): string {
+  const base = `${publicBaseUrl()}/pay-in-parts`;
+  return orderNumber ? `${base}?reference=${encodeURIComponent(orderNumber)}` : base;
 }
 
 /** What is still to pay on an order: the amount due when the writer sent it, else the total. */
@@ -334,6 +344,17 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
       return d.deliverOnWords
         ? `${SHOP_NAME}: payment received, thank you. Your gift card of ${formatUgx(d.valueUgx)} for ${d.recipientName} will be texted to ${d.recipientPhoneMasked} on ${d.deliverOnWords} morning. Follow it: ${giftCardStatusUrl(d.reference)} Questions? Call ${phone}.`
         : `${SHOP_NAME}: payment received, thank you. Your gift card of ${formatUgx(d.valueUgx)} for ${d.recipientName} is being texted to ${d.recipientPhoneMasked} now. Follow it: ${giftCardStatusUrl(d.reference)} If it does not arrive, call ${phone}.`;
+    case 'LAYBY_PAYMENT_RECEIVED':
+      // 0222: every pay-in-parts payment. The goods stay held for the customer until the balance is paid.
+      return Number(d.balanceUgx) > 0
+        ? `${SHOP_NAME}: we have ${formatUgx(d.valueUgx)} for order${ref}. Left to pay: ${formatUgx(d.balanceUgx)}${d.expiresAt ? ` by ${d.expiresAt}` : ''}. Your items are held for you. Pay more: ${payInPartsUrl(d.orderNumber)}`
+        : `${SHOP_NAME}: we have ${formatUgx(d.valueUgx)} for order${ref}. It is now paid in full and we are preparing your items. Track it: ${track}`;
+    case 'LAYBY_REMINDER':
+      return `${SHOP_NAME}: order${ref} has ${formatUgx(d.balanceUgx)} left to pay${d.expiresAt ? ` by ${d.expiresAt}` : ''}. Your items are held until then. Pay any amount: ${payInPartsUrl(d.orderNumber)} Questions? Call ${phone}.`;
+    case 'LAYBY_LAPSED':
+      return `${SHOP_NAME}: the time to pay for order${ref} has ended, so the order is cancelled. You paid ${formatUgx(d.valueUgx)}; we keep a fee of ${formatUgx(d.spentUgx)} and our team will refund ${formatUgx(d.balanceUgx)} to you. Call ${phone} with questions.`;
+    case 'LAYBY_CANCELLED':
+      return `${SHOP_NAME}: your pay in parts plan for order${ref} is cancelled. You paid ${formatUgx(d.valueUgx)}; we keep a fee of ${formatUgx(d.spentUgx)} and our team will refund ${formatUgx(d.balanceUgx)} to you. Call ${phone} with questions.`;
     case 'ORDER_REVIEW_REMINDER':
       // Sent once, a few days after delivery or collection, only when nothing on the order is rated.
       return `${SHOP_NAME}: how is what you bought on order${ref}? A rating helps the next shopper choose: ${reviewOrderUrl(d.orderNumber)} We will not ask again. If anything is wrong, call ${phone}.`;
@@ -521,6 +542,21 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         cta: { label: 'Follow your gift card', url: giftCardStatusUrl(d.reference) },
         tone: 'success',
       };
+    case 'LAYBY_PAYMENT_RECEIVED':
+    case 'LAYBY_REMINDER':
+    case 'LAYBY_LAPSED':
+    case 'LAYBY_CANCELLED': {
+      // 0222: the email says what the text says.
+      const words = smsTextRaw(template, d) ?? '';
+      return {
+        subject: template === 'LAYBY_REMINDER' ? `Order${ref}: balance to pay` : template === 'LAYBY_PAYMENT_RECEIVED' ? `Payment received for order${ref}` : `Order${ref}: pay in parts plan closed`,
+        preheader: 'About your pay in parts plan.',
+        headline: template === 'LAYBY_PAYMENT_RECEIVED' ? 'Payment received' : template === 'LAYBY_REMINDER' ? 'Balance to pay' : 'Plan closed',
+        body: words.replace(`${SHOP_NAME}: `, ''),
+        cta: { label: 'See your plan', url: payInPartsUrl(d.orderNumber) },
+        tone: template === 'LAYBY_PAYMENT_RECEIVED' ? 'success' : template === 'LAYBY_REMINDER' ? 'wait' : 'neutral',
+      };
+    }
     case 'ORDER_PAYMENT_REMINDER':
       return {
         subject: `Your ${SHOP_NAME} order${ref} is saved but not paid`,
@@ -708,6 +744,11 @@ export const CUSTOMER_TRANSACTIONAL_TEMPLATES: readonly string[] = Object.freeze
   // 0199: a gift card bought online: its code to whoever holds it, and the buyer's receipt.
   'GIFT_CARD_RECEIVED',
   'GIFT_CARD_PAID',
+  // 0222: pay in parts: each payment's receipt, the balance reminders, and the notice when a plan closes.
+  'LAYBY_PAYMENT_RECEIVED',
+  'LAYBY_REMINDER',
+  'LAYBY_LAPSED',
+  'LAYBY_CANCELLED',
   'ORDER_RECEIVED_UNPAID',
   'ORDER_PAYMENT_PENDING',
   'ORDER_PAYMENT_SUCCESS',

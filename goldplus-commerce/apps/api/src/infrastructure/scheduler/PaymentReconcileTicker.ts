@@ -99,6 +99,13 @@ async function runOnce(): Promise<void> {
     logger.error({ err: error }, '[gift-card] sweep failed');
   }
   try {
+    // 0222: pay in parts: unreported payments, abandoned pages, reminders (days 20 and 27 by default) and lapses.
+    const layby = await registry.payInPartsUseCases.sweep(new Date());
+    if (layby.polled > 0 || layby.abandoned > 0 || layby.reminded > 0 || layby.lapsed > 0) logger.info({ ...layby }, '[pay-in-parts] sweep complete');
+  } catch (error) {
+    logger.error({ err: error }, '[pay-in-parts] sweep failed');
+  }
+  try {
     // 0201: gift card photos the retention rules no longer keep (deletes only; both replicas may run it).
     await registry.giftCardPhotoUseCases.sweep(new Date());
   } catch (error) {

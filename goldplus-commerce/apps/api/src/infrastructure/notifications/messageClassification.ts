@@ -93,6 +93,11 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   // 0199: a gift card the customer bought: its code to the person it is for, and the buyer's receipt.
   'GIFT_CARD_RECEIVED',
   'GIFT_CARD_PAID',
+  // 0222: pay in parts: receipts, balance reminders and the closing notice, about the customer's own order.
+  'LAYBY_PAYMENT_RECEIVED',
+  'LAYBY_REMINDER',
+  'LAYBY_LAPSED',
+  'LAYBY_CANCELLED',
   // The one reminder that an online order the customer placed is still unpaid.
   'ORDER_PAYMENT_REMINDER',
   'SUPPORT_REQUEST_RECEIVED',

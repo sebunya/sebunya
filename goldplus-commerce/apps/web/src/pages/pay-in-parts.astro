@@ -1,0 +1,136 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import FormField from '../components/FormField.astro';
+import { apiBase, postJson } from '../lib/api';
+import { readClientAddress } from '../lib/forwardClient';
+import { formatUgx } from '../lib/money';
+import { readGuestMemory, rememberedContact } from '../lib/guestMemory';
+import { getPayInPartsTerms, termsInWords } from '../lib/payInParts';
+
+/**
+ * 0222: pay in parts. The terms, in plain words, then the customer's own plan: the order number plus the phone or
+ * email used at checkout (the proof and lockout /track-order and /receipt use) shows the balance and takes another
+ * payment of any amount up to it. Pesapal returns customers here with ?ref=LB-… to show how that payment went.
+ */
+interface PlanView {
+  orderNumber: string; status: 'awaiting_deposit' | 'active' | 'paid' | 'lapsed' | 'cancelled';
+  totalUgx: number; depositUgx: number; paidUgx: number; balanceUgx: number; dueAt: string | null; feePercent: number; refundUgx: number | null;
+  payments: Array<{ amountUgx: number; status: string; paidAt: string | null; kind: string }>;
+}
+interface PaymentView { reference: string; status: string; amountUgx: number; orderNumber: string; balanceUgx: number; planStatus: string }
+
+const { terms } = await getPayInPartsTerms();
+let reference = (Astro.url.searchParams.get('reference') ?? '').trim().slice(0, 80);
+let contact = '';
+let amount = '';
+let plan: PlanView | null = null;
+let problem = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  reference = String(form.get('reference') ?? '').trim().slice(0, 80);
+  contact = String(form.get('contact') ?? '').trim().slice(0, 120);
+  amount = String(form.get('amountUgx') ?? '').replace(/[,\s]/g, '').slice(0, 12);
+  if (!reference || !contact) {
+    problem = 'Enter both your order number and the phone number or email used at checkout.';
+  } else if (form.get('action') === 'pay') {
+    const r = await postJson('/commerce/pay-in-parts/pay', { reference, contact, amountUgx: Number(amount) }, null, readClientAddress(Astro));
+    const url = r.ok ? String((r.data as { redirectUrl?: string } | null)?.redirectUrl ?? '') : '';
+    if (url) return Astro.redirect(url, 303);
+    problem = r.ok ? 'We could not open the payment page. Nothing was charged.' : r.message;
+  }
+  if (reference && contact) {
+    const r = await postJson('/commerce/pay-in-parts/lookup', { reference, contact }, null, readClientAddress(Astro));
+    if (r.ok) plan = r.data as PlanView;
+    else problem = problem || r.message;
+  }
+}
+
+// Back from Pesapal: how did that payment go? The LB- reference shows only amounts.
+const ref = (Astro.url.searchParams.get('ref') ?? '').trim();
+let returned: PaymentView | null = null;
+if (/^LB-[0-9A-Z]{10}$/.test(ref)) {
+  try {
+    const res = await fetch(`${apiBase}/commerce/pay-in-parts/payment/${encodeURIComponent(ref)}`, { signal: AbortSignal.timeout(8000) });
+    const json = (await res.json().catch(() => null)) as { success?: boolean; data?: PaymentView } | null;
+    if (json?.success && json.data) returned = json.data;
+  } catch { /* the page still works without it */ }
+  if (returned && !reference) reference = returned.orderNumber;
+}
+const cancelled = Astro.url.searchParams.get('cancelled') === '1';
+
+const memory = readGuestMemory(Astro.cookies, Astro.request);
+const contactValue = contact || rememberedContact(memory);
+const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Kampala' });
+const STATUS_WORDS: Record<PlanView['status'], string> = {
+  awaiting_deposit: 'Waiting for the deposit',
+  active: 'Paying in parts. Your items are held for you.',
+  paid: 'Paid in full. We are preparing your order.',
+  lapsed: 'Closed: the time to pay ended.',
+  cancelled: 'Cancelled.',
+};
+---
+
+<BaseLayout title="Pay in parts | GoldPlus" description="Pay for a GoldPlus order in parts: a deposit now and the rest within the time stated, with no interest." robotsMeta="noindex,follow">
+  <div class="mx-auto max-w-2xl px-4 py-8 sm:py-12">
+    <h1 class="text-2xl font-black text-slate-950">Pay in parts</h1>
+
+    {returned && (
+      <div role="status" data-layby-returned
+        class:list={['mt-4 rounded-xl border p-4 text-sm', returned.status === 'paid' ? 'border-emerald-300 bg-emerald-50' : 'border-amber-300 bg-amber-50']}>
+        {returned.status === 'paid'
+          ? (<p>We have your payment of <strong>{formatUgx(returned.amountUgx)}</strong> for order {returned.orderNumber}. {returned.balanceUgx > 0 ? <>Left to pay: <strong>{formatUgx(returned.balanceUgx)}</strong>.</> : 'It is now paid in full.'}</p>)
+          : returned.status === 'awaiting_payment'
+            ? (<p>Your payment of {formatUgx(returned.amountUgx)} has not cleared yet. Please do not pay again; refresh this page in a minute.</p>)
+            : (<p>{cancelled ? 'You left the payment page.' : 'That payment did not go through.'} Nothing was taken for it. You can try again below.</p>)}
+      </div>
+    )}
+
+    <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-6" aria-labelledby="terms-heading">
+      <h2 id="terms-heading" class="text-base font-black text-slate-900">How it works</h2>
+      <ul class="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-700">
+        {termsInWords(terms).map((line) => <li>{line}</li>)}
+      </ul>
+      <p class="mt-3 text-sm text-slate-700">To start, choose "Pay in parts" at checkout. The refund after a cancellation is sent by our team, by the same way you paid where possible.</p>
+    </section>
+
+    <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-6" aria-labelledby="plan-heading">
+      <h2 id="plan-heading" class="text-base font-black text-slate-900">Your plan</h2>
+      {problem && <p class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-slate-800" role="alert">{problem}</p>}
+      {plan ? (
+        <div class="mt-3 space-y-3 text-sm text-slate-800" data-layby-plan>
+          <p><strong>Order {plan.orderNumber}</strong>: {STATUS_WORDS[plan.status]}</p>
+          <dl class="grid grid-cols-2 gap-y-1">
+            <dt>Order total</dt><dd class="text-right tabular-nums">{formatUgx(plan.totalUgx)}</dd>
+            <dt>Paid so far</dt><dd class="text-right tabular-nums">{formatUgx(plan.paidUgx)}</dd>
+            <dt class="font-bold">Left to pay</dt><dd class="text-right font-bold tabular-nums">{formatUgx(plan.balanceUgx)}</dd>
+            {plan.dueAt && plan.status === 'active' && (<><dt>Pay by</dt><dd class="text-right">{day(plan.dueAt)}</dd></>)}
+          </dl>
+          {(plan.status === 'lapsed' || plan.status === 'cancelled') && plan.refundUgx !== null && plan.paidUgx > 0 && (
+            <p>Our team will refund <strong>{formatUgx(plan.refundUgx)}</strong> (what you paid less the {plan.feePercent}% fee) and call you about it.</p>
+          )}
+          {(plan.status === 'active' || plan.status === 'awaiting_deposit') && (
+            <form method="post" class="space-y-3 border-t border-slate-200 pt-3">
+              <input type="hidden" name="reference" value={reference} />
+              <input type="hidden" name="contact" value={contact} />
+              <input type="hidden" name="action" value="pay" />
+              {plan.status === 'active' ? (
+                <FormField id="amountUgx" label="Amount to pay now (UGX)" name="amountUgx" inputmode="numeric" defaultValue={amount || String(plan.balanceUgx)}
+                  helperText={`Any amount up to ${formatUgx(plan.balanceUgx)}.`} required />
+              ) : (
+                <p>The deposit is <strong>{formatUgx(plan.depositUgx)}</strong>.<input type="hidden" name="amountUgx" value={String(plan.depositUgx)} /></p>
+              )}
+              <button type="submit" class="min-h-11 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-bold text-white">Pay with Mobile Money or card</button>
+            </form>
+          )}
+        </div>
+      ) : (
+        <form method="post" class="mt-3 space-y-3">
+          <FormField id="reference" label="Order number" name="reference" defaultValue={reference} required />
+          <FormField id="contact" label="Phone number or email used at checkout" name="contact" defaultValue={contactValue} required />
+          <button type="submit" class="min-h-11 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-bold text-white">See my balance</button>
+        </form>
+      )}
+    </section>
+  </div>
+</BaseLayout>
