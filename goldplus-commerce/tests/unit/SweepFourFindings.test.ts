@@ -169,7 +169,7 @@ describe('a failure says what it is', () => {
     // Four sites: pay-now handoff, offline order, other confirmed outcomes, and
     // the already-ordered resubmit with the SAME items (review 213: that basket
     // is that order). A DIFFERENT basket (sameItems === false) is kept.
-    expect(src.match(/await clearBasketAfterOrder\(\);/g)?.length).toBe(4);
+    expect(src.match(/await clearBasketAfterOrder\(\);/g)?.length).toBe(5); // +1 pay in parts deposit handoff (0222)
   });
 
   it('device-priced totals are declared, never shown silently', () => {
