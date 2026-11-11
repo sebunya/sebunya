@@ -174,8 +174,9 @@ describe('order abandonment — cancelled through the canonical lifecycle, never
   it('the stale-order reader excludes orders with a live payment attempt', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
-    const registry = readFileSync(join(__dirname, '../../apps/api/src/infrastructure/Registry.ts'), 'utf8');
-    const readerBlock = registry.slice(registry.indexOf('listStaleUnpaidOrders'), registry.indexOf('expireStaleReservationsUseCase'));
+    // MOVED 2026-11-11: the stale-order reads live in infrastructure/db/repositories/DrizzleStaleOrderReader.ts.
+    const registry = readFileSync(join(__dirname, '../../apps/api/src/infrastructure/db/repositories/DrizzleStaleOrderReader.ts'), 'utf8');
+    const readerBlock = registry.slice(registry.indexOf('listStaleUnpaidOrders'), registry.length);
     expect(readerBlock).toContain('not exists');
     expect(readerBlock).toContain("'pending', 'verification_pending', 'verification_failed'");
   });
@@ -191,9 +192,10 @@ describe('order abandonment — cancelled through the canonical lifecycle, never
   it('both sweep readers require an online payment attempt (never touch COD/manual orders)', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
-    const registry = readFileSync(join(__dirname, '../../apps/api/src/infrastructure/Registry.ts'), 'utf8');
+    // MOVED 2026-11-11: the stale-order reads live in infrastructure/db/repositories/DrizzleStaleOrderReader.ts.
+    const registry = readFileSync(join(__dirname, '../../apps/api/src/infrastructure/db/repositories/DrizzleStaleOrderReader.ts'), 'utf8');
     const staleBlock = registry.slice(registry.indexOf('listStaleUnpaidOrders'), registry.indexOf('listReservedUnpaidOrders'));
-    const reservedBlock = registry.slice(registry.indexOf('listReservedUnpaidOrders'), registry.indexOf('expireStaleReservationsUseCase'));
+    const reservedBlock = registry.slice(registry.indexOf('listReservedUnpaidOrders'), registry.length);
     for (const block of [staleBlock, reservedBlock]) {
       // Only orders whose recorded payment mode is online-prepaid are swept.
       // 'offline' (COD) and NULL (legacy/admin) are never auto-cancelled or released.

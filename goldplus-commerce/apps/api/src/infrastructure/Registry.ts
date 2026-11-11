@@ -43,6 +43,7 @@ import { DrizzleCreatorCostStore } from './measurement/DrizzleCreatorCostStore';
 import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
 import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRepository';
 import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository';
+import { DrizzleStaleOrderReader } from './db/repositories/DrizzleStaleOrderReader';
 import { DrizzleOrderAttributionRepository } from './db/repositories/DrizzleOrderAttributionRepository';
 import { DrizzleProductRepository } from './db/repositories/DrizzleProductRepository';
 import { SavedProductsUseCases } from '../application/use-cases/account/SavedProductsUseCases';
@@ -2902,65 +2903,8 @@ export class Registry {
     this.createAuditLogUseCase,
   );
 
-  /** Stale-order reads for the sweep. The pending-attempt exclusion is the rule. */
-  private readonly staleOrderReader = {
-    listStaleUnpaidOrders: async (olderThan: Date, limit: number) => {
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      return (await db.execute(sql`
-        select o.id, o.order_number as "orderNumber", o.status, o.created_at as "createdAt"
-        from orders o
-        where o.payment_status in ('unpaid', 'failed')
-          and o.status in ('received', 'pending_payment')
-          and o.created_at < ${olderThan}
-          -- Only online-prepaid orders are abandoned by time. A pay-on-delivery
-          -- ('offline') or legacy/admin (NULL) order is unpaid by design and must
-          -- never be auto-cancelled. payment_method is recorded at checkout
-          -- (migration 0130) and backfilled to 'pesapal' for historical orders
-          -- that have a payment attempt.
-          and o.payment_method = 'pesapal'
-          and not exists (
-            select 1 from payment_attempts a
-            where a.order_id = o.id
-              -- 'completed': money the provider confirmed. Even if the order never moved (a crash between the
-              -- attempt write and the order transition), it is never cancelled or released by time.
-              and a.status in ('pending', 'verification_pending', 'verification_failed', 'completed')
-          )
-          -- 0222: an order being paid in parts (deposit in) is unpaid by design until its balance is in; the plan
-          -- holds its stock and closes it on its own date (PayInPartsUseCases.sweep).
-          and not exists (select 1 from layby_plans lp where lp.order_id = o.id and lp.status in ('active', 'paid'))
-        order by o.created_at limit ${limit}`)) as unknown as Array<{
-        id: string; orderNumber: string; status: string; createdAt: Date;
-      }>;
-    },
-    listReservedUnpaidOrders: async (olderThan: Date, limit: number) => {
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      return (await db.execute(sql`
-        select distinct o.id, o.order_number as "orderNumber", o.created_at as "createdAt"
-        from orders o join inventory_reservations r on r.order_id = o.id and r.status = 'reserved'
-        where o.payment_status in ('unpaid', 'failed')
-          and o.status in ('received', 'pending_payment')
-          and o.created_at < ${olderThan}
-          -- Same COD safety as listStaleUnpaidOrders: a pay-on-delivery order
-          -- holds a reservation and is unpaid by design; its stock must not be
-          -- returned to sale by the TTL sweep. Only online-prepaid orders qualify.
-          and o.payment_method = 'pesapal'
-          and not exists (
-            select 1 from payment_attempts a
-            where a.order_id = o.id
-              -- 'completed': money the provider confirmed. Even if the order never moved (a crash between the
-              -- attempt write and the order transition), it is never cancelled or released by time.
-              and a.status in ('pending', 'verification_pending', 'verification_failed', 'completed')
-          )
-          -- 0222: an order being paid in parts (deposit in) is unpaid by design until its balance is in; the plan
-          -- holds its stock and closes it on its own date (PayInPartsUseCases.sweep).
-          and not exists (select 1 from layby_plans lp where lp.order_id = o.id and lp.status in ('active', 'paid'))
-        order by o.created_at limit ${limit}`)) as unknown as Array<{
-        id: string; orderNumber: string; createdAt: Date;
-      }>;
-    },
-  };
+  /** Stale-order reads for the sweep. The pending-attempt exclusion is the rule (see DrizzleStaleOrderReader). */
+  private readonly staleOrderReader = new DrizzleStaleOrderReader();
 
   public readonly expireStaleReservationsUseCase = new ExpireStaleReservationsUseCase(
     this.paymentsOpsConfig,
