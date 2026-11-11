@@ -314,7 +314,7 @@ import {
 } from '../application/use-cases/blog/BlogUseCases';
 import { VerifyPesaPalPaymentUseCase } from '../application/use-cases/payments/VerifyPesaPalPaymentUseCase';
 import { ApplyRefundConsequencesUseCase } from '../application/use-cases/payments/ApplyRefundConsequencesUseCase';
-import { confirmationForPlacedOrder } from '../application/notifications/OrderLifecycleMessages';
+import { buildCheckoutSideEffectHandlers } from '../application/use-cases/outbox/CheckoutSideEffectHandlers';
 import { ApplyOrderTransitionEffectsUseCase } from '../application/use-cases/orders/ApplyOrderTransitionEffectsUseCase';
 import { ApplyFulfilmentStockEffectUseCase } from '../application/use-cases/inventory/ApplyFulfilmentStockEffectUseCase';
 import { env } from '../config/env';
@@ -837,23 +837,6 @@ import { DrizzleConsentOperatingRepository as FirstPartyConsentRepository } from
 import { outboundGovernance } from './notifications/OutboundGovernanceService';
 import { DrizzleCapabilityHubReader } from './db/repositories/DrizzleCapabilityHubReader';
 import { buildMarketingSuppressionReader } from './notifications/marketingSuppressionReader';
-
-/**
- * Payment-attempt statuses the provider has already given a final answer for.
- *
- * `pending` and `verification_pending` are the only ones still worth asking
- * about. Everything here is settled — and time never moves an attempt into this
- * set on its own, only the provider's own answer does.
- */
-const TERMINAL_PAYMENT_ATTEMPT_STATUSES = new Set([
-  'completed',
-  'failed',
-  'invalid',
-  'reversed',
-  'cancelled',
-  'abandoned',
-  'verification_failed',
-]);
 
 export class Registry {
 
@@ -2505,108 +2488,7 @@ export class Registry {
   public readonly processCheckoutSideEffectBatchUseCase =
     new ProcessCheckoutSideEffectBatchUseCase(
       this.outboxRepo,
-      {
-        ORDER_FULFILMENT_REQUIRED: {
-          handle: async (event) => {
-            const order = await this.orderRepo.findById(event.orderId);
-            // A queued event naming an order that does not exist cannot be fixed
-            // by waiting.
-            if (!order) return { status: 'FINAL', error: 'ORDER_NOT_FOUND' };
-            await this.createFulfilmentTaskOnOrderPlacedUseCase.execute(order, {
-              extraWarnings: Array.isArray(event.payload.warnings)
-                ? (event.payload.warnings as string[])
-                : [],
-              hold: event.payload.hold === true,
-              paymentMethod: await this.orderRepo.findPaymentMethod(order.id),
-            });
-            return { status: 'HANDLED' };
-          },
-        },
-        ORDER_ADMIN_NOTIFICATION_REQUIRED: {
-          handle: async (event) => {
-            const order = await this.orderRepo.findById(event.orderId);
-            if (!order) return { status: 'FINAL', error: 'ORDER_NOT_FOUND' };
-            await this.enqueueAdminOrderEmailUseCase.execute({
-              order,
-              event: 'placed',
-              stockConfirmed: event.payload.stockConfirmed === true,
-            });
-            // The customer's own copy of a pay-on-delivery order: its reference
-            // is what /track-order needs. Online payers are told when the money
-            // lands (ORDER_PAYMENT_SUCCESS). Once per order (outbox key).
-            const confirmation = confirmationForPlacedOrder(await this.orderRepo.findPaymentMethod(order.id));
-            if (confirmation) await this.enqueueCustomerOrderMessage(order.id, confirmation);
-            return { status: 'HANDLED' };
-          },
-        },
-        /**
-         * The safety net, finally hung up.
-         *
-         * `StartOrderPaymentUseCase` has always recorded this event for the case
-         * the callback design cannot cover — the customer who pays and never
-         * comes back. Nothing consumed it, so two real events sat pending for ten
-         * days at 339 and 279 attempts.
-         *
-         * It delegates. `SettlePaymentUseCase` is THE settlement path, shared with
-         * the IPN, the browser callback and the reconciliation poller, so this
-         * handler adds a fourth door onto the same room rather than a second
-         * payment engine. Consequences that matter here:
-         *
-         *   - It VERIFIES, never charges. There is no code path from here that
-         *     creates a provider transaction or moves money.
-         *   - Only the provider's own answer is written. This handler cannot
-         *     express "assume paid".
-         *   - Replay is safe by construction: settlement advances the stage with a
-         *     compare-and-set against SETTLEABLE_STAGES, so a second delivery of
-         *     the same event finds the stage already advanced and performs no
-         *     effect at all.
-         */
-        ORDER_PAYMENT_VERIFICATION_REQUIRED: {
-          handle: async (event) => {
-            const attempts = await this.pesapalPaymentRepo.findAttemptsByOrderId(event.orderId);
-            if (attempts.length === 0) {
-              // No attempt row means payment never started. No amount of waiting
-              // creates one, and there is nothing to ask the provider about.
-              return { status: 'FINAL', error: 'NO_PAYMENT_ATTEMPT_FOR_ORDER' };
-            }
-
-            // Only attempts the provider actually knows about can be verified. An
-            // attempt with no tracking id means SubmitOrderRequest never succeeded:
-            // no payment page existed, so no money is possible by construction.
-            const askable = attempts.filter((attempt) => attempt.orderTrackingId);
-            if (askable.length === 0) {
-              return { status: 'FINAL', error: 'NO_PROVIDER_TRANSACTION_TO_VERIFY' };
-            }
-
-            // An attempt the provider has already answered needs no second
-            // question. Both production events were like this: the provider said
-            // `invalid` days ago and the order has sat at payment_status=failed
-            // ever since. Re-asking would change nothing, and a verification call
-            // against a long-dead transaction is a way to get a surprising answer
-            // about a settled matter.
-            const unresolved = askable.filter(
-              (attempt) => !TERMINAL_PAYMENT_ATTEMPT_STATUSES.has(attempt.status),
-            );
-            if (unresolved.length === 0) {
-              return { status: 'HANDLED' };
-            }
-
-            for (const attempt of unresolved) {
-              await this.settlePaymentUseCase.execute({
-                orderTrackingId: attempt.orderTrackingId as string,
-                merchantReference: attempt.merchantReference,
-                source: 'poll',
-                traceId: `outbox:${event.id}`,
-              });
-            }
-
-            // HANDLED means "we asked and recorded the answer", not "the payment
-            // succeeded". A payment still pending at the provider is a truthful
-            // outcome for this event; the reconciliation ticker keeps asking.
-            return { status: 'HANDLED' };
-          },
-        },
-      },
+      buildCheckoutSideEffectHandlers(this, (orderId, template) => this.enqueueCustomerOrderMessage(orderId, template)),
       {
         // No customer data: an unhandled type and a dead letter are both operator
         // alerts, and these lines outlive the request by far.
