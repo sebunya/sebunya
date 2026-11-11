@@ -425,7 +425,10 @@ describe('held 5: cash-on-delivery customers hear about their order', () => {
     expect(reg).toMatch(/confirmationForPlacedOrder\(await this\.orderRepo\.findPaymentMethod\(order\.id\)\)/);
     // MOVED 2026-11-11: the order lifecycle effects live in ApplyOrderTransitionEffectsUseCase (the Registry registers it).
     expect(read('apps/api/src/application/use-cases/orders/ApplyOrderTransitionEffectsUseCase.ts')).toMatch(/customerMessageForTransition\(toStatus, ctx\.actorType\)/);
-    expect(reg).toMatch(/idempotencyKey: `customer-order-message:\$\{orderId\}:\$\{template\}`/);
+    // MOVED 2026-11-11: the customer order message is built by application/notifications/CustomerOrderMessage.ts.
+    expect(read('apps/api/src/application/notifications/CustomerOrderMessage.ts')).toMatch(/idempotencyKey: customerOrderMessageKey\(orderId, template\)/);
+    expect(read('apps/api/src/application/notifications/CustomerOrderMessage.ts')).toMatch(/return `customer-order-message:\$\{orderId\}:\$\{template\}`/);
+    expect(reg).toMatch(/this\.customerOutboxNotifier\.enqueue\(customerOrderMessage\(orderId, template, order,/);
   });
 });
 

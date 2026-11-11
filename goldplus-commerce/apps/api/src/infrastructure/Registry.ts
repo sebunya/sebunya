@@ -6,7 +6,7 @@ import { DrizzleDeliveryProofPhotoRepository } from './fulfilment/DrizzleDeliver
 import { LowStockAlertUseCase } from '../application/use-cases/inventory/LowStockAlertUseCase';
 import { RedisFailureLockout } from './security/RedisFailureLockout';
 import { ReholdStockOnLatePaymentUseCase } from '../application/use-cases/payments/ReholdStockOnLatePaymentUseCase';
-import { cancelRefundUpdate } from '../application/notifications/CustomerMessages';
+import { customerOrderMessage } from '../application/notifications/CustomerOrderMessage';
 import './logging/appLoggerBinding';
 import { PERMISSIONS as SHARED_PERMISSIONS, toEatParts, DEFAULT_BUSINESS_INFO, tagShopUrl } from '@goldplus/shared';
 import { MeasurementOperationsUseCases } from '../application/use-cases/measurement/MeasurementOperationsUseCases';
@@ -3810,57 +3810,10 @@ export class Registry {
   private async enqueueCustomerOrderMessage(orderId: string, template: string): Promise<void> {
     const order = await this.orderRepo.findById(orderId);
     if (!order) return;
-    await this.customerOutboxNotifier.enqueue({
-      eventType: 'CUSTOMER_ORDER_MESSAGE',
-      template,
-      customerPhone: order.customerPhone,
-      customerEmail: order.customerEmail ?? null,
-      data: {
-        template,
-        customerName: order.customerName,
-        orderNumber: order.orderNumber,
-        totalUgx: order.totalUgx,
-        // What is still to pay (the total less any gift card / store credit): the payment reminder asks for this.
-        amountDueUgx: order.amountDueUgx,
-        // 0196: the gift card / store credit part, so payment messages and the receipt name the split.
-        ...(order.storeCreditAppliedUgx > 0 ? {
-          storeCreditAppliedUgx: order.storeCreditAppliedUgx,
-          ...(template === 'ORDER_CANCELLED_BY_SHOP' ? {
-            refundUpdate: cancelRefundUpdate({ totalUgx: order.totalUgx, storeCreditAppliedUgx: order.storeCreditAppliedUgx, paymentStatus: order.paymentStatus }),
-          } : {}),
-          paymentMethod: order.amountDueUgx > 0
-            ? `Gift card or store credit ${order.storeCreditAppliedUgx.toLocaleString('en-US')} + Mobile Money or card ${order.amountDueUgx.toLocaleString('en-US')} (UGX)`
-            : 'Gift card or store credit',
-        } : {}),
-        // What the reviewed email templates need to render a real receipt:
-        // the lines, the money and where it is going. Without these the
-        // adapter cannot fill the design and falls back to the older body.
-        orderCreatedAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
-        deliveryFeeUgx: order.deliveryFeeUgx ?? 0,
-        deliveryLocation: order.deliveryLocation?.displayLabel || order.deliveryArea || '',
-        paymentStatus: order.paymentStatus,
-        // Track Order, pre-filled: it works for guests (no account) and takes
-        // an order NUMBER. /orders/{number} could never resolve — that page
-        // reads /account/orders/:id, which answers only a UUID, behind a login.
-        orderUrl: `${(process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/$/, '')}/track-order?reference=${encodeURIComponent(order.orderNumber)}`,
-        items: (order.items ?? []).map((i) => ({
-          name: i.name,
-          quantity: i.quantity,
-          unitPriceUgx: i.price,
-          lineTotalUgx: i.finalLineTotal ?? i.price * i.quantity,
-        })),
-      },
-      idempotencyKey: `customer-order-message:${orderId}:${template}`,
-      relatedEntity: 'order',
-      relatedEntityId: orderId,
-      // These messages have been reaching customers all along: the router
-      // never consulted this flag, so "deferred until the owner switches it
-      // on" was not true — a payment-success SMS went to a real customer on
-      // 2026-09-20 while the switch was unset. The flag is now honoured, so
-      // the default states what actually happens: customer order messages
-      // are LIVE, and CUSTOMER_ORDER_MESSAGES_LIVE=false stops them.
-      dryRunOnly: process.env.CUSTOMER_ORDER_MESSAGES_LIVE === 'false',
-    });
+    await this.customerOutboxNotifier.enqueue(customerOrderMessage(orderId, template, order, {
+      webBaseUrl: process.env.PUBLIC_WEB_BASE_URL,
+      messagesLive: process.env.CUSTOMER_ORDER_MESSAGES_LIVE,
+    }));
   }
 
   /**

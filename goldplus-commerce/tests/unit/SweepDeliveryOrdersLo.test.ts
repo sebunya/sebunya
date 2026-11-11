@@ -683,7 +683,8 @@ describe('the payment receipt agrees with the money and links somewhere that wor
   });
 
   it('"View my order" opens Track Order with the reference, which works for guests', () => {
-    expect(read('apps/api/src/infrastructure/Registry.ts')).toMatch(/\/track-order\?reference=\$\{encodeURIComponent\(order\.orderNumber\)\}/);
+    // MOVED 2026-11-11: the customer order message is built by application/notifications/CustomerOrderMessage.ts.
+    expect(read('apps/api/src/application/notifications/CustomerOrderMessage.ts')).toMatch(/\/track-order\?reference=\$\{encodeURIComponent\(order\.orderNumber\)\}/);
   });
 });
 
