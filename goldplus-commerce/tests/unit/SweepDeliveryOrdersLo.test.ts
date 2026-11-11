@@ -623,9 +623,10 @@ describe('work owed after a confirmed payment is caught up, not lost', async () 
 
 describe('one failing loyalty step does not skip the rest of a delivery', () => {
   it('vesting is isolated like the steps after it', () => {
-    const src = read('apps/api/src/infrastructure/Registry.ts');
-    expect(src).toMatch(/await this\.vestLoyaltyOnDeliveryUseCase\s*\.execute\(orderId\)\s*\.catch\(/);
-    expect(src).not.toMatch(/await this\.vestLoyaltyOnDeliveryUseCase\.execute\(orderId\);/);
+    // MOVED 2026-11-11: the order lifecycle effects live in ApplyOrderTransitionEffectsUseCase (the Registry registers it).
+    const src = read('apps/api/src/application/use-cases/orders/ApplyOrderTransitionEffectsUseCase.ts');
+    expect(src).toMatch(/await this\.ports\.vestLoyaltyOnDeliveryUseCase\s*\.execute\(orderId\)\s*\.catch\(/);
+    expect(src).not.toMatch(/await this\.ports\.vestLoyaltyOnDeliveryUseCase\.execute\(orderId\);/);
   });
 });
 

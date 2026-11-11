@@ -423,7 +423,8 @@ describe('held 5: cash-on-delivery customers hear about their order', () => {
   it('the registry produces them through the one idempotent outbox path', () => {
     const reg = read('apps/api/src/infrastructure/Registry.ts');
     expect(reg).toMatch(/confirmationForPlacedOrder\(await this\.orderRepo\.findPaymentMethod\(order\.id\)\)/);
-    expect(reg).toMatch(/customerMessageForTransition\(toStatus, ctx\.actorType\)/);
+    // MOVED 2026-11-11: the order lifecycle effects live in ApplyOrderTransitionEffectsUseCase (the Registry registers it).
+    expect(read('apps/api/src/application/use-cases/orders/ApplyOrderTransitionEffectsUseCase.ts')).toMatch(/customerMessageForTransition\(toStatus, ctx\.actorType\)/);
     expect(reg).toMatch(/idempotencyKey: `customer-order-message:\$\{orderId\}:\$\{template\}`/);
   });
 });
