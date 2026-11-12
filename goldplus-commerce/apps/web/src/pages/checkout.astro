@@ -50,12 +50,12 @@ import {
   paymentStartMessageFor,
 } from '../lib/checkoutClient';
 import { mayStartPayment, kampalaCutoff } from '@goldplus/shared';
+import type { CheckoutRequestDto } from '@goldplus/shared';
 import { getStorefrontDiscount, basketSavingUgx, basketSavingLabel } from '../lib/storefrontDiscount';
 import { getBusinessInfo } from '../lib/businessInfo';
 import { getStorefrontCopy } from '../lib/storefrontCopy';
 import { RETURNS_POLICY } from '../lib/returnsPolicy';
 import { getPayInPartsTerms, startLaybyDeposit, termsInWords } from '../lib/payInParts';
-import type { ApiEnvelope } from '@goldplus/shared';
 
 interface CartItem {
   productId: string;
@@ -496,13 +496,14 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
      // Held in a variable because the intent can be re-minted below, and the
      // payment handoff must then use the token the order was actually created under.
      let activeIntentToken = checkoutIntent.token;
-     const checkoutArgs = {
+     const checkoutArgs: Parameters<typeof submitCheckout>[0] = {
         // R3.1: SSR-only visit token so the API stamps the order's experience
         // profile — the identity join for commercial attribution.
         visitToken: Astro.locals.gpVisit ?? null,
         request: {
            customerDetails: payload.customerDetails,
-           buyerType: payload.buyerType,
+           // Always 'retail' from this form (no buyerType field); the API rejects anything outside its enum.
+           buyerType: payload.buyerType as CheckoutRequestDto['buyerType'],
            items: payload.items,
            // Fingerprint inputs: switching between paying online and ordering offline is
            // a different operation, and the basket version pins which basket state the

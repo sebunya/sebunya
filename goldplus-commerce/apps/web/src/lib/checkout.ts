@@ -9,6 +9,10 @@ export interface CustomerDetails {
   phone: string;
   deliveryArea: string;
   deliveryAddress: string;
+  /** Collect from one of our own shops; the API accepts it (commerce.ts customerDetails schema). */
+  pickupPointId?: string | null;
+  /** The saved address the order is placed from; the API accepts it (commerce.ts customerDetails schema). */
+  savedAddressId?: string | null;
 }
 
 export interface CheckoutPayload {
