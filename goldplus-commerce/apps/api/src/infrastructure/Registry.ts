@@ -12,7 +12,7 @@ import { PERMISSIONS as SHARED_PERMISSIONS, DEFAULT_BUSINESS_INFO, tagShopUrl } 
 import { MeasurementOperationsUseCases } from '../application/use-cases/measurement/MeasurementOperationsUseCases';
 import { CollectBrowserBatchUseCase } from '../application/use-cases/telemetry/CollectBrowserBatchUseCase';
 import { DrizzleCollectorStore } from './db/repositories/DrizzleCollectorStore';
-import { alertRecipient, alertRecipients, validateFulfilmentAlertValue } from '../domain/fulfilment/FulfilmentAlertConfig';
+import { alertRecipient, alertRecipients } from '../domain/fulfilment/FulfilmentAlertConfig';
 import { PgAttributionPort } from './measurement/AttributionJob';
 import { DrizzleMeasurementOperationsRepository } from './db/repositories/DrizzleMeasurementOperationsRepository';
 import { AdDestinationUseCases } from '../application/use-cases/advertising/AdDestinationUseCases';
@@ -46,6 +46,7 @@ import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository
 import { DrizzleStaleOrderReader } from './db/repositories/DrizzleStaleOrderReader';
 import { DrizzlePaymentHealthReader } from './db/repositories/DrizzlePaymentHealthReader';
 import { DrizzleCorridorCsvRepository } from './db/repositories/DrizzleCorridorCsvRepository';
+import { FulfilmentAlertConfig } from './fulfilment/FulfilmentAlertConfig';
 import { DrizzleOrderAttributionRepository } from './db/repositories/DrizzleOrderAttributionRepository';
 import { DrizzleProductRepository } from './db/repositories/DrizzleProductRepository';
 import { SavedProductsUseCases } from '../application/use-cases/account/SavedProductsUseCases';
@@ -126,7 +127,6 @@ import { DrizzleLaybyRepository } from './layby/DrizzleLaybyRepository';
 import { GiftCardOccasionUseCases } from '../application/use-cases/credit/GiftCardOccasionUseCases';
 import { DrizzleOccasionSettingsRepository } from './credit/DrizzleOccasionSettingsRepository';
 import { storefrontOrigin } from './config/storefrontOrigin';
-import { deliveryMapUrl } from '../domain/fulfilment/PaidOrderAlert';
 import { normalizePhone } from '../application/services/validationHelpers';
 import { SettleByStoreCreditUseCase } from '../application/use-cases/payments/SettleByStoreCreditUseCase';
 import { ProductBundlesUseCase } from '../application/use-cases/pricing/ProductBundlesUseCase';
@@ -934,88 +934,8 @@ export class Registry {
   // Measurement delivery operations (0140/0141): queue, replay, quarantine, kill switch.
   /** Collector contract v2 (0141); the per-event durable write is the caller's tracking path. */
   public collectBrowserBatch(trackEvent: (event: unknown) => Promise<void>) { return new CollectBrowserBatchUseCase(new DrizzleCollectorStore(), trackEvent); }
-  /**
-   * Fulfilment alerts (0143). Who is told, on a phone, that an order is paid.
-   * Closed registry, validated in the domain, audited on every change.
-   */
-  public readonly fulfilmentAlertConfig = {
-    values: async (): Promise<Record<string, string>> => {
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      const rows = (await db.execute(sql`select config_key, config_value from fulfilment_alert_config`)) as unknown as Array<{
-        config_key: string; config_value: string;
-      }>;
-      const list = Array.isArray(rows) ? rows : ((rows as { rows?: typeof rows }).rows ?? []);
-      return Object.fromEntries(list.map((r) => [r.config_key, r.config_value]));
-    },
-    set: async (input: { key: string; value: string; actorId: string | null }) => {
-      const check = validateFulfilmentAlertValue(input.key, input.value);
-      if (!check.ok) return { ok: false as const, message: check.message };
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      const before = await this.fulfilmentAlertConfig.values();
-      await db.execute(sql`
-        insert into fulfilment_alert_config (config_key, config_value, updated_by, updated_at)
-        values (${input.key}, ${check.value}, ${input.actorId}, now())
-        on conflict (config_key) do update set config_value = excluded.config_value,
-          updated_by = excluded.updated_by, updated_at = now()`);
-      await this.createAuditLogUseCase.execute({
-        actorId: input.actorId,
-        action: 'FULFILMENT_ALERT_CONFIG_SET',
-        entity: 'fulfilment_alert_config',
-        entityId: input.key,
-        previousState: { value: before[input.key] ?? null },
-        newState: { value: check.value },
-      } as never);
-      return { ok: true as const };
-    },
-    /** Queues the paid-order alert. Returns why nothing was queued, never silently. */
-    enqueuePaidOrderAlert: async (orderId: string, opts?: { test?: boolean }): Promise<{ queued: boolean; reason: string }> => {
-      const values = await this.fulfilmentAlertConfig.values();
-      const recipients = alertRecipients(values);
-      if (!recipients.length) return { queued: false, reason: 'NO_RECIPIENT_OR_DISABLED' };
-      const order = await this.orderRepo.findById(orderId);
-      if (!order) return { queued: false, reason: 'ORDER_NOT_FOUND' };
-      const { db } = await import('./db/client');
-      const { outboxEvents } = await import('./db/schema');
-      // One event per person, each with its own idempotency key: a failure to
-      // reach one phone must not stop the others, and a retry must not send the
-      // same person the same order twice.
-      const stamp = opts?.test ? Date.now() : 0;
-      for (const recipient of recipients) {
-      await db.insert(outboxEvents).values({
-        eventType: 'FULFILMENT_PAID_ORDER_ALERT',
-        payload: {
-          recipient,
-          orderNumber: order.orderNumber,
-          totalUgx: order.totalUgx,
-          deliveryArea: order.deliveryArea ?? '',
-          // 2026-10-21: what to pack, where it goes and who to call, so the text can be acted on as it is read.
-          // Customer fields use the names an erasure removes (customerName, customerPhone, deliveryPlace).
-          deliveryFeeUgx: order.deliveryFeeUgx,
-          items: order.items.map((it) => ({ name: it.name, sku: it.sku, quantity: it.quantity })),
-          customerName: order.customerName,
-          customerPhone: order.customerPhone,
-          deliveryPlace: order.deliveryAddress ?? '',
-          placeLabel: (order.deliveryLocation as { displayLabel?: string } | null)?.displayLabel ?? null,
-          mapUrl: deliveryMapUrl(order.deliveryLocation),
-          storeCreditUgx: order.storeCreditAppliedUgx ?? 0,
-          orderUrl: `${storefrontOrigin() ?? 'https://shopgoldplus.com'}/admin/orders/${order.id}`,
-          test: opts?.test === true,
-        } as never,
-        idempotencyKey: opts?.test
-          ? `fulfilment-alert-test:${orderId}:${recipient}:${stamp}`
-          : `fulfilment-alert:${orderId}:${recipient}`,
-        status: 'pending',
-        channel: 'sms',
-        template: 'FULFILMENT_PAID_ORDER_ALERT',
-        relatedEntity: 'order',
-        relatedEntityId: orderId,
-      } as never).onConflictDoNothing({ target: outboxEvents.idempotencyKey });
-      }
-      return { queued: true, reason: `QUEUED_FOR_${recipients.length}` };
-    },
-  };
+  /** Fulfilment alerts (0143): who is told, on a phone, that an order is paid. See FulfilmentAlertConfig. */
+  public readonly fulfilmentAlertConfig = new FulfilmentAlertConfig(this);
 
   public readonly measurementOperations = new MeasurementOperationsUseCases(new DrizzleMeasurementOperationsRepository(), this.createAuditLogUseCase, new PgAttributionPort());
   /** Spotify ad rotation preview (phase 2): read-only, no Spotify call, no spend. */
