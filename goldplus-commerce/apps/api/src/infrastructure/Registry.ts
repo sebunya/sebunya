@@ -12,7 +12,7 @@ import { PERMISSIONS as SHARED_PERMISSIONS, DEFAULT_BUSINESS_INFO, tagShopUrl } 
 import { MeasurementOperationsUseCases } from '../application/use-cases/measurement/MeasurementOperationsUseCases';
 import { CollectBrowserBatchUseCase } from '../application/use-cases/telemetry/CollectBrowserBatchUseCase';
 import { DrizzleCollectorStore } from './db/repositories/DrizzleCollectorStore';
-import { alertRecipient, alertRecipients } from '../domain/fulfilment/FulfilmentAlertConfig';
+import { alertRecipients } from '../domain/fulfilment/FulfilmentAlertConfig';
 import { PgAttributionPort } from './measurement/AttributionJob';
 import { DrizzleMeasurementOperationsRepository } from './db/repositories/DrizzleMeasurementOperationsRepository';
 import { AdDestinationUseCases } from '../application/use-cases/advertising/AdDestinationUseCases';
