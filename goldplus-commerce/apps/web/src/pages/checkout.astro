@@ -255,30 +255,33 @@ const sessionToken = Astro.cookies.get('goldplus_session')?.value ?? null;
 let savedAddresses: SavedAddress[] = [];
 let accountEmail = '';
 let accountPhone = '';
-if (authenticatedUserId && sessionToken) {
-  try {
-    const [addrRes, meRes] = await Promise.all([
-      fetch(`${apiBase}/account/addresses`, {
-        headers: { Authorization: `Bearer ${sessionToken}` },
-        signal: AbortSignal.timeout(3000),
-      }),
-      fetch(`${apiBase}/account/me`, {
-        headers: { Authorization: `Bearer ${sessionToken}` },
-        signal: AbortSignal.timeout(3000),
-      }),
-    ]);
-    const addrJson: any = addrRes.ok ? await addrRes.json().catch(() => null) : null;
-    const meJson: any = meRes.ok ? await meRes.json().catch(() => null) : null;
-    if (addrJson?.success && Array.isArray(addrJson.data)) savedAddresses = addrJson.data;
-    if (meJson?.success) {
-      accountEmail = meJson.data?.email ?? '';
-      accountPhone = meJson.data?.phone ?? '';
+// The three loads below are independent; they start together (each keeps its own
+// timeout and its own catch) and the page waits for all of them before rendering.
+const accountLoad = (async () => {
+  if (authenticatedUserId && sessionToken) {
+    try {
+      const [addrRes, meRes] = await Promise.all([
+        fetch(`${apiBase}/account/addresses`, {
+          headers: { Authorization: `Bearer ${sessionToken}` },
+          signal: AbortSignal.timeout(3000),
+        }),
+        fetch(`${apiBase}/account/me`, {
+          headers: { Authorization: `Bearer ${sessionToken}` },
+          signal: AbortSignal.timeout(3000),
+        }),
+      ]);
+      const addrJson: any = addrRes.ok ? await addrRes.json().catch(() => null) : null;
+      const meJson: any = meRes.ok ? await meRes.json().catch(() => null) : null;
+      if (addrJson?.success && Array.isArray(addrJson.data)) savedAddresses = addrJson.data;
+      if (meJson?.success) {
+        accountEmail = meJson.data?.email ?? '';
+        accountPhone = meJson.data?.phone ?? '';
+      }
+    } catch {
+      /* prefill is a convenience, never a dependency */
     }
-  } catch {
-    /* prefill is a convenience, never a dependency */
   }
-}
-const defaultAddress = savedAddresses.find((a) => a.isDefault) ?? savedAddresses[0] ?? null;
+})();
 
 // Live programme terms for the earn preview. Zero when inactive or unreachable —
 // the preview line simply does not render rather than promising points.
@@ -287,44 +290,50 @@ let loyaltyProgramme: {
   earnRatePer1000Ugx: number;
   redemption: { configured: boolean; pointValueUgx?: number; minPoints?: number; maxShareBps?: number };
 } = { active: false, earnRatePer1000Ugx: 0, redemption: { configured: false } };
-try {
-  const lpRes = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(2500) });
-  const lpJson: any = lpRes.ok ? await lpRes.json().catch(() => null) : null;
-  if (lpJson?.success && lpJson.data?.active) {
-    loyaltyProgramme = {
-      active: true,
-      earnRatePer1000Ugx: Number(lpJson.data.earnRatePer1000Ugx) || 0,
-      redemption: lpJson.data.redemption ?? { configured: false },
-    };
-  }
-} catch {
-  /* preview only */
-}
 
 // Available points for the redemption control (signed-in only, tolerant).
 let loyaltyAvailablePoints = 0;
-if (authenticatedUserId && sessionToken && loyaltyProgramme.active && loyaltyProgramme.redemption.configured) {
+const loyaltyLoad = (async () => {
   try {
-    const lbRes = await fetch(`${apiBase}/account/loyalty`, {
-      headers: { Authorization: `Bearer ${sessionToken}` },
-      signal: AbortSignal.timeout(2500),
-    });
-    const lbJson: any = lbRes.ok ? await lbRes.json().catch(() => null) : null;
-    if (lbJson?.success) loyaltyAvailablePoints = Number(lbJson.data?.balance?.available ?? 0);
+    const lpRes = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(2500) });
+    const lpJson: any = lpRes.ok ? await lpRes.json().catch(() => null) : null;
+    if (lpJson?.success && lpJson.data?.active) {
+      loyaltyProgramme = {
+        active: true,
+        earnRatePer1000Ugx: Number(lpJson.data.earnRatePer1000Ugx) || 0,
+        redemption: lpJson.data.redemption ?? { configured: false },
+      };
+    }
   } catch {
-    /* redemption control simply hides */
+    /* preview only */
   }
-}
+  if (authenticatedUserId && sessionToken && loyaltyProgramme.active && loyaltyProgramme.redemption.configured) {
+    try {
+      const lbRes = await fetch(`${apiBase}/account/loyalty`, {
+        headers: { Authorization: `Bearer ${sessionToken}` },
+        signal: AbortSignal.timeout(2500),
+      });
+      const lbJson: any = lbRes.ok ? await lbRes.json().catch(() => null) : null;
+      if (lbJson?.success) loyaltyAvailablePoints = Number(lbJson.data?.balance?.available ?? 0);
+    } catch {
+      /* redemption control simply hides */
+    }
+  }
+})();
 
 // Active pickup points (PART G field 1) — collection is a first-class method.
 let pickupPoints: Array<{ id: string; name: string; operator: string; physicalAddress: string | null }> = [];
-try {
-  const ppRes = await fetch(`${apiBase}/locations/pickup-points`, { signal: AbortSignal.timeout(2500) });
-  const ppJson: any = ppRes.ok ? await ppRes.json().catch(() => null) : null;
-  if (ppJson?.success && Array.isArray(ppJson.data)) pickupPoints = ppJson.data;
-} catch {
-  /* door delivery remains the default */
-}
+const pickupLoad = (async () => {
+  try {
+    const ppRes = await fetch(`${apiBase}/locations/pickup-points`, { signal: AbortSignal.timeout(2500) });
+    const ppJson: any = ppRes.ok ? await ppRes.json().catch(() => null) : null;
+    if (ppJson?.success && Array.isArray(ppJson.data)) pickupPoints = ppJson.data;
+  } catch {
+    /* door delivery remains the default */
+  }
+})();
+await Promise.all([accountLoad, loyaltyLoad, pickupLoad]);
+const defaultAddress = savedAddresses.find((a) => a.isDefault) ?? savedAddresses[0] ?? null;
 
 // Guest memory: details from their last completed checkout, held in an
 // httpOnly cookie on their own device so a repeat guest confirms instead of
