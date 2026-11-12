@@ -47,6 +47,7 @@ import { DrizzleStaleOrderReader } from './db/repositories/DrizzleStaleOrderRead
 import { DrizzlePaymentHealthReader } from './db/repositories/DrizzlePaymentHealthReader';
 import { DrizzleCorridorCsvRepository } from './db/repositories/DrizzleCorridorCsvRepository';
 import { FulfilmentAlertConfig } from './fulfilment/FulfilmentAlertConfig';
+import { OutboxCreditNoticeSender } from './notifications/OutboxCreditNoticeSender';
 import { DrizzleOrderAttributionRepository } from './db/repositories/DrizzleOrderAttributionRepository';
 import { DrizzleProductRepository } from './db/repositories/DrizzleProductRepository';
 import { SavedProductsUseCases } from '../application/use-cases/account/SavedProductsUseCases';
@@ -2606,14 +2607,7 @@ export class Registry {
     execute: (input) => new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase).execute(input),
   });
   /** 0196: card messages that never carry the code (card used by someone else's order; a week before expiry). */
-  private readonly creditNoticeSender = {
-    send: async (input: { template: 'CREDIT_USED' | 'CREDIT_EXPIRING'; instrumentId: string; phone: string; idempotencyKey: string; data: Record<string, unknown> }) => {
-      await this.customerOutboxNotifier.enqueue({
-        eventType: 'CUSTOMER_ORDER_MESSAGE', template: input.template, customerPhone: input.phone, customerEmail: null, data: input.data,
-        idempotencyKey: input.idempotencyKey, relatedEntity: 'credit_instrument', relatedEntityId: input.instrumentId,
-      });
-    },
-  };
+  private readonly creditNoticeSender = new OutboxCreditNoticeSender(this.customerOutboxNotifier);
   public readonly notifyCardUsedUseCase = new NotifyCardUsedUseCase(this.creditRepo, this.creditNoticeSender);
   public readonly creditExpiryRemindersUseCase = new CreditExpiryRemindersUseCase(this.creditRepo, this.creditNoticeSender);
   /** 0200: which gift card occasions come first today (calendar + the owner's time-boxed adjustments). */
