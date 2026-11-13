@@ -3,6 +3,8 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import { SharpVariantGenerator } from '../../apps/api/src/infrastructure/media/SharpVariantGenerator';
+// Loaded at collection time: imported inside the test it counted against that test's 5 s budget and timed out under load.
+import { GOLDIE_BRAIN_TIMEOUT_MS, HttpGoldieBrain } from '../../apps/api/src/infrastructure/assistant/GoldieChannelAdapters';
 
 const read = (p: string) => readFileSync(path.resolve(__dirname, '../..', p), 'utf8');
 const sharp = createRequire(path.resolve(__dirname, '../../apps/api/package.json'))('sharp');
@@ -10,7 +12,6 @@ const sharp = createRequire(path.resolve(__dirname, '../../apps/api/package.json
 /** The last confirmed items of the 2026-10-22 review. */
 describe('2026-10-22 review: leftovers', () => {
   it('WhatsApp waits for a whole Goldie turn, and still inside the three-minute recovery window', async () => {
-    const { GOLDIE_BRAIN_TIMEOUT_MS, HttpGoldieBrain } = await import('../../apps/api/src/infrastructure/assistant/GoldieChannelAdapters');
     // One model call alone may take 60 s in the web; a turn with a tool round makes at least two.
     expect(GOLDIE_BRAIN_TIMEOUT_MS).toBeGreaterThan(2 * 60_000);
     // Burst wait (10 s at most) + the turn + the send (10 s) must finish before recovery picks the message up.

@@ -49,8 +49,10 @@ describe('Loyalty completion boundary', () => {
 
   it('keeps earning behind the gated use case, vested on delivered/completed', () => {
     expect(vesting).toContain("result.code !== 'PROGRAMME_DISABLED'");
-    expect(registryFile).toContain("toStatus === 'delivered' || toStatus === 'completed'");
-    expect(registryFile).toContain('vestLoyaltyOnDeliveryUseCase.execute(orderId)');
+    // MOVED 2026-11-11: the order lifecycle effects live in ApplyOrderTransitionEffectsUseCase (the Registry registers it).
+    const lifecycleEffects = read('apps/api/src/application/use-cases/orders/ApplyOrderTransitionEffectsUseCase.ts');
+    expect(lifecycleEffects).toContain("toStatus === 'delivered' || toStatus === 'completed'");
+    expect(lifecycleEffects).toContain('vestLoyaltyOnDeliveryUseCase.execute(orderId)');
   });
 
   it('serializes all account liability writes with PostgreSQL transaction locks', () => {

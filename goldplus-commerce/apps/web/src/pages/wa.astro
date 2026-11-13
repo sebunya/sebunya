@@ -16,10 +16,10 @@
  * that cannot be read is simply not shown; the page still works.
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { apiBase } from '../lib/api';
+import { apiBase, type ApiEnvelope } from '../lib/api';
 import { getBusinessInfo } from '../lib/businessInfo';
 import { formatUgx } from '../lib/money';
-import type { ApiEnvelope, ProductPublicDto } from '@goldplus/shared';
+import type { ProductPublicDto } from '@goldplus/shared';
 
 const biz = await getBusinessInfo();
 const slug = (Astro.url.searchParams.get('p') ?? '').trim().toLowerCase();

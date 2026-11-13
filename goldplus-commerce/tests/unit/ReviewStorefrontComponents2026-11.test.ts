@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import ts from 'typescript';
 import { isOrderInTransit } from '../../apps/web/src/lib/orderInTransit';
 import { uuidV4 } from '../../apps/web/src/lib/uuid';
 import { recommendedItemSubcategory } from '../../apps/web/src/lib/recommendation-display';
@@ -10,10 +11,11 @@ const nav = web('components/GpNav.astro');
 
 /** Pull the header's own esc()/safeUrl() out of the inline script and run them. */
 function navHelpers(): { esc: (s: unknown) => string; safeUrl: (s: unknown) => string } {
-  const start = nav.indexOf('    function esc(s)');
-  const end = nav.indexOf('    function mark(t,q)');
+  const start = nav.indexOf('    function esc(s');
+  const end = nav.indexOf('    function mark(t');
   expect(start).toBeGreaterThan(0);
-  const src = nav.slice(start, end);
+  // The script is TypeScript: strip its types the way the bundler does, then run it.
+  const src = ts.transpileModule(nav.slice(start, end), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
   // eslint-disable-next-line no-new-func
   return new Function(`${src}; return { esc: esc, safeUrl: safeUrl };`)();
 }

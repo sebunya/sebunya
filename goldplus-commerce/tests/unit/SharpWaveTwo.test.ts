@@ -17,7 +17,7 @@ describe('Sharp wave 2: situations, upcountry, receipt, loyalty weight', () => {
       for (const g of s.guides) expect(g.href).toMatch(/^\/blog\/[a-z0-9-]+$/);
     }
     expect(situationBySlug('nope')).toBeNull();
-    expect(read('apps/web/src/pages/for/[situation].astro')).toContain("Astro.redirect('/404', 404)");
+    expect(read('apps/web/src/pages/for/[situation].astro')).toContain('return notFound()');
   });
   it('upcountry page exists, is in the sitemap and the footer', () => {
     expect(read('apps/web/src/pages/delivery/upcountry.astro')).toContain('data-upcountry-page');

@@ -6,12 +6,12 @@ import { indexableCategoryHref } from '../../lib/indexableLinks';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import ProductJsonLd from '../../components/ProductJsonLd.astro';
 import Notice from '../../components/Notice.astro';
-import { apiBase } from '../../lib/api';
+import { apiBase, type ApiEnvelope } from '../../lib/api';
 import { formatUgx } from '../../lib/money';
 import { brandTitle, stripBrandPrefix } from '@goldplus/shared';
 import { getDeliveryFrom } from '../../lib/deliveryFrom';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../../lib/storefrontDiscount';
-import type { ProductPublicDto, ApiEnvelope, ApiResponse } from '@goldplus/shared';
+import type { ProductPublicDto, ApiResponse } from '@goldplus/shared';
 import CompleteSetupRail from '../../components/recommendations/CompleteSetupRail.astro';
 import RelatedProductsRail from '../../components/recommendations/RelatedProductsRail.astro';
 import RecentlyViewedRail from '../../components/recommendations/RecentlyViewedRail.astro';
@@ -42,6 +42,8 @@ import { productShareUrl } from '@goldplus/shared/src/attribution/arrival';
 import { isLikelyHuman } from '../../lib/humanTraffic';
 import { getProductReviews, aggregateRatingNode, starsText } from '../../lib/reviews';
 import { getProductQuestions } from '../../lib/questions';
+import { notFound } from '../../lib/notFound';
+import BundleAddAll from '../../components/product/BundleAddAll.astro';
 
 /**
  * A product that was on sale and is off sale now (drafted until photographed,
@@ -115,7 +117,7 @@ try {
       if (recorded) return Astro.redirect(carryQuery(recorded.target, Astro.url.search), recorded.status);
       const unlisted = await notListedResponse(res);
       if (unlisted) return unlisted;
-      return Astro.redirect('/404', 404);
+      return notFound();
     }
   } else {
     fetchError = 'We could not load this product right now.';
@@ -153,7 +155,7 @@ if (!product) {
   {
     const recorded = await findRecordedRedirect(Astro.url.pathname);
     if (recorded) return Astro.redirect(carryQuery(recorded.target, Astro.url.search), recorded.status);
-    return Astro.redirect('/404', 404);
+    return notFound();
   }
 }
 
@@ -901,25 +903,7 @@ if (product) {
               </div>
             </section>
           ))}
-          {pdpBundles.length > 0 && (
-            <script>
-              // "Add all": the same /cart add, once per product, then the basket. Without JavaScript the per-product
-              // buttons remain (the add-to-cart button above adds this item).
-              document.querySelectorAll<HTMLButtonElement>('[data-bundle-add]').forEach((btn) => {
-                btn.hidden = false;
-                btn.closest('[data-bundle]')?.querySelectorAll<HTMLElement>('[data-bundle-fallback]').forEach((f) => { f.hidden = true; });
-                btn.addEventListener('click', async () => {
-                  btn.disabled = true;
-                  const items = JSON.parse(btn.dataset.bundleAdd ?? '[]') as Array<Record<string, string | number>>;
-                  for (const item of items) {
-                    const body = new URLSearchParams({ action: 'add', ...Object.fromEntries(Object.entries(item).map(([k, v]) => [k, String(v)])) });
-                    await fetch('/cart', { method: 'POST', body, credentials: 'same-origin' }).catch(() => null);
-                  }
-                  location.href = '/cart';
-                });
-              });
-            </script>
-          )}
+          {pdpBundles.length > 0 && <BundleAddAll />}
           {canBuy && bizForPdp?.whatsappUrl && (
             <p class="-mt-3 mb-6 text-sm text-slate-600" data-pdp-whatsapp>
               {/* Baymard P18: a way to ask a person, on the page, not only once the product is sold out. */}
@@ -1081,8 +1065,6 @@ if (product) {
               Not sure what you need? Answer 4 quick questions
             </a>
           )}
-
-          </div>
 
         </div>
       </div>

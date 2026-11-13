@@ -114,7 +114,7 @@ export async function listRecommendationRules(token: string, params: {
   if (!res.ok) return res;
   
   return {
-    ok: true,
+    ok: true as const,
     data: {
       rules: res.data.items,
       total: res.data.total,

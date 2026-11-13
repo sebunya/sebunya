@@ -12,6 +12,7 @@ import {
   type FitProvenance,
 } from '../../lib/phoneBatteryPage';
 import type { BatteryFinderConfig, FinderBatteryResultDto, FinderDeviceDto } from '@goldplus/shared';
+import { notFound as notFoundResponse } from '../../lib/notFound';
 
 /**
  * One phone, the batteries that fit it, and how to be sure before ordering.
@@ -27,7 +28,7 @@ const slug = (Astro.params.device ?? '').trim();
 // handed to 404.astro it cannot redirect (2026-10-29 review).
 const notFound = async () => {
   const recorded = await findRecordedRedirect(Astro.url.pathname);
-  return recorded ? Astro.redirect(carryQuery(recorded.target, Astro.url.search), recorded.status) : Astro.redirect('/404', 404);
+  return recorded ? Astro.redirect(carryQuery(recorded.target, Astro.url.search), recorded.status) : notFoundResponse();
 };
 if (!isDeviceSlug(slug)) return notFound();
 

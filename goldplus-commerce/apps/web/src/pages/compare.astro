@@ -21,7 +21,7 @@ if (itemIds.length > 0) {
     if (res.ok) {
       const json = await res.json() as ApiResponse<ProductPublicDto[]>;
       if (json.success) {
-        compareItems = json.data;
+        compareItems = json.data!;
       }
     } else {
       fetchError = "We were unable to retrieve comparison details.";

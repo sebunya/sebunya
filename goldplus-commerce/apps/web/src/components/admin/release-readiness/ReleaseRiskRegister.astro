@@ -1,4 +1,7 @@
 ---
+interface Props {
+  gates: Array<{ name: string; status: string; category: string; severity: string; evidence: unknown }>;
+}
 const { gates } = Astro.props;
 ---
 

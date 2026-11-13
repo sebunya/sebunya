@@ -62,7 +62,8 @@ describe('tracking', () => {
   });
 
   it('referral qualification runs on every paid retail delivery, and the kill switch hides the card', () => {
-    expect(read('apps/api/src/infrastructure/Registry.ts')).toContain('if (orderSource) {');
+    // MOVED 2026-11-11: the order lifecycle effects live in ApplyOrderTransitionEffectsUseCase (the Registry registers it).
+    expect(read('apps/api/src/application/use-cases/orders/ApplyOrderTransitionEffectsUseCase.ts')).toContain('if (orderSource) {');
     expect(read('apps/api/src/interfaces/http/routes/account.ts')).toContain('!config.enabled || config.killSwitch || config.referralReferrerPoints === null');
   });
 });

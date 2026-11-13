@@ -28,6 +28,7 @@ import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../../li
 import { fitIndexCached } from '../../lib/batteries';
 import { phoneBatteryPath } from '../../lib/phoneBatteryPage';
 import type { FinderFitIndexDto } from '@goldplus/shared';
+import { notFound } from '../../lib/notFound';
 
 /**
  * CATEGORY AUTHORITY ENGINE — one dynamic route serves every registered hub
@@ -47,7 +48,7 @@ if (!hub || (childParam && !child) || childParam.includes('/')) {
   const recorded = await findRecordedRedirect(Astro.url.pathname);
   if (recorded) return Astro.redirect(carryQuery(recorded.target, Astro.url.search), recorded.status);
   // Same pattern as products/[slug].astro — an unregistered path is a 404.
-  return Astro.redirect('/404', 404);
+  return notFound();
 }
 
 const taxonomy = await getTaxonomy();

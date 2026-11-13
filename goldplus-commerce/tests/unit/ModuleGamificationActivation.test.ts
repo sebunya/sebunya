@@ -16,6 +16,8 @@ const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
 const migration = read('apps/api/src/infrastructure/db/migrations/0087_loyalty_gamification_live.sql');
 const engine = read('apps/api/src/application/use-cases/loyalty/LoyaltyGamificationUseCases.ts');
 const registry = read('apps/api/src/infrastructure/Registry.ts');
+// MOVED 2026-11-11: the order lifecycle effects live in ApplyOrderTransitionEffectsUseCase (the Registry registers it).
+const lifecycleEffects = read('apps/api/src/application/use-cases/orders/ApplyOrderTransitionEffectsUseCase.ts');
 const governance = read('apps/api/src/interfaces/http/routes/governance.ts');
 const account = read('apps/api/src/interfaces/http/routes/account.ts');
 const terms = read('apps/web/src/pages/loyalty-terms.astro');
@@ -102,14 +104,14 @@ describe('award integrity', () => {
 
 describe('event wiring', () => {
   it('hangs gamification off DELIVERY, the verified completion event', () => {
-    expect(registry).toContain("awardBadgeByKey(source.userId, 'first_order')");
-    expect(registry).toContain('evaluateGamificationForUserUseCase.execute({ userId: source.userId })');
+    expect(lifecycleEffects).toContain("awardBadgeByKey(source.userId, 'first_order')");
+    expect(lifecycleEffects).toContain('evaluateGamificationForUserUseCase.execute({ userId: source.userId })');
     // On every paid retail delivery, not only one that earned points (2026-10-22).
-    expect(registry).toContain('qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: orderSource.userId })');
+    expect(lifecycleEffects).toContain('qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: orderSource.userId })');
   });
 
   it('never lets a gamification failure fail the order transition', () => {
-    const block = registry.slice(registry.indexOf("awardBadgeByKey(source.userId, 'first_order')") - 200);
+    const block = lifecycleEffects.slice(lifecycleEffects.indexOf("awardBadgeByKey(source.userId, 'first_order')") - 200);
     expect(block.slice(0, 900).match(/\.catch\(\(\) => undefined\)/g)?.length).toBeGreaterThanOrEqual(3);
   });
 

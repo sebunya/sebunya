@@ -24,11 +24,12 @@ type Account = {
   statement: Array<{ month: string; orders: number; totalUgx: number; paidUgx: number; unpaidOpenUgx: number }>;
 };
 
-let step: "phone" | "code" | "account" = "phone";
+// `as`, not an annotation: loadAccount() changes these inside a function, which narrowing cannot see.
+let step = "phone" as "phone" | "code" | "account";
 let phone = "";
 let maskedPhone = "";
 let error = "";
-let account: Account | null = null;
+let account = null as Account | null;
 const client = readClientAddress(Astro);
 
 async function loadAccount(token: string): Promise<boolean> {

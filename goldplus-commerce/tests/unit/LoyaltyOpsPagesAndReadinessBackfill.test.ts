@@ -41,7 +41,7 @@ describe('loyalty operations pages', () => {
     const src = page('adjustments');
     expect(src).toContain('/admin/loyalty/members/${encodeURIComponent(userId)}');
     expect(src).toContain('data-member-balance');
-    expect(src).toContain('let idempotencyKey = crypto.randomUUID()');
+    expect(src).toContain('let idempotencyKey: string = crypto.randomUUID()');
     expect(src).toContain('name="idempotencyKey" value={idempotencyKey}');
     expect(src).toContain('minlength="10"');
     // Allowed while dormant, with a notice; refused only when the state is unreadable.

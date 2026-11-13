@@ -140,7 +140,7 @@ describe('the renderer and the gates agree with the wording table', () => {
         expect(out, t).not.toMatch(/N\/A|SKU|Grand Total|Fulfillment|fulfillment stage|PROCESSING|pending_payment/);
         expect(out, t).not.toMatch(/[—–]/);
       }
-      expect(text, t).toContain('Track this order: https://www.shopgoldplus.com/track-order?reference=GP-202608-3F7A');
+      expect(text, t).toContain('Track this order: https://shopgoldplus.com/track-order?reference=GP-202608-3F7A');
     }
     const wa = renderer.renderWhatsApp(order);
     expect(wa).not.toMatch(/logistics|Settled|Excellent news|\*[A-Za-z ]+\*|status has been updated/);

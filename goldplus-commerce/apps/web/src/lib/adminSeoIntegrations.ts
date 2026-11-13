@@ -248,7 +248,12 @@ export const SUPPORTED_FIELD_TYPES: ManifestFieldType[] = ["text", "url", "selec
 
 /** HTML input rendering plan for a manifest field. password-json fields are
  *  ALWAYS textareas treated as secrets: POSTed once, never echoed back. */
-export function fieldControlOf(field: ManifestField): { control: "input" | "select" | "textarea"; inputType: string } {
+export type FieldControl =
+  | { control: "select"; inputType: "select" }
+  | { control: "textarea"; inputType: "password" }
+  | { control: "input"; inputType: "number" | "url" | "text" };
+
+export function fieldControlOf(field: ManifestField): FieldControl {
   switch (field.type) {
     case "select": return { control: "select", inputType: "select" };
     case "password-json": return { control: "textarea", inputType: "password" };

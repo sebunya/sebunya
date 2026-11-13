@@ -13,7 +13,13 @@ if (!token) {
 // invented record has no place in the catalogue screen — removed 2026-09-12.
 
 // Call central governance endpoint which lists all products
-const result = await tryFetchAdminList('/governance/admin/products', [], undefined, token);
+/** The governance list row, as this screen reads it. */
+type AdminProductRow = {
+  id: string; name: string; slug?: string | null; sku?: string | null; category?: string | null;
+  stockStatus?: string | null; approvalStatus?: string | null; active?: boolean;
+  priceUgx?: number | null; imageUrl?: string | null;
+};
+const result = await tryFetchAdminList<AdminProductRow>('/governance/admin/products', [], undefined, token);
 const products = result.items || [];
 
 // 1. Extract unique values for contextual filter selections

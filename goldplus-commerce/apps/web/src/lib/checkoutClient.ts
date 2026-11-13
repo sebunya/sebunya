@@ -174,6 +174,11 @@ export type PaymentStartResult =
   | { ok: true; data: PaymentStartResponseDto }
   | { ok: false; status: number; code: PaymentStartErrorCode | 'NETWORK'; message?: string };
 
+/** Pay-by-reference re-proves the contact first, so it can also refuse with the order lookup's two codes. */
+export type PaymentByReferenceResult =
+  | PaymentStartResult
+  | { ok: false; status: number; code: 'VERIFICATION_FAILED' | 'TOO_MANY_REQUESTS'; message?: string };
+
 export async function startPayment(args: {
   orderId: string;
   intentToken: string;
@@ -226,7 +231,7 @@ export async function startPayment(args: {
  * customer proves is theirs with the reference plus the checkout phone or
  * email. Same server rules as the checkout page's payment start.
  */
-export async function startPaymentByReference(args: { reference: string; contact: string }): Promise<PaymentStartResult> {
+export async function startPaymentByReference(args: { reference: string; contact: string }): Promise<PaymentByReferenceResult> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/commerce/orders/lookup/pay`, {

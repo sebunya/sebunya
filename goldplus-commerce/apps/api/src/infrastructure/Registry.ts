@@ -6,13 +6,13 @@ import { DrizzleDeliveryProofPhotoRepository } from './fulfilment/DrizzleDeliver
 import { LowStockAlertUseCase } from '../application/use-cases/inventory/LowStockAlertUseCase';
 import { RedisFailureLockout } from './security/RedisFailureLockout';
 import { ReholdStockOnLatePaymentUseCase } from '../application/use-cases/payments/ReholdStockOnLatePaymentUseCase';
-import { cancelRefundUpdate } from '../application/notifications/CustomerMessages';
+import { customerOrderMessage } from '../application/notifications/CustomerOrderMessage';
 import './logging/appLoggerBinding';
-import { PERMISSIONS as SHARED_PERMISSIONS, toEatParts, DEFAULT_BUSINESS_INFO, tagShopUrl } from '@goldplus/shared';
+import { PERMISSIONS as SHARED_PERMISSIONS, DEFAULT_BUSINESS_INFO, tagShopUrl } from '@goldplus/shared';
 import { MeasurementOperationsUseCases } from '../application/use-cases/measurement/MeasurementOperationsUseCases';
 import { CollectBrowserBatchUseCase } from '../application/use-cases/telemetry/CollectBrowserBatchUseCase';
 import { DrizzleCollectorStore } from './db/repositories/DrizzleCollectorStore';
-import { alertRecipient, alertRecipients, validateFulfilmentAlertValue } from '../domain/fulfilment/FulfilmentAlertConfig';
+import { alertRecipients } from '../domain/fulfilment/FulfilmentAlertConfig';
 import { PgAttributionPort } from './measurement/AttributionJob';
 import { DrizzleMeasurementOperationsRepository } from './db/repositories/DrizzleMeasurementOperationsRepository';
 import { AdDestinationUseCases } from '../application/use-cases/advertising/AdDestinationUseCases';
@@ -43,6 +43,11 @@ import { DrizzleCreatorCostStore } from './measurement/DrizzleCreatorCostStore';
 import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
 import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRepository';
 import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository';
+import { DrizzleStaleOrderReader } from './db/repositories/DrizzleStaleOrderReader';
+import { DrizzlePaymentHealthReader } from './db/repositories/DrizzlePaymentHealthReader';
+import { DrizzleCorridorCsvRepository } from './db/repositories/DrizzleCorridorCsvRepository';
+import { FulfilmentAlertConfig } from './fulfilment/FulfilmentAlertConfig';
+import { OutboxCreditNoticeSender } from './notifications/OutboxCreditNoticeSender';
 import { DrizzleOrderAttributionRepository } from './db/repositories/DrizzleOrderAttributionRepository';
 import { DrizzleProductRepository } from './db/repositories/DrizzleProductRepository';
 import { SavedProductsUseCases } from '../application/use-cases/account/SavedProductsUseCases';
@@ -123,7 +128,6 @@ import { DrizzleLaybyRepository } from './layby/DrizzleLaybyRepository';
 import { GiftCardOccasionUseCases } from '../application/use-cases/credit/GiftCardOccasionUseCases';
 import { DrizzleOccasionSettingsRepository } from './credit/DrizzleOccasionSettingsRepository';
 import { storefrontOrigin } from './config/storefrontOrigin';
-import { deliveryMapUrl } from '../domain/fulfilment/PaidOrderAlert';
 import { normalizePhone } from '../application/services/validationHelpers';
 import { SettleByStoreCreditUseCase } from '../application/use-cases/payments/SettleByStoreCreditUseCase';
 import { ProductBundlesUseCase } from '../application/use-cases/pricing/ProductBundlesUseCase';
@@ -314,7 +318,9 @@ import {
 } from '../application/use-cases/blog/BlogUseCases';
 import { VerifyPesaPalPaymentUseCase } from '../application/use-cases/payments/VerifyPesaPalPaymentUseCase';
 import { ApplyRefundConsequencesUseCase } from '../application/use-cases/payments/ApplyRefundConsequencesUseCase';
-import { confirmationForPlacedOrder, customerMessageForTransition } from '../application/notifications/OrderLifecycleMessages';
+import { buildCheckoutDeliveryQuoting } from '../application/use-cases/delivery/CheckoutDeliveryQuoting';
+import { buildCheckoutSideEffectHandlers } from '../application/use-cases/outbox/CheckoutSideEffectHandlers';
+import { ApplyOrderTransitionEffectsUseCase } from '../application/use-cases/orders/ApplyOrderTransitionEffectsUseCase';
 import { ApplyFulfilmentStockEffectUseCase } from '../application/use-cases/inventory/ApplyFulfilmentStockEffectUseCase';
 import { env } from '../config/env';
 import { DrizzleSystemHealthRepository } from './db/repositories/DrizzleSystemHealthRepository';
@@ -417,7 +423,6 @@ import { ApplyCorridorCsvUseCase, DryRunCorridorCsvUseCase, RevertCorridorBatchU
 import { LocationPinUseCases } from '../application/use-cases/delivery/LocationPinUseCases';
 import { DrizzleLocationPinRepository } from './db/repositories/DrizzleLocationPinRepository';
 import { RiderUseCases } from '../application/use-cases/delivery/RiderUseCases';
-import { isShopCollectionOperator } from '../domain/locations/CollectionPoints';
 import { CorridorSummaryUseCase, LadderDryRunUseCase, LadderMarginReportUseCase } from '../application/use-cases/delivery/FeeLadderUseCases';
 import { BusRateCardAdminUseCases } from '../application/use-cases/delivery/BusRateCardAdminUseCases';
 import { DrizzleBusRateCardAdminRepository } from './db/repositories/DrizzleBusRateCardAdminRepository';
@@ -434,7 +439,6 @@ import {
   DeliveryVarianceReportUseCase,
 } from '../application/use-cases/delivery/DeliveryReportUseCases';
 import { BAND_EDGES_KM } from '../domain/delivery/DeliveryModel';
-import { orderChargeBeforeFreeDeliveryUgx, orderChargeUgx } from '../domain/delivery/DeliveryQuoteService';
 import {
   ApplyDeliveryVarianceUseCase,
   ListOrderVariancesUseCase,
@@ -837,23 +841,6 @@ import { outboundGovernance } from './notifications/OutboundGovernanceService';
 import { DrizzleCapabilityHubReader } from './db/repositories/DrizzleCapabilityHubReader';
 import { buildMarketingSuppressionReader } from './notifications/marketingSuppressionReader';
 
-/**
- * Payment-attempt statuses the provider has already given a final answer for.
- *
- * `pending` and `verification_pending` are the only ones still worth asking
- * about. Everything here is settled — and time never moves an attempt into this
- * set on its own, only the provider's own answer does.
- */
-const TERMINAL_PAYMENT_ATTEMPT_STATUSES = new Set([
-  'completed',
-  'failed',
-  'invalid',
-  'reversed',
-  'cancelled',
-  'abandoned',
-  'verification_failed',
-]);
-
 export class Registry {
 
   private static _instance: Registry;
@@ -948,88 +935,8 @@ export class Registry {
   // Measurement delivery operations (0140/0141): queue, replay, quarantine, kill switch.
   /** Collector contract v2 (0141); the per-event durable write is the caller's tracking path. */
   public collectBrowserBatch(trackEvent: (event: unknown) => Promise<void>) { return new CollectBrowserBatchUseCase(new DrizzleCollectorStore(), trackEvent); }
-  /**
-   * Fulfilment alerts (0143). Who is told, on a phone, that an order is paid.
-   * Closed registry, validated in the domain, audited on every change.
-   */
-  public readonly fulfilmentAlertConfig = {
-    values: async (): Promise<Record<string, string>> => {
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      const rows = (await db.execute(sql`select config_key, config_value from fulfilment_alert_config`)) as unknown as Array<{
-        config_key: string; config_value: string;
-      }>;
-      const list = Array.isArray(rows) ? rows : ((rows as { rows?: typeof rows }).rows ?? []);
-      return Object.fromEntries(list.map((r) => [r.config_key, r.config_value]));
-    },
-    set: async (input: { key: string; value: string; actorId: string | null }) => {
-      const check = validateFulfilmentAlertValue(input.key, input.value);
-      if (!check.ok) return { ok: false as const, message: check.message };
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      const before = await this.fulfilmentAlertConfig.values();
-      await db.execute(sql`
-        insert into fulfilment_alert_config (config_key, config_value, updated_by, updated_at)
-        values (${input.key}, ${check.value}, ${input.actorId}, now())
-        on conflict (config_key) do update set config_value = excluded.config_value,
-          updated_by = excluded.updated_by, updated_at = now()`);
-      await this.createAuditLogUseCase.execute({
-        actorId: input.actorId,
-        action: 'FULFILMENT_ALERT_CONFIG_SET',
-        entity: 'fulfilment_alert_config',
-        entityId: input.key,
-        previousState: { value: before[input.key] ?? null },
-        newState: { value: check.value },
-      } as never);
-      return { ok: true as const };
-    },
-    /** Queues the paid-order alert. Returns why nothing was queued, never silently. */
-    enqueuePaidOrderAlert: async (orderId: string, opts?: { test?: boolean }): Promise<{ queued: boolean; reason: string }> => {
-      const values = await this.fulfilmentAlertConfig.values();
-      const recipients = alertRecipients(values);
-      if (!recipients.length) return { queued: false, reason: 'NO_RECIPIENT_OR_DISABLED' };
-      const order = await this.orderRepo.findById(orderId);
-      if (!order) return { queued: false, reason: 'ORDER_NOT_FOUND' };
-      const { db } = await import('./db/client');
-      const { outboxEvents } = await import('./db/schema');
-      // One event per person, each with its own idempotency key: a failure to
-      // reach one phone must not stop the others, and a retry must not send the
-      // same person the same order twice.
-      const stamp = opts?.test ? Date.now() : 0;
-      for (const recipient of recipients) {
-      await db.insert(outboxEvents).values({
-        eventType: 'FULFILMENT_PAID_ORDER_ALERT',
-        payload: {
-          recipient,
-          orderNumber: order.orderNumber,
-          totalUgx: order.totalUgx,
-          deliveryArea: order.deliveryArea ?? '',
-          // 2026-10-21: what to pack, where it goes and who to call, so the text can be acted on as it is read.
-          // Customer fields use the names an erasure removes (customerName, customerPhone, deliveryPlace).
-          deliveryFeeUgx: order.deliveryFeeUgx,
-          items: order.items.map((it) => ({ name: it.name, sku: it.sku, quantity: it.quantity })),
-          customerName: order.customerName,
-          customerPhone: order.customerPhone,
-          deliveryPlace: order.deliveryAddress ?? '',
-          placeLabel: (order.deliveryLocation as { displayLabel?: string } | null)?.displayLabel ?? null,
-          mapUrl: deliveryMapUrl(order.deliveryLocation),
-          storeCreditUgx: order.storeCreditAppliedUgx ?? 0,
-          orderUrl: `${storefrontOrigin() ?? 'https://shopgoldplus.com'}/admin/orders/${order.id}`,
-          test: opts?.test === true,
-        } as never,
-        idempotencyKey: opts?.test
-          ? `fulfilment-alert-test:${orderId}:${recipient}:${stamp}`
-          : `fulfilment-alert:${orderId}:${recipient}`,
-        status: 'pending',
-        channel: 'sms',
-        template: 'FULFILMENT_PAID_ORDER_ALERT',
-        relatedEntity: 'order',
-        relatedEntityId: orderId,
-      } as never).onConflictDoNothing({ target: outboxEvents.idempotencyKey });
-      }
-      return { queued: true, reason: `QUEUED_FOR_${recipients.length}` };
-    },
-  };
+  /** Fulfilment alerts (0143): who is told, on a phone, that an order is paid. See FulfilmentAlertConfig. */
+  public readonly fulfilmentAlertConfig = new FulfilmentAlertConfig(this);
 
   public readonly measurementOperations = new MeasurementOperationsUseCases(new DrizzleMeasurementOperationsRepository(), this.createAuditLogUseCase, new PgAttributionPort());
   /** Spotify ad rotation preview (phase 2): read-only, no Spotify call, no spend. */
@@ -2023,82 +1930,8 @@ export class Registry {
 
   // CSV round trip for the corridor table, with a mandatory dry run, and (0189)
   // the apply half: one transaction, one audit row, refused without the digest
-  // of the dry run it was shown.
-  private readonly corridorCsvRepo = {
-    // Compare-and-set per field under the corridor write lock (the parish import takes the same lock): a row that
-    // no longer carries its `from` value aborts the whole batch, so the audit row is always true.
-    applyChanges: async (changes: Array<{ areaSlug: string; field: string; from: string; to: string }>) => {
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      const { CorridorChangedError } = await import('../application/use-cases/delivery/DeliveryCorridorCsvUseCase');
-      const rowCount = (r: unknown) => Number((r as { count?: number })?.count ?? 0);
-      const areas = new Set<string>();
-      await db.transaction(async (tx) => {
-        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('delivery_corridor_apply'))`);
-        for (const ch of changes) {
-          const slug = ch.areaSlug;
-          let r: unknown;
-          switch (ch.field) {
-            case 'corridor':
-              r = await tx.execute(sql`update delivery_corridor set corridor = ${ch.to}, data_version = data_version + 1, updated_at = now()
-                where area_slug = ${slug} and corridor = ${ch.from}`);
-              break;
-            case 'distance_band':
-              r = await tx.execute(sql`update delivery_corridor set distance_band = ${ch.to}, data_version = data_version + 1, updated_at = now()
-                where area_slug = ${slug} and distance_band = ${ch.from}`);
-              break;
-            case 'access_mode':
-              r = await tx.execute(sql`update delivery_corridor set access_mode = ${ch.to}, data_version = data_version + 1, updated_at = now()
-                where area_slug = ${slug} and access_mode = ${ch.from}`);
-              break;
-            case 'serviceable':
-              r = await tx.execute(sql`update delivery_corridor set serviceable = ${ch.to === 'true'}, data_version = data_version + 1, updated_at = now()
-                where area_slug = ${slug} and serviceable = ${ch.from === 'true'}`);
-              break;
-            case 'fulfilment_mode': {
-              const to = ch.to === '(derived)' ? null : ch.to;
-              const from = ch.from === '(derived)' ? null : ch.from;
-              r = await tx.execute(sql`update delivery_corridor set fulfilment_mode = ${to}, data_version = data_version + 1, updated_at = now()
-                where area_slug = ${slug} and fulfilment_mode is not distinct from ${from}`);
-              break;
-            }
-            default:
-              throw new Error(`corridor apply: unknown field ${ch.field}`);
-          }
-          if (rowCount(r) !== 1) throw new CorridorChangedError(slug);
-          areas.add(slug);
-        }
-      });
-      return areas.size;
-    },
-    findBatch: async (batchId: string) => {
-      const rows = await this.auditRepo.findByEntity('delivery_corridor_batch', batchId);
-      const applied = rows.find((r) => r.action === 'DELIVERY_CORRIDORS_APPLIED');
-      const state = (applied as { newState?: { changes?: Array<{ areaSlug: string; field: string; from: string; to: string }>; reason?: string } } | undefined)?.newState;
-      if (!state?.changes) return null;
-      return { changes: state.changes, reason: state.reason ?? null };
-    },
-    currentCorridors: async () => {
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      const rows = (await db.execute(sql`
-        select area_slug, corridor, distance_band, access_mode, serviceable, fulfilment_mode
-        from delivery_corridor`)) as unknown as Array<Record<string, unknown>>;
-      return new Map(
-        rows.map((r) => [
-          String(r.area_slug),
-          {
-            areaSlug: String(r.area_slug),
-            corridor: String(r.corridor),
-            distanceBand: String(r.distance_band),
-            accessMode: String(r.access_mode),
-            serviceable: Boolean(r.serviceable),
-            fulfilmentMode: r.fulfilment_mode === null ? null : String(r.fulfilment_mode),
-          },
-        ]),
-      );
-    },
-  };
+  // of the dry run it was shown. The SQL is DrizzleCorridorCsvRepository.
+  private readonly corridorCsvRepo = new DrizzleCorridorCsvRepository(this.auditRepo);
   public readonly dryRunCorridorCsvUseCase = new DryRunCorridorCsvUseCase(this.corridorCsvRepo);
   public readonly applyCorridorCsvUseCase = new ApplyCorridorCsvUseCase(this.corridorCsvRepo, this.auditRepo);
   public readonly revertCorridorBatchUseCase = new RevertCorridorBatchUseCase(this.corridorCsvRepo, this.auditRepo);
@@ -2224,111 +2057,8 @@ export class Registry {
   public readonly ladderMarginReportUseCase = new LadderMarginReportUseCase(this.deliveryQuotingRepo, this.deliveryConfigReader);
   public readonly corridorSummaryUseCase = new CorridorSummaryUseCase(this.deliveryQuotingRepo);
 
-  /**
-   * The adapter checkout holds. Deliberately narrow: checkout needs a fee, a
-   * confirmed flag, and whether it may fall back — not the whole quote shape.
-   */
-  public readonly checkoutDeliveryQuoting = {
-    quote: async (input: {
-      areaSlug?: string | null;
-      deliveryArea?: string | null;
-      district?: string | null;
-      items: ReadonlyArray<{ productId: string; quantity: number }>;
-      point?: { lat: number; lng: number } | null;
-      pickupPointId?: string | null;
-    }) => {
-      // Collect from one of our own shops: nothing travels, so nothing is charged and nothing is quoted.
-      // Only an ACTIVE point that is one of OUR collection points qualifies; a carrier's stage or office upcountry
-      // is a shipment destination, priced by its card, never a free pickup.
-      if (input.pickupPointId) {
-        const point = (await this.managePickupPointsUseCase.list()).find((p) => p.id === input.pickupPointId);
-        if (!point || !point.active || !isShopCollectionOperator(point.operator)) {
-          throw new Error('PICKUP_POINT_UNAVAILABLE: That collection point is not available. Choose another, or ask for delivery.');
-        }
-        return {
-          feeUgx: 0,
-          freeDeliveryThresholdUgx: null,
-          feeBeforeFreeDeliveryUgx: 0,
-          confirmed: true,
-          pricedBy: 'manual' as const,
-          mayFallBackToLegacy: false,
-          capture: { fulfilmentMode: 'pickup_only', pricedBy: 'manual', quotedFeeUgx: 0 },
-        };
-      }
-      // One instant for the quote AND its capture, so the recorded hour of week is
-      // the one the hour factor was applied at (the use case derives it the same way).
-      const at = new Date();
-      const eatParts = toEatParts(at);
-      const outcome = await this.deliveryQuotingUseCase.execute({ ...input, at });
-      const q = outcome.quote;
-      // What the ORDER charges: a pay-on-collection rate card is paid to the
-      // carrier at the parcel office, never in the order as well.
-      const charge = orderChargeUgx(q);
-      return {
-        feeUgx: charge,
-        // Paid to the carrier at the parcel office: the order charges 0, and the page says what is paid there.
-        paidAtCollectionUgx: q.kind === 'bus_shipment' && q.shipment.chargedAt === 'collection' ? q.feeUgx : null,
-        // Checkout re-decides the free-delivery waiver on the post-promotion
-        // goods total, which it only knows after pricing; these let it do that
-        // without a second quote.
-        freeDeliveryThresholdUgx: outcome.freeDeliveryThresholdUgx,
-        feeBeforeFreeDeliveryUgx: orderChargeBeforeFreeDeliveryUgx(q),
-        // A quote we produced is CONFIRMED. A refusal is not a zero fee that
-        // happens to be right — it is an unconfirmed fee the team will settle.
-        confirmed: q.kind !== 'unavailable',
-        pricedBy: outcome.pricedBy,
-        mayFallBackToLegacy: outcome.mayFallBackToLegacy,
-        // Why it refused, so a caller without a basket can tell a destination we
-        // cannot serve from a question it did not ask properly.
-        unavailableReason: q.kind === 'unavailable' ? q.reason : null,
-        capture: {
-          // A district-only resolution carries an EMPTY slug, which is not a
-          // slug. Stored as null so "no area" reads as absence rather than as
-          // an area whose name is nothing.
-          areaSlug: q.explanation.areaSlug || null,
-          corridor: q.explanation.corridor,
-          distanceBand: q.explanation.band,
-          quotedFeeUgx: charge,
-          expectedMinutes: q.kind === 'rider_delivery' ? q.expectedMinutes : null,
-          centroidSource: q.explanation.centroidSource,
-          // 0189: how well the location was known, and the point distance the
-          // quote could have used, whether or not distance_source let it.
-          accuracyTier: q.explanation.accuracyTier,
-          centroidKm: q.explanation.centroidKm,
-          centroidExpectedErrorM: q.explanation.centroidExpectedErrorM,
-          distanceSource: q.explanation.distanceSource,
-          configVersionId: q.explanation.configVersionId,
-          aliasUsed: outcome.resolved?.aliasUsed ?? null,
-          // 0152: what the hour and detour fits learn from. The straight line is
-          // the round trip before detour, comparable to the distance a rider records.
-          eatHourOfWeek: eatParts.weekday * 24 + eatParts.hour,
-          straightLineKm: q.explanation.oneWayKm !== null ? q.explanation.oneWayKm * 2 : null,
-          fulfilmentMode: q.mode ?? null,
-          carrier: q.kind === 'bus_shipment' ? q.shipment.carrier : null,
-          rateCardId: q.kind === 'bus_shipment' ? q.shipment.rateCardId : null,
-          rateCardVersion: q.kind === 'bus_shipment' ? q.shipment.rateCardVersion : null,
-          parcelClass: q.kind === 'bus_shipment' ? q.shipment.parcelClass : null,
-          parcelCount: q.kind === 'bus_shipment' ? q.parcelCount : null,
-          perParcelFeeUgx: q.kind === 'bus_shipment' ? q.perParcelFeeUgx : null,
-          unavailableReason: q.kind === 'unavailable' ? q.reason : null,
-        },
-      };
-    },
-    recordQuote: async (orderId: string, capture: Record<string, unknown>) => {
-      await this.deliveryCaptureRepo.upsert({ orderId, ...(capture as Record<string, never>) });
-    },
-    /**
-     * A capture that fails is an observation the model will never get. It must
-     * not void the order — but it must not vanish either, which is the whole
-     * lesson of the skipped lifecycle mirrors.
-     */
-    onCaptureFailed: (orderId: string, error: unknown) => {
-      logger.error(
-        { orderId, err: error },
-        '[delivery] capture write FAILED for a placed order — the model loses this observation permanently',
-      );
-    },
-  };
+  /** The adapter checkout and the delivery estimate charge through (see buildCheckoutDeliveryQuoting). */
+  public readonly checkoutDeliveryQuoting = buildCheckoutDeliveryQuoting(this);
 
   public readonly loyaltyDrawRepo = new DrizzleLoyaltyDrawRepository();
   public readonly grantDrawTokenUseCase = new GrantDrawTokenUseCase(
@@ -2504,108 +2234,7 @@ export class Registry {
   public readonly processCheckoutSideEffectBatchUseCase =
     new ProcessCheckoutSideEffectBatchUseCase(
       this.outboxRepo,
-      {
-        ORDER_FULFILMENT_REQUIRED: {
-          handle: async (event) => {
-            const order = await this.orderRepo.findById(event.orderId);
-            // A queued event naming an order that does not exist cannot be fixed
-            // by waiting.
-            if (!order) return { status: 'FINAL', error: 'ORDER_NOT_FOUND' };
-            await this.createFulfilmentTaskOnOrderPlacedUseCase.execute(order, {
-              extraWarnings: Array.isArray(event.payload.warnings)
-                ? (event.payload.warnings as string[])
-                : [],
-              hold: event.payload.hold === true,
-              paymentMethod: await this.orderRepo.findPaymentMethod(order.id),
-            });
-            return { status: 'HANDLED' };
-          },
-        },
-        ORDER_ADMIN_NOTIFICATION_REQUIRED: {
-          handle: async (event) => {
-            const order = await this.orderRepo.findById(event.orderId);
-            if (!order) return { status: 'FINAL', error: 'ORDER_NOT_FOUND' };
-            await this.enqueueAdminOrderEmailUseCase.execute({
-              order,
-              event: 'placed',
-              stockConfirmed: event.payload.stockConfirmed === true,
-            });
-            // The customer's own copy of a pay-on-delivery order: its reference
-            // is what /track-order needs. Online payers are told when the money
-            // lands (ORDER_PAYMENT_SUCCESS). Once per order (outbox key).
-            const confirmation = confirmationForPlacedOrder(await this.orderRepo.findPaymentMethod(order.id));
-            if (confirmation) await this.enqueueCustomerOrderMessage(order.id, confirmation);
-            return { status: 'HANDLED' };
-          },
-        },
-        /**
-         * The safety net, finally hung up.
-         *
-         * `StartOrderPaymentUseCase` has always recorded this event for the case
-         * the callback design cannot cover — the customer who pays and never
-         * comes back. Nothing consumed it, so two real events sat pending for ten
-         * days at 339 and 279 attempts.
-         *
-         * It delegates. `SettlePaymentUseCase` is THE settlement path, shared with
-         * the IPN, the browser callback and the reconciliation poller, so this
-         * handler adds a fourth door onto the same room rather than a second
-         * payment engine. Consequences that matter here:
-         *
-         *   - It VERIFIES, never charges. There is no code path from here that
-         *     creates a provider transaction or moves money.
-         *   - Only the provider's own answer is written. This handler cannot
-         *     express "assume paid".
-         *   - Replay is safe by construction: settlement advances the stage with a
-         *     compare-and-set against SETTLEABLE_STAGES, so a second delivery of
-         *     the same event finds the stage already advanced and performs no
-         *     effect at all.
-         */
-        ORDER_PAYMENT_VERIFICATION_REQUIRED: {
-          handle: async (event) => {
-            const attempts = await this.pesapalPaymentRepo.findAttemptsByOrderId(event.orderId);
-            if (attempts.length === 0) {
-              // No attempt row means payment never started. No amount of waiting
-              // creates one, and there is nothing to ask the provider about.
-              return { status: 'FINAL', error: 'NO_PAYMENT_ATTEMPT_FOR_ORDER' };
-            }
-
-            // Only attempts the provider actually knows about can be verified. An
-            // attempt with no tracking id means SubmitOrderRequest never succeeded:
-            // no payment page existed, so no money is possible by construction.
-            const askable = attempts.filter((attempt) => attempt.orderTrackingId);
-            if (askable.length === 0) {
-              return { status: 'FINAL', error: 'NO_PROVIDER_TRANSACTION_TO_VERIFY' };
-            }
-
-            // An attempt the provider has already answered needs no second
-            // question. Both production events were like this: the provider said
-            // `invalid` days ago and the order has sat at payment_status=failed
-            // ever since. Re-asking would change nothing, and a verification call
-            // against a long-dead transaction is a way to get a surprising answer
-            // about a settled matter.
-            const unresolved = askable.filter(
-              (attempt) => !TERMINAL_PAYMENT_ATTEMPT_STATUSES.has(attempt.status),
-            );
-            if (unresolved.length === 0) {
-              return { status: 'HANDLED' };
-            }
-
-            for (const attempt of unresolved) {
-              await this.settlePaymentUseCase.execute({
-                orderTrackingId: attempt.orderTrackingId as string,
-                merchantReference: attempt.merchantReference,
-                source: 'poll',
-                traceId: `outbox:${event.id}`,
-              });
-            }
-
-            // HANDLED means "we asked and recorded the answer", not "the payment
-            // succeeded". A payment still pending at the provider is a truthful
-            // outcome for this event; the reconciliation ticker keeps asking.
-            return { status: 'HANDLED' };
-          },
-        },
-      },
+      buildCheckoutSideEffectHandlers(this, (orderId, template) => this.enqueueCustomerOrderMessage(orderId, template)),
       {
         // No customer data: an unhandled type and a dead letter are both operator
         // alerts, and these lines outlive the request by far.
@@ -2978,14 +2607,7 @@ export class Registry {
     execute: (input) => new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase).execute(input),
   });
   /** 0196: card messages that never carry the code (card used by someone else's order; a week before expiry). */
-  private readonly creditNoticeSender = {
-    send: async (input: { template: 'CREDIT_USED' | 'CREDIT_EXPIRING'; instrumentId: string; phone: string; idempotencyKey: string; data: Record<string, unknown> }) => {
-      await this.customerOutboxNotifier.enqueue({
-        eventType: 'CUSTOMER_ORDER_MESSAGE', template: input.template, customerPhone: input.phone, customerEmail: null, data: input.data,
-        idempotencyKey: input.idempotencyKey, relatedEntity: 'credit_instrument', relatedEntityId: input.instrumentId,
-      });
-    },
-  };
+  private readonly creditNoticeSender = new OutboxCreditNoticeSender(this.customerOutboxNotifier);
   public readonly notifyCardUsedUseCase = new NotifyCardUsedUseCase(this.creditRepo, this.creditNoticeSender);
   public readonly creditExpiryRemindersUseCase = new CreditExpiryRemindersUseCase(this.creditRepo, this.creditNoticeSender);
   /** 0200: which gift card occasions come first today (calendar + the owner's time-boxed adjustments). */
@@ -3123,65 +2745,8 @@ export class Registry {
     this.createAuditLogUseCase,
   );
 
-  /** Stale-order reads for the sweep. The pending-attempt exclusion is the rule. */
-  private readonly staleOrderReader = {
-    listStaleUnpaidOrders: async (olderThan: Date, limit: number) => {
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      return (await db.execute(sql`
-        select o.id, o.order_number as "orderNumber", o.status, o.created_at as "createdAt"
-        from orders o
-        where o.payment_status in ('unpaid', 'failed')
-          and o.status in ('received', 'pending_payment')
-          and o.created_at < ${olderThan}
-          -- Only online-prepaid orders are abandoned by time. A pay-on-delivery
-          -- ('offline') or legacy/admin (NULL) order is unpaid by design and must
-          -- never be auto-cancelled. payment_method is recorded at checkout
-          -- (migration 0130) and backfilled to 'pesapal' for historical orders
-          -- that have a payment attempt.
-          and o.payment_method = 'pesapal'
-          and not exists (
-            select 1 from payment_attempts a
-            where a.order_id = o.id
-              -- 'completed': money the provider confirmed. Even if the order never moved (a crash between the
-              -- attempt write and the order transition), it is never cancelled or released by time.
-              and a.status in ('pending', 'verification_pending', 'verification_failed', 'completed')
-          )
-          -- 0222: an order being paid in parts (deposit in) is unpaid by design until its balance is in; the plan
-          -- holds its stock and closes it on its own date (PayInPartsUseCases.sweep).
-          and not exists (select 1 from layby_plans lp where lp.order_id = o.id and lp.status in ('active', 'paid'))
-        order by o.created_at limit ${limit}`)) as unknown as Array<{
-        id: string; orderNumber: string; status: string; createdAt: Date;
-      }>;
-    },
-    listReservedUnpaidOrders: async (olderThan: Date, limit: number) => {
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      return (await db.execute(sql`
-        select distinct o.id, o.order_number as "orderNumber", o.created_at as "createdAt"
-        from orders o join inventory_reservations r on r.order_id = o.id and r.status = 'reserved'
-        where o.payment_status in ('unpaid', 'failed')
-          and o.status in ('received', 'pending_payment')
-          and o.created_at < ${olderThan}
-          -- Same COD safety as listStaleUnpaidOrders: a pay-on-delivery order
-          -- holds a reservation and is unpaid by design; its stock must not be
-          -- returned to sale by the TTL sweep. Only online-prepaid orders qualify.
-          and o.payment_method = 'pesapal'
-          and not exists (
-            select 1 from payment_attempts a
-            where a.order_id = o.id
-              -- 'completed': money the provider confirmed. Even if the order never moved (a crash between the
-              -- attempt write and the order transition), it is never cancelled or released by time.
-              and a.status in ('pending', 'verification_pending', 'verification_failed', 'completed')
-          )
-          -- 0222: an order being paid in parts (deposit in) is unpaid by design until its balance is in; the plan
-          -- holds its stock and closes it on its own date (PayInPartsUseCases.sweep).
-          and not exists (select 1 from layby_plans lp where lp.order_id = o.id and lp.status in ('active', 'paid'))
-        order by o.created_at limit ${limit}`)) as unknown as Array<{
-        id: string; orderNumber: string; createdAt: Date;
-      }>;
-    },
-  };
+  /** Stale-order reads for the sweep. The pending-attempt exclusion is the rule (see DrizzleStaleOrderReader). */
+  private readonly staleOrderReader = new DrizzleStaleOrderReader();
 
   public readonly expireStaleReservationsUseCase = new ExpireStaleReservationsUseCase(
     this.paymentsOpsConfig,
@@ -3228,49 +2793,8 @@ export class Registry {
       ),
   );
 
-  /** The four funnel counters. A gap between adjacent numbers IS the outage. */
-  public readonly paymentHealthReader = {
-    lastSuccessfulPaymentAt: async (): Promise<Date | null> => {
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      const rows = (await db.execute(sql`
-        select max(updated_at) as t from payment_attempts where status = 'completed'`)) as unknown as Array<{ t: string | null }>;
-      return rows[0]?.t ? new Date(rows[0].t) : null;
-    },
-    callbackSilence: async (olderThan: Date, since: Date) => {
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      const [row] = (await db.execute(sql`
-        select
-          count(*)::int as total,
-          count(*) filter (
-            where ipn_received_at is null and callback_received_at is null
-          )::int as awaiting
-        from payment_attempts
-        where created_at >= ${since}
-          and created_at <= ${olderThan}
-          and order_tracking_id is not null`)) as unknown as Array<{ total: number; awaiting: number }>;
-      return { awaiting: row?.awaiting ?? 0, total: row?.total ?? 0 };
-    },
-    funnel: async (since: Date) => {
-      const { db } = await import('./db/client');
-      const { sql } = await import('drizzle-orm');
-      const [row] = (await db.execute(sql`
-        select
-          (select count(*) from checkout_idempotency where created_at >= ${since})::int as started,
-          (select count(*) from payment_attempts where created_at >= ${since})::int as requested,
-          (select count(*) from payment_attempts where status = 'completed' and updated_at >= ${since})::int as succeeded,
-          (select count(*) from orders where payment_status = 'paid' and updated_at >= ${since})::int as paid`)) as unknown as Array<{
-        started: number; requested: number; succeeded: number; paid: number;
-      }>;
-      return {
-        checkoutStarted: row?.started ?? 0,
-        paymentRequested: row?.requested ?? 0,
-        paymentSucceeded: row?.succeeded ?? 0,
-        orderPaid: row?.paid ?? 0,
-      };
-    },
-  };
+  /** The four funnel counters. A gap between adjacent numbers IS the outage (see DrizzlePaymentHealthReader). */
+  public readonly paymentHealthReader = new DrizzlePaymentHealthReader();
 
   public readonly checkPaymentSilenceUseCase = new CheckPaymentSilenceUseCase(
     this.paymentsOpsConfig,
@@ -3809,70 +3333,12 @@ export class Registry {
   private async enqueueCustomerOrderMessage(orderId: string, template: string): Promise<void> {
     const order = await this.orderRepo.findById(orderId);
     if (!order) return;
-    await this.customerOutboxNotifier.enqueue({
-      eventType: 'CUSTOMER_ORDER_MESSAGE',
-      template,
-      customerPhone: order.customerPhone,
-      customerEmail: order.customerEmail ?? null,
-      data: {
-        template,
-        customerName: order.customerName,
-        orderNumber: order.orderNumber,
-        totalUgx: order.totalUgx,
-        // What is still to pay (the total less any gift card / store credit): the payment reminder asks for this.
-        amountDueUgx: order.amountDueUgx,
-        // 0196: the gift card / store credit part, so payment messages and the receipt name the split.
-        ...(order.storeCreditAppliedUgx > 0 ? {
-          storeCreditAppliedUgx: order.storeCreditAppliedUgx,
-          ...(template === 'ORDER_CANCELLED_BY_SHOP' ? {
-            refundUpdate: cancelRefundUpdate({ totalUgx: order.totalUgx, storeCreditAppliedUgx: order.storeCreditAppliedUgx, paymentStatus: order.paymentStatus }),
-          } : {}),
-          paymentMethod: order.amountDueUgx > 0
-            ? `Gift card or store credit ${order.storeCreditAppliedUgx.toLocaleString('en-US')} + Mobile Money or card ${order.amountDueUgx.toLocaleString('en-US')} (UGX)`
-            : 'Gift card or store credit',
-        } : {}),
-        // What the reviewed email templates need to render a real receipt:
-        // the lines, the money and where it is going. Without these the
-        // adapter cannot fill the design and falls back to the older body.
-        orderCreatedAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
-        deliveryFeeUgx: order.deliveryFeeUgx ?? 0,
-        deliveryLocation: order.deliveryLocation?.displayLabel || order.deliveryArea || '',
-        paymentStatus: order.paymentStatus,
-        // Track Order, pre-filled: it works for guests (no account) and takes
-        // an order NUMBER. /orders/{number} could never resolve — that page
-        // reads /account/orders/:id, which answers only a UUID, behind a login.
-        orderUrl: `${(process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/$/, '')}/track-order?reference=${encodeURIComponent(order.orderNumber)}`,
-        items: (order.items ?? []).map((i) => ({
-          name: i.name,
-          quantity: i.quantity,
-          unitPriceUgx: i.price,
-          lineTotalUgx: i.finalLineTotal ?? i.price * i.quantity,
-        })),
-      },
-      idempotencyKey: `customer-order-message:${orderId}:${template}`,
-      relatedEntity: 'order',
-      relatedEntityId: orderId,
-      // These messages have been reaching customers all along: the router
-      // never consulted this flag, so "deferred until the owner switches it
-      // on" was not true — a payment-success SMS went to a real customer on
-      // 2026-09-20 while the switch was unset. The flag is now honoured, so
-      // the default states what actually happens: customer order messages
-      // are LIVE, and CUSTOMER_ORDER_MESSAGES_LIVE=false stops them.
-      dryRunOnly: process.env.CUSTOMER_ORDER_MESSAGES_LIVE === 'false',
-    });
+    await this.customerOutboxNotifier.enqueue(customerOrderMessage(orderId, template, order, {
+      webBaseUrl: process.env.PUBLIC_WEB_BASE_URL,
+      messagesLive: process.env.CUSTOMER_ORDER_MESSAGES_LIVE,
+    }));
   }
 
-  /**
-   * Loyalty ↔ order lifecycle wiring (loyalty brief PARTs F–G), registered
-   * once at construction. Post-commit, isolated, idempotent:
-   *  - delivered/completed → vest points (signed-in retail orders paid online or cash on delivery —
-   *    domain/loyalty/LoyaltyEarnEligibility) and
-   *    consume any COD redemption reservation attached to the order
-   *  - cancelled → release any open points reservation (points never eaten)
-   *    and any stock the order still holds
-   *  - payment reversed (chargeback/refund) → claw back the earn in full and
-   *    reverse an applied redemption, points returning with original expiry.
-   */
   /**
    * A STOP or unsubscribe recorded against a phone number or email address
    * blocks MARKETING on that channel at the one outbound decision every
@@ -3898,91 +3364,10 @@ export class Registry {
   private registerOrderTransitionSubscribers(): void {
     // GA4 refunds / ad withdrawals for a cancelled order: the order_cancelled
     // business event routes them (0140), in the delivery layer.
-    this.orderTransitionService.onTransition(async ({ orderId, toStatus, ctx }) => {
-      if (toStatus === 'delivered' || toStatus === 'completed') {
-        // Isolated like every step after it. Un-caught, one transient DB error
-        // here skipped redemption settlement, the earned SMS, badges, referral
-        // qualification and the scratch card for this order, permanently —
-        // this subscriber runs once, after commit, and nothing re-runs it.
-        await this.vestLoyaltyOnDeliveryUseCase.execute(orderId).catch((err: unknown) =>
-          logger.error({ orderId, err }, 'LOYALTY_VEST_FAILED — points for this delivered order did not vest'));
-        // A failure is reported and the stuck reservation released (settleOnDelivery).
-        await this.consumeRedemptionUseCase.settleOnDelivery(orderId).catch(() => undefined);
-        // PART M: earn confirmation when points VEST, not when the order is
-        // placed. Enqueued only when an earn actually landed for this order.
-        const earn = await this.loyaltyCompletionRepo.findEarnEntryForOrder(orderId).catch(() => null);
-        // A paid retail order by a customer, whether or not it earned points (a paused budget, a zero earn).
-        const orderSource = await this.orderRepo.findLoyaltyEarnSource(orderId).catch(() => null);
-        const source = earn ? orderSource : null;
-        if (earn && source) {
-          await this.loyaltyOutboxNotifier
-            .enqueue({
-              userId: source.userId,
-              eventType: 'LOYALTY_POINTS_EARNED',
-              idempotencyKey: `earned:${earn.id}`,
-              data: { points: earn.points, orderId },
-            })
-            .catch(() => undefined);
-        }
-        // Gamification (0087): a delivery is the verified completion event —
-        // first-order badge, mission progress, referral qualification. Every
-        // award inside is idempotent; a gamification failure never fails the
-        // order transition.
-        if (source) {
-          await this.gamificationRepo.awardBadgeByKey(source.userId, 'first_order').catch(() => undefined);
-          await this.evaluateGamificationForUserUseCase.execute({ userId: source.userId }).catch(() => undefined);
-
-          // 0088: a delivered order grants ONE scratch card. Idempotent on the
-          // order id, so a replayed transition never mints a second card.
-          await this.grantDrawTokenUseCase
-            .execute({ trigger: 'order_delivered', userId: source.userId, sourceType: 'order', sourceId: orderId })
-            .catch(() => undefined);
-        }
-        // Referral qualification on EVERY paid retail delivery, not only one that earned points (2026-10-22): a
-        // friend's first delivery that earned nothing used to skip it, and the referral then stayed pending forever.
-        if (orderSource) {
-          const referral = await this.qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: orderSource.userId })
-            .catch((err: unknown) => { logger.error({ orderId, err: err instanceof Error ? err.message : String(err) }, 'referral qualification failed'); return undefined; });
-          // An awarded referral is the referrer's completion event (REFERRAL_COUNT, 0174).
-          if (referral?.ok && referral.status === 'awarded' && referral.referrerUserId) {
-            await this.evaluateGamificationForUserUseCase.execute({ userId: referral.referrerUserId }).catch(() => undefined);
-          }
-        }
-      }
-      if (toStatus === 'processing' && ctx.paymentStatus === 'paid') {
-        // Paid after the stock hold expired: hold it again, or flag it.
-        await this.reholdStockOnLatePaymentUseCase.execute(orderId)
-          .catch((err: unknown) => logger.error({ orderId, err: err instanceof Error ? err.message : String(err) }, 'late-payment stock re-hold failed'));
-      }
-      if (toStatus === 'delivered' || toStatus === 'completed') {
-        // Goods that left the shop use up their reservation. Dispatch consumes
-        // at READY_FOR_DISPATCH, but an order closed without dispatch (a
-        // counter collection, processing → completed) never did: its units
-        // stayed reserved for good, and cancelling the stranded task later
-        // put goods already gone back on sale. A no-op once consumed.
-        await this.applyFulfilmentStockEffectUseCase.consumeForClosedOrder(orderId);
-      }
-      if (toStatus === 'cancelled') {
-        // Stock as well as points: idempotent, isolated, never fails the transition.
-        await this.releaseCancelledOrderHoldsUseCase.execute(orderId);
-      }
-      // The customer hears about the moves that change what they should
-      // expect (owner, 2026-09-24): dispatched, delivered, cancelled.
-      const lifecycleMessage = customerMessageForTransition(toStatus, ctx.actorType);
-      if (lifecycleMessage) {
-        await this.enqueueCustomerOrderMessage(orderId, lifecycleMessage).catch((err: unknown) =>
-          logger.error({ orderId, template: lifecycleMessage, err: err instanceof Error ? err.message : String(err) }, 'CUSTOMER_ORDER_MESSAGE_ENQUEUE_FAILED'));
-      }
-      if (ctx.paymentStatus === 'reversed') {
-        await this.clawbackOrderEarnUseCase
-          .execute({ orderId, actorId: null, actorType: 'system', reason: 'Payment reversed by provider' })
-          .catch(() => undefined);
-        await this.reverseRedemptionUseCase.execute({ orderId, reason: 'Payment reversed by provider' }).catch(() => undefined);
-        await this.reverseReferralOnRefundUseCase.execute({ orderId, reason: 'Payment reversed by provider' })
-          .catch((err: unknown) => logger.error({ orderId, err: err instanceof Error ? err.message : String(err) }, 'loyalty referral reversal failed'));
-        await this.reverseDrawOnRefundUseCase.execute({ orderId, reason: 'Payment reversed by provider' })
-          .catch((err: unknown) => logger.error({ orderId, err: err instanceof Error ? err.message : String(err) }, 'loyalty scratch card reversal failed'));
-      }
-    });
+    //
+    // The Registry passes ITSELF as the ports: each dependency is read when a
+    // transition fires, as it was when this subscriber's body lived here.
+    const effects = new ApplyOrderTransitionEffectsUseCase(this, (orderId, template) => this.enqueueCustomerOrderMessage(orderId, template));
+    this.orderTransitionService.onTransition((event) => effects.execute(event));
   }
 }

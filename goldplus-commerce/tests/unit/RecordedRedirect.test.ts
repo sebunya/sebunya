@@ -68,7 +68,7 @@ describe('the routes that 404 ask for a recorded redirect first', () => {
   it('[hub]/[...child].astro redirects to a recorded target before returning its 404', () => {
     const src = read('apps/web/src/pages/[hub]/[...child].astro');
     const lookup = src.indexOf('await findRecordedRedirect(Astro.url.pathname)');
-    const notFound = src.indexOf("return Astro.redirect('/404', 404)");
+    const notFound = src.indexOf('return notFound()');
     expect(lookup).toBeGreaterThan(0);
     expect(notFound).toBeGreaterThan(lookup);
     expect(src).toMatch(/if \(recorded\) return Astro\.redirect\(carryQuery\(recorded\.target, Astro\.url\.search\), recorded\.status\);/);
@@ -77,7 +77,7 @@ describe('the routes that 404 ask for a recorded redirect first', () => {
   it('products/[slug].astro (slug changes) asks before EVERY 404 it returns, and never on the 503', () => {
     const src = read('apps/web/src/pages/products/[slug].astro');
     expect(src).toContain("import { findRecordedRedirect } from '../../lib/recordedRedirect';");
-    const notFound = "return Astro.redirect('/404', 404)";
+    const notFound = 'return notFound()';
     const lookup = 'await findRecordedRedirect(Astro.url.pathname)';
     let at = src.indexOf(notFound);
     let count = 0;

@@ -42,7 +42,7 @@ const [listRes, membershipRes] = await Promise.all([
     : Promise.resolve(null as any),
 ]);
 
-const rows = Array.isArray(listRes.ok ? listRes.data : null) ? (listRes.data as any[]) : [];
+const rows = Array.isArray(listRes.ok ? listRes.data : null) ? ((listRes as { data: any[] }).data) : [];
 const membership = Array.isArray(membershipRes?.ok ? membershipRes.data : null) ? (membershipRes!.data as any[]) : [];
 const reason = emptyReason(listRes, "Nothing has been materialised for this domain yet");
 

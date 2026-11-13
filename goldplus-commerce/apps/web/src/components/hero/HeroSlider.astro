@@ -943,7 +943,7 @@ function fillHeroTokens(text: string): string {
     catch (e) { return new Date(); }
   }
   function heroShopCutoffHour(){
-    var el = heroShopEl(); var v = parseInt(el && el.getAttribute('data-cutoff-hour'), 10);
+    var el = heroShopEl(); var v = parseInt((el && el.getAttribute('data-cutoff-hour')) as string, 10);
     return isFinite(v) ? v : 17;
   }
   function heroShopClosedDays(){
@@ -969,21 +969,21 @@ function fillHeroTokens(text: string): string {
     priorityWeight: 0.5
   };
 
-  var box = document.getElementById('gpHero');
+  var box = document.getElementById('gpHero') as HTMLElement;
   if (!box) return;
-  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var reduce = (window.matchMedia as unknown) && matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Personalisation is a first-party product feature that runs for EVERY
   // visitor. Selection and enrichment happen on the server (SSR); the browser
   // no longer profiles, fetches signals, or gates on consent.
-  function heroReadCart(){ try { var m = document.cookie.match(/(?:^|; )goldplus_cart_data=([^;]+)/); if (!m) return 0; var d = JSON.parse(decodeURIComponent(m[1])); var it = (d && d.items) || []; return it.reduce(function(a,x){ return a + (x.quantity||0); }, 0); } catch(e){ return 0; } }
+  function heroReadCart(){ try { var m = document.cookie.match(/(?:^|; )goldplus_cart_data=([^;]+)/); if (!m) return 0; var d = JSON.parse(decodeURIComponent(m[1])); var it = (d && d.items) || []; return it.reduce(function(a: number,x: any){ return a + (x.quantity||0); }, 0); } catch(e){ return 0; } }
   var heroPref = (CMS.preferredArch && CMS.preferredArch.imageUrl) ? CMS.preferredArch : null;  // arch product, chosen server-side
   var INERT_OK = 'inert' in HTMLElement.prototype;
-  var qs = function(k){ var m = location.search.match(new RegExp('[?&]' + k + '=([^&]+)')); return m && decodeURIComponent(m[1]); };
+  var qs = function(k: string){ var m = location.search.match(new RegExp('[?&]' + k + '=([^&]+)')); return m && decodeURIComponent(m[1]); };
 
   /* ---------------- visitor context ---------------- */
   var store = {
-    get: function(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
-    set: function(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
+    get: function(k: string){ try { return localStorage.getItem(k); } catch(e){ return null; } },
+    set: function(k: string,v: string){ try { localStorage.setItem(k,v); } catch(e){} }
   };
   var visits = parseInt(store.get(CONFIG.keys.visits) || '0', 10) + 1;
   store.set(CONFIG.keys.visits, String(visits));
@@ -1025,16 +1025,16 @@ function fillHeroTokens(text: string): string {
      slides are already the chosen set, in funnel order, lead first. The engine
      just reveals them, wires the progress nav, and rotates. No client selection,
      no signals fetch, no consent gate. Personalisation is delivered by SSR. */
-  var slides = [].slice.call(box.querySelectorAll('.gp-hero__slide'));
+  var slides: HTMLElement[] = [].slice.call(box.querySelectorAll('.gp-hero__slide'));
   var total = slides.length;
   var index = 0;                       // the server rendered the lead first + active
-  var playing = !reduce && CONFIG.autoplay, raf = null, startedAt = 0;
-  var segsWrap = document.getElementById('gpSegs'), fills = [], segs = [], tail = null;
+  var playing = !reduce && CONFIG.autoplay, raf: any = null, startedAt = 0;
+  var segsWrap = document.getElementById('gpSegs') as HTMLElement, fills: any[] = [], segs: any[] = [], tail: any = null;
   var live = document.getElementById('gpHeroLive');
-  var archEl = document.getElementById('gpArch');
-  var archImg = document.getElementById('gpArchImg');
-  var contactEl = document.getElementById('gpContact');
-  var archBase = null, contactBase = null;   // parked geometry; moves are transforms from here
+  var archEl = document.getElementById('gpArch') as HTMLElement;
+  var archImg = document.getElementById('gpArchImg') as HTMLElement;
+  var contactEl = document.getElementById('gpContact') as HTMLElement;
+  var archBase: any = null, contactBase: any = null;   // parked geometry; moves are transforms from here
   function reflowArch(){ if (archBase) archBase.resized = true; if (contactBase) contactBase.resized = true; placeArch(); }
 
   function setupRail(){
@@ -1134,8 +1134,8 @@ function fillHeroTokens(text: string): string {
   // Hidden slides' photos wait for the page's load event (they competed with the lead
   // image for bandwidth on a phone), then fetch at once so a rotated-in slide is
   // already decoded. Lazy images inside display:none never load on their own.
-  window.addEventListener('load', function(){ document.querySelectorAll('img[data-deck-photo]').forEach(function(i){ i.loading = 'eager'; }); });
-  if (window.visualViewport) visualViewport.addEventListener('resize', reflowArch, { passive: true });
+  window.addEventListener('load', function(){ document.querySelectorAll<HTMLImageElement>('img[data-deck-photo]').forEach(function(i){ i.loading = 'eager'; }); });
+  if (window.visualViewport) visualViewport!.addEventListener('resize', reflowArch, { passive: true });
 
   function paint(){
     slides.forEach(function(s, i){
@@ -1153,7 +1153,7 @@ function fillHeroTokens(text: string): string {
             if (prev === null) f2[k].removeAttribute('tabindex');
             else f2[k].setAttribute('tabindex', prev);
           } else {
-            if (!f2[k].hasAttribute('data-ti')) f2[k].setAttribute('data-ti', f2[k].getAttribute('tabindex') === null ? '' : f2[k].getAttribute('tabindex'));
+            if (!f2[k].hasAttribute('data-ti')) f2[k].setAttribute('data-ti', f2[k].getAttribute('tabindex') === null ? '' : f2[k].getAttribute('tabindex') as string);
             f2[k].setAttribute('tabindex','-1');
           }
         }
@@ -1170,8 +1170,8 @@ function fillHeroTokens(text: string): string {
     placeArch();
   }
   var lastUserNav = false;
-  function go(i, byUser){ index = (i + total) % total; lastUserNav = !!byUser; paint(); if (byUser) armRotation(); restart(); }
-  function next(byUser){ go(index+1, byUser); } function prev(byUser){ go(index-1, byUser); }
+  function go(i: number, byUser?: boolean){ index = (i + total) % total; lastUserNav = !!byUser; paint(); if (byUser) armRotation(); restart(); }
+  function next(byUser?: boolean){ go(index+1, byUser); } function prev(byUser?: boolean){ go(index-1, byUser); }
   /* Rotation is ARMED by the first interaction, or 8 s after load — never
      before. Until then every restart() call (init, hover-out, tab focus, the
      intersection observer) is a no-op, so the lead slide owns the first paint
@@ -1198,7 +1198,7 @@ function fillHeroTokens(text: string): string {
     if (!playing || reduce || total < 2){ if (fills[index]) fills[index].style.transform = 'scaleX(0)'; return; }
     startedAt = performance.now(); raf = requestAnimationFrame(tick);
   }
-  function tick(t){
+  function tick(t: number){
     var p = Math.min(1,(t - startedAt)/CONFIG.dwell);
     // scaleX runs on the compositor: no layout, no paint, every frame of the dwell
     if (fills[index]) fills[index].style.transform = 'scaleX(' + p + ')';
@@ -1207,15 +1207,15 @@ function fillHeroTokens(text: string): string {
   }
   function stop(){ cancelAnimationFrame(raf); }
 
-  var playBtn = document.getElementById('gpPlay');
-  function setPlaying(v){
+  var playBtn = document.getElementById('gpPlay') as HTMLElement;
+  function setPlaying(v: boolean){
     playing = v;
     playBtn.innerHTML = v ? '&#10073;&#10073;' : '&#9658;';
     playBtn.setAttribute('aria-label', v ? 'Pause automatic slide rotation' : 'Resume automatic slide rotation');
     if (v) restart(); else stop();
   }
-  document.getElementById('gpPrev').addEventListener('click', function(){ prev(true); });
-  document.getElementById('gpNext').addEventListener('click', function(){ next(true); });
+  document.getElementById('gpPrev')!.addEventListener('click', function(){ prev(true); });
+  document.getElementById('gpNext')!.addEventListener('click', function(){ next(true); });
   playBtn.addEventListener('click', function(){ setPlaying(!playing); });
   if (reduce) setPlaying(false);
 
@@ -1228,12 +1228,12 @@ function fillHeroTokens(text: string): string {
     new IntersectionObserver(function(es){ es.forEach(function(e){ e.isIntersecting ? (playing && restart()) : stop(); }); }, {threshold:.25}).observe(box);
   }
   box.addEventListener('keydown', function(e){
-    if (e.target.closest('.gp-hero__scratch')) return;
+    if ((e.target as Element).closest('.gp-hero__scratch')) return;
     if (e.key === 'ArrowRight'){ e.preventDefault(); next(true); }
     else if (e.key === 'ArrowLeft'){ e.preventDefault(); prev(true); }
   });
   var x0=0,y0=0,dn=false;
-  box.addEventListener('pointerdown', function(e){ if (e.target.closest('.gp-hero__scratch')) return; dn=true; x0=e.clientX; y0=e.clientY; });
+  box.addEventListener('pointerdown', function(e){ if ((e.target as Element).closest('.gp-hero__scratch')) return; dn=true; x0=e.clientX; y0=e.clientY; });
   window.addEventListener('pointerup', function(e){
     if (!dn) return; dn=false;
     var dx=e.clientX-x0, dy=e.clientY-y0;
@@ -1245,14 +1245,14 @@ function fillHeroTokens(text: string): string {
   setTimeout(function(){
   /* ---------------- pointer parallax on the product stage ---------------- */
   if (!reduce && matchMedia('(hover:hover)').matches){
-    var pmRaf = 0, pmX = 0, pmY = 0, pmBox = null;
+    var pmRaf = 0, pmX = 0, pmY = 0, pmBox: any = null;
     box.addEventListener('pointermove', function(e){
       pmX = e.clientX; pmY = e.clientY;
       if (pmRaf) return;
       pmRaf = requestAnimationFrame(function(){
         pmRaf = 0;
         var s = slides[index]; if (!s) return;
-        var img = s.querySelector('.gp-hero__stage') ? archImg : s.querySelector('.gp-hero__bleed img');
+        var img = s.querySelector('.gp-hero__stage') ? archImg : s.querySelector<HTMLElement>('.gp-hero__bleed img');
         if (!img) return;
         pmBox = pmBox || box.getBoundingClientRect();
         var nx = (pmX - pmBox.left)/pmBox.width - .5, ny = (pmY - pmBox.top)/pmBox.height - .5;
@@ -1262,7 +1262,7 @@ function fillHeroTokens(text: string): string {
     window.addEventListener('resize', function(){ pmBox = null; }, { passive: true });
     box.addEventListener('pointerleave', function(){
       var s = slides[index]; if (!s) return;
-      var img = s.querySelector('.gp-hero__stage') ? archImg : s.querySelector('.gp-hero__bleed img');
+      var img = s.querySelector('.gp-hero__stage') ? archImg : s.querySelector<HTMLElement>('.gp-hero__bleed img');
       if (img) img.style.transform = '';
     });
   }
@@ -1275,7 +1275,7 @@ function fillHeroTokens(text: string): string {
      device clock means a visitor in London or Dubai still gets their own
      local day or night. ?mode=day / ?mode=night forces it for QA. */
   (function(){
-    var hero = box.closest('.gp-hero') || box.parentNode;
+    var hero = (box.closest('.gp-hero') || box.parentNode) as HTMLElement;
     var DAY_START = 6.5;    // 06:30. First light in Kampala
     var DAY_END   = 18.75;  // 18:45. Dusk
 
@@ -1283,7 +1283,7 @@ function fillHeroTokens(text: string): string {
       var d = new Date(), h = d.getHours() + d.getMinutes()/60;
       return (h >= DAY_START && h < DAY_END) ? 'day' : 'night';
     }
-    function apply(m){
+    function apply(m: string){
       if (hero.getAttribute('data-mode') !== m) hero.setAttribute('data-mode', m);
     }
     var forced = qs('mode');
@@ -1304,11 +1304,11 @@ function fillHeroTokens(text: string): string {
      main-thread task runs long on a slow phone (TBT). */
   setTimeout(function(){
   /* ---------------- flash-sale countdown (label derived from the clock) ---------------- */
-  var cd = document.getElementById('gpCountdown');
+  var cd = document.getElementById('gpCountdown') as HTMLElement;
   if (cd && CTX.saleLive){
-    var o = {}; ['d','h','m','s'].forEach(function(k){ o[k] = cd.querySelector('[data-cd="'+k+'"]'); });
-    var kick = document.getElementById('gpFlashKicker'), pad = function(n){ return ('0'+n).slice(-2); };
-    var label = function(t){
+    var o: Record<string, any> = {}; ['d','h','m','s'].forEach(function(k){ o[k] = cd.querySelector('[data-cd="'+k+'"]'); });
+    var kick = document.getElementById('gpFlashKicker'), pad = function(n: number){ return ('0'+n).slice(-2); };
+    var label = function(t: number){
       var d = Math.floor(t/86400);
       if (d >= 2) return 'Flash sale · ' + d + ' days left';
       if (t > 86400) return 'Flash sale · under 48 hours';
@@ -1337,7 +1337,7 @@ function fillHeroTokens(text: string): string {
   if (cut){
     /* Both ends on the Kampala clock (now), not the device's. */
     var end = new Date(now); end.setHours(CONFIG.cutoffHour,0,0,0);
-    var mins = Math.floor((end - now)/60000), shut = function(d){ return CONFIG.closedDays.indexOf(d % 7) > -1; };
+    var mins = Math.floor(((end as any) - (now as any))/60000), shut = function(d: number){ return CONFIG.closedDays.indexOf(d % 7) > -1; };
     if (shut(CTX.day)) cut.textContent = 'Closed today. Order now and it goes out when we reopen';
     else if (mins > 90) cut.textContent = Math.floor(mins/60) + 'h ' + (mins%60) + 'm left to order for it to go out today';
     else if (mins > 0)  cut.textContent = mins + ' minutes left to order for it to go out today';
@@ -1345,11 +1345,11 @@ function fillHeroTokens(text: string): string {
   }
 
   /* ---------------- copy code ---------------- */
-  var chip = document.getElementById('gpCode');
+  var chip = document.getElementById('gpCode') as HTMLElement;
   if (chip) chip.addEventListener('click', function(){
-    var st = document.getElementById('gpCodeState');
+    var st = document.getElementById('gpCodeState') as HTMLElement;
     var done = function(){ st.textContent='Copied'; setTimeout(function(){ st.textContent='Copy'; },2200); };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(chip.getAttribute('data-code')).then(done,done);
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(chip.getAttribute('data-code') as string).then(done,done);
     else done();
   });
 
@@ -1359,19 +1359,19 @@ function fillHeroTokens(text: string): string {
   setTimeout(function(){
   /* ---------------- scratch card ---------------- */
   (function(){
-    var card = document.getElementById('gpScratch'); if (!card || !CONFIG.prizes.length) return;
-    var cv = document.getElementById('gpFoil'), ctx = cv.getContext('2d');
-    var cta = document.getElementById('gpScratchCta'), sub = document.getElementById('gpScratchSub');
+    var card = document.getElementById('gpScratch') as HTMLElement; if (!card || !CONFIG.prizes.length) return;
+    var cv = document.getElementById('gpFoil') as HTMLCanvasElement, ctx = cv.getContext('2d') as CanvasRenderingContext2D;
+    var cta = document.getElementById('gpScratchCta') as HTMLElement, sub = document.getElementById('gpScratchSub') as HTMLElement;
     var liveP = document.getElementById('gpPrizeLive');
     var saved = null; try { saved = JSON.parse(store.get(CONFIG.keys.scratch) || 'null'); } catch(e){}
     function weighted(){
-      var sum = CONFIG.prizes.reduce(function(a,p){ return a+p.w; },0), r = Math.random()*sum;
+      var sum = CONFIG.prizes.reduce(function(a: number,p: any){ return a+p.w; },0), r = Math.random()*sum;
       for (var i=0;i<CONFIG.prizes.length;i++){ r -= CONFIG.prizes[i].w; if (r<=0) return CONFIG.prizes[i]; }
       return CONFIG.prizes[0];
     }
     var prize = (saved && saved.code) ? saved : weighted();
-    document.getElementById('gpPrizeN').textContent = prize.pct + '%';
-    document.getElementById('gpPrizeC').textContent = 'CODE ' + prize.code;
+    document.getElementById('gpPrizeN')!.textContent = prize.pct + '%';
+    document.getElementById('gpPrizeC')!.textContent = 'CODE ' + prize.code;
     var painted=false, drawing=false, done=false;
 
     function paintFoil(){
@@ -1403,7 +1403,7 @@ function fillHeroTokens(text: string): string {
       if (liveP) liveP.textContent = 'You revealed a ' + prize.pct + '% discount. Code ' + prize.code + '.';
       store.set(CONFIG.keys.scratch, JSON.stringify({pct:prize.pct,code:prize.code,revealed:true}));
     }
-    function at(e){
+    function at(e: PointerEvent){
       if (!painted || done) return;
       var r = cv.getBoundingClientRect();
       ctx.globalCompositeOperation='destination-out';
@@ -1464,8 +1464,8 @@ function fillHeroTokens(text: string): string {
   (function heroInstrument(){
     // Measurement runs for every visitor (no consent gate). An impression counts
     // only when the slide is actually on screen (>=1s, tab visible).
-    var seg = heroSegment(), impressed = {}, impTimer = null;
-    function emit(type, key, pos){
+    var seg = heroSegment(), impressed: any = {}, impTimer: any = null;
+    function emit(type: string, key: string | null, pos: number){
       try {
         var body = JSON.stringify({ eventType: type, slideKey: key, position: pos, segment: seg });
         // A beacon for every event: it is low priority, so an impression sent
@@ -1477,14 +1477,14 @@ function fillHeroTokens(text: string): string {
     function armImpression(){
       if (impTimer) clearTimeout(impTimer);
       var s = slides[index]; if (!s) return;
-      var key = s.getAttribute('data-id'), pos = index + 1;
+      var key = s.getAttribute('data-id') as string, pos = index + 1;
       if (impressed[key]) return;
       impTimer = setTimeout(function(){
         if (slides[index] && slides[index].getAttribute('data-id') === key && !document.hidden){ impressed[key] = true; emit('IMPRESSION', key, pos); }
       }, 1000);
     }
-    var _paint = paint; paint = function(){ _paint(); armImpression(); };
-    box.addEventListener('click', function(e){
+    var _paint = paint; (paint as any) = function(){ _paint(); armImpression(); };
+    box.addEventListener('click', function(e: any){
       var cta = e.target && e.target.closest && e.target.closest('.gp-hero__cta'); if (!cta) return;
       var s = slides[index]; if (s) emit('CLICK', s.getAttribute('data-id'), index + 1);
     });
