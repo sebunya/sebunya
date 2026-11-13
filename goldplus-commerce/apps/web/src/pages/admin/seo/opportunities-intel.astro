@@ -23,8 +23,8 @@ const detailRes = explain
   ? await seoGet<any>(token, `/admin/seo/workqueue/intel/opportunities/${encodeURIComponent(explain)}/why`)
   : null;
 
-const items = Array.isArray(listRes.ok ? listRes.data : null) ? (listRes.data as any[]) : [];
-const runs = Array.isArray(runsRes.ok ? runsRes.data : null) ? (runsRes.data as any[]) : [];
+const items = Array.isArray(listRes.ok ? listRes.data : null) ? ((listRes as { data: any[] }).data) : [];
+const runs = Array.isArray(runsRes.ok ? runsRes.data : null) ? ((runsRes as { data: any[] }).data) : [];
 const detail = detailRes?.ok ? (detailRes.data as any) : null;
 const reason = emptyReason(listRes, "No organic intelligence has been materialised yet");
 

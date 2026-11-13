@@ -207,7 +207,7 @@ const liveCount = stored ? stored.people.filter(isLive).length : null;
 const KNOWN_FIELDS = ['name', 'role', 'tagline', 'productSlug', 'photo', 'imageUrl', 'imageAlt', 'releaseOnFile'];
 const err = (r: AmbassadorRow, f: string) => (r.id ? errors[`${r.id}.${f}`] : undefined);
 const ctl = (i: number, f: string) => `amb-${i}-${f}`;
-const described = (i: number, r: AmbassadorRow, f: string) => (err(r, f) ? { 'aria-invalid': 'true', 'aria-describedby': `${ctl(i, f)}-err` } : {});
+const described = (i: number, r: AmbassadorRow, f: string) => (err(r, f) ? { 'aria-invalid': 'true' as const, 'aria-describedby': `${ctl(i, f)}-err` } : {});
 const summary: Array<{ href: string; text: string }> = [];
 for (const [key, message] of Object.entries(errors)) {
   if (key.startsWith('section.')) { summary.push({ href: `#amb-section-${key.slice(8)}`, text: `Section: ${message}` }); continue; }

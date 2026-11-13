@@ -14,11 +14,11 @@ interface Props {
   defaultValue?: string;
   rows?: number;
   pattern?: string;
-  inputmode?: string;
+  inputmode?: astroHTML.JSX.HTMLAttributes['inputmode'];
   autocomplete?: string;
   errorMessage?: string;
   /** Optional numeric bound, forwarded to the input for type="number". */
-  min?: number;
+  min?: number | string;
   /** Move focus here on load: a form that came back with errors focuses the first one. */
   autofocus?: boolean;
 }

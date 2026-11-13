@@ -33,7 +33,7 @@ try {
 } catch { /* unknown state below */ }
 
 let notice: { kind: "success" | "error"; text: string } | null = null;
-let idempotencyKey = crypto.randomUUID();
+let idempotencyKey: string = crypto.randomUUID();
 let keepPoints = "";
 let keepReason = "";
 if (Astro.request.method === "POST") {

@@ -590,7 +590,7 @@ const arrivalRules = { ...loaderRules(), red: ANALYTICS_REDACTED_PARAMS.source, 
       // onerror attributes to keep in sync.
       const IMAGE_FALLBACK = '/products/image-unavailable.svg';
 
-      function applyFallback(image) {
+      function applyFallback(image: HTMLImageElement) {
         // Guard the fallback itself, so a missing placeholder cannot loop.
         if (image.dataset.imageFallbackApplied === 'true') return;
         if (image.getAttribute('src') === IMAGE_FALLBACK) return;
