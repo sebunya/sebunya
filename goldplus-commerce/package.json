@@ -12,6 +12,7 @@
     "dev:api": "pnpm -F @goldplus/api dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
+    "typecheck:astro": "node scripts/quality/astro-check-ratchet.mjs",
     "lint": "pnpm -r lint",
     "test": "vitest run",
     "test:unit": "vitest run tests/unit",

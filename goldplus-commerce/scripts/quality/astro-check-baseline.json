@@ -1,0 +1,14 @@
+{
+  "total": 43,
+  "files": {
+    "src/pages/[hub]/[...child].astro": 1,
+    "src/pages/admin/measurement/attribution.astro": 1,
+    "src/pages/admin/measurement/consent.astro": 1,
+    "src/pages/admin/measurement/dlq.astro": 1,
+    "src/pages/admin/measurement/index.astro": 1,
+    "src/pages/blog/[slug].astro": 1,
+    "src/pages/for/[situation].astro": 1,
+    "src/pages/phone-batteries/[device].astro": 1,
+    "src/pages/products/[slug].astro": 35
+  }
+}
