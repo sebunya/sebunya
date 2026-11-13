@@ -21,11 +21,13 @@ interface Props {
   min?: number | string;
   /** Move focus here on load: a form that came back with errors focuses the first one. */
   autofocus?: boolean;
+  /** "false" for contact details and codes, which a spellchecker would only underline in red. */
+  spellcheck?: 'true' | 'false';
 }
 
 const {
   id, name, label, type = 'text', required, optional, placeholder,
-  helperText, defaultValue, rows = 4, pattern, inputmode, autocomplete, errorMessage, min, autofocus,
+  helperText, defaultValue, rows = 4, pattern, inputmode, autocomplete, errorMessage, min, autofocus, spellcheck,
 } = Astro.props;
 
 // The field's edge must be visible against the white card (WCAG 1.4.11, 3:1):
@@ -60,6 +62,7 @@ const describedBy = [helperText ? `${id}-help` : null, errorMessage ? `${id}-err
       aria-describedby={describedBy}
       aria-invalid={errorMessage ? 'true' : undefined}
       autofocus={autofocus || undefined}
+      spellcheck={spellcheck}
     >{defaultValue}</textarea>
   ) : (
     <input
@@ -77,6 +80,7 @@ const describedBy = [helperText ? `${id}-help` : null, errorMessage ? `${id}-err
       aria-describedby={describedBy}
       aria-invalid={errorMessage ? 'true' : undefined}
       autofocus={autofocus || undefined}
+      spellcheck={spellcheck}
     />
   )}
   {helperText && <p id={`${id}-help`} class="text-xs text-gray-500 mt-1">{helperText}</p>}
