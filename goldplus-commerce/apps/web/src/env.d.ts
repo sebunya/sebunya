@@ -36,6 +36,18 @@ interface Window {
   GP_NBA_PROMISE?: Promise<any>;
 }
 
+/**
+ * Number formatting has no time zone: Intl.NumberFormat ignores `timeZone`.
+ * The admin pages pass `{ timeZone: 'Africa/Kampala' }` to Number#toLocaleString
+ * all the same (a house habit copied from the date calls), so declare the key
+ * rather than cast at ~40 call sites. It changes no output.
+ */
+declare namespace Intl {
+  interface NumberFormatOptions {
+    timeZone?: string;
+  }
+}
+
 declare namespace App {
   interface Locals {
     /** The raw opaque visit token from the HttpOnly gp_visit cookie (R2). SSR-only; never serialize into HTML. */
