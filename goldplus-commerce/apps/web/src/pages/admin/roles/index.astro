@@ -2,9 +2,8 @@
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import EmptyState from '../../../components/EmptyState.astro';
 import Notice from '../../../components/Notice.astro';
-import { apiBase } from '../../../lib/api';
+import { apiBase, type ApiEnvelope } from '../../../lib/api';
 import { readSessionToken, SESSION_COOKIE_NAME } from '../../../lib/session';
-import type { ApiEnvelope } from '@goldplus/shared';
 
 /**
  * Role management (2026-09-12). Create a role, set exactly which permissions it

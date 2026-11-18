@@ -60,11 +60,14 @@ describe('the lifecycle subscriber runs it on every cancel', () => {
   const src = readFileSync(resolve(__dirname, '../../apps/api/src/infrastructure/Registry.ts'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/.*$/gm, '');
-  const subscriber = src.slice(src.indexOf('private registerOrderTransitionSubscribers('));
+  // MOVED 2026-11-11: the order lifecycle effects live in ApplyOrderTransitionEffectsUseCase (the Registry registers it).
+  const subscriber = readFileSync(resolve(__dirname, '../../apps/api/src/application/use-cases/orders/ApplyOrderTransitionEffectsUseCase.ts'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
 
   it('the cancelled branch releases the order holds, stock included', () => {
     const branch = subscriber.slice(subscriber.indexOf("if (toStatus === 'cancelled')"));
-    expect(branch.slice(0, 200)).toMatch(/this\.releaseCancelledOrderHoldsUseCase\.execute\(orderId\)/);
+    expect(branch.slice(0, 200)).toMatch(/this\.ports\.releaseCancelledOrderHoldsUseCase\.execute\(orderId\)/);
   });
 
   it('the holds use case is wired to the real inventory release', () => {

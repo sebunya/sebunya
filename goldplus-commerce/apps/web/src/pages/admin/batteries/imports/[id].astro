@@ -20,7 +20,7 @@ interface Session {
 }
 interface Detail { session: Session; rows: Row[]; events: Array<{ id: string; action: string; reason: string; createdAt: string }>; templates: Array<{ id: string; name: string }>; fields: Field[]; suggestedMapping: Record<string, string> }
 
-let notice: { kind: 'success' | 'error'; text: string } | null = null;
+let notice = null as { kind: 'success' | 'error'; text: string } | null;
 
 if (Astro.request.method === 'POST' && id) {
   const form = await Astro.request.formData();

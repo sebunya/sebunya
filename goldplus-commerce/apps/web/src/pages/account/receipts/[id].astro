@@ -31,7 +31,7 @@ try {
   else if (!res.ok) problem = 'We could not load this receipt right now. Please try again in a moment.';
   else {
     const json = (await res.json()) as ApiResponse<OrderDetailDto>;
-    order = json.success ? json.data : null;
+    order = json.success ? json.data! : null;
     if (!order) problem = 'We could not load this receipt right now. Please try again in a moment.';
   }
 } catch {

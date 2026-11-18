@@ -8,6 +8,7 @@ import { findRecordedRedirect } from '../../lib/recordedRedirect';
 import { carryQuery } from '../../lib/carryQuery';
 import { formatUgx } from '../../lib/money';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../../lib/storefrontDiscount';
+import { notFound } from '../../lib/notFound';
 
 /**
  * One article. Server-rendered so the words are in the HTML a crawler reads,
@@ -24,7 +25,7 @@ if (!post) {
   // .../on-burton-street to .../on-wilson-road), the same way hub pages honour them.
   const recorded = await findRecordedRedirect(Astro.url.pathname);
   if (recorded) return Astro.redirect(carryQuery(recorded.target, Astro.url.search), recorded.status);
-  return Astro.redirect('/404', 404);
+  return notFound();
 }
 
 const canonical = `${SITE_ORIGIN}/blog/${post.slug}`;

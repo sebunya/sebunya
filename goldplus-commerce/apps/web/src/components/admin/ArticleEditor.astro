@@ -84,12 +84,12 @@ const isEdit = Boolean(post?.id);
 </form>
 
 <script>
-  const form = document.getElementById('article-form');
-  const notice = document.getElementById('notice');
-  const body = document.getElementById('body');
-  const wordcount = document.getElementById('wordcount');
+  const form = document.getElementById('article-form') as HTMLFormElement;
+  const notice = document.getElementById('notice') as HTMLElement;
+  const body = document.getElementById('body') as HTMLTextAreaElement;
+  const wordcount = document.getElementById('wordcount') as HTMLElement;
 
-  function say(message, ok) {
+  function say(message: string, ok: boolean) {
     notice.className = 'rounded-xl border p-4 text-sm ' + (ok ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-red-300 bg-red-50 text-red-900');
     notice.textContent = message;
     notice.classList.remove('hidden');
@@ -105,18 +105,18 @@ const isEdit = Boolean(post?.id);
 
   function payload() {
     return {
-      title: document.getElementById('title').value,
-      excerpt: document.getElementById('excerpt').value,
+      title: (document.getElementById('title') as HTMLInputElement).value,
+      excerpt: (document.getElementById('excerpt') as HTMLTextAreaElement).value,
       body: body.value,
-      coverImageUrl: document.getElementById('coverImageUrl').value || null,
-      coverImageAlt: document.getElementById('coverImageAlt').value || null,
-      metaTitle: document.getElementById('metaTitle').value || null,
-      metaDescription: document.getElementById('metaDescription').value || null,
-      relatedProductIds: Array.from(form.querySelectorAll('input[name="relatedProductIds"]:checked')).map((i) => i.value),
+      coverImageUrl: (document.getElementById('coverImageUrl') as HTMLInputElement).value || null,
+      coverImageAlt: (document.getElementById('coverImageAlt') as HTMLInputElement).value || null,
+      metaTitle: (document.getElementById('metaTitle') as HTMLInputElement).value || null,
+      metaDescription: (document.getElementById('metaDescription') as HTMLTextAreaElement).value || null,
+      relatedProductIds: Array.from(form.querySelectorAll<HTMLInputElement>('input[name="relatedProductIds"]:checked')).map((i) => i.value),
     };
   }
 
-  async function send(url, method, data) {
+  async function send(url: string, method: string, data: unknown) {
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },

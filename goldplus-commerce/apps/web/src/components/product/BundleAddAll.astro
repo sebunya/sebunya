@@ -1,0 +1,25 @@
+---
+/**
+ * The product page's "Add all" bundle button. Rendered only when the product has
+ * bundles, so the script ships only on those pages. It lived inline inside the
+ * `{pdpBundles.length > 0 && (...)}` expression, where astro check read the
+ * script as JSX and reported 32 parse errors (2026-11).
+ */
+---
+<script>
+  // "Add all": the same /cart add, once per product, then the basket. Without JavaScript the per-product
+  // buttons remain (the add-to-cart button above adds this item).
+  document.querySelectorAll<HTMLButtonElement>('[data-bundle-add]').forEach((btn) => {
+    btn.hidden = false;
+    btn.closest('[data-bundle]')?.querySelectorAll<HTMLElement>('[data-bundle-fallback]').forEach((f) => { f.hidden = true; });
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const items = JSON.parse(btn.dataset.bundleAdd ?? '[]') as Array<Record<string, string | number>>;
+      for (const item of items) {
+        const body = new URLSearchParams({ action: 'add', ...Object.fromEntries(Object.entries(item).map(([k, v]) => [k, String(v)])) });
+        await fetch('/cart', { method: 'POST', body, credentials: 'same-origin' }).catch(() => null);
+      }
+      location.href = '/cart';
+    });
+  });
+</script>

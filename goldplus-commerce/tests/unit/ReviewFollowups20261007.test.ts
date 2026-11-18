@@ -61,9 +61,11 @@ describe('a refunded qualifying order takes the referral back (2026-10-07)', () 
   it('every refund path in the registry passes the referral reversal', () => {
     const r = read('apps/api/src/infrastructure/Registry.ts');
     expect(r.match(/new ApplyRefundToLoyaltyUseCase\(/g)?.length).toBe(r.match(/new ApplyRefundToLoyaltyUseCase\([^)]*this\.reverseReferralOnRefundUseCase, this\.reverseDrawOnRefundUseCase\)/g)?.length);
-    expect(r).toMatch(/this\.reverseReferralOnRefundUseCase\.execute\(\{ orderId, reason: 'Payment reversed by provider' \}\)/);
+    // MOVED 2026-11-11: the order lifecycle effects live in ApplyOrderTransitionEffectsUseCase (the Registry registers it).
+    const effects = read('apps/api/src/application/use-cases/orders/ApplyOrderTransitionEffectsUseCase.ts');
+    expect(effects).toMatch(/this\.ports\.reverseReferralOnRefundUseCase\.execute\(\{ orderId, reason: 'Payment reversed by provider' \}\)/);
     // ...and the scratch card the order granted (owner, 2026-10-15).
-    expect(r).toMatch(/this\.reverseDrawOnRefundUseCase\.execute\(\{ orderId, reason: 'Payment reversed by provider' \}\)/);
+    expect(effects).toMatch(/this\.ports\.reverseDrawOnRefundUseCase\.execute\(\{ orderId, reason: 'Payment reversed by provider' \}\)/);
   });
 });
 

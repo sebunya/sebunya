@@ -96,7 +96,8 @@ describe('free-delivery threshold waives the fee it advertises (finding: qualifi
   it('checkout says what is paid at collection instead of "No delivery fee"', () => {
     const page = read('apps/web/src/pages/checkout.astro');
     expect(page).toContain('paid to the carrier when you collect');
-    expect(read('apps/api/src/infrastructure/Registry.ts')).toMatch(/paidAtCollectionUgx: q\.kind === 'bus_shipment' && q\.shipment\.chargedAt === 'collection' \? q\.feeUgx : null/);
+    // MOVED 2026-11-11: the checkout delivery adapter is buildCheckoutDeliveryQuoting (application/use-cases/delivery/CheckoutDeliveryQuoting.ts).
+    expect(read('apps/api/src/application/use-cases/delivery/CheckoutDeliveryQuoting.ts')).toMatch(/paidAtCollectionUgx: q\.kind === 'bus_shipment' && q\.shipment\.chargedAt === 'collection' \? q\.feeUgx : null/);
   });
 
   it('the route shows progress against the same threshold, and no longer reads only the shop-wide key', () => {
@@ -119,7 +120,8 @@ describe('a pay-on-collection bus card is never charged in the order as well (do
   });
 
   it('the checkout adapter charges orderChargeUgx, not the display fee', () => {
-    const src = read('apps/api/src/infrastructure/Registry.ts');
+    // MOVED 2026-11-11: the checkout delivery adapter is buildCheckoutDeliveryQuoting (application/use-cases/delivery/CheckoutDeliveryQuoting.ts).
+    const src = read('apps/api/src/application/use-cases/delivery/CheckoutDeliveryQuoting.ts');
     expect(src).toMatch(/const charge = orderChargeUgx\(q\);/);
     expect(src).toMatch(/feeUgx: charge,/);
   });
@@ -623,9 +625,10 @@ describe('work owed after a confirmed payment is caught up, not lost', async () 
 
 describe('one failing loyalty step does not skip the rest of a delivery', () => {
   it('vesting is isolated like the steps after it', () => {
-    const src = read('apps/api/src/infrastructure/Registry.ts');
-    expect(src).toMatch(/await this\.vestLoyaltyOnDeliveryUseCase\s*\.execute\(orderId\)\s*\.catch\(/);
-    expect(src).not.toMatch(/await this\.vestLoyaltyOnDeliveryUseCase\.execute\(orderId\);/);
+    // MOVED 2026-11-11: the order lifecycle effects live in ApplyOrderTransitionEffectsUseCase (the Registry registers it).
+    const src = read('apps/api/src/application/use-cases/orders/ApplyOrderTransitionEffectsUseCase.ts');
+    expect(src).toMatch(/await this\.ports\.vestLoyaltyOnDeliveryUseCase\s*\.execute\(orderId\)\s*\.catch\(/);
+    expect(src).not.toMatch(/await this\.ports\.vestLoyaltyOnDeliveryUseCase\.execute\(orderId\);/);
   });
 });
 
@@ -682,7 +685,8 @@ describe('the payment receipt agrees with the money and links somewhere that wor
   });
 
   it('"View my order" opens Track Order with the reference, which works for guests', () => {
-    expect(read('apps/api/src/infrastructure/Registry.ts')).toMatch(/\/track-order\?reference=\$\{encodeURIComponent\(order\.orderNumber\)\}/);
+    // MOVED 2026-11-11: the customer order message is built by application/notifications/CustomerOrderMessage.ts.
+    expect(read('apps/api/src/application/notifications/CustomerOrderMessage.ts')).toMatch(/\/track-order\?reference=\$\{encodeURIComponent\(order\.orderNumber\)\}/);
   });
 });
 

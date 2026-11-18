@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { customerOrderMessageKey } from '../../apps/api/src/application/notifications/CustomerOrderMessage';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
@@ -67,7 +68,8 @@ describe('SendReviewRemindersUseCase', () => {
     expect(src).toMatch(/from care_tasks t[\s\S]*t\.status = 'open'/);
     // Must match the key Registry.enqueueCustomerOrderMessage writes.
     expect(src).toContain(`'customer-order-message:' || o.id::text || ':ORDER_REVIEW_REMINDER'`);
-    const registry = readFileSync(join(__dirname, '../../apps/api/src/infrastructure/Registry.ts'), 'utf8');
-    expect(registry).toContain('idempotencyKey: `customer-order-message:${orderId}:${template}`');
+    // MOVED 2026-11-11: the customer order message is built by application/notifications/CustomerOrderMessage.ts.
+    // The key the builder actually writes, not the text of the line that writes it.
+    expect(customerOrderMessageKey('o-1', 'ORDER_REVIEW_REMINDER')).toBe('customer-order-message:o-1:ORDER_REVIEW_REMINDER');
   });
 });

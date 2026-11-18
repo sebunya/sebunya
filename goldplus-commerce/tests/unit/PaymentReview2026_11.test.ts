@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+// Loaded at collection time: imported inside the test it counted against that test's 5 s budget and timed out under load.
+import { cashRefundableUgx } from '../../apps/api/src/infrastructure/db/repositories/DrizzleRefundLedgerRepository';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -34,8 +36,7 @@ describe('admin refund form key (review 2026-11)', () => {
 });
 
 describe('refund ledger counts store credit (review 2026-11)', () => {
-  it('store credit issued for the order reduces the cash refundable balance', async () => {
-    const { cashRefundableUgx } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleRefundLedgerRepository');
+  it('store credit issued for the order reduces the cash refundable balance', () => {
     expect(cashRefundableUgx(100_000, 0, 100_000)).toBe(0);
     expect(cashRefundableUgx(100_000, 30_000, 20_000)).toBe(50_000);
     const src = api('infrastructure/db/repositories/DrizzleRefundLedgerRepository.ts');

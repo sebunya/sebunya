@@ -1,9 +1,8 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import Notice from '../../../components/Notice.astro';
-import { apiBase } from '../../../lib/api';
+import { apiBase, type ApiEnvelope } from '../../../lib/api';
 import { readSessionToken, SESSION_COOKIE_NAME } from '../../../lib/session';
-import type { ApiEnvelope } from '@goldplus/shared';
 
 const token = readSessionToken(Astro.request);
 if (!token) {

@@ -143,9 +143,13 @@ export interface EmailCopy {
 
 const SHOP_NAME = 'GoldPlus';
 
-/** Public origin for links in messages. */
+/**
+ * Public origin for links in messages. Falls back to PUBLIC_WEB_BASE_URL (what
+ * every other link in the API reads) and then to the apex host: www answers
+ * with a 301 to the apex, so a www link cost every customer an extra round trip.
+ */
 export function publicBaseUrl(): string {
-  return (process.env.PUBLIC_BASE_URL || process.env.PUBLIC_SITE_URL || 'https://www.shopgoldplus.com').replace(/\/$/, '');
+  return (process.env.PUBLIC_BASE_URL || process.env.PUBLIC_SITE_URL || process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/$/, '');
 }
 
 /** The number a person answers, as customers dial it. */

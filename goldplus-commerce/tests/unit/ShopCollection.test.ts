@@ -26,7 +26,8 @@ describe('shop collection', () => {
     const root = resolve(__dirname, '../..');
     const read = (p: string) => readFileSync(resolve(root, p), 'utf8');
     expect(read('apps/api/src/interfaces/http/routes/commerce.ts')).toMatch(/pickupPointId: z\.string\(\)\.uuid\(\)/);
-    const registry = read('apps/api/src/infrastructure/Registry.ts');
+    // MOVED 2026-11-11: the checkout delivery adapter is buildCheckoutDeliveryQuoting (application/use-cases/delivery/CheckoutDeliveryQuoting.ts).
+    const registry = read('apps/api/src/application/use-cases/delivery/CheckoutDeliveryQuoting.ts');
     expect(registry).toMatch(/if \(input\.pickupPointId\)/);
     expect(registry).toMatch(/isShopCollectionOperator\(point\.operator\)/);
     expect(registry).toMatch(/feeUgx: 0,\s*\n\s*freeDeliveryThresholdUgx: null/);

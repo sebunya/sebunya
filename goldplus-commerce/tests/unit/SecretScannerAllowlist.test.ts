@@ -94,5 +94,7 @@ describe('the real repository', () => {
     const root = resolve(__dirname, '../..');
     const out = execFileSync('node', [SCANNER], { cwd: root, encoding: 'utf8' });
     expect(out).toContain('Secret scan passed');
-  });
+    // The scanner walks the whole repository in a child process: on a loaded runner that alone can pass the
+    // 5 s default, and the test then fails on time rather than on a finding.
+  }, 60_000);
 });

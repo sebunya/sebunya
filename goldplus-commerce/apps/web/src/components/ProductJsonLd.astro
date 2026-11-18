@@ -51,7 +51,7 @@ const specEntries = Object.entries(product.verifiedSpecs).filter(([_, v]) => {
 if (specEntries.length > 0) {
   node.description = specEntries.map(([k, v]) => `${k}: ${v}`).join('; ');
 } else if (product.longDescription?.trim() || product.shortDescription?.trim()) {
-  node.description = (product.longDescription?.trim() || product.shortDescription).trim();
+  node.description = (product.longDescription?.trim() || product.shortDescription!).trim();
 }
 
 // Focus 4: every available canonical image, slot 1 first, absolute, no empties.

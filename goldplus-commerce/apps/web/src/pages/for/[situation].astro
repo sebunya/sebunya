@@ -9,9 +9,10 @@ import { dedupeProductsById, isListableProduct, searchDiscoveryProducts, getProd
 import { situationBySlug, BUYING_SITUATIONS } from '../../lib/buyingSituations';
 import { SITE_ORIGIN } from '../../lib/sitemap';
 import { serializeJsonLd, breadcrumbJsonLd } from '../../lib/jsonld';
+import { notFound } from '../../lib/notFound';
 
 const situation = situationBySlug(Astro.params.situation);
-if (!situation) return Astro.redirect('/404', 404);
+if (!situation) return notFound();
 
 const taxonomy = await getTaxonomy();
 const catalogue = await fetchApprovedCatalogueWithStatus(apiBase);

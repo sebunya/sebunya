@@ -8,7 +8,7 @@ if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/governance", 303);
 }
 
-function parseJwtEmail(jwtToken) {
+function parseJwtEmail(jwtToken: unknown) {
   try {
     const parts = String(jwtToken).split('.');
     if (parts.length !== 3) return 'Active Administrator';

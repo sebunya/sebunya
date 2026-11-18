@@ -3,6 +3,7 @@ import AdminLayout from '../../../../../../layouts/AdminLayout.astro';
 import LiveReviewCandidateList from '../../../../../../components/admin/controlled-activation-live-review/LiveReviewCandidateList.astro';
 import { readSessionToken } from '../../../../../../lib/session';
 import { liveReviewGet } from '../../../../../../lib/liveReviewApi';
+import type { ComponentProps } from 'astro/types';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -10,7 +11,8 @@ if (!token) {
 }
 
 // Read with the admin's own session (lib/liveReviewApi explains the old 'admin-123' header).
-const result = await liveReviewGet<unknown[]>(token);
+type Candidates = ComponentProps<typeof LiveReviewCandidateList>['candidates'];
+const result = await liveReviewGet<Candidates>(token);
 const candidates = result.ok && Array.isArray(result.data) ? result.data : [];
 const error = result.ok ? null : result.error;
 ---

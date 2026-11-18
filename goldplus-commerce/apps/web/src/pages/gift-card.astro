@@ -6,7 +6,7 @@ import { formatUgx } from '../lib/money';
 
 /** Check a gift card or store credit balance (gap analysis #17). The code holder sees the balance, nothing else. */
 let code = '';
-let result: { kind: string; masked: string; balanceUgx: number; usable: boolean; reason: string | null } | null = null;
+let result = null as { kind: string; masked: string; balanceUgx: number; usable: boolean; reason: string | null } | null;
 let error = '';
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();

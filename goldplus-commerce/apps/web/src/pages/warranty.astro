@@ -8,7 +8,7 @@ import { fetchPublishedPolicy } from '../lib/legalCms';
 // exists this page is the authoritative published policy.
 const cms = await fetchPublishedPolicy('warranty');
 // "13 August 2026", not the raw ISO date.
-const effectiveMs = Date.parse(policy.effectiveDate);
+const effectiveMs = Date.parse(policy.effectiveDate as string);
 const effectiveDateLabel = Number.isFinite(effectiveMs)
   ? new Date(effectiveMs).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' })
   : policy.effectiveDate;

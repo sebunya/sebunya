@@ -1288,18 +1288,18 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     try { return new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })); }
     catch (e) { return new Date(); }
   }
-  function gpCutoffHour(el){
+  function gpCutoffHour(el: any){
     var v = parseInt(el && el.getAttribute('data-cutoff-hour'), 10);
     return isFinite(v) ? v : 17;
   }
-  function gpClosedDays(el){
+  function gpClosedDays(el: any){
     var raw = (el && el.getAttribute('data-closed-days')) || '';
-    return raw.split(',').map(function(x){ return parseInt(x, 10); }).filter(function(x){ return isFinite(x); });
+    return raw.split(',').map(function(x: string){ return parseInt(x, 10); }).filter(function(x: number){ return isFinite(x); });
   }
 
 (function(){
   'use strict';
-  var nav = document.getElementById('gpNav'); if (!nav) return;
+  var nav = document.getElementById('gpNav') as HTMLElement; if (!nav) return;
   var CFG = window.__GPNAV || {};  // server-injected per-visitor truth
   // CMS-owned offer figures, fanned out to every copy site so editing them in
   // /admin/nav is reflected everywhere (no hardcoded percentages that drift).
@@ -1331,8 +1331,8 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   // Segment is derived from the POST-increment count so it matches the greeting
   // and NBA the visitor actually sees (v===1 first visit → 'new', v>1 → 'returning').
   var gpSeg = CFG.signedIn ? 'signed_in' : (gpVisitsKnown ? (gpVisits > 1 ? 'returning' : 'new') : 'unknown');
-  var gpSeen = {};
-  window.gpNavTrack = function(type, d){
+  var gpSeen: Record<string, number> = {};
+  window.gpNavTrack = function(type: string, d?: any){
     d = d || {};
     try {
       var body = JSON.stringify({ eventType:type, itemKey:d.itemKey||'', position:d.position||0, segment:gpSeg, term:(d.term!=null?String(d.term):null) });
@@ -1343,7 +1343,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     } catch(e){}
   };
   nav.addEventListener('click', function(e){
-    var t = e.target; if (!t || !t.closest) return;
+    var t = e.target as Element; if (!t || !t.closest) return;
     var wa = t.closest('a[href^="https://wa.me/"]');
     if (wa){ var place = wa.closest('.gp-nav__finder') ? 'panel-power' : (wa.closest('.gp-nav__sh-foot') ? 'search-foot' : 'bar'); window.gpNavTrack('WHATSAPP_TAP', { itemKey: place }); return; }
     if (t.closest('.gp-nav__sheet [data-opt]')){ window.gpNavTrack('SEARCH_SUGGEST_CLICK', {}); return; }
@@ -1352,26 +1352,26 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     if (slot){ window.gpNavTrack('NBA_CLICK', { itemKey: slot.getAttribute('data-nba') || '' }); return; }
   });
   nav.addEventListener('submit', function(e){
-    var f = e.target;
+    var f = e.target as HTMLFormElement;
     if (f && f.closest && (f.closest('.gp-nav__finder') || f.closest('.gp-nav__mfinder'))){
-      var mi = f.querySelector('input[name=q]') || f.querySelector('input[name=model]');
+      var mi = f.querySelector<HTMLInputElement>('input[name=q]') || f.querySelector<HTMLInputElement>('input[name=model]');
       window.gpNavTrack('BATTERY_FINDER_SUBMIT', { itemKey: 'power', term: mi ? mi.value : '' });
     }
   }, true);
-  var mega = document.getElementById('gpNavMega');
-  var burger = document.getElementById('gpNavBurger');
-  var scrim = document.getElementById('gpNavScrim');
-  var rail = document.getElementById('gpNavRail');
-  var spark = document.getElementById('gpNavSpark');
+  var mega = document.getElementById('gpNavMega') as HTMLElement;
+  var burger = document.getElementById('gpNavBurger') as HTMLElement;
+  var scrim = document.getElementById('gpNavScrim') as HTMLElement;
+  var rail = document.getElementById('gpNavRail') as HTMLElement;
+  var spark = document.getElementById('gpNavSpark') as HTMLElement;
   var panels = mega.querySelectorAll('.gp-nav__panel');
   var mq = function(){ return window.innerWidth <= 980; };
-  var qs = function(k){ var m = location.search.match(new RegExp('[?&]' + k + '=([^&]+)')); return m && decodeURIComponent(m[1]); };
+  var qs = function(k: string){ var m = location.search.match(new RegExp('[?&]' + k + '=([^&]+)')); return m && decodeURIComponent(m[1]); };
 
   /* ---- open / close ---- */
   /* the phone drawer covers the page, so the page leaves the tab order and the
      accessibility tree while it is open; cleared on every close */
   var behind = [document.querySelector('main'), document.querySelector('footer')];
-  function inert(on){ for (var j=0;j<behind.length;j++) if (behind[j]) behind[j].inert = on; }
+  function inert(on: boolean){ for (var j=0;j<behind.length;j++) if (behind[j]) behind[j]!.inert = on; }
   /* a phone drawer left open while the window grows past 980px is closed, so
      the page is never stranded inert under the desktop menu */
   window.addEventListener('resize', function(){ if (!mq() && behind[0] && behind[0].inert) close(); }, { passive:true });
@@ -1401,20 +1401,20 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   var msBtn = document.getElementById('gpNavMSearch');
   if (msBtn) msBtn.addEventListener('click', function(){
     if (!nav.hasAttribute('data-open')) open();
-    var f = mega.querySelector('.gp-nav__msearch input');
+    var f = mega.querySelector<HTMLElement>('.gp-nav__msearch input');
     mega.scrollTop = 0;
     if (f) { try { f.focus({ preventScroll: true }); } catch (e) { f.focus(); } }
   });
   scrim.addEventListener('click', close);
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape' || !nav.hasAttribute('data-open')) return;
-    var back = rail.querySelector('.gp-nav__cat[data-on]'), inNav = nav.contains(document.activeElement);
+    var back = rail.querySelector<HTMLElement>('.gp-nav__cat[data-on]'), inNav = nav.contains(document.activeElement);
     close();
     if (mq()) burger.focus(); else if (inNav && back) back.focus();
   });
 
   /* ---- the spark ---- */
-  function moveSpark(el){
+  function moveSpark(el: Element){
     if (!el) return;
     var r = el.getBoundingClientRect(), p = rail.getBoundingClientRect();
     spark.style.width = r.width + 'px';
@@ -1423,10 +1423,10 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   }
 
   /* ---- desktop: hovering a category opens ITS panel ---- */
-  var cats = rail.querySelectorAll('.gp-nav__cat');
-  var current = null, closeT = null;
+  var cats = rail.querySelectorAll<HTMLElement>('.gp-nav__cat');
+  var current: any = null, closeT: any = null;
 
-  function show(id, el){
+  function show(id: string, el: HTMLElement){
     if (id && !gpSeen['panel:'+id]){ gpSeen['panel:'+id]=1; window.gpNavTrack('PANEL_OPEN', { itemKey:id }); }
     for (var i=0;i<panels.length;i++){
       panels[i].removeAttribute('data-on');
@@ -1460,7 +1460,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         var p = mega.querySelector('.gp-nav__panel[data-panel="' + id + '"]');
         if (!p) return;
         e.preventDefault(); clearTimeout(closeT); show(id, el);
-        var f = p.querySelector('a[href],input,button'); if (f) f.focus();
+        var f = p.querySelector<HTMLElement>('a[href],input,button'); if (f) f.focus();
       });
       /* the rail marks the category the shopper is IN: ?category=power-devices
          belongs to "Power" (/shop?category=power), and "Shop All" only when no
@@ -1490,14 +1490,14 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   nav.addEventListener('focusout', function(e){
     if (mq() || !nav.hasAttribute('data-open')) return;
     var r = e.relatedTarget;
-    if (r ? !nav.contains(r) : !nav.matches(':hover')) close();
+    if (r ? !nav.contains(r as Node) : !nav.matches(':hover')) close();
   });
 
   /* ---- mobile: accordions, with the label staying a real link ---- */
   mega.addEventListener('click', function(e){
-    var tog = e.target.closest('.gp-nav__acc-tog');
+    var tog = (e.target as Element).closest('.gp-nav__acc-tog');
     if (!tog) return;
-    var acc = tog.closest('.gp-nav__acc');
+    var acc = tog.closest('.gp-nav__acc') as Element;
     var open_ = acc.hasAttribute('data-exp');
     open_ ? acc.removeAttribute('data-exp') : acc.setAttribute('data-exp','');
     tog.setAttribute('aria-expanded', open_ ? 'false' : 'true');
@@ -1505,7 +1505,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 
   /* ---- overlay clears the real header height ---- */
   (function(){
-    var bar = nav.querySelector('.gp-nav__bar');
+    var bar = nav.querySelector('.gp-nav__bar') as HTMLElement;
     /* The overlay is fixed to the viewport and the header is sticky on phones,
        so the bar's bottom is read against the viewport, again on every open. */
     measure = function(){
@@ -1520,16 +1520,16 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 
   /* ---- mini cart ---- */
   (function(){
-    var wrap = document.getElementById('gpNavCartWrap');
+    var wrap = document.getElementById('gpNavCartWrap') as HTMLElement;
     var cut = document.getElementById('gpNavMiniCut');
     if (!wrap) return;
-    var t = null;
+    var t: any = null;
     function open(){ if (window.innerWidth <= 980) return; clearTimeout(t); wrap.setAttribute('data-open',''); if (!gpSeen.minicart){ gpSeen.minicart=1; window.gpNavTrack('MINICART_OPEN', {}); } }
     function shut(){ t = setTimeout(function(){ wrap.removeAttribute('data-open'); }, 220); }
     wrap.addEventListener('mouseenter', open);
     wrap.addEventListener('mouseleave', shut);
     wrap.addEventListener('focusin', open);
-    wrap.addEventListener('focusout', function(e){ if (!wrap.contains(e.relatedTarget)) shut(); });
+    wrap.addEventListener('focusout', function(e){ if (!wrap.contains(e.relatedTarget as Node | null)) shut(); });
 
     /* the cart carries the same promise as the hero and the top strip, read
        from the operator's cutoff on the shop's own clock */
@@ -1554,30 +1554,30 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 
   /* ---- the sale clock: same deadline as the hero, never a second one ---- */
   (function(){
-    var end = new Date(nav.getAttribute('data-sale-ends')).getTime();
+    var end = new Date(nav.getAttribute('data-sale-ends') as string).getTime();
     if (!isFinite(end)) return;
     var cd = document.getElementById('gpNavCd');
     var note = document.getElementById('gpNavCdNote');
     var mcd = document.getElementById('gpNavMcd');
-    var flashCat = rail.querySelector('.gp-nav__cat--flash');
+    var flashCat = rail.querySelector<HTMLElement>('.gp-nav__cat--flash');
     var cells = cd ? { d:cd.querySelector('[data-cd=d]'), h:cd.querySelector('[data-cd=h]'),
                        m:cd.querySelector('[data-cd=m]'), s:cd.querySelector('[data-cd=s]') } : null;
-    function pad(n){ return (n < 10 ? '0' : '') + n; }
+    function pad(n: number){ return (n < 10 ? '0' : '') + n; }
     function tick(){
       var left = end - Date.now();
       if (left <= 0){
         /* the sale is over: retire it rather than leave a dead promise */
         if (flashCat) flashCat.style.display = 'none';
-        var p = mega.querySelector('.gp-nav__panel[data-panel=flash]');
+        var p = mega.querySelector<HTMLElement>('.gp-nav__panel[data-panel=flash]');
         if (p) p.style.display = 'none';
-        var mf = mega.querySelector('.gp-nav__mflash');
+        var mf = mega.querySelector<HTMLElement>('.gp-nav__mflash');
         if (mf) mf.style.display = 'none';
         return;
       }
       var s = Math.floor(left/1000), d = Math.floor(s/86400),
           h = Math.floor(s%86400/3600), m = Math.floor(s%3600/60), sec = s%60;
-      if (cells){ cells.d.textContent = pad(d); cells.h.textContent = pad(h);
-                  cells.m.textContent = pad(m); cells.s.textContent = pad(sec); }
+      if (cells){ cells.d!.textContent = pad(d); cells.h!.textContent = pad(h);
+                  cells.m!.textContent = pad(m); cells.s!.textContent = pad(sec); }
       if (mcd) mcd.textContent = d > 0 ? d + 'd ' + pad(h) + 'h' : pad(h) + ':' + pad(m) + ':' + pad(sec);
       if (note) note.innerHTML = d === 0
         ? 'Final hours. <b>Same verified stock, less money.</b>'
@@ -1593,35 +1593,35 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
      stay exactly as they are. */
   (function(){
     /* bundled: blob URL from window.__resources; unbundled: the live URL */
-    function R(id, url){ return (window.__resources && window.__resources[id]) || url; }
+    function R(id: string, url: string){ return (window.__resources && window.__resources[id]) || url; }
 
     var INDEX = [];  // Stage 3 wires the real /products/suggest endpoint
     var TREND = (CFG.trending && CFG.trending.length) ? CFG.trending : [];  // seeded from the CMS (query logs)
     var RKEY = 'gp_recent';
     function recents(){ try { return JSON.parse(localStorage.getItem(RKEY) || '[]'); } catch(e){ return []; } }
-    function remember(q){
+    function remember(q: string){
       if (!q) return;
       try {
-        var r = recents().filter(function(x){ return x.toLowerCase() !== q.toLowerCase(); });
+        var r = recents().filter(function(x: string){ return x.toLowerCase() !== q.toLowerCase(); });
         r.unshift(q); localStorage.setItem(RKEY, JSON.stringify(r.slice(0,5)));
       } catch(e){}
     }
-    function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]; }); }
+    function esc(s: unknown){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(m: string){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string, string>)[m]; }); }
     // Suggestion links and images come from catalogue data. Only a site path
     // ("/x", never "//host") or an http(s) URL may reach href/src; anything
     // else (javascript:, data:, a stray quote) is dropped, then escaped.
-    function safeUrl(u){
+    function safeUrl(u: any){
       u = String(u == null ? '' : u).trim();
       if (/^\/(?![\/\\])/.test(u) || /^https?:\/\//i.test(u)) return esc(u);
       return '';
     }
-    function mark(t,q){
+    function mark(t: string,q: string){
       var i = t.toLowerCase().indexOf(q.toLowerCase());
       if (i < 0 || !q) return esc(t);
       return esc(t.slice(0,i)) + '<mark>' + esc(t.slice(i,i+q.length)) + '</mark>' + esc(t.slice(i+q.length));
     }
 
-    function wire(form){
+    function wire(form: any){
       if (!form) return;
       var input = form.querySelector('input[type=search]');
       var sheet = form.querySelector('.gp-nav__sheet');
@@ -1632,12 +1632,12 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         var r = recents(), h = '';
         if (r.length){
           h += '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Recent<button type="button" data-clear>Clear</button></p><div class="gp-nav__sug">';
-          h += r.map(function(q){ return '<a href="/shop?q=' + encodeURIComponent(q) + '" data-opt><span class="gp-nav__sug-t"><b>' + esc(q) + '</b></span></a>'; }).join('');
+          h += r.map(function(q: string){ return '<a href="/shop?q=' + encodeURIComponent(q) + '" data-opt><span class="gp-nav__sug-t"><b>' + esc(q) + '</b></span></a>'; }).join('');
           h += '</div></div>';
         }
         if (TREND.length){
           h += '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Trending in Kampala</p><div class="gp-nav__trend">';
-          h += TREND.map(function(t,i){ return '<a href="' + (safeUrl(t[1]) || '/shop') + '" data-opt><i>' + (i+1) + '</i>' + esc(t[0]) + '</a>'; }).join('');
+          h += TREND.map(function(t: any,i: number){ return '<a href="' + (safeUrl(t[1]) || '/shop') + '" data-opt><i>' + (i+1) + '</i>' + esc(t[0]) + '</a>'; }).join('');
           h += '</div></div>';
         } else if (!r.length){
           /* nothing searched yet and no trend list: plain ways in, no ranking claimed */
@@ -1655,10 +1655,10 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       /* A dropped connection or a failed relay is NOT an empty catalogue: say so,
          keep the form submit as the way forward, and never count it as a zero
          result (compatibility programme finding, 2026-09-13). */
-      function renderUnavailable(q){
+      function renderUnavailable(q: string){
         sheet.innerHTML = '<div class="gp-nav__sh-empty">Couldn&#39;t load suggestions for <b>' + esc(q) + '</b>. Check your connection, or press Enter to search the full range.</div>' + foot();
       }
-      function renderHits(q, hits){
+      function renderHits(q: string, hits: any[]){
         if (!hits.length){
           var zr = (CFG.zeroResult || 'No match for <b>{q}</b>. Try a phone model, a size, or a category, or ask us directly.').replace('{q}', esc(q));
           /* A phone brand or the word battery is battery intent: the catalogue
@@ -1672,7 +1672,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           return;
         }
         var h = '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Products</p><div class="gp-nav__sug">';
-        h += hits.map(function(p){
+        h += hits.map(function(p: any){
           var src = safeUrl(p.i);
           var img = src ? '<span class="gp-nav__sug-img"><img src="' + src + '" alt="" loading="lazy"></span>'
                         : '<span class="gp-nav__sug-img"></span>';
@@ -1687,8 +1687,8 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       /* real predictive search over the public autocomplete, via a same-origin
          relay; the newest keystroke always wins, and any failure degrades to the
          honest empty state. */
-      var searchAbort = null, searchSeq = 0;
-      function results(q){
+      var searchAbort: AbortController | null = null, searchSeq = 0;
+      function results(q: string){
         var seq = ++searchSeq;
         try { if (searchAbort) searchAbort.abort(); } catch(e){}
         try { searchAbort = ('AbortController' in window) ? new AbortController() : null; } catch(e){ searchAbort = null; }
@@ -1698,7 +1698,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
             if (seq !== searchSeq) return;
             if (!j || j.success !== true){ renderUnavailable(q); return; }
             var rows = j.data || [];
-            var hits = rows.slice(0,6).map(function(p){
+            var hits = rows.slice(0,6).map(function(p: any){
               return { t: p.name, c: p.categoryName || '',
                        p: (typeof p.priceUgx === 'number' ? 'UGX ' + p.priceUgx.toLocaleString('en-UG') : ''),
                        u: '/products/' + p.slug, i: p.imageUrl || null };
@@ -1717,7 +1717,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       function hide(){ form.removeAttribute('data-open'); sel = -1; }
 
       input.addEventListener('focus', function(){ if (!input.value) idle(); else results(input.value); show(); });
-      var debT = null;
+      var debT: any = null;
       input.addEventListener('input', function(){
         sel = -1; show();
         var v = input.value.trim();
@@ -1725,7 +1725,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         if (!v){ idle(); return; }
         debT = setTimeout(function(){ results(v); }, 150);
       });
-      input.addEventListener('keydown', function(e){
+      input.addEventListener('keydown', function(e: KeyboardEvent){
         var o = opts();
         if (e.key === 'ArrowDown'){ e.preventDefault(); sel = Math.min(sel+1, o.length-1); highlight(); }
         else if (e.key === 'ArrowUp'){ e.preventDefault(); sel = Math.max(sel-1, -1); highlight(); }
@@ -1735,7 +1735,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         }
         else if (e.key === 'Escape'){ hide(); input.blur(); }
       });
-      sheet.addEventListener('click', function(e){
+      sheet.addEventListener('click', function(e: any){
         if (e.target.closest('[data-clear]')){
           try { localStorage.removeItem(RKEY); } catch(err){}
           idle();
@@ -1745,7 +1745,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       document.addEventListener('click', function(e){ if (!form.contains(e.target)) hide(); });
       /* desktop only: the phone sheet sits in the drawer, where hiding it on a
          tap would move the suggestion out from under the finger */
-      form.addEventListener('focusout', function(e){
+      form.addEventListener('focusout', function(e: FocusEvent){
         if (mq()) return;
         var r = e.relatedTarget;
         if (r ? !form.contains(r) : !form.matches(':hover')) hide();
@@ -1762,14 +1762,14 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
      same first-party visit counter the hero uses, so the two never disagree. */
   (function(){
     var pop = document.getElementById('gpNavAcctPop');
-    var btn = document.getElementById('gpNavAcctBtn');
-    var wrap = document.getElementById('gpNavAcct');
+    var btn = document.getElementById('gpNavAcctBtn') as HTMLElement;
+    var wrap = document.getElementById('gpNavAcct') as HTMLElement;
     var mhi = document.getElementById('gpNavMhi');
-    function st(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+    function st(k: string){ try { return localStorage.getItem(k); } catch(e){ return null; } }
 
     // The name is the visitor's own recipientName — escape before it reaches
     // innerHTML (defence in depth alongside the fixed __GPNAV serialisation).
-    var esch = function(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]; }); };
+    var esch = function(s: unknown){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(m: string){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'} as Record<string, string>)[m]; }); };
     var name = esch(CFG.firstName || '');
     var visits = parseInt(st('gp_visits') || '0', 10) || window.__gpVisitsFallback || 2;
     var known = CFG.signedIn === true;  /* signed in (server truth) */
@@ -1856,7 +1856,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 
     /* points only exist for a signed-in shopper */
     var ptsWrap = document.getElementById('gpNavPtsWrap');
-    var ptsVal = document.getElementById('gpNavPts');
+    var ptsVal = document.getElementById('gpNavPts') as HTMLElement;
     var POINTS = CFG.points || 0;                  /* real loyalty balance */
     if (ptsWrap && POINTS > 0){
       ptsVal.textContent = POINTS.toLocaleString();
@@ -1890,7 +1890,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         btn.setAttribute('aria-expanded', on ? 'false' : 'true');
       });
       document.addEventListener('click', function(e){
-        if (!wrap.contains(e.target)){ wrap.removeAttribute('data-open'); btn.setAttribute('aria-expanded','false'); }
+        if (!wrap.contains(e.target as Node | null)){ wrap.removeAttribute('data-open'); btn.setAttribute('aria-expanded','false'); }
       });
       document.addEventListener('keydown', function(e){
         if (e.key === 'Escape'){ wrap.removeAttribute('data-open'); btn.setAttribute('aria-expanded','false'); }
@@ -1901,8 +1901,8 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   })();
 
   /* ---- cart ---- */
-  var badge = document.getElementById('gpNavCart');
-  window.gpCartCount = function(n){
+  var badge = document.getElementById('gpNavCart') as HTMLElement;
+  window.gpCartCount = function(n: any){
     if (!badge) return;
     badge.textContent = n;
     badge.hidden = !(n > 0);
@@ -1926,22 +1926,22 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
      The local set below is the offline fallback and must always be safe to
      show. It never claims anything the site cannot honour. */
   (function(){
-    var slot = document.getElementById('gpNavNbaSlot');
-    var txt  = document.getElementById('gpNavNbaText');
+    var slot = document.getElementById('gpNavNbaSlot') as HTMLElement;
+    var txt  = document.getElementById('gpNavNbaText') as HTMLElement;
     var ctaEl = document.getElementById('gpNavNbaCta');
     var dot  = nav.querySelector('.gp-nav__dot');
     var xBtn = document.getElementById('gpNavNbaX');
     if (!slot) return;
 
-    function st(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
-    function set(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
+    function st(k: string){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+    function set(k: string,v: string){ try { localStorage.setItem(k,v); } catch(e){} }
 
     var d = gpShopNow(), hour = d.getHours(), day = d.getDay();
     var cutoffHour = gpCutoffHour(nav), closedDays = gpClosedDays(nav);
     var isClosedToday = closedDays.indexOf(day) !== -1;
     var isClosedTomorrow = closedDays.indexOf((day + 1) % 7) !== -1;
     var minsToCutoff = (cutoffHour - hour) * 60 - d.getMinutes();
-    var saleEnd = new Date(nav.getAttribute('data-sale-ends')).getTime();
+    var saleEnd = new Date(nav.getAttribute('data-sale-ends') as string).getTime();
 
     var CTX = {
       name: CFG.firstName || '',
@@ -1949,7 +1949,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       visits: parseInt(st('gp_visits') || '0', 10) || window.__gpVisitsFallback || 2,
       cart: CFG.cartCount || 0,
       points: CFG.points || 0,
-      lastOrderDays: st('gp_last_order') ? (Date.now() - parseInt(st('gp_last_order'),10)) / 864e5 : null,
+      lastOrderDays: st('gp_last_order') ? (Date.now() - parseInt(st('gp_last_order') as string,10)) / 864e5 : null,
       orderInTransit: st('gp_order_status') === 'out_for_delivery',
       beforeCutoff: !isClosedToday && hour < cutoffHour,
       minsToCutoff: minsToCutoff,
@@ -1957,7 +1957,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       saleLive: isFinite(saleEnd) ? Date.now() < saleEnd : nav.getAttribute('data-sale-live') === '1'
     };
 
-    function money(n){ return 'UGX ' + n.toLocaleString(); }
+    function money(n: number){ return 'UGX ' + n.toLocaleString(); }
 
     /* --- the local candidate set --- */
     function candidates(){
@@ -2061,11 +2061,11 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     }
 
     var dismissed = (st('gp_nba_x') || '').split(',').filter(Boolean);
-    var list = [], i = 0, timer = null, rendered = false;
+    var list: any[] = [], i = 0, timer = null, rendered = false;
 
     function isNarrow(){ return window.innerWidth <= 980; }
 
-    function render(n){
+    function render(n: number){
       var item = list[n]; if (!item) return;
       slot.removeAttribute('data-in');
       setTimeout(function(){
@@ -2088,10 +2088,10 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     /* deliberately no rotation — see the note above */
     function start(){}
 
-    function build(source){
+    function build(source?: any){
       list = (source || candidates())
-        .filter(function(x){ return dismissed.indexOf(x.id) < 0; })
-        .sort(function(a,b){ return (b.score||0) - (a.score||0); })
+        .filter(function(x: any){ return dismissed.indexOf(x.id) < 0; })
+        .sort(function(a: any,b: any){ return (b.score||0) - (a.score||0); })
         .slice(0,3);   /* only the first is shown; the rest are dismissal fallbacks */
       if (!list.length) list = [{ id:'fallback', score:0, text:'Verified original electronics, delivered across Uganda', href:'/shop' }];
       i = 0; render(0); start();
@@ -2108,7 +2108,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     try { build(window.GP_NBA); }
     catch (err){ if (window.console) console.error('[gp-nba]', err); }
     if (window.GP_NBA_PROMISE && window.GP_NBA_PROMISE.then){
-      window.GP_NBA_PROMISE.then(function(rows){ if (rows && rows.length) build(rows); }).catch(function(){});
+      window.GP_NBA_PROMISE.then(function(rows: any){ if (rows && rows.length) build(rows); }).catch(function(){});
     }
     /* the cut-off candidates go stale as the clock moves */
     setInterval(function(){ if (!window.GP_NBA) build(); }, 60000);
@@ -2124,7 +2124,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       var d = new Date(), h = d.getHours() + d.getMinutes()/60;
       return (h >= DAY_START && h < DAY_END) ? 'day' : 'night';
     }
-    function apply(m){ if (nav.getAttribute('data-mode') !== m) nav.setAttribute('data-mode', m); }
+    function apply(m: string){ if (nav.getAttribute('data-mode') !== m) nav.setAttribute('data-mode', m); }
     var forced = qs('mode');
     apply(forced === 'day' || forced === 'night' ? forced : current());
     if (forced !== 'day' && forced !== 'night'){

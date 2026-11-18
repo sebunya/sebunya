@@ -146,7 +146,7 @@ const derivedStatus = deriveProviderStatus(connections);
 // Credentials are fetched per connection (a more restricted permission than
 // viewing) — a denial here is shown honestly rather than as "none".
 const credentialResults = await Promise.all(
-  connections.map((c) => intGet<CredentialRow[]>(token, `${INTEGRATIONS_API}/connections/${encodeURIComponent(c.id)}/credentials`)),
+  connections.map((c) => intGet<CredentialRow[]>(token, `${INTEGRATIONS_API}/connections/${encodeURIComponent(c.id!)}/credentials`)),
 );
 const credentialsFor = (i: number) => rowsOf<CredentialRow>(credentialResults[i]);
 const credentialDenied = (i: number) => credentialResults[i].ok === false && (credentialResults[i] as any).denied === true;

@@ -51,7 +51,7 @@ if (Astro.request.method === 'POST') {
     const savedId = String(form.get('savedReplyId') ?? '');
     if (r.ok && /^[0-9a-f-]{36}$/i.test(savedId)) await fetch(`${apiBase}/admin/care/saved-replies/${savedId}/used`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => undefined);
     // Redirect after sending, so a refresh can never send the customer the same message twice.
-    const ch = (r.data as { channel?: string } | undefined)?.channel ?? '';
+    const ch = (r as { data?: { channel?: string } }).data?.channel ?? '';
     if (r.ok) return Astro.redirect(`/admin/assistant/conversations/${encodeURIComponent(id)}?done=${r.data.sent ? `sent-${['email', 'messenger', 'instagram'].includes(ch) ? ch : 'whatsapp'}` : 'filed'}`, 303);
     notice = { kind: 'error', text: r.message };
   }

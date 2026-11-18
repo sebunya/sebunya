@@ -73,7 +73,7 @@ const diffFrom = params.get("from") ?? live?.id ?? "";
 const diffTo = params.get("to") ?? versions.find((v) => v.id !== live?.id)?.id ?? "";
 type DiffLine = { op?: string; text?: string; fromLine?: number | null; toLine?: number | null };
 type DiffHunk = { header?: string; lines?: DiffLine[] };
-let diff: { identical?: boolean; added?: number; removed?: number; hunks?: DiffHunk[] } | null = null;
+let diff = null as { identical?: boolean; added?: number; removed?: number; hunks?: DiffHunk[] } | null;
 let diffReason: string | null = null;
 if (diffFrom && diffTo && diffFrom !== diffTo) {
   const diffRes = await seoGet<{ diff?: typeof diff }>(

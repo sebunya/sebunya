@@ -38,7 +38,7 @@ type Overview = {
   providerMatrix: Array<{ id: string; name: string; status: string; credentials: string; notes: string }> | null;
 };
 type Row = { cell: string; provider: string; page: string; device: string; location: string; metric: string; unit: string; current: number | string | null; previous: number | string | null; best: number | string | null; budget: number | null; budgetStatus: string | null; status: string; pct: number | null };
-type Detail = Run & { executiveSummaryMd: string | null; rows: Row[]; alerts: Array<{ kind: string; detail: string }>; providerSummaries: Record<string, { status: string; summary: string; limitations: string | null; error: string | null }>; compatibility?: { executiveSummaryMd: string | null; summary: Record<string, unknown> | null; defects: Array<Record<string, unknown>> } | null };
+type Detail = Run & { previousRun?: string | null; executiveSummaryMd: string | null; rows: Row[]; alerts: Array<{ kind: string; detail: string }>; providerSummaries: Record<string, { status: string; summary: string; limitations: string | null; error: string | null }>; compatibility?: { executiveSummaryMd: string | null; summary: Record<string, unknown> | null; defects: Array<Record<string, unknown>> } | null };
 
 const res = await seoGet<Overview>(token, "/admin/performance-audit");
 const ov = res.ok ? res.data : null;

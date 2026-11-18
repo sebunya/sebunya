@@ -35,7 +35,7 @@ function formatSchedule(starts?: string | null, ends?: string | null) {
   };
   if (starts && ends) return `${parseD(starts)} – ${parseD(ends)}`;
   if (starts) return `From ${parseD(starts)}`;
-  return `Until ${parseD(ends)}`;
+  return `Until ${parseD(ends!)}`;
 }
 
 let productNameById = new Map<string, string>();

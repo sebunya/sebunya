@@ -34,7 +34,6 @@ export interface RecommendationCandidate {
   isActive?: boolean;
   status?: string;
   reasonCode?: string;
-  [key: string]: unknown;
 }
 
 export interface NormalizedRecommendationCandidate {

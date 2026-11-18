@@ -23,7 +23,7 @@ const REASONS: Array<[string, string]> = [
 ];
 let reference = (Astro.url.searchParams.get('reference') ?? '').trim().slice(0, 80);
 let contact = '';
-let items: Item[] | null = null;
+let items = null as Item[] | null;
 let delivered = false;
 let orderNumber = '';
 let errorMsg = '';

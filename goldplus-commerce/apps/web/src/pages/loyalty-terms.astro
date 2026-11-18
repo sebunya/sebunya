@@ -192,7 +192,7 @@ const tiers = (programme?.tiers ?? []).slice().sort((a, b) => a.threshold - b.th
               </p>
               <p class="mt-2">Current chances, which are the same for every customer:</p>
               <ul class="mt-2 space-y-1 pl-4">
-                {draw.odds.map((o) => (
+                {draw.odds!.map((o) => (
                   <li class="list-disc">
                     <strong>{o.label}</strong>. {o.soldOut ? 'all claimed' : `${(o.oddsBps / 100).toFixed(2)}%`}
                   </li>

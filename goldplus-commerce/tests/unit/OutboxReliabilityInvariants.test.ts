@@ -16,6 +16,7 @@ import {
   isDeadLettered,
 } from "../../apps/api/src/domain/outbox/TerminalState";
 import { toRelatedEntityId } from "../../apps/api/src/domain/notifications/RelatedEntityId";
+import { buildCheckoutSideEffectHandlers } from "../../apps/api/src/application/use-cases/outbox/CheckoutSideEffectHandlers";
 
 /**
  * The reliability invariants behind four production defects, all found on
@@ -35,28 +36,22 @@ import { toRelatedEntityId } from "../../apps/api/src/domain/notifications/Relat
  * removed, which is the only reason to keep it.
  */
 
-const REGISTRY = "apps/api/src/infrastructure/Registry.ts";
+// MOVED 2026-11-11: the handlers live in CheckoutSideEffectHandlers.ts; the Registry passes them to the batch use case.
+const HANDLERS = "apps/api/src/application/use-cases/outbox/CheckoutSideEffectHandlers.ts";
 
 /**
- * The event types the Registry actually registers a handler for.
+ * The event types a handler is registered for.
  *
- * Read from source rather than from an instance: constructing the Registry
- * opens a database connection, and an invariant that needs a live database to
- * check is one that stops being checked.
+ * Read from the handler map itself rather than from Registry source: the map is
+ * a plain function of its ports, so it builds without a database (every port is
+ * read only when an event is handled). That the Registry hands THIS map to the
+ * batch use case is checked against the real Registry in
+ * CheckoutSideEffectHandlers.test.ts.
  */
-const registeredHandlerTypes = (): CheckoutSideEffectType[] => {
-  const source = readFileSync(REGISTRY, "utf8");
-  const start = source.indexOf("new ProcessCheckoutSideEffectBatchUseCase(");
-  expect(start, "handler map not found in Registry").toBeGreaterThan(-1);
-  // The handler map is the second constructor argument; the observer object that
-  // follows it opens with `onUnhandledType`.
-  const end = source.indexOf("onUnhandledType", start);
-  expect(end, "observer argument not found").toBeGreaterThan(start);
-  const block = source.slice(start, end);
-  return [...block.matchAll(/^\s{8}([A-Z][A-Z_]+):\s*\{/gm)].map(
-    (m) => m[1] as CheckoutSideEffectType,
-  );
-};
+const registeredHandlerTypes = (): CheckoutSideEffectType[] =>
+  Object.keys(
+    buildCheckoutSideEffectHandlers({} as never, async () => undefined),
+  ) as CheckoutSideEffectType[];
 
 describe("every emittable checkout side effect is covered", () => {
   it("registers a handler or an explicit policy for every declared type", () => {
@@ -72,7 +67,7 @@ describe("every emittable checkout side effect is covered", () => {
     expect(uncovered).toEqual([]);
   });
 
-  it("reads real handler names out of the Registry, so the check is not vacuous", () => {
+  it("reads real handler names out of the registered handler map, so the check is not vacuous", () => {
     const handled = registeredHandlerTypes();
     expect(handled.length).toBeGreaterThan(0);
     expect(handled).toContain("ORDER_FULFILMENT_REQUIRED");
@@ -207,16 +202,16 @@ describe("no failure branch can retry forever", () => {
 describe("the payment verification handler verifies and never charges", () => {
   /**
    * Just the handler body, with comments stripped, so nothing else in the
-   * Registry can satisfy these — and so the comment explaining that the handler
+   * handler module can satisfy these — and so the comment explaining that the handler
    * never charges does not itself count as a charge.
    */
   const handlerBody = (): string => {
-    const source = readFileSync(REGISTRY, "utf8");
+    const source = readFileSync(HANDLERS, "utf8");
     const start = source.indexOf("ORDER_PAYMENT_VERIFICATION_REQUIRED: {");
     expect(start).toBeGreaterThan(-1);
-    const end = source.indexOf("onUnhandledType", start);
+    // It is the last handler in the map, and the map ends the module.
     return source
-      .slice(start, end)
+      .slice(start)
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/^\s*\/\/.*$/gm, "");
   };
@@ -224,7 +219,7 @@ describe("the payment verification handler verifies and never charges", () => {
   it("delegates to the canonical settlement path rather than deciding for itself", () => {
     const body = handlerBody();
     // ONE settlement path, shared with the IPN, the callback and the poller.
-    expect(body).toMatch(/this\.settlePaymentUseCase\.execute\(/);
+    expect(body).toMatch(/ports\.settlePaymentUseCase\.execute\(/);
   });
 
   it("has no path that creates a payment or moves money", () => {
@@ -272,10 +267,10 @@ describe("the payment verification handler verifies and never charges", () => {
   });
 
   it("counts only the provider's own answer as terminal, never elapsed time", () => {
-    const registry = readFileSync(REGISTRY, "utf8");
-    const set = registry.slice(
-      registry.indexOf("const TERMINAL_PAYMENT_ATTEMPT_STATUSES"),
-      registry.indexOf("]);", registry.indexOf("const TERMINAL_PAYMENT_ATTEMPT_STATUSES")),
+    const handlers = readFileSync(HANDLERS, "utf8");
+    const set = handlers.slice(
+      handlers.indexOf("const TERMINAL_PAYMENT_ATTEMPT_STATUSES"),
+      handlers.indexOf("]);", handlers.indexOf("const TERMINAL_PAYMENT_ATTEMPT_STATUSES")),
     );
     // 'pending' must NOT be terminal: a Ugandan mobile-money customer takes
     // 60-120 seconds to find their phone, and telcos settle later still.

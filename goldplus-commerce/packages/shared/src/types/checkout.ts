@@ -110,6 +110,8 @@ export interface CheckoutCustomerDetailsDto {
   deliveryLocation?: CheckoutDeliveryLocationDto | null;
   /** Collect from one of our own shops (active, non-carrier pickup point): no delivery fee. */
   pickupPointId?: string | null;
+  /** The customer's own saved address the order is placed from (its pin rides along server-side). */
+  savedAddressId?: string | null;
 }
 
 export interface CheckoutLineItemDto {
@@ -150,6 +152,12 @@ export interface CheckoutRequestDto {
     landingPath?: string | null;
     referrer?: string | null;
     firstAt?: string | null;
+    /** The visit as GA knows it, so the purchase sent server-side later joins THIS visit (API: commerce.ts attribution schema). */
+    fpClientId?: string | null;
+    clientIp?: string | null;
+    userAgent?: string | null;
+    gaSessionId?: string | null;
+    gaSessionNumber?: number | null;
   } | null;
 }
 

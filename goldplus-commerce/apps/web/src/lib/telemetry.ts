@@ -211,6 +211,8 @@ export interface TrackOptions {
     value?:    number;
     currency?: string;
     items?:    TelemetryItem[];
+    /** GA4's coupon field; add_payment_info carries the payment method in it. */
+    coupon?:   string;
   };
   recommendation_context?: RecommendationContext;
   user_id?: string;

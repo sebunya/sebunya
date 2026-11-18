@@ -68,7 +68,7 @@ try {
   const api = checks.find(c => c.id === 'api-server')!;
   const db = checks.find(c => c.id === 'database')!;
   api.status = 'Offline';
-  api.details = `Network connection failed. Is backend running? ${err.message || ''}`;
+  api.details = `Network connection failed. Is backend running? ${(err as Error).message || ''}`;
   db.status = 'Offline';
   db.details = 'Database unreachable via API server.';
 }

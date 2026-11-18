@@ -53,7 +53,7 @@ if (Astro.request.method === 'POST') {
 
 type SearchResult =
   | { kind: 'DEVICE'; device: FinderDeviceDto; results: FinderBatteryResultDto[]; query: string; config: BatteryFinderConfig }
-  | { kind: 'BATTERY'; battery: FinderBatteryResultDto; devices: FinderDeviceDto[]; query: string; config: BatteryFinderConfig }
+  | { kind: 'BATTERY'; battery: FinderBatteryResultDto; devices: Array<FinderDeviceDto & { fitLabel: string }>; query: string; config: BatteryFinderConfig }
   | { kind: 'AMBIGUOUS_DEVICE'; devices: FinderDeviceDto[]; message: string; query: string; config: BatteryFinderConfig }
   | { kind: 'SUGGESTIONS'; devices: FinderDeviceDto[]; batteries: Array<{ canonicalCode: string; slug: string; name: string }>; message: string; query: string; config: BatteryFinderConfig }
   | { kind: 'NO_RESULT'; message: string; query: string; config: BatteryFinderConfig };
